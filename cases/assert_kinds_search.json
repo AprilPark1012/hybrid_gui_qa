@@ -1,0 +1,21 @@
+{
+  "case_id": "assert_kinds_search",
+  "name": "搜索 1005：覆盖 url/count/attr/text/hidden/enabled/disabled 断言类型（真页）",
+  "base_url": "http://localhost:8000",
+  "steps": [
+    { "op": "goto", "desc": "打开合同列表页", "url": "http://localhost:8000" },
+    { "op": "fill", "desc": "关键字输入 1005", "element": "合同编号_名称_管理单元_合同类型_帐套", "value": "1005" },
+    { "op": "click", "desc": "点击搜索按钮", "element": "搜索" }
+  ],
+  "asserts": [
+    { "kind": "url", "expect": "localhost:8000", "desc": "URL 仍在合同列表页（url 断言：子串匹配）" },
+    { "kind": "count", "selector": "#tbody-contracts tr", "expect": 1, "desc": "搜索结果恰好 1 行（count：结果行数）" },
+    { "kind": "count", "selector": "#tbody-contracts tr[data-testid='row-HT-1005']", "expect": 1, "desc": "命中的正是 HT-1005 那一行" },
+    { "kind": "attr", "selector": "#tbody-contracts tr:first-child td[data-field='contractNo']", "name": "data-field", "expect": "contractNo", "desc": "首单元格是合同编号列（attr：data-field）" },
+    { "kind": "text", "expect": "HT-1005", "desc": "列表里出现编号 HT-1005（text，原有类型）" },
+    { "kind": "text", "expect": "搜索完成", "desc": "状态行提示搜索完成" },
+    { "kind": "hidden", "selector": "#modal-new", "desc": "新建弹窗保持关闭（hidden）" },
+    { "kind": "enabled", "element": "搜索", "desc": "搜索按钮可用（enabled，走 element→语义映射的 locator）" },
+    { "kind": "disabled", "selector": "[data-testid='btn-export']", "desc": "导出按钮未接入 → 禁用（disabled）" }
+  ]
+}

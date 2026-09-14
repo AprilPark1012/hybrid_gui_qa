@@ -1,0 +1,14 @@
+[project]
+name = "hybrid-gui-qa"
+version = "0.1.0"
+description = "LLM-driven hybrid GUI test framework: Browser Use explores & plans, Playwright executes deterministically"
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.45",
+    "browser-use>=0.6.0",
+    "pytest>=8.0",
+    "python-dotenv>=1.0",
+    "pytest-xdist>=3.6",
+    "pytest-html>=4.0",
+    "PyYAML>=6.0",
+]

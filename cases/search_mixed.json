@@ -1,0 +1,41 @@
+{
+  "case_id": "search_mixed",
+  "name": "混合搜索：名称模糊 + 客户右模糊",
+  "base_url": "http://localhost:8000",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开合同列表页",
+      "url": "http://localhost:8000"
+    },
+    {
+      "op": "fill",
+      "desc": "在搜索框输入关键字'合同'",
+      "element": "合同编号_名称_管理单元_合同类型_帐套",
+      "value": "合同"
+    },
+    {
+      "op": "fill",
+      "desc": "客户筛选框输入前缀『广州』（右模糊）",
+      "element": "客户名称_右模糊_前缀匹配",
+      "value": "广州"
+    },
+    {
+      "op": "click",
+      "desc": "点击搜索按钮",
+      "element": "搜索"
+    }
+  ],
+  "asserts": [
+    {
+      "kind": "count",
+      "selector": "#tbody-contracts tr[data-testid^='row-']",
+      "expect": 3,
+      "desc": "关键字『合同』(全命中) × 客户前缀『广州』(c3) ⇒ 3 条：HT-1003/1009/1015"
+    },
+    {
+      "desc": "断言页面出现搜索结果",
+      "expect": "搜索完成"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>演示 Todo 应用</title>
+<style>
+  body{font-family:sans-serif;max-width:600px;margin:40px auto;padding:0 16px;}
+  input{width:70%;padding:8px;font-size:16px;}
+  button{padding:8px 14px;font-size:16px;margin-left:6px;}
+  li{margin:8px 0;display:flex;align-items:center;}
+  li span{margin-left:8px;flex:1;}
+  li.done span{text-decoration:line-through;color:#999;}
+  .del{color:#c00;cursor:pointer;margin-left:8px;}
+  #status{margin-top:20px;color:#0a0;}
+</style>
+</head>
+<body>
+<h1>待办清单</h1>
+<form id="add-form">
+  <input id="todo-input" data-testid="todo-input" type="text" placeholder="添加新的待办事项..." autocomplete="off">
+  <button id="add-btn" data-testid="add-btn" type="submit">添加</button>
+</form>
+<ul id="todo-list">
+  <li class="done"><input type="checkbox" checked><span>买牛奶</span><a class="del">删除</a></li>
+  <li><input type="checkbox"><span>写周报</span><a class="del">删除</a></li>
+</ul>
+<button id="clear-done" type="button">清除已完成</button>
+<div id="status">就绪</div>
+<script>
+  const input=document.getElementById('todo-input');
+  const list=document.getElementById('todo-list');
+  const form=document.getElementById('add-form');
+  const status=document.getElementById('status');
+  form.addEventListener('submit',e=>{
+    e.preventDefault();
+    const v=input.value.trim();
+    if(!v){status.textContent='请输入内容';return;}
+    const li=document.createElement('li');
+    li.innerHTML='<input type="checkbox"><span></span><a class="del">删除</a>';
+    li.querySelector('span').textContent=v;
+    list.appendChild(li); input.value=''; status.textContent='已添加: '+v;
+  });
+  list.addEventListener('change',e=>{
+    if(e.target.type==='checkbox'){ e.target.closest('li').classList.toggle('done',e.target.checked); status.textContent='已更新'; }
+  });
+  list.addEventListener('click',e=>{
+    if(e.target.classList.contains('del')){ e.target.closest('li').remove(); status.textContent='已删除'; }
+  });
+  document.getElementById('clear-done').addEventListener('click',()=>{
+    document.querySelectorAll('#todo-list li.done').forEach(li=>li.remove());
+    status.textContent='已清除已完成项';
+  });
+</script>
+</body>
+</html>

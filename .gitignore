@@ -1,0 +1,37 @@
+# ============ Python 字节码与缓存（可再生，别入库）============
+__pycache__/
+*.py[cod]
+*.pyo
+*$py.class
+.pytest_cache/
+
+# ============ 虚拟环境 ============
+.venv/
+venv/
+env/
+
+# ============ 密钥 / 本地配置（绝不入库）============
+.env
+.env.*
+!.env.example
+*.local
+*.pem
+
+# ============ 运行时证据（跑一次就变；README 标注「可清理」）============
+# log/<run_id>/ 逐用例 .log + report.html + traces/ + videos/ + shots/
+log/
+# output/ element_maps 快照 / heals 自愈 diff / verify 试跑日志 / archived_cases
+output/
+
+# ============ 打包与外发产物 ============
+*.tar.gz
+*.zip
+dist/
+build/
+*.egg-info/
+
+# ============ 编辑器 / 系统 ============
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

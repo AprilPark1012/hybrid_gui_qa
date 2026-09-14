@@ -1,0 +1,9 @@
+# 核心运行依赖：跑通 mock 全链路 + 回归执行 + 数据驱动并发用例
+# （browser-use 是 AI 探索【可选】，见 requirements-ai.txt）
+playwright>=1.45
+python-dotenv>=1.0
+pytest>=8.0
+# P5 数据驱动 pytest 用例：并发执行 + 报告
+pytest-xdist>=3.6
+pytest-html>=4.0
+# 注：explore 的 AI 链路 + 场景文件(scenarios/*.yml) 需要 browser-use 与 PyYAML，见 requirements-ai.txt

@@ -1,0 +1,37 @@
+# 一个文件 = 一个场景；文件名 = 场景 id
+id: contracts_search_by_no
+title: 合同列表 · 按编号搜索
+description: 输入合同编号片段 → 点搜索 → 确认列表出现对应编号的记录
+tags: [合同, 搜索, smoke]
+priority: P0
+owner: AprilPark1012
+updated: 2026-09-11
+
+target:
+  url: http://localhost:8000
+  page: 合同列表页（合同列表 + 多条件搜索 + 新建弹窗）
+  preconditions:
+    - demo 已启动：python -m demo.app
+
+# —— AI 语义识别的输入：自然语言动作流（等价于 --scenario 的字符串）——
+scenario: |
+  在合同列表页面的搜索框输入 '1005'，点击搜索按钮，
+  确认结果列表里出现编号为 HT-1005 的合同记录。
+
+# —— 领域上下文：帮 AI 挑对控件、判断数据规则 ——
+business_context: |
+  关键字搜索框的 placeholder 是“合同编号/名称/管理单元/合同类型/帐套”，名称列模糊匹配；
+  合同编号规则 HT-1000+i（输入片段 1005 ⇒ 目标记录编号 HT-1005）；
+  页面底部状态行文案形如“搜索完成，命中 N 条”——N 是运行时才知道的，不作断言。
+
+# —— 断言护栏：事前喂给 AI，事后落盘硬校验 ——
+assert_guard:
+  must_contain:
+    - HT-1005
+  forbidden:
+    - "共 "
+    - "条合同"
+
+notes: |
+  按编号搜最稳：编号是确定性生成的（HT-1000+i）。
+  不要用“共 N 条”当断言 —— 实测翻车过一次（AI 编了个数字）。

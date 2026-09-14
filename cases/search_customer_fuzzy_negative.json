@@ -1,0 +1,35 @@
+{
+  "case_id": "search_customer_fuzzy_negative",
+  "name": "客户右模糊（前缀）筛选：非前缀『华信』必须不命中",
+  "base_url": "http://localhost:8000",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开合同列表页",
+      "url": "http://localhost:8000"
+    },
+    {
+      "op": "fill",
+      "desc": "客户筛选框输入**非前缀**的『华信』",
+      "element": "客户名称_右模糊_前缀匹配",
+      "value": "华信"
+    },
+    {
+      "op": "click",
+      "desc": "点击搜索按钮",
+      "element": "搜索"
+    }
+  ],
+  "asserts": [
+    {
+      "kind": "count",
+      "selector": "#tbody-contracts tr[data-testid^='row-']",
+      "expect": 0,
+      "desc": "『华信』不是任何客户名的前缀 ⇒ 0 条（若命中就说明实现成了包含匹配，不是右模糊）"
+    },
+    {
+      "desc": "空结果提示",
+      "expect": "无匹配数据"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+# AI 智能探索阶段需要（可选）：想让 Browser Use 真正理解测试意图才装
+# 无此依赖时，mock 模式照样能跑通整条链路（确定性执行不受影响）
+-r requirements.txt
+browser-use>=0.6.0
+# 场景文件 scenarios/*.yml 需要（framework/scenario.py 用 yaml.safe_load）
+PyYAML>=6.0

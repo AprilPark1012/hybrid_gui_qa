@@ -1,0 +1,88 @@
+{
+  "case_id": "cross_page_detail",
+  "name": "跨页：列表搜索 → 点编号进详情页（换页有 url 断言）→ 返回列表再搜索核验",
+  "base_url": "http://localhost:8000",
+  "pages": [
+    { "name": "列表页", "url": "http://localhost:8000/" },
+    { "name": "详情页", "url": "http://localhost:8000/contract_detail.html?no=HT-1005" }
+  ],
+  "steps": [
+    { "op": "goto", "desc": "打开合同列表页", "url": "http://localhost:8000/" },
+    { "op": "fill", "desc": "关键字输入 1005", "element": "合同编号_名称_管理单元_合同类型_帐套", "value": "1005" },
+    { "op": "click", "desc": "点击列表页的搜索按钮", "element": "搜索@列表页" },
+    { "op": "click", "desc": "点击结果里的编号链接 HT-1005 进入详情页", "element": "HT_1005" },
+    { "op": "click", "desc": "点击详情页的「返回列表」回到列表页", "element": "返回列表" },
+    { "op": "fill", "desc": "回到列表页后再输入关键字 1005", "element": "合同编号_名称_管理单元_合同类型_帐套", "value": "1005" },
+    { "op": "click", "desc": "再次点击搜索", "element": "搜索@列表页" }
+  ],
+  "asserts": [
+    {
+      "kind": "count",
+      "selector": "#tbody-contracts tr",
+      "expect": 1,
+      "desc": "【列表页·搜索后】结果恰好 1 行",
+      "after_step": 3
+    },
+    {
+      "kind": "attr",
+      "selector": "#tbody-contracts tr[data-testid='row-HT-1005'] td[data-field='customer']",
+      "name": "data-cust",
+      "expect": "c5",
+      "desc": "【列表页】HT-1005 的客户编号 = c5（客户按序号确定：HT-1001→c1、HT-1005→c5、HT-1007→c1…）",
+      "after_step": 3
+    },
+    {
+      "kind": "url",
+      "expect": "contract_detail",
+      "desc": "【换页证据】点击编号后 URL 已变为详情页",
+      "after_step": 4
+    },
+    {
+      "kind": "count",
+      "selector": "[data-testid='detail-no']",
+      "expect": 1,
+      "desc": "【详情页】编号单元格存在（确认换的是详情页而不是别的页）",
+      "after_step": 4
+    },
+    {
+      "kind": "text",
+      "expect": "合同5",
+      "desc": "【详情页】显示名称 合同5（与列表页 HT-1005 一致）",
+      "after_step": 4
+    },
+    {
+      "kind": "attr",
+      "selector": "[data-testid='detail-cust']",
+      "name": "data-cust",
+      "expect": "c5",
+      "desc": "【详情页·客户跨页一致】HT-1005 的客户编号也是 c5 —— 2026-09-14 起两页读服务端的同一条记录，客户不再各自推导",
+      "after_step": 4
+    },
+    {
+      "kind": "visible",
+      "selector": "[data-testid='btn-new']",
+      "desc": "【回到列表页】「+ 新建合同」按钮可见（列表页特征）",
+      "after_step": 5
+    },
+    {
+      "kind": "count",
+      "selector": "#tbody-contracts tr",
+      "expect": 20,
+      "desc": "【回到列表页】列表恢复全量 20 行（说明确实重进了列表页）",
+      "after_step": 5
+    },
+    {
+      "kind": "count",
+      "selector": "#tbody-contracts tr[data-testid='row-HT-1005']",
+      "expect": 1,
+      "desc": "【末尾】再搜索 1005 仍能命中 HT-1005",
+      "after_step": 7
+    },
+    {
+      "kind": "text",
+      "expect": "HT-1005",
+      "desc": "【末尾】列表里出现编号 HT-1005",
+      "after_step": 7
+    }
+  ]
+}

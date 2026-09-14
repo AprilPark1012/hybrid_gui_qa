@@ -1,0 +1,16 @@
+{
+  "case_id": "assert_kinds_reset",
+  "name": "填关键字→搜索→重置：断言输入框被清空（value，验的是「被改写」不是「输入回显」）+ 列表恢复 20 行",
+  "base_url": "http://localhost:8000",
+  "steps": [
+    { "op": "goto", "desc": "打开合同列表页", "url": "http://localhost:8000" },
+    { "op": "fill", "desc": "关键字输入 1005", "element": "合同编号_名称_管理单元_合同类型_帐套", "value": "1005" },
+    { "op": "click", "desc": "点击搜索按钮", "element": "搜索" },
+    { "op": "click", "desc": "点击重置按钮", "element": "重置" }
+  ],
+  "asserts": [
+    { "kind": "value", "element": "合同编号_名称_管理单元_合同类型_帐套", "expect": "", "desc": "重置后关键字输入框被清空（value：空串也是合法期望值）" },
+    { "kind": "count", "selector": "#tbody-contracts tr", "expect": 20, "desc": "列表恢复全量 20 行" },
+    { "kind": "text", "expect": "已重置", "desc": "状态行提示已重置" }
+  ]
+}

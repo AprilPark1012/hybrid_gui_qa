@@ -1,0 +1,59 @@
+{
+  "case_id": "search_customer_fuzzy",
+  "name": "客户右模糊（前缀）筛选：前缀命中并收窄到 4 条",
+  "base_url": "http://localhost:8000",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开合同列表页",
+      "url": "http://localhost:8000"
+    },
+    {
+      "op": "fill",
+      "desc": "客户筛选框输入前缀『北京』",
+      "element": "客户名称_右模糊_前缀匹配",
+      "value": "北京"
+    },
+    {
+      "op": "click",
+      "desc": "点击搜索按钮",
+      "element": "搜索"
+    },
+    {
+      "op": "fill",
+      "desc": "把客户筛选改成更窄的前缀『北京华』",
+      "element": "客户名称_右模糊_前缀匹配",
+      "value": "北京华"
+    },
+    {
+      "op": "click",
+      "desc": "再次点击搜索按钮",
+      "element": "搜索"
+    }
+  ],
+  "asserts": [
+    {
+      "kind": "count",
+      "selector": "#tbody-contracts tr[data-testid^='row-']",
+      "expect": 4,
+      "desc": "前缀『北京华』命中 4 条（c1 北京华信科技有限公司名下的合同：HT-1001/1007/1013/1019）"
+    },
+    {
+      "kind": "value",
+      "element": "客户名称_右模糊_前缀匹配",
+      "expect": "北京华",
+      "desc": "筛选框里保留的是更窄的那个前缀"
+    },
+    {
+      "kind": "attr",
+      "selector": "#tbody-contracts tr:first-child td[data-field='customer']",
+      "name": "data-cust",
+      "expect": "c1",
+      "desc": "首行客户编号是 c1（北京华信科技有限公司）"
+    },
+    {
+      "desc": "状态行报告右模糊口径",
+      "expect": "客户右模糊"
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "case_id": "ai_contracts_cross_page_011030",
+  "name": "打开合同列表页，在关键字搜索框输入 1005 并点击搜索；\n点击结果行里的编号链接 HT-1005 进入合同详情页，确认已经换页（URL 含 contract_detail）\n且详情页显示了编号 HT-1005 与名称 合同5；\n然后点击「返回列表」回到列表页，再在关键字搜索框输入 1005 并点击搜索，确认列表里仍有 HT-1005。",
+  "base_url": "http://localhost:8000/",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开合同列表页",
+      "url": "http://localhost:8000/"
+    },
+    {
+      "op": "fill",
+      "desc": "在关键字搜索框输入 1005",
+      "element": "合同编号_名称_管理单元_合同类型_帐套",
+      "value": "1005"
+    },
+    {
+      "op": "click",
+      "desc": "点击列表页搜索按钮",
+      "element": "搜索@列表页"
+    },
+    {
+      "op": "click",
+      "desc": "点击结果行中的编号链接 HT-1005 进入详情页",
+      "element": "HT_1005"
+    },
+    {
+      "op": "click",
+      "desc": "点击返回列表链接回到列表页",
+      "element": "返回列表"
+    },
+    {
+      "op": "fill",
+      "desc": "再次在关键字搜索框输入 1005",
+      "element": "合同编号_名称_管理单元_合同类型_帐套",
+      "value": "1005"
+    },
+    {
+      "op": "click",
+      "desc": "再次点击列表页搜索按钮",
+      "element": "搜索@列表页"
+    }
+  ],
+  "asserts": [
+    {
+      "desc": "确认搜索结果中出现 HT-1005",
+      "expect": "HT-1005",
+      "after_step": 3
+    },
+    {
+      "kind": "url",
+      "desc": "确认已跳转到详情页（URL 含 contract_detail）",
+      "expect": "contract_detail",
+      "after_step": 4
+    },
+    {
+      "desc": "确认详情页显示合同编号 HT-1005",
+      "expect": "HT-1005",
+      "after_step": 4
+    },
+    {
+      "desc": "确认详情页显示合同名称 合同5",
+      "expect": "合同5",
+      "after_step": 4
+    },
+    {
+      "kind": "url",
+      "desc": "确认已回到列表页",
+      "expect": "localhost",
+      "after_step": 5
+    },
+    {
+      "desc": "确认列表里仍有 HT-1005",
+      "expect": "HT-1005",
+      "after_step": 7
+    }
+  ],
+  "scenario_id": "contracts_cross_page",
+  "source_scenario": "scenarios/contracts/contracts_cross_page.yml",
+  "pages": [
+    {
+      "name": "列表页",
+      "url": "http://localhost:8000/",
+      "page": "合同列表页（数据来自服务端 /api/contracts，**预置 20 条**；每条用例开始前框架会复位数据）：\n关键字搜索框（合同编号/名称/管理单元/合同类型/帐套）、\n**客户筛选 = 输入框 + 右模糊（前缀）匹配**、业务单元下拉（2026-09-14 起客户不再是下拉框）、\n「搜索」「重置」「导出（禁用）」按钮、+ 新建合同（弹窗：客户走「选择客户」客户列表弹层）、结果表格。\n**表格第 1 列的合同编号是链接**，点它会跳到合同详情页。\n"
+    },
+    {
+      "name": "详情页",
+      "url": "http://localhost:8000/contract_detail.html?no=HT-1005",
+      "page": "合同详情页：显示合同编号/名称/管理单元/帐套/合同类型/客户/业务单元 —— 这七个字段都来自\n**服务端 /api/contract?no= 的同一条记录**（与列表页天然一致）；\n底部有「返回列表」链接与「编辑（未接入）」按钮；另有一个按编号搜索其他合同的输入框+搜索按钮。\n编号不存在时如实显示「未找到该合同」且单元格保持「—」。\n"
+    }
+  ]
+}

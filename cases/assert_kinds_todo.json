@@ -1,0 +1,14 @@
+{
+  "case_id": "assert_kinds_todo",
+  "name": "待办页：断言 checkbox 状态（checked/unchecked）+ 列表行数（count）",
+  "base_url": "http://localhost:8000/todo.html",
+  "steps": [
+    { "op": "goto", "desc": "打开待办页", "url": "http://localhost:8000/todo.html" }
+  ],
+  "asserts": [
+    { "kind": "checked", "selector": "li:has-text('买牛奶') input[type=checkbox]", "desc": "买牛奶 那条已勾选（checked）" },
+    { "kind": "unchecked", "selector": "li:has-text('写周报') input[type=checkbox]", "desc": "写周报 那条未勾选（unchecked）" },
+    { "kind": "count", "selector": "#todo-list li", "expect": 2, "desc": "初始有 2 条待办" },
+    { "kind": "text", "expect": "买牛奶", "desc": "列表里能看到 买牛奶" }
+  ]
+}

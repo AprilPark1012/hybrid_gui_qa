@@ -1,0 +1,74 @@
+{
+  "case_id": "create_bu_a_c1",
+  "name": "新建合同(bu_a/c1)（客户从弹层列表选择）",
+  "base_url": "http://localhost:8000",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开合同列表页",
+      "url": "http://localhost:8000"
+    },
+    {
+      "op": "click",
+      "desc": "点击新建合同按钮",
+      "element": "新建合同"
+    },
+    {
+      "op": "fill",
+      "desc": "在合同名称输入框输入名称",
+      "element": "请输入合同名称",
+      "value": "云服务采购框架协议_{datetime}"
+    },
+    {
+      "op": "select",
+      "desc": "选择管理单元0021",
+      "element": "请选择_0021_0451_1031",
+      "value": "0021"
+    },
+    {
+      "op": "select",
+      "desc": "选择帐套001",
+      "element": "请选择_001_002_003",
+      "value": "001"
+    },
+    {
+      "op": "select",
+      "desc": "选择合同类型'合同'",
+      "element": "请选择_合同_po_预po",
+      "value": "合同"
+    },
+    {
+      "op": "click",
+      "desc": "点『选择客户』打开客户列表弹层",
+      "element": "选择客户"
+    },
+    {
+      "op": "click",
+      "desc": "在客户列表里选『北京华信科技有限公司』那一行",
+      "element": "选择@北京华信科技有限公司"
+    },
+    {
+      "op": "select",
+      "desc": "选择业务单元bu_a",
+      "element": "请选择_bu_a_bu_b_bu_c",
+      "value": "bu_a"
+    },
+    {
+      "op": "click",
+      "desc": "点击提交按钮",
+      "element": "提交"
+    }
+  ],
+  "asserts": [
+    {
+      "kind": "value",
+      "element": "请选择客户",
+      "expect": "北京华信科技有限公司",
+      "desc": "提交前：客户输入框已被弹层回填为『北京华信科技有限公司』(value)"
+    },
+    {
+      "desc": "断言列表出现新建的合同名称",
+      "expect": "云服务采购框架协议_"
+    }
+  ]
+}

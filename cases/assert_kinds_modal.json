@@ -1,0 +1,40 @@
+{
+  "case_id": "assert_kinds_modal",
+  "name": "点开新建合同弹窗 → 断言弹窗与其字段可见（visible/count，弹窗内容需真页覆盖）",
+  "base_url": "http://localhost:8000",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开合同列表页",
+      "url": "http://localhost:8000"
+    },
+    {
+      "op": "click",
+      "desc": "点击新建合同按钮打开弹窗",
+      "element": "新建合同"
+    }
+  ],
+  "asserts": [
+    {
+      "kind": "visible",
+      "selector": "#modal-new",
+      "desc": "弹窗遮罩可见（visible）"
+    },
+    {
+      "kind": "visible",
+      "selector": "[data-testid='inp-name']",
+      "desc": "弹窗里的合同名称输入框可见"
+    },
+    {
+      "kind": "count",
+      "selector": "#modal-new select",
+      "expect": 4,
+      "desc": "弹窗内 4 个下拉（管理单元/帐套/合同类型/业务单元）—— 客户已改为弹层选择，不再是下拉"
+    },
+    {
+      "kind": "enabled",
+      "selector": "[data-testid='btn-submit']",
+      "desc": "提交按钮可用"
+    }
+  ]
+}
