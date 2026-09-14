@@ -38,7 +38,9 @@
   #tbl-customers{margin-top:0;}
 </style>
 </head>
-<body>
+<!-- 就绪契约（F1）：静态声明 data-hybrid-ready="0"，数据渲染完成后由 JS 置 "1"；
+     测试框架 goto 之后等它 ⇒ 慢机器/高并发下不再「页面还在取数、脚本已经开始点」。 -->
+<body data-hybrid-ready="0">
 <h1>合同管理系统</h1>
 
 <!-- 新建按钮 -->
@@ -163,11 +165,24 @@
 let CUSTOMERS = [];   // [{id,name,addr}]
 let CONTRACTS = [];   // [{no,name,mu,file,type,cust,custName,bu}]
 
+// ========== 分区（F6）+ 就绪契约（F1）—— 2026-09-14 ==========
+// 分区：pytest-xdist 下 conftest 给每个 worker 的页面注入 window.__HYBRID_W（如 "gw0"），
+//       页面把它带进**所有** /api 调用 ⇒ 每个 worker 读写自己那份数据，并发不再互相踩。
+// 就绪：boot() 渲染完成后置 document.body.dataset.hybridReady="1"；测试框架 goto 之后等它，
+//       避免"页面还在异步取数、脚本已经开始点"（慢机器/高并发下的假红根因）。
+const W = (window.__HYBRID_W || '').toString().trim();
+function apiUrl(path){
+  if(!W) return path;
+  return path + (path.indexOf('?') >= 0 ? '&' : '?') + 'w=' + encodeURIComponent(W);
+}
+function markReady(){ document.body.dataset.hybridReady = '1'; }
+
 async function boot(){
-  CUSTOMERS = await (await fetch('/api/customers')).json();
-  CONTRACTS = await (await fetch('/api/contracts')).json();
+  CUSTOMERS = await (await fetch(apiUrl('/api/customers'))).json();
+  CONTRACTS = await (await fetch(apiUrl('/api/contracts'))).json();
   renderCustomers();
   render(CONTRACTS);
+  markReady();          // ← 数据已就位：测试可以开始动作/断言了
 }
 function custById(id){ return CUSTOMERS.find(c=>c.id===id) || {id:id, name:id, addr:''}; }
 function custNameOf(c){ return c.custName || custById(c.cust).name; }
@@ -272,7 +287,7 @@ async function submitNew(){
     return null;
   }
   // 提交到服务端：**编号由服务端分配**（页面不再自己编号，避免两处各编一套、也避免刷新后编号撞车）
-  const resp = await fetch('/api/contracts', {
+  const resp = await fetch(apiUrl('/api/contracts'), {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({name, mu, file, type, cust, bu}),

@@ -174,6 +174,98 @@ def _case_watchdog():
         faulthandler.cancel_dump_traceback_later()
 
 
+# ---- 分区（F6）+ 就绪契约（F1）+ 定位等待（F2）—— 2026-09-14 ----
+# 为什么会需要（团队演示实测，详见 docs/P4-慢目标与并发-修复方案.md）：
+#   ① 被测页面是异步取数（fetch 之后才 render），goto 之后立刻动作/断言，在慢机器/高并发下必假红；
+#   ② 多 worker 打同一个「有状态」被测服务，精确计数断言互相踩。
+# 约定：worker 分区号 = PYTEST_XDIST_WORKER（没有 xdist 时为空串 ⇒ 单跑行为与以前完全一致）；
+#       页面从 window.__HYBRID_W 读自己的分区，并把它带进所有 /api 调用。
+_WORKER = os.environ.get("PYTEST_XDIST_WORKER", "")
+_PARTITION = os.environ.get("HYBRID_PARTITION", _WORKER)
+_HYBRID_BASE = (os.environ.get("HYBRID_BASE_URL") or "").strip().rstrip("/")
+_WAIT_READY = os.environ.get("HYBRID_WAIT_READY", "1") != "0"
+_READY_TIMEOUT_MS = int(os.environ.get("HYBRID_READY_TIMEOUT", "15000"))
+_READY_SELECTOR = os.environ.get("HYBRID_READY_SELECTOR", "")
+_READY_REQUIRED = os.environ.get("HYBRID_READY_REQUIRED", "0") == "1"
+_LOCATE_TIMEOUT_MS = int(os.environ.get("HYBRID_LOCATE_TIMEOUT", "5000"))
+_READY_WARNED = set()
+
+
+def _with_partition(url):
+    """把分区号带进 URL（?w=gw0）—— 框架自己发的请求（复位等）要用。"""
+    if not _PARTITION:
+        return url
+    import urllib.parse as _up
+    return url + ("&" if "?" in url else "?") + "w=" + _up.quote(_PARTITION)
+
+
+def _count_attached(cand, timeout_ms=None):
+    """有界等待之后再数元素（F2）。
+
+    为什么不用瞬时 count()：慢机器/高并发下元素「晚到」是常态，瞬时判定会把
+    「还没渲染出来」误判成「不存在」（实测：慢目标下弹层行未渲染即判失败并抛误导性错误）。
+    等到 attached 再数，判定语义不变（仍要求 count==1 才接受）。
+    """
+    ms = _LOCATE_TIMEOUT_MS if timeout_ms is None else timeout_ms
+    try:
+        cand.first.wait_for(state="attached", timeout=ms)
+    except Exception:
+        pass
+    return cand.count()
+
+
+def _goto(page, url):
+    """统一导航入口：① 支持 HYBRID_BASE_URL 覆盖目标（同一套用例跑本机/慢代理/预发）
+    ② goto 之后等页面数据就绪（F1）。生成脚本里的每个 goto 都走这里。"""
+    target = url
+    if _HYBRID_BASE:
+        import urllib.parse as _up
+        u, o = _up.urlsplit(url), _up.urlsplit(_HYBRID_BASE)
+        target = _up.urlunsplit((o.scheme, o.netloc, u.path, u.query, u.fragment))
+    page.goto(target)
+    _wait_ready(page, target)
+
+
+def _wait_ready(page, url=""):
+    """等页面数据就绪（F1 契约）。
+
+    ① 页面声明契约：<body data-hybrid-ready="0"> …… 渲染完成后置 "1"（本项目 demo 两页已实现）；
+    ② 老页面没契约：用 HYBRID_READY_SELECTOR 指定一个「数据已就绪」选择器；
+    ③ 两者都没有：只提醒一次、不阻塞（后续动作/断言自带 F2 的有界等待）。
+    超时默认只告警；HYBRID_READY_REQUIRED=1 时才硬失败（CI 想要「页面必须就绪」语义时用）。
+    """
+    if not _WAIT_READY:
+        return
+    if _READY_SELECTOR:
+        try:
+            page.wait_for_selector(_READY_SELECTOR, timeout=_READY_TIMEOUT_MS, state="attached")
+        except Exception:
+            _ready_timeout(url)
+        return
+    try:
+        has_contract = page.locator("body[data-hybrid-ready]").count() > 0
+    except Exception:
+        return
+    if not has_contract:
+        if "no_contract" not in _READY_WARNED:
+            _READY_WARNED.add("no_contract")
+            print("[ready] ⚠️ 被测页面没有就绪契约（body[data-hybrid-ready]）——建议页面补上；"
+                  "或设置 HYBRID_READY_SELECTOR=<数据已就绪选择器>；本次不阻塞（动作/断言仍自带等待）。", flush=True)
+        return
+    try:
+        page.wait_for_selector("body[data-hybrid-ready='1']", timeout=_READY_TIMEOUT_MS, state="attached")
+    except Exception:
+        _ready_timeout(url)
+
+
+def _ready_timeout(url=""):
+    msg = (f"[ready] ⚠️ 等待页面数据就绪超时（{_READY_TIMEOUT_MS}ms）：{url}"
+           f" —— 页面可能卡在取数或报错；用 --debug 看逐步截图（log/<run_id>/shots/）与浏览器 console。")
+    if _READY_REQUIRED:
+        raise RuntimeError(msg)
+    print(msg, flush=True)
+
+
 # ---- 用例间数据复位（2026-09-14）----
 # 为什么需要：被测应用（demo）现在把合同数据放在**服务端**（详情页要读同一条真实记录），
 # 新建用例会真的写进去 ⇒ 不复位的话「列表恢复 20 行」这类断言会被上一条用例的残留数据打乱，
@@ -192,12 +284,14 @@ def _reset_target_data():
         yield None
         return
     import urllib.request
+    target = _with_partition(url)
     try:
-        req = urllib.request.Request(url, data=b"", method="POST")
+        req = urllib.request.Request(target, data=b"", method="POST")
         with urllib.request.urlopen(req, timeout=5) as r:
-            print(f"[setup] 数据复位 {url} → HTTP {r.status}", flush=True)
+            print(f"[setup] 数据复位 {target} → HTTP {r.status}"
+                  + (f"（分区 {_PARTITION}）" if _PARTITION else ""), flush=True)
     except Exception as e:
-        print(f"[setup] ⚠️ 数据复位失败（{url}）：{type(e).__name__}: {e}"
+        print(f"[setup] ⚠️ 数据复位失败（{target}）：{type(e).__name__}: {e}"
               f" —— 用例之间可能互相污染（要关掉这条提示：HYBRID_RESET_URL=off）", flush=True)
     yield None
 
@@ -278,6 +372,9 @@ def page(request, _pool):
         _ctx_kw = {"record_video_dir": str(RUN_LOG_DIR / "videos"),
                    "record_video_size": {"width": 1280, "height": 720}}
     context = browser.new_context(**_ctx_kw)
+    if _PARTITION:
+        # F6：把分区号注入页面（页面据此把 /api 调用带上 ?w=…）⇒ 并发 worker 各用各的数据
+        context.add_init_script("window.__HYBRID_W = " + repr(_PARTITION) + ";")
     context.tracing.start(screenshots=True, snapshots=True)
     pg = context.new_page()
     try:
@@ -373,7 +470,12 @@ def _loc(hint, page):
     from framework.element_map import TestStep
     it = _item_for(hint, page)
     if it is None:
-        raise RuntimeError(f"元素语义未找到: {hint}")
+        raise RuntimeError(
+            f"元素语义未找到: {hint} —— 确定性主定位没命中，语义兜底也没找到这个语义名。"
+            f"常见原因：① 页面还在异步取数/弹层未渲染（慢机器与高并发下常见；检查就绪契约或设 HYBRID_READY_SELECTOR）；"
+            f"② 弹层没打开（先确认上一步点击是否生效）；③ 语义名过期（页面改版后要重跑 probe/generate）。"
+            f"排查：加 --debug 看逐步截图（log/<run_id>/shots/）。"
+        )
     el = _to_ref(it)
     r = resolve_locator(page, el)
     if r["ok"]:
@@ -424,11 +526,11 @@ def _act(page, action, semantic=None, primary=None, value=None):
     if primary is not None:
         try:
             cand = primary(page)
-            n = cand.count()
+            n = _count_attached(cand)          # F2：有界等待后再数，别用瞬时 count 判生死
             if n == 1:
                 loc = cand
             elif n == 0:
-                _log(page, "warn", f"primary 未命中 → 语义兜底 {semantic}")
+                _log(page, "warn", f"primary 等了 {_LOCATE_TIMEOUT_MS}ms 仍是 0 个 → 语义兜底 {semantic}")
             else:
                 _log(page, "warn", f"primary 命中 {n} 个(非唯一) → 语义兜底 {semantic}")
         except Exception as e:
@@ -507,11 +609,14 @@ def _resolve(page, primary, semantic=None, *, unique=True):
     if primary is not None:
         try:
             cand = primary(page)
-            n = cand.count()
+            # F2：unique=True（要唯一命中的断言）→ 有界等待后再判；
+            #     unique=False（count 这类复数断言）保持瞬时判定 —— 「期望 0 个」是合法用例，
+            #     等它 attached 只会白等一个超时。
+            n = cand.count() if not unique else _count_attached(cand)
             if n == 1 or not unique:
                 loc = cand
             elif n == 0:
-                _log(page, "warn", f"断言 primary 未命中 → 语义兜底 {semantic}")
+                _log(page, "warn", f"断言 primary 等了 {_LOCATE_TIMEOUT_MS}ms 仍是 0 个 → 语义兜底 {semantic}")
             else:
                 _log(page, "warn", f"断言 primary 命中 {n} 个(非唯一) → 语义兜底 {semantic}")
         except Exception as e:
@@ -522,7 +627,14 @@ def _resolve(page, primary, semantic=None, *, unique=True):
         if not _SELF_HEAL:
             raise RuntimeError(f"断言 locator 失效且 HYBRID_SELF_HEAL=0（不做推测性定位）: {semantic}")
         if not semantic:
-            raise RuntimeError("断言 locator 失效且无语义兜底（该断言既没 selector 也没 element）")
+            # F3：说人话 —— 旧文案「既没 selector 也没 element」与事实相反（该断言其实有 selector），
+            #     实测把排查方向带偏。这里给出真实原因 + 下一步。
+            raise RuntimeError(
+                f"断言主定位失效：等了 {_LOCATE_TIMEOUT_MS}ms 仍然是 0 个元素；该断言用的是 selector，没有语义兜底可走。"
+                f" 常见原因：① 刚做完 goto/点击，页面还在异步取数（给页面加就绪契约，或设 HYBRID_READY_SELECTOR）；"
+                f" ② 元素真的不在了（真 bug）；③ 结果行还没渲染出来。"
+                f" 排查：加 --debug 看逐步截图（log/<run_id>/shots/）。"
+            )
         loc = _loc(semantic, page)
     return loc
 

@@ -22,7 +22,9 @@
   .empty{color:#c0392b;}
 </style>
 </head>
-<body>
+<!-- 就绪契约（F1）：静态声明 data-hybrid-ready="0"，数据渲染完成后由 JS 置 "1"；
+     测试框架 goto 之后等它 ⇒ 慢机器/高并发下不再「页面还在取数、脚本已经开始点」。 -->
+<body data-hybrid-ready="0">
 <!-- 2026-09-14 改造（AprilPark1012拍板需求②）：这页不再**按编号序号推导**字段，而是直接读服务端
      /api/contract?no=<编号> 的**真实记录** —— 所以新建的合同在详情页看到的是它真正的客户，
      列表页与详情页的七个字段都是同一条记录、天然一致。
@@ -62,6 +64,14 @@
 </div>
 
 <script>
+// 分区（F6）+ 就绪契约（F1）：与列表页同一套约定（window.__HYBRID_W / body[data-hybrid-ready]）
+const W = (window.__HYBRID_W || '').toString().trim();
+function apiUrl(path){
+  if(!W) return path;
+  return path + (path.indexOf('?') >= 0 ? '&' : '?') + 'w=' + encodeURIComponent(W);
+}
+function markReady(){ document.body.dataset.hybridReady = '1'; }
+
 const FIELDS = {
   'd-no':   r => r.no,
   'd-name': r => r.name,
@@ -79,15 +89,17 @@ async function render(){
     st.textContent = '缺少或非法的合同编号（示例：/contract_detail.html?no=HT-1005）';
     st.className = 'empty';
     document.getElementById('hint').textContent = '请带 ?no= 参数';
+    markReady();     // 参数非法也算"页面已定局"，否则测试会一直等就绪
     return;
   }
-  const resp = await fetch('/api/contract?no=' + encodeURIComponent(no));
+  const resp = await fetch(apiUrl('/api/contract?no=' + encodeURIComponent(no)));
   if(!resp.ok){
     // 查不到就如实说 —— 绝不按编号编一份出来（那会让人以为数据是对的）
     const body = await resp.json().catch(()=>({}));
     st.textContent = body.error || ('未找到该合同: ' + no);
     st.className = 'empty';
     document.getElementById('hint').textContent = no;
+    markReady();     // 查不到也是"已定局"，测试该看到的是 404 文案
     return;
   }
   const r = await resp.json();
@@ -98,6 +110,7 @@ async function render(){
   dCust.dataset.cust = r.cust || '';       // 客户编号也留一份，便于按编号核对跨页一致
   document.getElementById('hint').textContent = r.no;
   st.textContent = '已加载详情: ' + r.no + ' ' + r.name;
+  markReady();
 }
 render();
 

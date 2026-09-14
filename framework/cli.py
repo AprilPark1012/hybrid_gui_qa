@@ -90,6 +90,11 @@ def _force_from(rest: list[str]) -> bool:
     return "--force-workers" in rest
 
 
+def _isolated_from(rest: list[str]) -> bool:
+    """解析 --isolated-target（显式声明：目标已按 worker 隔离数据，可以放心并发）。"""
+    return "--isolated-target" in rest
+
+
 def _arg_values(rest: list[str], flag: str) -> list[str]:
     """取可重复出现的 `--flag <value>`（此处用于 --case a --case b）。"""
     out: list[str] = []
@@ -429,7 +434,8 @@ def cmd_prune(rest: list[str] = None):
 
 
 def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool = False,
-            cases: list[str] | None = None, slowmo: int | None = None):
+            cases: list[str] | None = None, slowmo: int | None = None,
+            isolated_target: bool = False):
     """用 pytest 执行 scripts/test_cases.py + 日志整合 + HTML 报告。
 
     debug=True（`--debug`，别名 `--headed`）＝ **调试开关**（默认关，只在调试时用）。
@@ -469,6 +475,26 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
             print(f"[run] ⚠️ 请求并发 {workers} 超出安全值 → 已降级为 {n}"
                   f"（确有把握可加 --force-workers 覆盖；预算可用 "
                   f"HYBRID_MB_PER_WORKER / HYBRID_RESERVE_MB 调整）")
+
+    # ---- 并发安全闸（F6b）：目标是否"声明可并发隔离"？没声明就保守串行 ----
+    # 为什么（2026-09-14 团队演示实测）：并发的前提是**每个 worker 读写自己的数据分区**。
+    # 目标没这个能力时，多 worker 共享一份状态会让精确计数断言互相踩（实测：期望 20 行实得 23、
+    # 期望 4 条实得 6），而且失败原因会指向错误的地方——比"跑得慢"危险得多。
+    if not debug and n > 1:
+        if isolated_target or os.environ.get("HYBRID_ISOLATED_TARGET", "") == "1":
+            print(f"[run] 并发隔离：已显式声明（--isolated-target / HYBRID_ISOLATED_TARGET=1）"
+                  f" → 保持 {n} worker")
+        else:
+            from .target_probe import probe_partitioned
+            capable, why_p = probe_partitioned()
+            if capable:
+                print(f"[run] 并发隔离：{why_p} → 保持 {n} worker（框架会给每个 worker 注入独立数据分区）")
+            else:
+                print(f"[run] ⚠️ 并发隔离：{why_p}")
+                print(f"[run] ⚠️ 目标未声明可并发隔离 → 并发由 {n} 保守降级为 1")
+                print(f"[run]    多 worker 共享一份状态时，精确计数断言会随机红、且失败原因指向错误的地方；"
+                      f"要并发请让目标支持按 worker 分区（/api/health 返回 partitioned=true），"
+                      f"或确知已隔离时加 --isolated-target")
 
     # ---- 调试开关（--debug / --headed）：开了就"看得见"（有屏幕开窗；没屏幕录制）----
     if debug:
@@ -541,11 +567,13 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
 
 
 def cmd_all(workers: int | None = None, debug: bool = False, force_workers: bool = False,
-            cases: list[str] | None = None, slowmo: int | None = None):
+            cases: list[str] | None = None, slowmo: int | None = None,
+            isolated_target: bool = False):
     """probe → generate → run 一条龙。"""
     cmd_probe()
     cmd_generate()
-    cmd_run(workers, debug, force_workers, cases=cases, slowmo=slowmo)
+    cmd_run(workers, debug, force_workers, cases=cases, slowmo=slowmo,
+            isolated_target=isolated_target)
 
 
 # ============================ CLI 参数契约 ============================
@@ -557,6 +585,7 @@ def cmd_all(workers: int | None = None, debug: bool = False, force_workers: bool
 # 值含义: "value" = 必须带值； "opt" = 可带可不带值（如 --debug true|false）； None = 纯开关
 FLAG_SPECS: dict[str, str | None] = {
     "--workers": "value", "--debug": "opt", "--headed": None, "--force-workers": None,
+    "--isolated-target": None,
     "--case": "value", "--slowmo": "value",
     "--element-map": "value", "--live-probe": None,
     "--ai": None, "--mock-fallback": None, "--no-cases": None,
@@ -566,7 +595,8 @@ FLAG_SPECS: dict[str, str | None] = {
     "--keep": "value", "--dry-run": None,
 }
 # 对 run/all 生效的通用参数（main 统一解析）
-_COMMON_FLAGS = {"--workers", "--debug", "--headed", "--force-workers", "--case", "--slowmo"}
+_COMMON_FLAGS = {"--workers", "--debug", "--headed", "--force-workers", "--isolated-target",
+                "--case", "--slowmo"}
 CMD_FLAGS: dict[str, set[str]] = {
     "probe": set(),
     "generate": {"--element-map", "--live-probe"},
@@ -644,7 +674,10 @@ def _print_help(cmd: str | None = None) -> None:
             print(f"  {c:<9} {first}")
         print("\n查看单个子命令：python -m framework.cli <子命令> --help")
         print("run/all 通用参数：--workers N | --debug [true|false] | --headed | "
-              "--force-workers | --case <id>（可重复）| --slowmo <ms>")
+              "--force-workers | --isolated-target | --case <id>（可重复）| --slowmo <ms>")
+        print("  说明：--force-workers  = 无视内存预检强行并发（有 OOM 风险）")
+        print("        --isolated-target = 显式声明『目标已按 worker 隔离数据』，放行并发；")
+        print("                            没声明时框架会探测目标 /api/health，未声明就保守降到 1 并发")
         return
     print(f"用法：python -m framework.cli {cmd} {_usage(cmd)}\n")
     print((inspect.getdoc(_CMD_FUNCS[cmd]) or "").strip())
@@ -695,6 +728,7 @@ def main():
     workers = _worker_from(rest)
     headed = _debug_from(rest)
     force_workers = _force_from(rest)
+    isolated = _isolated_from(rest)
     cases = _arg_values(rest, "--case")
     slowmo = _slowmo_from(rest)
     if cmd == "probe":
@@ -704,9 +738,9 @@ def main():
     elif cmd == "explore":
         cmd_explore(rest)
     elif cmd == "run":
-        cmd_run(workers, headed, force_workers, cases=cases, slowmo=slowmo)
+        cmd_run(workers, headed, force_workers, cases=cases, slowmo=slowmo, isolated_target=isolated)
     elif cmd == "all":
-        cmd_all(workers, headed, force_workers, cases=cases, slowmo=slowmo)
+        cmd_all(workers, headed, force_workers, cases=cases, slowmo=slowmo, isolated_target=isolated)
     elif cmd == "prune":
         cmd_prune(rest)
 
