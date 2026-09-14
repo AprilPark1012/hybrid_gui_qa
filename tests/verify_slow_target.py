@@ -44,7 +44,7 @@ DELAY_MS = int(os.environ.get("SLOW_MS", "300"))
 MIN_MEM_MB = int(os.environ.get("VERIFY_MIN_MEM_MB", "650"))    # 1 个 headless Chromium ≈515MB + 余量
 
 KEY_CASES = [
-    "create_bu_a_c1",                         # 弹层选择（原 create_cbg_c1 的本地等价物）
+    "create_bu_a_c1",                         # 弹层选择（客户列表层里选一行）
     "cross_page_detail",                      # 跨页 + 全量断言
     "hand_enter_search",                      # 回车搜索 + 前缀筛选
     "search_customer_fuzzy",                  # 精确计数断言（前缀命中 4 条）
