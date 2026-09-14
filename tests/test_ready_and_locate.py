@@ -137,8 +137,10 @@ def test_cli_downgrade_or_explicit_declaration(extra, expect):
     """并发能力探针：未声明 → 降级到 1 并说明原因；显式声明 → 放行。
 
     用 --case 选一个不存在的用例名 ⇒ pytest 只收集、**不起浏览器**（秒级、低内存）。
+    用 --force-workers 固定「请求 2 并发」这个前提，**不依赖本机当时的内存**
+    （否则 MemAvailable 一波动，期望就从"保持 2"变成"降为 1"，测试会莫名其妙红）。
     """
-    out = _run_cli(["--workers", "2", "--case", "__no_such_case__", *extra], {})
+    out = _run_cli(["--workers", "2", "--force-workers", "--case", "__no_such_case__", *extra], {})
     for token in expect:
         assert token in out, f"期望输出里出现 {token!r}，实际：\n{out}"
 

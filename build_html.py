@@ -134,7 +134,15 @@ FILES = [
                  ("def _verify_cases", "交付即验证：generate 一次 + 逐条 pytest 单跑 → FAILED 则 exit 3。"),
                  ("def cmd_generate", "场景②阶段1：读 cases → 生成 scripts/（locator 翻译 + 数据抽离）。"),
                  ("def cmd_run", "场景②阶段2：资源预检 + pytest 并发执行 + HTML 报告。"),
-                 ("def cmd_prune", "归档保留：element_map/probe 快照各留最近 N 个。")],
+                 ("def cmd_prune", "归档保留：element_map/probe 快照各留最近 N 个。"),
+                 ("def cmd_run", "V7.5 追加：并发安全闸（目标未声明 partitioned ⇒ 降为 1）+ --isolated-target。")],
+    ),
+    dict(
+        path="framework/target_probe.py", badge="🧯 并发安全闸", color="gray",
+        desc="被测目标能力探针（V7.5）：回答『这个目标能不能并发跑』——探测 /api/health 的 partitioned 声明。"
+             "未声明就保守降级为 1 并发（多 worker 共享一份状态会让精确计数断言互相踩，且失败原因指向错的地方）。",
+        anchors=[("def probe_partitioned", "返回 (True/False/None, 理由)：True=可并发；False=明确不支持；None=没这个接口⇒视为未声明。"),
+                 ("def _base_url", "目标基地址：显式参数 > HYBRID_BASE_URL > 复位接口推断 > demo 默认。")],
     ),
 ]
 
