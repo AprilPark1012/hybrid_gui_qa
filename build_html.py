@@ -181,11 +181,53 @@ def render_cards() -> str:
 # ---------------- HTML 模板 ----------------
 
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "7.4.1"
+VERSION = "7.5"
 VERSION_DATE = "2026-09-14"
 CHANGELOG = [
     dict(
-        version="7.4.1", date="2026-09-14", tag="当前版本",
+        version="7.5", date="2026-09-14", tag="待验收",
+        theme="慢目标/并发下的假红治理：页面就绪契约 · 定位有界等待 · 报错纠偏 · 每 worker 数据分区 · 慢目标闸门",
+        summary="团队演示事故：同一份代码 <code>run all</code> 红 4 条、<code>--debug</code> 全绿。"
+                "本机用「每请求 +400ms 的反向代理」确定性复现（<b>5 failed / 1 passed</b>），定位到两条根因："
+                "<b>①</b> 页面异步取数却没有「就绪契约」，<code>goto</code> 之后立刻动作/断言，"
+                "在慢机器与高并发下必假红（还会抛出自相矛盾的误导性报错）；"
+                "<b>②</b> 被测服务是单一有状态 store + 每用例全局复位 ⇒ 多 worker 下精确计数断言互相踩。"
+                "本版把两者都做成机制：<b>契约（page-ready）· 有界等待（定位）· 真隔离（每 worker 数据分区）· 闸门（慢目标）</b>。",
+        added=[
+            "<b>页面就绪契约（F1）</b>：被测页面在 <code>body</code> 上静态声明 "
+            "<code>data-hybrid-ready=&quot;0&quot;</code>、数据渲染完成后置 <code>&quot;1&quot;</code>；"
+            "生成脚本的每个 goto 都走 <code>_goto()</code> → 自动等就绪"
+            "（没有契约的老页面用 <code>HYBRID_READY_SELECTOR</code> 退化，或只提醒一次、不阻塞）",
+            "<b>定位有界等待（F2）</b>：<code>_act</code> / <code>_resolve</code> 的确定性主定位改成"
+            "「等到 attached 再数」（<code>HYBRID_LOCATE_TIMEOUT</code> 默认 5s），不再用瞬时 <code>count()</code> 判生死；"
+            "<code>count</code> 这类复数断言仍**瞬时**判定（「期望 0 个」是合法用例，等它只会白等一个超时）",
+            "<b>每 worker 数据分区（F6a）</b>：demo 的 <code>/api/*</code> 认 <code>?w=&lt;分区&gt;</code>，"
+            "<code>/api/reset</code> 只清自己那份；conftest 给每个 worker 注入 <code>window.__HYBRID_W</code>，"
+            "页面把它带进所有 API 调用 ⇒ 并发 worker 读写各自的数据，不再互相踩",
+            "<b>并发安全闸（F6b）</b>：<code>cli run</code> 探测目标 <code>/api/health</code> 是否声明 "
+            "<code>partitioned</code>，<b>未声明就保守降级为 1 并发</b>并说明原因；"
+            "确知目标已隔离可用 <code>--isolated-target</code> 显式放行",
+            "<b>慢目标闸门 <code>tests/verify_slow_target.py</code></b>：自起 demo + 慢代理，"
+            "用同一批生成脚本指向代理跑关键用例，必须全绿；内存不足时明确 SKIP（exit 3），<b>不报假绿</b>",
+            "<b><code>HYBRID_BASE_URL</code> 目标地址覆盖</b>：同一套用例可跑本机 / 慢代理 / 预发（闸门与多环境都靠它）",
+            "<code>tests/test_ready_and_locate.py</code>：13 条契约锁（模板 ⇄ 生成物互锁 + CLI 降级行为实测，秒级不需浏览器）",
+        ],
+        changed=[
+            "<b>报错信息纠偏（F3）</b>：<code>元素语义未找到</code> 现在给出「真因链 + 下一步」；"
+            "原「断言 locator 失效且无语义兜底（该断言既没 selector 也没 element）」<b>自相矛盾</b>"
+            "（那条断言其实有 selector）⇒ 改为「等了 N 秒仍是 0 个元素 + 常见原因 + 排查动作」",
+            "<code>cross_page_detail</code> 的「列表恢复全量 20 行」断言改为与新增无关的基线断言（F5，降脆弱性）",
+        ],
+        notes=[
+            "<b>为什么本地一直没发现</b>：本机 <code>safe_workers()</code> 恒为 1（内存闸；1.87G 无 swap）⇒ 从未真正并发；"
+            "且本机目标快（goto 返回时数据已渲染，窗口 ~0ms）。两个盲区叠加，才会出现「本地 16 条全绿、上演示就红」",
+            "<b>Windows 侧并发预算</b>：<code>safe_workers()</code> 读 GlobalMemoryStatusEx，实测 16 核 / 14.9G 可用 ⇒ 16 worker",
+            "验收基线（见 docs/P4-慢目标与并发-修复方案.md 与 BACKLOG）：慢目标闸门全绿 · 框架自测 · "
+            "<code>cli all</code> 16 例 · Windows 上 <code>-n 16</code> 全量绿",
+        ],
+    ),
+    dict(
+        version="7.4.1", date="2026-09-14", tag="上一版本",
         theme="空目录根因清理（目录声明必须「有使用者」）· 防复发测试",
         summary="仓库里出现<b>空目录残留</b>（generated_tests/ · output/plans/）—— 根因不是「忘了 rmdir」，"
                 "而是 <code>config.py</code> <b>声明了没人使用的目录</b>：唯一「效果」就是被 "

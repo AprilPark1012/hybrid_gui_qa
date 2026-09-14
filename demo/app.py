@@ -15,7 +15,11 @@
    framework 生成的 conftest 会自动 POST /api/reset（见 generator.py 的 _reset_target_data，
    可用 HYBRID_RESET_URL=off 关掉）。不复位的话「列表恢复 20 行」这类断言会被上一条
    用例残留的新建数据打乱，而且失败原因会指向错误的地方。
-运行: python -m demo.app   (在 hybrid_gui_qa/ 下)
+  GET  /api/health                能力探针 {"partitioned": true, "presets": 20}（CLI 据此决定能否并发）
+  ⚠️ 分区：所有 /api/* 都接受 `?w=<分区名>`（缺省 default）。同一个分区内数据共享；不同分区互相隔离。
+     pytest-xdist 下 conftest 会给每个 worker 注入自己的分区号，因此**并发跑不再互相踩**。
+
+运行: python -m demo.app   (在 hybrid_gui_qa/ 下；端口用 TARGET_PORT 覆盖)
 """
 import http.server
 import json
@@ -47,8 +51,33 @@ BUS = ["bu_a", "bu_b", "bu_c"]
 
 REQUIRED = ("name", "mu", "file", "type", "cust", "bu")
 
-_lock = threading.Lock()          # ThreadingTCPServer：数据要被多线程访问
-CONTRACTS: list[dict] = []
+# ⚠️ 必须是 RLock（可重入）：`_store()` 自己加锁，而调用方（do_GET/do_POST）通常已持有该锁，
+#    普通 Lock 会在第一次请求就**自死锁**（实测踩过：demo 整个卡住、curl 全部挂死）。
+_lock = threading.RLock()         # ThreadingTCPServer：数据要被多线程访问
+# ⚠️ 2026-09-14（F6）：数据按**分区**存放 —— 一个分区 = 一份独立的 20 条预置数据。
+#    pytest-xdist 下每个 worker 用自己的分区（`?w=gw0` / cookie），**并发时互不踩**；
+#    不带分区参数时用 "default"，行为与改造前完全一致（老用例/手工调试零影响）。
+_STORES: dict[str, list[dict]] = {}
+PRESETS = 20
+PARTITIONS_ENABLED = os.environ.get("HYBRID_TARGET_PARTITIONED", "1") != "0"
+
+
+def _part_of(query: str) -> str:
+    """从 query string 取分区名（?w=gw0）；缺省 default。"""
+    if not PARTITIONS_ENABLED:
+        return "default"
+    q = urllib.parse.parse_qs(query or "")
+    return ((q.get("w") or [""])[0] or "").strip() or "default"
+
+
+def _store(part: str = "default") -> list[dict]:
+    """取（必要时创建）某分区的合同列表。加锁：ThreadingTCPServer 下多线程会同时进。"""
+    with _lock:
+        lst = _STORES.get(part)
+        if lst is None:
+            lst = seed()
+            _STORES[part] = lst
+        return lst
 
 
 def seed() -> list[dict]:
@@ -80,28 +109,31 @@ def with_cust_name(row: dict) -> dict:
     return d
 
 
-def reset_data() -> int:
-    """复位成预置 20 条，返回条数（测试用例间隔离用）。"""
-    global CONTRACTS
+def reset_data(part: str = "default") -> int:
+    """把**该分区**复位成预置 20 条，返回条数（测试用例间隔离用）。
+
+    只清自己那份 —— 这是并发安全的关键：A worker 的复位不再抹掉 B worker 正在依赖的数据。
+    """
     with _lock:
-        CONTRACTS = seed()
-    return len(CONTRACTS)
+        _STORES[part] = seed()
+        return len(_STORES[part])
 
 
-def create_contract(payload: dict) -> tuple[dict, int]:
-    """新建合同：校验必填 → 分配编号 → 落库。返回 (响应体, HTTP 状态码)。"""
+def create_contract(payload: dict, part: str = "default") -> tuple[dict, int]:
+    """新建合同（写入**该分区**）：校验必填 → 分配编号 → 落库。返回 (响应体, HTTP 状态码)。"""
     missing = [k for k in REQUIRED if not str(payload.get(k) or "").strip()]
     if missing:
         # 提示语与前端保持一致（用例的 assert_guard.forbidden 依赖这句不会被当正常结果）
         return {"error": "请填写全部必填字段", "missing": missing}, 400
     with _lock:
-        seq = 2001 + len(CONTRACTS)
+        lst = _STORES.setdefault(part, seed())
+        seq = 2001 + len(lst)
         no = f"HT-{seq}"
-        while any(r["no"] == no for r in CONTRACTS):
+        while any(r["no"] == no for r in lst):
             seq += 1
             no = f"HT-{seq}"
         row = {"no": no, **{k: str(payload[k]).strip() for k in REQUIRED}}
-        CONTRACTS.append(row)
+        lst.append(row)
         return with_cust_name(row), 201
 
 
@@ -125,15 +157,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # ---- 路由 ----
     def do_GET(self):
         path = self._path_only()
+        part = self._part()
+        if path == "/api/health":
+            # 供测试框架/CI 探测「目标是否支持按 worker 分区」—— 支持则并发安全，不支持则该降级为串行
+            with _lock:
+                return self._send_json({"ok": True, "partitioned": PARTITIONS_ENABLED,
+                                        "presets": PRESETS, "partitions": sorted(_STORES.keys())})
         if path == "/api/customers":
             return self._send_json(CUSTOMERS)
         if path == "/api/contracts":
             with _lock:
-                return self._send_json([with_cust_name(r) for r in CONTRACTS])
+                return self._send_json([with_cust_name(r) for r in _store(part)])
         if path == "/api/contract":
             no = (urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("no") or [""])[0]
             with _lock:
-                row = next((r for r in CONTRACTS if r["no"] == no), None)
+                row = next((r for r in _store(part) if r["no"] == no), None)
             if row is None:
                 return self._send_json({"error": f"未找到该合同: {no}"}, 404)
             return self._send_json(with_cust_name(row))
@@ -142,17 +180,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.path = "/" + DEFAULT_PAGE
         super().do_GET()
 
+    def _part(self) -> str:
+        return _part_of(urllib.parse.urlsplit(self.path).query)
+
     def do_POST(self):
         path = self._path_only()
+        part = self._part()
         if path == "/api/reset":
-            return self._send_json({"ok": True, "count": reset_data()})
+            return self._send_json({"ok": True, "count": reset_data(part), "partition": part})
         if path == "/api/contracts":
             try:
                 n = int(self.headers.get("Content-Length") or 0)
                 payload = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
             except Exception as e:
                 return self._send_json({"error": f"请求体不是合法 JSON: {e}"}, 400)
-            body, code = create_contract(payload if isinstance(payload, dict) else {})
+            body, code = create_contract(payload if isinstance(payload, dict) else {}, part)
             return self._send_json(body, code)
         return self._send_json({"error": f"未知接口: {path}"}, 404)
 
@@ -166,11 +208,11 @@ def main():
     # ThreadingTCPServer：并发（pytest-xdist 多 worker）下不再串行排队，避免超时抖动
     class _Server(socketserver.ThreadingTCPServer):
         daemon_threads = True
-    n = reset_data()
+    n = reset_data("default")
     with _Server(("", PORT), Handler) as httpd:
         print(f"[demo app] serving {DIR} on http://localhost:{PORT} (page={DEFAULT_PAGE})")
-        print(f"[demo app] API: /api/customers /api/contracts /api/contract?no= /api/reset"
-              f"（已预置 {n} 条合同）")
+        print(f"[demo app] API: /api/customers /api/contracts /api/contract?no= /api/reset /api/health"
+              f"（已预置 {n} 条合同；分区={PARTITIONS_ENABLED}，用 ?w=<worker> 取独立分区）")
         httpd.serve_forever()
 
 

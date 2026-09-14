@@ -104,6 +104,55 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 
 ---
 
+## 2026-09-14（第二次）变更要点 —— 慢目标/并发下的假红治理（V7.5）
+
+**事故**：团队 Windows（16 核 / 16 worker）上 `run all` 红 4 条，`--debug` 却全绿。
+本机用「每请求 +400ms 的反向代理」**确定性复现**（5 failed / 1 passed），根因两条：
+
+| 根因 | 机制 | 修法 |
+|---|---|---|
+| **R1 页面就绪无契约** | 页面 `boot()` 异步取数后才渲染，而测试 `goto` 之后**立刻**动作/断言 ⇒ ① 弹层行还没渲染就点 → 命中 0 → 兜底也找不到（报「元素语义未找到」）② 早到的搜索在空数组上过滤，随后首屏渲染把结果**覆盖**成全量 ⇒ 计数断言永远等不到 | **F1 就绪契约** + **F2 定位有界等待** |
+| **R2 有状态目标 + 全局复位** | 单一 store + 每用例 `POST /api/reset`（全局）⇒ 多 worker 下精确计数断言互相踩（实测：期望 20 行实得 23、期望 4 条实得 6） | **F6 每 worker 数据分区** + 并发安全闸 |
+
+### 1) 被测页面要声明「就绪契约」（**给团队接自己系统时最重要的一条**）
+页面在 `body` 上静态声明、数据渲染完成后置位：
+
+```html
+<body data-hybrid-ready="0">   <!-- 静态声明：本页遵守就绪契约 -->
+<script>
+  // ……你的取数 + 渲染……
+  document.body.dataset.hybridReady = "1";   // 数据已就位，测试可以开始动作/断言
+</script>
+```
+生成脚本的每个 `goto` 都会等它（`_goto()` 统一入口）。**没有契约的老页面**：
+用 `HYBRID_READY_SELECTOR=<数据已就绪选择器>` 退化；两者都没有 → 只提醒一次、不阻塞
+（后续动作/断言自带 F2 的有界等待）。想让「就绪超时」直接失败：`HYBRID_READY_REQUIRED=1`。
+
+### 2) 定位判定改为「有界等待」
+`_act` / `_resolve` 的确定性主定位不再用**瞬时** `count()` 判生死，而是先等元素 `attached`
+（`HYBRID_LOCATE_TIMEOUT`，默认 5s）再判 —— 慢机器/高并发下元素「晚到」不再被误判成「不存在」。
+`count` 这类复数断言仍**瞬时**判定（「期望 0 个」是合法用例，等它只会白等一个超时）。
+
+### 3) 报错信息纠偏
+旧文案「断言 locator 失效且无语义兜底（该断言既没 selector 也没 element）」**与事实相反**
+（那条断言其实有 selector）⇒ 现在报「等了 N 秒仍是 0 个元素 + 常见原因 + 排查动作」；
+「元素语义未找到」也补上真因链与下一步。
+
+### 4) 并发必须「数据隔离」
+- demo 侧：`/api/*` 都认 `?w=<分区>`，`/api/reset` **只清自己那份**；`GET /api/health` 声明 `partitioned`；
+- conftest 侧：给每个 worker 注入 `window.__HYBRID_W`，页面把它带进所有 API 调用；
+- CLI 侧：目标未声明可并发隔离时，**并发保守降级为 1** 并说明原因；确知已隔离用 `--isolated-target` 放行。
+
+### 5) 新增闸门：慢目标
+```bash
+python tests/verify_slow_target.py          # 自起 demo + 慢代理，关键 6 条必须全绿
+SLOW_MS=800 python tests/verify_slow_target.py   # 更极端的"拥挤机器"
+python tests/verify_slow_target.py --full   # 全部用例（慢）
+```
+> 内存不足（本机 <650MB 可用）时它明确 **SKIP 并 exit 3** —— 绝不给假绿。
+
+---
+
 ## 2026-09-14 变更要点（客户字段 · 服务端数据 · 用例间复位 · 挂死看门狗 · UTF-8）
 
 ### 1) 客户字段：从下拉框 → 弹层列表里选一行
@@ -282,7 +331,7 @@ pytest scripts/test_cases.py -n 1 --html=log/latest/report.html
 pytest tests/test_cli_flags.py -q                # CLI 参数契约自测（不需要 demo/key，3 秒）
 # 框架自测 + 三个端到端验证脚本（后三个需要 demo 在跑；改了对应模块后顺手跑一次）
 python -m pytest tests/ -q                       # 框架自测 86 条（CLI 契约 / UTF-8 / 断言翻译 / 退出码 / LLM 重试）
-python tests/verify_assert_kinds.py               # 断言 11 种：正向 4 passed + 负向 15/15 FAILED（防假绿）
+python tests/verify_slow_target.py               # 断言 11 种：正向 4 passed + 负向 15/15 FAILED（防假绿）
 python tests/verify_cross_page.py                 # 跨页四段（含「新建→详情页读同一条记录」）
 python tests/verify_picker_layer.py               # 弹层 picker 回归（6 个同名「选择」按行命名 + 探完关窗）
 ```
@@ -322,6 +371,13 @@ python tests/verify_picker_layer.py               # 弹层 picker 回归（6 个
 `cap = max(1, min((MemAvailable - 保留) / 每worker预算, CPU核数))` 裁定并发数，
 不够就**自动降级并打印理由**，避免"起 2 个浏览器把机器打爆"。
 
+**并发还有第二道闸（2026-09-14 加）**：内存够不等于能并发 —— 还要看**被测服务是否按 worker 隔离数据**。
+`cli run` 会探测目标 `/api/health` 的 `partitioned` 声明：
+- 声明支持（本项目 demo 支持）→ 保持并发，框架给每个 worker 注入独立数据分区；
+- 未声明 / 不支持 → **保守降级为 1**，并打印原因（多 worker 共享一份状态时，精确计数断言会随机红，
+  而且失败原因会指向错误的地方 —— 这比"跑得慢"危险得多）；
+- 确知目标已隔离：`--isolated-target`（或 `HYBRID_ISOLATED_TARGET=1`）显式放行。
+
 实测教训（2026-09-11，本机 1.87GB / 无 swap）：强跑 `--workers 2` 触发内核 **global OOM**，
 被杀的除了 Chromium 渲染进程（表现为 `Locator.click: Target crashed`），
 **还有 Hermes 网关进程**。单 worker 则可稳定全绿通过（当前用例集 16 条）。
@@ -334,6 +390,14 @@ python tests/verify_picker_layer.py               # 弹层 picker 回归（6 个
 | `HYBRID_RUN_ID` | 由 cli 自动生成 | 本次运行的日志目录名（`log/<run_id>/`） |
 | `HYBRID_RESET_URL` | `http://localhost:8000/api/reset` | **用例间数据复位**（每用例前 POST 一次）；`off`/`0`/空 = 不复位 |
 | `HYBRID_CASE_TIMEOUT` | `120` | **用例级看门狗**（秒）：超时把调用栈写进 `log/<run_id>/watchdog.txt` 并退出；`0`/`off` = 关掉 |
+| `HYBRID_BASE_URL` | 未设 | **目标地址覆盖**：同一套用例可跑本机 / 慢代理 / 预发（生成脚本里的 goto 走 `_goto()`，自动替换 scheme+host） |
+| `HYBRID_WAIT_READY` | `1` | **就绪等待开关**：`0` = 回滚到「goto 后不等就绪」的旧行为（排查用） |
+| `HYBRID_READY_TIMEOUT` | `15000` | 等页面就绪的上限（毫秒） |
+| `HYBRID_READY_SELECTOR` | 未设 | 被测页面没有就绪契约时，用这个选择器当「数据已就绪」信号 |
+| `HYBRID_READY_REQUIRED` | `0` | `1` = 就绪超时直接失败（CI 想要「页面必须就绪」语义时用；默认只告警） |
+| `HYBRID_LOCATE_TIMEOUT` | `5000` | **定位有界等待**（毫秒）：主定位等待「元素 attached」的上限，超时才降级语义兜底/自愈 |
+| `HYBRID_PARTITION` | worker 名 | 手动指定数据分区（默认取 `PYTEST_XDIST_WORKER`；同一分区内数据共享） |
+| `HYBRID_ISOLATED_TARGET` | `0` | `1` = 显式声明「目标已按 worker 隔离」，放行并发（等价 `--isolated-target`） |
 
 > ⚠️ 诚实说明：Chromium 启动参数（`framework/browser.py`）实测**并不降低 RSS**
 > （裸参与全参数版本同为 513~516MB，在噪声内）；它解决的是稳定性与一致性。

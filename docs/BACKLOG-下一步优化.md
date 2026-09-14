@@ -77,7 +77,7 @@ AprilPark1012 定调的四个目标优先级：**② AI 语义准 ≈ ① 降人
 
 ---
 
-## 〇-c、⚠️ 现场问题（优先级高于排队顺序 · 2026-09-14 团队演示触发）
+## 〇-c、⚠️ 现场问题（优先级高于排队顺序 · 2026-09-14 团队演示触发）· **已实施，待浏览器验收**
 
 ```
 [慢目标/并发下的假红]  ★ ③ 稳定类，但已导致"演示会红" ⇒ 属于底线，先修
@@ -85,8 +85,25 @@ AprilPark1012 定调的四个目标优先级：**② AI 语义准 ≈ ① 降人
 根因：R1 页面数据就绪无契约（goto 后立即动作/断言；晚到的首屏渲染还会覆盖搜索结果）；
       R2 单一有状态 store + 每用例全局复位 ⇒ 多 worker 下精确计数断言互相踩。
 本机复现（单进程/无并发/~30s）：慢目标代理 400ms → 5 failed / 1 passed；加"等页面就绪"后 6 passed。
+裁决：**A 全做 + F5 + F6 一起修**（2026-09-14）。
 方案：docs/P4-慢目标与并发-修复方案.md（F1 page-ready 契约 / F2 定位有界等待 / F3 报错纠偏 /
-      F4 慢目标闸门 / F5 断言稳健化 / F6 并发隔离）。**范围待裁决后再动手**。
+      F4 慢目标闸门 / F5 断言稳健化 / F6 并发隔离）。
+
+✅ 已实施（2026-09-14 晚，证据逐条）
+- F1 就绪契约：demo/contracts.html·contract_detail.html 声明 body[data-hybrid-ready]；生成物 32 处 goto 全走 `_goto()`。
+  证据：真实浏览器验证「注入 gw7 分区 → 21 行 / 不注入 → 20 行 / 详情页正常·404·非法参数三种情形都置就绪」。
+- F2 有界等待：`_count_attached()` 生效；复数断言（期望 0 个）保持瞬时判定。
+- F3 报错纠偏：两条误导文案已替换（旧文案自相矛盾，实测把人带偏）。
+- F6a 分区隔离：`/api/*?w=` + 复位只清自己分区。证据：gw0 新建 → gw0=21 / default=20；只复位 gw0 → 两边都 20。
+- F6b 并发安全闸：`framework/target_probe.py` + CLI 未声明即降级 + `--isolated-target`。
+  证据：`tests/test_ready_and_locate.py` 里两条**真跑 CLI** 的行为测试通过（未声明 → 打印降级并降到 1；显式声明 → 保持 2 worker）。
+- F4 闸门脚本：`tests/verify_slow_target.py`（自带 demo + 慢代理；内存不足明确 SKIP exit 3）。
+- 契约锁：`tests/test_ready_and_locate.py` **13 passed**（另有既有 87 passed 全绿）。
+
+⏳ 待补（不写假绿）
+- F5 断言稳健化：`cases/cross_page_detail.json` 的「全量 20 行」断言改成与新增无关的基线断言 —— 需重跑 generate（要浏览器）。
+- 端到端验收：慢目标闸门全绿 / 全量 16 例 / Windows `-n 16` 全量绿 —— 本机 MemAvailable 仅 ~345MB（1 个 Chromium ≈515MB），
+  且此前跑浏览器已触发 OOM（chrome 被杀 + Hermes 网关被连带杀一次，NRestarts 1→2）⇒ 主动暂停，等内存释放。
 ```
 
 ---
@@ -184,7 +201,8 @@ AprilPark1012 定调的四个目标优先级：**② AI 语义准 ≈ ① 降人
 ```bash
 cd ~/hybrid_gui_qa && source .venv/bin/activate
 python -m demo.app &                       # 被测应用（8000）
-python -m pytest tests/ -q                 # 框架自测：期望 87 passed（秒级，不需 demo）
+python -m pytest tests/ -q                 # 框架自测：期望 100 passed（87 原有 + 13 条 F1/F2/F3/F6 契约锁；秒级，不需 demo）
+python tests/verify_slow_target.py         # ★ 慢目标闸门（自起 demo+代理，关键 6 条必须全绿；内存<650MB 会 SKIP exit 3）
 python tests/verify_assert_kinds.py        # 断言正/负向端到端（需 demo；写错必须 FAILED）
 python tests/verify_cross_page.py          # 跨页四段（需 demo）
 python tests/verify_picker_layer.py        # 弹层回归（需 demo）
