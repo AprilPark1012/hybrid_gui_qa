@@ -1,8 +1,8 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V7.4.1**（2026-09-14）· 版本号单一来源：`build_html.py` 顶部 `VERSION`/`CHANGELOG`
-> （`python -m framework.cli --version` 也读它）。本次变更见 `RELEASE_NOTES_V7.4.md`
-> （V7.4 正文 + 顶部 V7.4.1 补丁说明）。
+> 当前版本 **V7.5.2**（2026-09-16）· 版本号单一来源：`build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> （`python -m framework.cli --version` 也读它）。本次变更见 `RELEASE_NOTES_V7.5.2.md`；
+> 上一版交付修复见 `RELEASE_NOTES_V7.5.1.md`（V7.5 的坏产物治理）。
 
 > 一个 Python 骨架，示范如何把 **Browser Use（AI 智能探索）** 和 **Playwright（确定性执行）**
 > 组合成一套混合测试框架：AI 负责理解意图、规划步骤、挑元素；Playwright 负责精确定位、
@@ -101,6 +101,19 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 - **归档保留策略**：`cli prune [--keep 20] [--dry-run]`，`output/element_maps/` 的 element_map/probe 快照各留最近 N 个（`HYBRID_KEEP_SNAPSHOTS` 可调）；explore/probe 每次结束自动静默清理。
 
 > 需 DeepSeek key（AI 语义识别链路）：在项目根 `.env` 配 `DEEPSEEK_API_KEY`（见「快速上手·第4节」）。
+
+---
+
+## 2026-09-16 变更要点 —— 脱敏收敛 + 交付包落库（V7.5.2）
+
+| 项 | 内容 |
+|---|---|
+| 交付包落库 | `tools/pack_release.py --out` 默认改为**仓库内 `releases/`**（原默认 `/tmp/pkg` —— 交付包曾是唯一副本却躺在 /tmp，重启即可能丢，本版按根因修） |
+| 挡住不入包 | `.gitignore` 加 `/releases/` + `pack_release.py` 的 `EXCLUDE_DIRS` 加 `releases`：打包按「已跟踪 + 未跟踪但不被忽略」收文件，漏挡会把**发布包套进发布包** |
+| 命名 / 校验 | `releases/hybrid_gui_qa_V<版本>_<YYYYMMDD>.zip` + `SHA256SUMS.txt`；交付邮件就从这里取包 |
+| 脱敏收敛 | 文档里最后一处内部组织缩写已清（复扫 HEAD tree = 0 命中）；`.git/hooks/pre-push` 解释器探测 ≥3.7，不再把环境问题误报成「有残留」 |
+| 自测 | `pytest tests/ -q` → **130 passed**；包内自检通过；`releases/` 不进包（收集口径 0 命中） |
+| 遗留（如实记） | 对象级残留：2 个**已推送**历史 blob 需重写历史 + 删仓重建才能彻底清（见 `docs/BACKLOG-下一步优化.md`） |
 
 ---
 

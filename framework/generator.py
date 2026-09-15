@@ -381,8 +381,25 @@ def _probe_declared_pages(pages: list[tuple[str, str]]) -> tuple[dict, set[str],
     return loc_map, ambiguous, dup_raw
 
 
+class UnmappedElementsError(RuntimeError):
+    """映射质量闸（V7.5.1，2026-09-15 交付事故根因）：有语义名映射不上时**拒绝落盘**。
+
+    事故复盘：现场 probe 不可用（目标没起 / OOM / 探测失败）时，旧代码只打一句警告就继续写文件，
+    产出一份「16 个用例、每个步骤都是 pytest.fail(元素未映射)」的垃圾产物，而且 **exit 0** ——
+    它被提交、被打包、被交付，直到闸门跑起来才炸成 50 条失败，真因已无处可查。
+    口径（与「0 个用例 ⇒ exit 2」同源）：**拿不到定位就不要产出产物**，先失败、先说话。
+    """
+
+    def __init__(self, missing, sources: str = "", probe_error: str | None = None):
+        self.missing = sorted(str(m) for m in missing)
+        self.sources = sources
+        self.probe_error = probe_error
+        super().__init__(f"{len(self.missing)} 个语义名未映射：{self.missing[:5]}…")
+
+
 def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = None,
-                     element_map_path: Path | None = None, live_probe: bool = False) -> dict:
+                     element_map_path: Path | None = None, live_probe: bool = False,
+                     allow_unmapped: bool = False) -> dict:
     """读 cases/*.json → 生成 scripts/test_cases.py + scripts/conftest.py + scripts/datasets/<case_id>.json。
 
     定位来源（Req2：**消费 probe 生成的 element.map**，而不是每次自己现场重探）：
@@ -390,7 +407,10 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
       2) 否则用【最新 element_map_*.json】；再否则用【最新 probe_*.json】（probe 快照）
       3) 快照命中不全 → 现场 probe **只补缺失项**；`--live-probe` 则强制全量现场 probe
     来源与命中数会打印出来（可追溯，不静默）。
-    返回 dict：{scripts_dir, tests, datasets, count, locator_sources}
+
+    ⚠️ **映射质量闸（V7.5.1）**：算完映射后仍有语义名对不上 ⇒ 抛 `UnmappedElementsError` 且**不写任何产物**；
+    只有显式 `allow_unmapped=True`（CLI 的 `--allow-unmapped`，调试用）才放行，产物里会留 pytest.fail 存根。
+    返回 dict：{scripts_dir, tests, datasets, count, locator_sources, unmapped, probe_error}
     """
     from playwright.sync_api import sync_playwright
     from .probe import probe_page
@@ -442,6 +462,7 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
 
     missing = needed - set(loc_map)
     declared_pages = _collect_declared_pages(cases)
+    probe_error: str | None = None
     if live_probe or missing:
         try:
             live: dict[str, str] = {}
@@ -484,6 +505,7 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
                 src_parts.append(f"现场probe补齐 {len(filled)}/{len(missing)} 项"
                                  + (f"，跨页 {len(declared_pages)} 页" if declared_pages else ""))
         except Exception as e:
+            probe_error = f"{type(e).__name__}: {e}"
             src_parts.append(f"现场probe失败({type(e).__name__})")
             print(f"[generate] probe 映射警告: {e}")
 
@@ -491,6 +513,13 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     still_missing = needed - set(loc_map)
     if still_missing:
         locator_sources += f"；⚠️ 仍未映射 {len(still_missing)} 项: {sorted(still_missing)}"
+
+    # ---- 映射质量闸（V7.5.1）：拿不到定位 ⇒ **不写产物**，先失败、先说话 ----
+    # 为什么必须在这里拦（而不是靠运行时的 pytest.fail 存根兜底）：存根只是「万一」的保险，
+    # 而「探测拿不到」是**生成期的已知错误**。让它继续落盘 = 产出一份看着合法的垃圾产物，
+    # 且 generate 自己 exit 0 ⇒ 会被提交/打包/交付（2026-09-15 V7.5 交付事故就是这个）。
+    if still_missing and not allow_unmapped:
+        raise UnmappedElementsError(still_missing, locator_sources, probe_error=probe_error)
 
     # 1) 抽离数据 → scripts/datasets/<case_id>.json
     for case in cases:
@@ -511,6 +540,8 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
         "datasets": [str(datasets_dir / f"{c['case_id']}.json") for c in cases],
         "count": len(cases),
         "locator_sources": locator_sources,
+        "unmapped": sorted(still_missing),
+        "probe_error": probe_error,
     }
 
 

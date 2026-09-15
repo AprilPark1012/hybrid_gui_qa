@@ -23,6 +23,7 @@
 """
 from __future__ import annotations
 import sys
+from typing import NoReturn
 
 from . import config
 from .config import ensure_dirs, TARGET_URL, LOG_DIR
@@ -121,6 +122,16 @@ def cmd_probe():
     层内元素在输出里带 🔸 标记，JSON 里带 `"source": "layer"`。
     """
     ensure_dirs()
+    # ---- 目标可达性预检（V7.5.1）：先回答「活没活」，别让 Playwright 甩一屏 traceback ----
+    # 2026-09-15 实测：demo 没起时 `pg.goto()` 抛 `net::ERR_CONNECTION_REFUSED` + exit 1，
+    # 现象像「框架坏了」，其实是一句「demo 没启动」。环境问题要给动作，不是给栈。
+    from .target_probe import reachability
+    ok, why = reachability(TARGET_URL)
+    if not ok:
+        print(f"\n[probe] ❌ 探测没跑：{why}")
+        print("[probe]    目标地址可用 TARGET_URL / HYBRID_BASE_URL 覆盖（两者等效）；"
+              "demo 起好后重跑 `python -m framework.cli probe`（或 all）")
+        raise SystemExit(2)
     from playwright.sync_api import sync_playwright
     import json
     from .explorer import _try_collect_modal_items, _merge_items
@@ -145,23 +156,58 @@ def cmd_probe():
               f"name={it['name']!r} ph={it['placeholder']!r} test_id={it['test_id']!r}")
 
 
-def cmd_generate(rest: list[str] = None):
+def _report_unmapped(e) -> NoReturn:
+    """映射质量闸触发时的交代：缺什么 / 为什么 / 下一步 —— **绝不落产物**，exit 2。"""
+    print(f"\n[generate] ❌ 映射质量闸拦下：{len(e.missing)} 个语义名映射不上 → 拒绝产出任何产物")
+    print(f"[generate]    locator 来源：{e.sources}")
+    if e.probe_error:
+        print(f"[generate]    现场 probe 失败：{e.probe_error}")
+        # 先把「活没活」查清楚再给结论（旧版本这里只会猜「多半是目标没起」）
+        try:
+            from .target_probe import reachability
+            ok, why = reachability(TARGET_URL)
+        except Exception as _e:                       # 预检本身失败不该盖住原始错误
+            ok, why = True, f"(可达性预检失败: {_e})"
+        if not ok:
+            print(f"[generate]    真因：{why}")
+        else:
+            print(f"[generate]    目标可达（{why}）⇒ 失败不是「没起」，查上面那条 probe 报错"
+                  f"（权限/超时/页面结构变了）；`--debug` 可留截图与 trace")
+    shown = e.missing[:20]
+    print(f"[generate]    缺失项（共 {len(e.missing)} 个，最多列 20）：{shown}")
+    if len(e.missing) > len(shown):
+        print(f"[generate]    … 其余 {len(e.missing) - len(shown)} 个已省略")
+    print("[generate]    （旧行为：只打一句警告就照样落盘 ⇒ 产出「每步都是 pytest.fail 存根」的垃圾产物；"
+          "2026-09-15 的 V7.5 交付事故就是它进包的）")
+    print("[generate]    仅调试时可显式加 --allow-unmapped 放行；那样的产物永不允许进交付。")
+    raise SystemExit(2)
+
+
+def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
     """读 cases/*.json → 生成 scripts/（playwright 脚本 + scripts/datasets 抽离数据）。
 
     定位来源（P1 起）：默认优先读【probe 产出的 element.map 快照】；缺失才现场补探测。
       --element-map <path>  指定用某个 element_map_*.json（explore 产物）
       --live-probe          强制现场重新 probe（忽略快照，最准但最慢）
+      --allow-unmapped      【调试用】放行「有语义名映射不上」的情况，仍然产出产物（含 pytest.fail 存根）；
+                            默认**拒绝落盘并 exit 2**（防止产出/交付一份全是 fail 存根的假脚本）
+
+    无法获得定位时**不产出产物**：宁可生成阶段就红，也不给出一份「看着合法、跑起来 50 条失败」的东西。
     """
     ensure_dirs()
     from pathlib import Path as _P
-    from .generator import generate_scripts
+    from .generator import UnmappedElementsError, generate_scripts
     rest = rest or []
     map_path = None
     if "--element-map" in rest:
         i = rest.index("--element-map")
         if i + 1 < len(rest):
             map_path = _P(rest[i + 1])
-    res = generate_scripts(element_map_path=map_path, live_probe="--live-probe" in rest)
+    try:
+        res = generate_scripts(element_map_path=map_path, live_probe="--live-probe" in rest,
+                               allow_unmapped=allow_unmapped or ("--allow-unmapped" in rest))
+    except UnmappedElementsError as e:
+        _report_unmapped(e)
     print(f"[generate] 读 cases/ → 生成 {res['count']} 个用例到 scripts/:")
     print(f"          tests: {res['tests']}")
     print(f"          datasets: {len(res['datasets'])} 个（脚本数据分离）")
@@ -376,7 +422,8 @@ def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
     # `UnicodeDecodeError: 'gbk' codec can't decode byte 0xbb in position 13`（2026-09-13 AprilPark1012实测）。
     gen = run_capture([sys.executable, "-m", "framework.cli", "generate"], cwd=str(config.BASE))
     if gen.returncode != 0:
-        print("  ⚠️ 校验未执行：generate 失败 → 用例已落盘但【未经实测验证】")
+        print("  ⚠️ 校验未执行：generate 失败（多半是「映射质量闸」拦下：目标没起 / 探测不可用）"
+              "→ scripts/ **未更新**，新用例【未经实测验证】，别把它当成已验证")
         tail = ((gen.stdout or "") + (gen.stderr or ""))[-400:]
         print("  " + tail.replace("\n", "\n  "))
         return None
@@ -568,10 +615,14 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
 
 def cmd_all(workers: int | None = None, debug: bool = False, force_workers: bool = False,
             cases: list[str] | None = None, slowmo: int | None = None,
-            isolated_target: bool = False):
-    """probe → generate → run 一条龙。"""
+            isolated_target: bool = False, allow_unmapped: bool = False):
+    """probe → generate → run 一条龙。
+
+    ⚠️ 需要被测目标在跑（`python -m demo.app`）：任一步拿不到目标都会**在生成期就红**，
+    不会产出「全是 pytest.fail 存根」的假脚本（--allow-unmapped 是调试逃生口，别用于交付）。
+    """
     cmd_probe()
-    cmd_generate()
+    cmd_generate(allow_unmapped=allow_unmapped)
     cmd_run(workers, debug, force_workers, cases=cases, slowmo=slowmo,
             isolated_target=isolated_target)
 
@@ -588,6 +639,7 @@ FLAG_SPECS: dict[str, str | None] = {
     "--isolated-target": None,
     "--case": "value", "--slowmo": "value",
     "--element-map": "value", "--live-probe": None,
+    "--allow-unmapped": None,
     "--ai": None, "--mock-fallback": None, "--no-cases": None,
     "--verify": None, "--no-verify": None,
     "--scenario": "value", "--scenario-file": "value", "--scenario-dir": "value",
@@ -599,11 +651,11 @@ _COMMON_FLAGS = {"--workers", "--debug", "--headed", "--force-workers", "--isola
                 "--case", "--slowmo"}
 CMD_FLAGS: dict[str, set[str]] = {
     "probe": set(),
-    "generate": {"--element-map", "--live-probe"},
+    "generate": {"--element-map", "--live-probe", "--allow-unmapped"},
     "explore": {"--ai", "--mock-fallback", "--no-cases", "--no-verify", "--verify",
                 "--scenario", "--scenario-file", "--scenario-dir", "--tag", "--limit"},
     "run": set(_COMMON_FLAGS),
-    "all": set(_COMMON_FLAGS),
+    "all": set(_COMMON_FLAGS) | {"--allow-unmapped"},
     "prune": {"--keep", "--dry-run"},
 }
 # 已移除的参数：给"为什么没了 + 该用什么"，而不是笼统的"不认识"
@@ -731,16 +783,18 @@ def main():
     isolated = _isolated_from(rest)
     cases = _arg_values(rest, "--case")
     slowmo = _slowmo_from(rest)
+    allow_unmapped = "--allow-unmapped" in rest
     if cmd == "probe":
         cmd_probe()
     elif cmd == "generate":
-        cmd_generate(rest)
+        cmd_generate(rest, allow_unmapped=allow_unmapped)
     elif cmd == "explore":
         cmd_explore(rest)
     elif cmd == "run":
         cmd_run(workers, headed, force_workers, cases=cases, slowmo=slowmo, isolated_target=isolated)
     elif cmd == "all":
-        cmd_all(workers, headed, force_workers, cases=cases, slowmo=slowmo, isolated_target=isolated)
+        cmd_all(workers, headed, force_workers, cases=cases, slowmo=slowmo, isolated_target=isolated,
+                allow_unmapped=allow_unmapped)
     elif cmd == "prune":
         cmd_prune(rest)
 

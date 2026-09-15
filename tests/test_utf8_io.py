@@ -11,15 +11,23 @@
     cd ~/hybrid_gui_qa && source .venv/bin/activate
     python -m pytest tests/test_utf8_io.py -v
 
-⚠️ 本机装了 zh_CN.gbk locale 才能跑「精确复现」那条；没有则自动 skip（不当失败）。
+⚠️ 「精确复现 GBK」那三条，需要**本机能造出「默认编码 = GBK 家族」的子进程**才跑得起：
+  · POSIX：`locale -a` 里有 zh_CN.gbk（靠注入 LC_ALL 生效）；
+  · Windows：**没有 `locale` 命令**（POSIX 专有）⇒ 老写法在中文 Windows 上恒判 False、
+    三条用例永远跳过 —— 而那恰恰是 gbk 事故的**原发环境**（2026-09-15 实测挖出）。
+    中文 Windows 的 ANSI 代码页就是 936 ⇒ 天然满足，无需注入任何变量。
+造不出则自动 skip（**不当失败**：在没有 GBK 的机器上硬失败 = 把环境噪声当业务结论）。
 """
 from __future__ import annotations
 
 import ast
+import locale
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -74,23 +82,70 @@ def test_run_capture_tolerates_legacy_kwargs():
 # 父进程若按 gbk 解码（中文 Windows 默认）⇒ 与AprilPark1012报错逐字一致。
 
 _LOCALE_GBK = "zh_CN.gbk"
+# GBK 家族的编码别名：Windows 上 `locale.getpreferredencoding()` 给的是 `cp936`，
+# 而报错信息里的 codec 名永远显示成 `gbk`（cp936 是 gbk 的别名，canonical name 就是 gbk）。
+_GBK_FAMILY = {"gbk", "cp936", "gb2312", "gb18030", "936"}
+_GBK_SKIP_REASON = ("本机无法把子进程默认编码压到 GBK 家族"
+                    "（POSIX 需 zh_CN.gbk locale；Windows 需 ANSI 代码页 936）")
 
 
-def _has_gbk_locale() -> bool:
+def _norm_enc(name) -> str:
+    """编码名归一化：`CP-936` / `cp_936` / ` GBK ` 一律压成形如 `cp936` 的小写形式。"""
+    return str(name or "").strip().lower().replace("-", "").replace("_", "").replace(" ", "")
+
+
+def _gbk_default_encoding() -> str | None:
+    """本机能否让子进程的**默认**编码落在 GBK 家族？能返回编码名，不能返回 None。
+
+    · POSIX：`locale -a` 里得有 zh_CN.gbk（靠注入 LC_ALL 生效）；
+    · Windows：**根本没有 `locale` 命令**（POSIX 专有）⇒ 老写法在这里 FileNotFoundError
+      → 恒判 False → 三条 GBK 用例永远跳过；而中文 Windows 恰恰是 gbk 事故的原发环境
+      （2026-09-15 AprilPark1012 Windows 验收时挖出）。中文 Windows 的 ANSI 代码页就是 936，
+      默认编码天然是 cp936/gbk ⇒ 直接判「能跑」，不需要注入任何变量。
+    """
+    if os.name == "nt":
+        enc = _norm_enc(locale.getpreferredencoding(False))     # = GetACP()，中文 Win = cp936
+        return enc if enc in _GBK_FAMILY else None
     try:
         out = subprocess.run(["locale", "-a"], capture_output=True, text=True,
                              encoding="utf-8", errors="replace").stdout
-        return _LOCALE_GBK in out
     except Exception:
-        return False
+        return None                       # 连 locale 命令都没有（非 POSIX 环境）
+    return _LOCALE_GBK if _LOCALE_GBK in out else None
+
+
+def _gbk_env_delta() -> dict:
+    """把子进程压到 GBK 默认编码所需的**额外**环境变量（Windows 上为空：它本来就是）。"""
+    return {} if os.name == "nt" else {"LC_ALL": _LOCALE_GBK}
+
+
+def _gbk_child_env() -> dict:
+    """构造「默认编码 = GBK 家族」的子进程环境：先剥掉会覆盖默认编码的变量，再按平台补。
+
+    ⚠️ 过滤按**大小写无关**（Windows 的环境变量名不区分大小写，别只挡全大写那一种写法）。
+    """
+    kill = {"PYTHONIOENCODING", "PYTHONUTF8", "LC_ALL", "LANG"}
+    env = {k: v for k, v in os.environ.items() if k.upper() not in kill}
+    env.update(_gbk_env_delta())
+    return env
+
+
+def _middle_locale_from(out: str) -> str | None:
+    """从探针输出里取「中间进程的默认编码名」（跨平台：POSIX 给 GBK，Windows 给 cp936）。"""
+    for line in out.splitlines():
+        if line.startswith("MIDDLE_LOCALE="):
+            return line.split("=", 1)[1].strip() or None
+    return None
 
 
 _PROBE = r'''
 import locale, os, subprocess, sys, tempfile
 sys.path.insert(0, r"{repo}")
 from framework.text_io import force_stdio, run_capture
-force_stdio()                                  # 本进程 stdio 拉齐（等价 cli.main 的行为）
+# ⚠️ 顺序要紧：**先读默认编码，再 force_stdio()** —— force_stdio 会把 PYTHONUTF8 写进 os.environ，
+#    而 UTF-8 模式下 `locale.getpreferredencoding()` 会返回 utf-8 ⇒ 那读到的就不是「默认编码」了。
 print("MIDDLE_LOCALE=", locale.getpreferredencoding(False))
+force_stdio()                                  # 本进程 stdio 拉齐（等价 cli.main 的行为）
 # 子脚本落**临时文件**：argv 里带中文在 GBK locale 下会先炸（同一个病），
 # 所以这里只让「子进程的 stdout」承担中文，专测解码方向。
 _child = os.path.join(tempfile.mkdtemp(), "child.py")
@@ -107,42 +162,43 @@ except UnicodeDecodeError as e:
 '''
 
 
-@pytest.mark.skipif(not _has_gbk_locale(), reason="本机没有 zh_CN.gbk locale，无法精确复现")
+@pytest.mark.skipif(_gbk_default_encoding() is None, reason=_GBK_SKIP_REASON)
 def test_reproduce_and_fix_gbk_byte_0xbb_position_13(tmp_path):
     """在 GBK locale 下：修前写法必须精确复现 `byte 0xbb in position 13`；run_capture 必须正常。
 
     ⚠️ 探针写成**临时文件**跑，不用 `python -c`：GBK locale 下连命令行参数里的中文
     都解不开（`Unable to decode the command from the command line`）—— 同一个病。
     """
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("PYTHONIOENCODING", "PYTHONUTF8", "LC_ALL", "LANG")}
-    env["LC_ALL"] = _LOCALE_GBK
+    env = _gbk_child_env()
     probe = tmp_path / "probe.py"
     probe.write_text(_PROBE.format(repo=str(REPO)), encoding="utf-8")
     out = subprocess.run([sys.executable, str(probe)],
                          cwd=str(REPO), capture_output=True, text=True,
                          encoding="utf-8", errors="replace", env=env).stdout
 
-    assert "MIDDLE_LOCALE= GBK" in out, f"用例前提不成立（中间进程 locale 不是 GBK）:\n{out}"
-    # ① 修前写法：与AprilPark1012报错逐字一致（codec=gbk / byte 0xbb / position 13）
-    assert "UnicodeDecodeError" in out and "'gbk' codec can't decode byte 0xbb in position 13" in out, \
-        f"未复现出原始报错，本测试失去意义:\n{out}"
+    mid = _middle_locale_from(out)
+    assert mid is not None and _norm_enc(mid) in _GBK_FAMILY, \
+        f"用例前提不成立（中间进程默认编码不在 GBK 家族，实际={mid!r}）:\n{out}"
+    # ① 修前写法：与AprilPark1012报错逐字一致（codec = gbk 家族 / byte 0xbb / position 13）
+    #    ⚠️ codec 名跨平台可能是 `gbk`（POSIX 报错口径）或 `cp936`（Windows 拿到的默认编码名）——
+    #    两者是同一个 codec（cp936 是 gbk 的别名）⇒ 用「家族」判，但字节与位置必须精确到 0xbb@13。
+    assert "UnicodeDecodeError" in out, f"未复现出报错，本测试失去意义:\n{out}"
+    assert re.search(r"'(?:gbk|cp936)' codec can't decode byte 0xbb in position 13", out), \
+        f"未复现出 0xbb@13 这个原始签名，本测试失去意义:\n{out}"
     # ② 修好后的写法：同一条中文输出正常解码
     assert "NEW= [generate] 读 cases/" in out, f"run_capture 未能正确解码 UTF-8 输出:\n{out}"
 
 
 # ==================== 三、CLI 入口必须统一 UTF-8 ====================
 
-@pytest.mark.skipif(not _has_gbk_locale(), reason="本机没有 zh_CN.gbk locale")
+@pytest.mark.skipif(_gbk_default_encoding() is None, reason=_GBK_SKIP_REASON)
 def test_cli_output_is_utf8_even_under_gbk_locale():
     """gbk 控制台 locale 下，`cli --version` 的中文也必须按 UTF-8 输出（不乱码、不崩）。
 
     刻意**不**注入 PYTHONIOENCODING/PYTHONUTF8：要验证的是 cli.main() 里的 force_stdio()
     自己把 stdio 拉齐（否则中文会是 gbk 字节 → 这里解码成乱码，断言失败）。
     """
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("PYTHONIOENCODING", "PYTHONUTF8", "LC_ALL", "LANG")}
-    env["LC_ALL"] = _LOCALE_GBK
+    env = _gbk_child_env()
     r = subprocess.run([sys.executable, "-m", "framework.cli", "--version"],
                        cwd=str(REPO), capture_output=True, text=True,
                        encoding="utf-8", errors="replace", env=env, timeout=60)
@@ -167,14 +223,26 @@ def test_cli_source_calls_fs_encoding_warning():
     assert "fs_encoding_warning()" in src
 
 
+def test_verify_scripts_call_force_stdio():
+    """`tests/verify_*.py` 都必须统一 UTF-8 —— 否则中文 Windows 控制台上中文会显示成乱码。
+
+    2026-09-15 实测：AprilPark1012跑 `verify_slow_target.py` 时看到 `Failed: Ԫ��δӳ��`
+    （= UTF-8 字节被 cp936 解释），因为该脚本自己没调 force_stdio()；而另外两个 verify 早就调了
+    ⇒ 同一个仓库里两种口径，现象看着像「框架坏了」。判据：一个都不许漏。
+    """
+    missing = [p.name for p in sorted((REPO / "tests").glob("verify_*.py"))
+               if "force_stdio()" not in p.read_text(encoding="utf-8")]
+    assert not missing, f"这些 verify 脚本没统一 UTF-8（控制台会乱码）：{missing}"
+
+
 def test_verify_cases_does_not_crash_under_gbk_locale(tmp_path):
     """`_verify_cases`（--verify 的实现）在 GBK locale 下必须不因编码崩掉。
 
     子进程（generate / pytest）输出中文 → 父进程必须按 UTF-8 解码；用不存在的用例名，
     断言「没有 UnicodeDecodeError」+「走完了校验流程」（失败/未执行都算走完，编码崩不算）。
     """
-    if not _has_gbk_locale():
-        pytest.skip("本机没有 zh_CN.gbk locale")
+    if _gbk_default_encoding() is None:
+        pytest.skip(_GBK_SKIP_REASON)
     probe = tmp_path / "probe_verify.py"
     probe.write_text(
         'import sys\n'
@@ -184,15 +252,84 @@ def test_verify_cases_does_not_crash_under_gbk_locale(tmp_path):
         'from framework.cli import _verify_cases\n'
         'res = _verify_cases([("UTF-8复现", "nonexistent_case_for_encoding_test")])\n'
         'print("RESULT=", res)\n', encoding="utf-8")
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("PYTHONIOENCODING", "PYTHONUTF8", "LC_ALL", "LANG")}
-    env["LC_ALL"] = _LOCALE_GBK
+    env = _gbk_child_env()
     r = subprocess.run([sys.executable, str(probe)], cwd=str(REPO),
                        capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env=env, timeout=300)
     out = (r.stdout or "") + (r.stderr or "")
     assert "UnicodeDecodeError" not in out, f"编码问题仍在:\n{out[-2000:]}"
     assert "RESULT=" in out, f"校验流程没走完:\n{out[-2000:]}"
+
+
+# ============ 三·补充、guard 自己必须跨平台（否则 Windows 上静默跳过三条） ============
+# 2026-09-15 AprilPark1012 Windows 验收实测：`pytest tests/ -q` = 97 passed + 3 skipped。
+# 根因 = guard 用的是 POSIX 专有命令 `locale -a`，Windows 上必然 FileNotFoundError → False
+# ⇒ 三条 GBK 用例在**中文 Windows（gbk 事故的原发环境）**上永远不执行 = 静默覆盖漏洞。
+# 下面几条就是「测试的测试」：把两个平台分支都钉住。
+
+def test_gbk_guard_accepts_chinese_windows_ansi_codepage(monkeypatch):
+    """中文 Windows（没有 locale 命令、ANSI 代码页 936）必须判「能跑」，且不注入任何变量。"""
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(locale, "getpreferredencoding", lambda do_setlocale=True: "cp936")
+    assert _gbk_default_encoding() == "cp936"
+    assert _gbk_env_delta() == {}          # Windows 上默认编码本来就是 936，无需 LC_ALL
+
+
+def test_gbk_guard_rejects_non_gbk_windows(monkeypatch):
+    """英文 Windows（cp1252）复现不了 GBK ⇒ 如实判「不能跑」，绝不在错环境下硬跑出假结论。"""
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(locale, "getpreferredencoding", lambda do_setlocale=True: "cp1252")
+    assert _gbk_default_encoding() is None
+
+
+def test_gbk_guard_posix_uses_locale_and_injects_lc_all(monkeypatch):
+    """POSIX 分支照旧：靠 `locale -a` 判定，命中才注入 LC_ALL。"""
+    monkeypatch.setattr(os, "name", "posix")
+    monkeypatch.setattr(subprocess, "run",
+                        lambda *a, **k: SimpleNamespace(stdout="C\nPOSIX\nzh_CN.gbk\n"))
+    assert _gbk_default_encoding() == _LOCALE_GBK
+    assert _gbk_env_delta() == {"LC_ALL": _LOCALE_GBK}
+
+
+def test_gbk_guard_posix_without_locale_command_is_not_an_error(monkeypatch):
+    """`locale` 命令不存在（老写法在这里静默跳过三条用例）⇒ 判「不能跑」，但绝不抛异常。"""
+    monkeypatch.setattr(os, "name", "posix")
+
+    def _boom(*a, **k):
+        raise FileNotFoundError("locale")
+
+    monkeypatch.setattr(subprocess, "run", _boom)
+    assert _gbk_default_encoding() is None
+
+
+def test_middle_locale_parser_accepts_both_platform_names():
+    """探针返回值解析：POSIX 给 `GBK`、Windows 给 `cp936`，两者都必须落在 GBK 家族里。"""
+    assert _middle_locale_from("MIDDLE_LOCALE= GBK\nNEW= x\n") == "GBK"
+    assert _norm_enc(_middle_locale_from("MIDDLE_LOCALE= cp936\r\n")) in _GBK_FAMILY
+    assert _norm_enc(" cp-936 ") == "cp936"
+    assert _middle_locale_from("nothing here") is None
+
+
+def test_gbk_guard_is_cross_platform_and_actually_wired_in():
+    """源码级防复发：guard 必须有 NT 分支，且三条 GBK 用例真的挂在它上面。
+
+    ⚠️ 这里**刻意不数字符串出现次数**（第一版就写错了：断言里的字面量会把自己也数进去，
+    另加两条单测也含同一串 ⇒ `3` 变成 `6`）。改成结构判据：解析 AST，逐条用例函数看它的
+    `ast.unparse()` 里有没有引用 guard。
+    """
+    src = (REPO / "tests" / "test_utf8_io.py").read_text(encoding="utf-8")
+    guard = src.split("def _gbk_default_encoding", 1)[1].split("\ndef ", 1)[0]
+    assert 'os.name == "nt"' in guard, "guard 缺 NT 分支 → 中文 Windows 上又会静默跳过三条"
+    assert "getpreferredencoding" in guard, "NT 分支应读 ANSI 代码页（getpreferredencoding）"
+
+    tree = ast.parse(src)
+    fns = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    cases = ("test_reproduce_and_fix_gbk_byte_0xbb_position_13",
+             "test_cli_output_is_utf8_even_under_gbk_locale",
+             "test_verify_cases_does_not_crash_under_gbk_locale")
+    missing = [c for c in cases
+               if c not in fns or "_gbk_default_encoding" not in ast.unparse(fns[c])]
+    assert not missing, f"这些 GBK 用例没挂在跨平台 guard 上（Windows 上会静默跳过）: {missing}"
 
 
 # ==================== 四、源码级防复发（AST 扫描） ====================

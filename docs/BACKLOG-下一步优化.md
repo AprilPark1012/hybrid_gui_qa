@@ -77,7 +77,7 @@ AprilPark1012 定调的四个目标优先级：**② AI 语义准 ≈ ① 降人
 
 ---
 
-## 〇-c、⚠️ 现场问题（优先级高于排队顺序 · 2026-09-14 团队演示触发）· **已实施，待浏览器验收**
+## 〇-c、⚠️ 现场问题（优先级高于排队顺序 · 2026-09-14 团队演示触发）· **已实施 + Windows 实测通过（2026-09-15）**
 
 ```
 [慢目标/并发下的假红]  ★ ③ 稳定类，但已导致"演示会红" ⇒ 属于底线，先修
@@ -101,10 +101,55 @@ AprilPark1012 定调的四个目标优先级：**② AI 语义准 ≈ ① 降人
 - 契约锁：`tests/test_ready_and_locate.py` **13 passed**（另有既有 87 passed 全绿）。
 
 ⏳ 待补（不写假绿）
-- F5 断言稳健化：`cases/cross_page_detail.json` 的「全量 20 行」断言改成与新增无关的基线断言 —— 需重跑 generate（要浏览器）。
-- 端到端验收：慢目标闸门全绿 / 全量 16 例 / Windows `-n 16` 全量绿 —— 本机 MemAvailable 仅 ~345MB（1 个 Chromium ≈515MB），
-  且此前跑浏览器已触发 OOM（chrome 被杀 + Hermes 网关被连带杀一次，NRestarts 1→2）⇒ 主动暂停，等内存释放。
+- F5 断言稳健化：`cases/cross_page_detail.json` 的「全量 20 行」断言**仍是脆弱断言**（`count expect=20`）——**未做**。
+  原因：改完必须重跑 generate + 真浏览器验证，而本机内存不够（1 个 Chromium ≈515MB vs MemAvailable ~350–680MB），
+  硬跑会 OOM 并**连带杀 Hermes 网关**（已发生过一次）⇒ 不硬跑，记档待办（留给内存宽裕 / 有屏幕的机器）。
+- 端到端验收：✅ **已通过（2026-09-15，Windows 实测）**
+  · `python -m pytest tests/ -q` → 97 passed + 3 skipped（那 3 条是 GBK 复现类**条件跳过** ⇒ 已由 V7.5.1 的跨平台 guard 修掉）
+  · `python -m framework.cli all --workers 16` → **全绿**
+  · `python tests/verify_slow_target.py` → **全绿**（生成物刷新后；详见〇-d）
 ```
+
+---
+
+## 〇-d、⚠️ V7.5 **交付事故** + V7.5.1 修复（2026-09-15）· **已完成（本地）**
+
+```
+现象：Windows 上验收第 3 条 `python tests/verify_slow_target.py` → 5 failed / 1 passed（真红）。
+真因：**交付包夹带的 `scripts/test_cases.py` 是坏产物** —— 100 处「元素未映射」存根
+      （sha256 10afa0ef…，与 git 提交里那份完全相同）；正确产物 sha256 55d85d50…。
+根因：现场探测不可用时，`generate` 只打一句警告就继续落盘、而且 **exit 0** ⇒ 产出一份「看着合法、
+      跑起来全失败」的假脚本，被提交 / 被打包 / 被交付，真因无处可查。
+      附带：打包环节那次「检查」本身还是**假绿** —— 本机没装 `unzip`，`unzip -p … | grep -c`
+      收到**空输入**数成 0 命中，被当成「包是干净的」。
+影响面：直接跑包内 `scripts/test_cases.py`（pytest / 慢目标闸门）的人会看到一堆「元素未映射」；
+      跑 `cli all`（会重新 probe+generate）的人不受影响 —— 这正好解释了「all 全绿、闸门却红」。
+
+✅ V7.5.1 已实施（G1~G5；方案与证据：docs/P5-交付修复-V7.5.1-方案.md · RELEASE_NOTES_V7.5.1.md）
+- G1 映射质量闸：拿不到定位 ⇒ **不写任何产物** + exit 2 + 人话（缺失清单 / 真因 / 下一步）；
+      `--allow-unmapped` 仅作调试逃生口（产物永不允许进交付）。
+- G2 目标可达性预检：`target_probe.reachability()` 三分（连不上 / 有响应但无 /api/health 仍算活 / 可达）；
+      `cli probe` 不可达 → 人话 + exit 2（不再甩一屏 Playwright traceback）；顺手统一 TARGET_URL ⇄ HYBRID_BASE_URL。
+- G3 `tests/verify_*.py` 补 `force_stdio()`（控制台中文乱码的根因）+ 源码级「一个都不许漏」判据。
+- G4 交付前自检：`tests/test_artifacts_health.py`（未映射=0 / 无裸 page.goto / conftest 接线齐 / cases↔datasets 1:1）
+      + `tools/pack_release.py`（打包即用**标准库 zipfile** 复扫包内产物；不达标 **删包 + exit 2**；`--check` 可审计历史包）。
+- G5 跨平台 GBK guard：NT 分支读系统 ANSI 代码页 ⇒ 中文 Windows 上三条 GBK 复现用例不再跳过。
+- 门禁证据：自测 **130 passed**（受限环境 127 + 3 skipped）｜负向对照：把坏产物放回 → 健康闸门当场红；
+      `pack_release --check` 审计 V7.5 旧包 → 抓出 100 处未映射 + exit 2；不可达时 `cli probe` → 人话 + exit 2。
+- 顺带更正：7.5 CHANGELOG 里「F5 已完成」是**不实表述**（那条 20 行断言至今仍在）⇒ 已改为如实记档。
+- 交付物：`releases/hybrid_gui_qa_V7.5.1_20260915.zip`（96 文件 / 723 KB；**sha256 以交付消息打印的为准** —— 包里不写自己的 sha，否则改一次内容 sha 就变，永远自相矛盾）；
+      提交 `4c99e55`（18 文件，noreply 身份）；仓库工作区干净。
+      （2026-09-16 按新规矩修正路径：交付包落库到**仓库内 `releases/`**，不再用 `/tmp/pkg`。）
+- 敏感信息例行闸门（用户 2026-09-15 定调）已落地：skill `public-repo-privacy-hygiene` 第〇节 +
+      升级版 `scripts/scan_residue.py`（逐行/逐对象细节 + 清理指引）+ 本仓 `.git/hooks/pre-push` 实装（自测过拦/放两态）。
+
+⏳ 仍未做（都在文档里记着，不假绿）
+- **F5 断言稳健化**（见〇-c 待补）—— 需真浏览器，本机内存不允许。
+- **已公开历史里 2 个旧 blob 含一处内部组织缩写**（三个字母的部门代码；`tests/verify_slow_target.py` 旧版注释，
+  现文件已干净）：**树级残留已在 V7.5.2 清零**，但**对象级残留需重写历史 + 删仓重建**
+  （force-push 不够，见 skill public-repo-privacy-hygiene 第五节）⇒ 2026-09-15 拍板「先照推，彻底清零单列一件事」；
+  2026-09-16 复审：该项仍未做，等定「重写 + 强推」还是「删仓重建」。
+- **CI 落点**（见下一节 ②）。
 
 ---
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
 import urllib.request
 
 DEFAULT_BASE = "http://localhost:8000"
@@ -32,6 +33,33 @@ def _base_url(explicit: str | None = None) -> str:
     return DEFAULT_BASE
 
 
+def reachability(url: str | None = None, timeout: float = 1.5) -> tuple[bool, str]:
+    """目标是否**可达**。返回 (ok, 人话理由)。
+
+    为什么单独一个函数（2026-09-15，F3 同源）：probe/generate 以前直接 `page.goto(TARGET_URL)`，
+    目标没起时甩出一屏 Playwright traceback（`net::ERR_CONNECTION_REFUSED`）+ exit 1 ——
+    既吵又误导（看着像框架坏了，其实是「demo 没启动」）。而且旧的 `probe_partitioned`
+    把「连不上」和「有响应但没声明分区」混成同一句『未声明可并发隔离』⇒ 归因错位。
+    这里统一口径：**先回答「活没活」，再谈能力**。
+    """
+    base = (url or _base_url()).rstrip("/")
+    target = base + "/api/health"
+    try:
+        with urllib.request.urlopen(target, timeout=timeout) as r:
+            return True, f"{base} 可达（/api/health → HTTP {r.status}）"
+    except urllib.error.HTTPError as e:
+        # 有响应 ⇒ 目标活着，只是没有 /api/health（老目标 / 非本项目目标）
+        return True, f"{base} 可达（/api/health → HTTP {e.code}，无该接口）"
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", e)
+        if "refused" in str(reason).lower():
+            return False, (f"连不上 {base}（ConnectionRefused）⇒ 被测目标没起："
+                           f"另开一个窗口跑 `python -m demo.app`（默认 8000）")
+        return False, f"连不上 {base}（{type(reason).__name__}: {reason}）"
+    except Exception as e:
+        return False, f"探测 {base} 失败（{type(e).__name__}: {e}）"
+
+
 def probe_partitioned(base: str | None = None, timeout: float = 1.5) -> tuple[bool | None, str]:
     """探测目标是否支持「按 worker 分区」。
 
@@ -45,6 +73,10 @@ def probe_partitioned(base: str | None = None, timeout: float = 1.5) -> tuple[bo
         with urllib.request.urlopen(url, timeout=timeout) as r:
             body = json.loads(r.read().decode("utf-8", "replace") or "{}")
     except Exception as e:                       # 连不上 / 404 / 不是 JSON —— 一律视为"未声明"
+        # 先分清「目标没起」和「目标起了但没这个接口」——两者对使用者的下一步完全不同
+        ok, why = reachability(_base_url(base))
+        if not ok:
+            return None, f"目标不可达（{why}）⇒ 视为『未声明可并发隔离』"
         return None, f"探测 {url} 失败（{type(e).__name__}）⇒ 视为『未声明可并发隔离』"
     if not isinstance(body, dict) or "partitioned" not in body:
         return None, f"{url} 响应里没有 partitioned 字段 ⇒ 视为『未声明可并发隔离』"

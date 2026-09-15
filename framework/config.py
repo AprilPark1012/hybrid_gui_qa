@@ -13,7 +13,13 @@ if _hermes_env.exists():
     load_dotenv(_hermes_env, override=False)   # 项目 .env 优先，Hermes 兜底
 
 # ---- 被测应用 ----
-TARGET_URL = os.environ.get("TARGET_URL", "http://localhost:8000")
+# 目标地址：TARGET_URL（本项目老名字）> HYBRID_BASE_URL（生成脚本/target_probe 用的名字）> 默认。
+# 2026-09-15 统一：以前只有 probe/generate 认 TARGET_URL、而生成脚本与 /api/health 探测认
+# HYBRID_BASE_URL ⇒ 只设 HYBRID_BASE_URL 的人会发现「probe 还在打 localhost:8000」，
+# 属于「参数名不新手秒懂」。现在两个名字等效（TARGET_URL 优先，保持向后兼容）。
+TARGET_URL = (os.environ.get("TARGET_URL")
+              or os.environ.get("HYBRID_BASE_URL")
+              or "http://localhost:8000")
 
 # ---- 输出产物目录 ----
 OUTPUT_DIR = BASE / "output"

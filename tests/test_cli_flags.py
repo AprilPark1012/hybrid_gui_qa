@@ -36,6 +36,8 @@ LEGAL = [
     ("generate", []),
     ("generate", ["--live-probe"]),
     ("generate", ["--element-map", "output/element_maps/element_map_x.json"]),
+    ("generate", ["--allow-unmapped"]),
+    ("all", ["--workers", "1", "--allow-unmapped"]),
     ("run", []),
     ("run", ["--workers", "2"]),
     ("run", ["--debug"]),

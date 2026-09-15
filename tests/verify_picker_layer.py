@@ -24,6 +24,12 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE))
 
+# 统一 UTF-8：本脚本会打印子进程/页面的中文 —— 不拉齐口径时中文 Windows（cp936 控制台）
+# 会把 UTF-8 字节显示成乱码（2026-09-15 实测：verify_slow_target 的失败文案 `Ԫ��δӳ��`）。
+from framework.text_io import force_stdio                   # noqa: E402
+
+force_stdio()
+
 from framework.browser import launch_opts                  # noqa: E402
 from framework.probe import probe_page                     # noqa: E402
 from framework.explorer import (                           # noqa: E402

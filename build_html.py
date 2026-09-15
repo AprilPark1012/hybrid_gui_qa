@@ -189,11 +189,97 @@ def render_cards() -> str:
 # ---------------- HTML 模板 ----------------
 
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "7.5"
-VERSION_DATE = "2026-09-14"
+VERSION = "7.5.2"
+VERSION_DATE = "2026-09-16"
 CHANGELOG = [
     dict(
-        version="7.5", date="2026-09-14", tag="待验收",
+        version="7.5.2", date="2026-09-16", tag="当前版本",
+        theme="脱敏收敛 · 交付包落库（仓库内 releases/）· 闸门可移植性",
+        summary="本版是<b>对外交付与流程的收敛版</b>：清掉树内最后一处内部组织缩写、"
+                "把交付包从 <code>/tmp</code> 搬进仓库内 <code>releases/</code>（并挡住它不进包）、"
+                "把 pre-push 敏感信息闸门的环境依赖修好（原先在 <code>python3 = 3.6</code> 的机器上会误拦）。",
+        added=[
+            "<b>交付包落库到仓库内 <code>releases/</code></b>：<code>tools/pack_release.py</code> 的 "
+            "<code>--out</code> 默认从 <code>/tmp/pkg</code> 改为 <code>&lt;仓库&gt;/releases</code> —— "
+            "此前交付包是<b>唯一副本却躺在 <code>/tmp</code></b>（重启即可能丢），本版按根因修",
+            "<code>.gitignore</code> 加 <code>/releases/</code>、<code>pack_release.py</code> 的 "
+            "<code>EXCLUDE_DIRS</code> 加 <code>releases</code>：打包按「已跟踪 + 未跟踪但不被忽略」收文件，"
+            "漏挡会把<b>发布包套进发布包</b>",
+            "命名约定：<code>releases/hybrid_gui_qa_V&lt;版本&gt;_&lt;YYYYMMDD&gt;.zip</code> + <code>SHA256SUMS.txt</code>；"
+            "历次交付记录放 <code>releases/</code> 下子目录",
+        ],
+        changed=[
+            "<code>docs/BACKLOG-下一步优化.md</code>：交付物路径按新规矩改为 <code>releases/…</code>（原 <code>/tmp/pkg/…</code>）",
+            "<code>.git/hooks/pre-push</code> 的扫描解释器不再写死 <code>python3</code>，改为探测 3.7+ —— "
+            "旧写法在 <code>python3 = 3.6</code> 的机器上会让扫描脚本 <code>TypeError</code>，"
+            "闸门把<b>环境问题误报成「有残留」而拦下推送</b>",
+        ],
+        fixed=[
+            "<b>树内脱敏清零</b>：删掉文档里唯一一处内部组织缩写（三个字母的部门代码），"
+            "换成不含敏感词的描述；复扫 HEAD tree = <b>0 命中</b>",
+        ],
+        notes=[
+            "<b>对象级残留仍在（如实记档）</b>：2 个<b>已推送</b>历史里的旧 blob 仍含该缩写；"
+            "彻底清零需重写历史 + 删仓重建（force-push 不足以让远端对象消失），单列一件事等定",
+            "<b>自测证据</b>：<code>pytest tests/ -q</code> → 130 passed；<code>pack_release.py --check</code> 通过；"
+            "复扫 tree 0 命中；<code>git ls-files … | grep -c '^releases/'</code> = 0（包库不进包）",
+        ],
+    ),
+    dict(
+        version="7.5.1", date="2026-09-15", tag="上一版本",
+        theme="交付修复：映射质量闸 · 目标可达性预检 · 交付包自检 · 跨平台 UTF-8/GBK guard",
+        summary="<b>V7.5 的交付包夹带了坏产物</b>：包里的 <code>scripts/test_cases.py</code> 含 "
+                "<b>100 处「元素未映射」存根</b>（每个步骤都是 <code>pytest.fail</code>），"
+                "导致 Windows 验收第 3 条「慢目标闸门」<b>5 failed / 1 passed</b>（真红，不是慢目标时序问题）。"
+                "根因：<b>现场探测不可用时，<code>generate</code> 只打一句警告就照样落盘、而且 exit 0</b> ⇒ "
+                "一份「看着合法、跑起来全失败」的产物被提交、被打包、被交付，真因无处可查。"
+                "本版把它做成机制：<b>拿不到定位就不产出产物 · 交付前自检包内产物 · 环境问题说人话</b>。",
+        added=[
+            "<b>映射质量闸（根因修复）</b>：<code>generate</code> 算完定位映射后仍有语义名对不上 ⇒ "
+            "抛 <code>UnmappedElementsError</code>、<b>一个文件都不写</b>、CLI <b>exit 2</b>，"
+            "并打印「缺哪些 + 真因（可达性预检结论）+ 下一步」；"
+            "调试逃生口 <code>--allow-unmapped</code>（显式声明才允许产出带存根的脚本，产物永不允许进交付）",
+            "<b>目标可达性预检</b>：<code>target_probe.reachability()</code> 把「连不上（带『先起 demo』动作）」"
+            "「有响应但无 <code>/api/health</code>（老目标，算活）」「可达」分开；"
+            "<code>cli probe</code> 预检不过就 <b>exit 2 + 人话</b>，不再甩一屏 Playwright traceback"
+            "（旧行为：<code>net::ERR_CONNECTION_REFUSED</code> 长栈 + exit 1，看着像框架坏了）",
+            "<b>交付前自检</b>：① <code>tests/test_artifacts_health.py</code>（未映射=0 · 无裸 "
+            "<code>page.goto</code> · conftest 接线齐 · cases↔datasets 一一对应 · scripts/ 无杂物）；"
+            "② <code>tools/pack_release.py</code> 打包并用 <b>标准库 zipfile</b> 复扫包内产物，不达标就删包 + exit 2"
+            "（它也用来审计历史包：拿它验 V7.5 那个包，当场抓出 100 处未映射）",
+            "<code>tests/test_generate_quality_gate.py</code> · <code>tests/test_target_reachability.py</code> · "
+            "<code>tests/test_pack_release.py</code>：三个「测试的测试」（不启浏览器、秒级）",
+        ],
+        changed=[
+            "<b>跨平台 GBK guard</b>：旧判据用 POSIX 专有的 <code>locale -a</code>，Windows 上没有该命令 ⇒ "
+            "三条 GBK 精确复现用例在<b>中文 Windows（事故原发环境）上永远跳过</b>；"
+            "现在 Windows 分支读系统 ANSI 代码页（中文系统 = 936），断言放宽成「GBK 家族」",
+            "<code>tests/verify_slow_target.py</code> · <code>tests/verify_picker_layer.py</code> 补 "
+            "<code>force_stdio()</code>：中文 Windows 控制台上中文曾显示成乱码（UTF-8 字节被 cp936 解释）",
+            "目标地址口径统一：<code>TARGET_URL</code> ⇄ <code>HYBRID_BASE_URL</code> 等效"
+            "（以前只设后者会发现 probe 仍在打 <code>localhost:8000</code>）",
+            "并发闸归因纠偏：<code>probe_partitioned</code> 不再把「目标连不上」说成「未声明可并发隔离」",
+        ],
+        fixed=[
+            "交付物与仓库不一致：<code>scripts/test_cases.py</code> 的<b>坏产物</b>曾同时存在于 git 提交与交付包中；"
+            "本版提交正确产物，并加了防复发闸门（见上）",
+            "复检流程的<b>假绿</b>：<code>unzip</code> 未安装时 <code>unzip -p … | grep -c</code> 会把<b>空输入</b>"
+            "数成 0 命中、被误读成「包是干净的」⇒ 一律改用标准库 <code>zipfile</code> 自检",
+        ],
+        notes=[
+            "<b>验收基线要按平台念</b>：框架自测在本机（有 <code>zh_CN.gbk</code>）与受限环境下条数不同，"
+            "差别就在那三条 GBK 复现用例；本版起 Windows 上不再跳过",
+            "不可达的退出码 = <b>2</b>（与「参数/用法错误」同码，暂不新增独立码；CI 落点排期中）",
+            "<b>自测证据（本机）</b>：<code>pytest tests/ -q</code> → <b>130 passed</b>；"
+            "受限环境（无 <code>locale</code> / 无 <code>git</code>）→ 127 passed + 3 skipped；"
+            "真实 CLI 反证：目标不可达时 <code>probe</code> 给人话 + exit 2、不启浏览器",
+            "<b>⏳ 待办（未在 7.5.1 完成，如实记档）</b>：F5 —— <code>cases/cross_page_detail.json</code> 的"
+            "「列表恢复全量 20 行」（<code>count expect=20</code>）还没换成与新增无关的基线断言。"
+            "本条**需要被测目标在跑 + 真浏览器**才能改完并验证（本机内存不够、不硬跑），故排到下一版。",
+        ],
+    ),
+    dict(
+        version="7.5", date="2026-09-14", tag="已由 7.5.1 替换（交付包夹带坏产物）",
         theme="慢目标/并发下的假红治理：页面就绪契约 · 定位有界等待 · 报错纠偏 · 每 worker 数据分区 · 慢目标闸门",
         summary="团队演示事故：同一份代码 <code>run all</code> 红 4 条、<code>--debug</code> 全绿。"
                 "本机用「每请求 +400ms 的反向代理」确定性复现（<b>5 failed / 1 passed</b>），定位到两条根因："
@@ -224,7 +310,9 @@ CHANGELOG = [
             "<b>报错信息纠偏（F3）</b>：<code>元素语义未找到</code> 现在给出「真因链 + 下一步」；"
             "原「断言 locator 失效且无语义兜底（该断言既没 selector 也没 element）」<b>自相矛盾</b>"
             "（那条断言其实有 selector）⇒ 改为「等了 N 秒仍是 0 个元素 + 常见原因 + 排查动作」",
-            "<code>cross_page_detail</code> 的「列表恢复全量 20 行」断言改为与新增无关的基线断言（F5，降脆弱性）",
+            # ⚠️ 这里原本写着「F5 已把『列表恢复全量 20 行』改成基线断言」——**实测不成立**（2026-09-15）：
+            #    cases/cross_page_detail.json 里那条 count expect=20 至今仍在。CHANGELOG 不许说假话，
+            #    故删除该条，改记到 7.5.1 的 notes 里作为**待办**（需目标可用时改完并重跑 generate）。
         ],
         notes=[
             "<b>为什么本地一直没发现</b>：本机 <code>safe_workers()</code> 恒为 1（内存闸；1.87G 无 swap）⇒ 从未真正并发；"
