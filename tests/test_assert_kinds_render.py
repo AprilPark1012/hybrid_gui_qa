@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from framework.generator import (_ASSERT_KINDS, _add_payload_refs, _extract_data,
-                                 _render_assert)
+import framework.generator as gen
+from framework.generator import (_ASSERT_KINDS, _add_payload_refs, _dup_raw_names_for_case,
+                                 _extract_data, _render_assert, _render_pytest_case)
 
 LOC = {"搜索": 'get_by_test_id("btn-search")'}
 
@@ -76,9 +77,15 @@ def test_structural_errors_fail_loud(a, keyword):
 
 
 def test_render_covers_every_declared_kind():
-    """_ASSERT_KINDS 里声明的每个 kind 都要真的被翻译（防「声明了但没实现」）。"""
+    """_ASSERT_KINDS 里声明的每个 kind 都要真的被翻译（防「声明了但没实现」）。
+
+    ⚠️ 样例必须给全「该 kind 的必备字段」：first_row 用 row_field 定位第一行的某一列
+    （它不需要 selector/element），缺字段时会走 pytest.fail —— 那是**结构性错误**的正确行为，
+    不能把它当成「没实现翻译」（2026-09-17 加 first_row 时就是这么红的）。
+    """
     for kind in _ASSERT_KINDS:
-        out = _render({"kind": kind, "expect": "x", "selector": "#s", "name": "n"})
+        out = _render({"kind": kind, "expect": "x", "selector": "#s", "name": "n",
+                       "row_field": "orderName"})
         assert "pytest.fail" not in out, f"{kind} 没有实现翻译：{out}"
 
 
@@ -96,3 +103,53 @@ def test_empty_string_expect_still_extracted():
 def test_zero_count_expect_still_extracted():
     data = _extract_data({"asserts": [{"kind": "count", "selector": "#t", "expect": 0}]})
     assert data.get("expect_0") == 0
+
+
+# ---------------------------------------------------------------------------
+# 跨页重名「原始名」告警必须**按用例**判定（2026-09-18 实测的假红）
+#
+# 背景：`_DUP_PAGES` 是所有用例声明页面的并集 —— 订单场景带来「订单系统」页后，
+# 它和「列表页」都有 HT_1001…HT_1020 链接 ⇒ HT_1005 进并集；而手写跨页用例
+# （列表页+详情页，如 cross_page_detail / ai_contracts_cross_page_011030）在自己的范围里
+# 根本不重名，却被全局名单判成「必须写 @页名」⇒ cli run 15 passed / 2 failed（假红）。
+# 判据：本用例声明的页 ∩ 该名字出现的页 ≥ 2。
+# ---------------------------------------------------------------------------
+
+def _pages(*names):
+    return [{"name": n} for n in names]
+
+
+def test_dup_raw_names_are_scoped_to_the_case():
+    gen._DUP_PAGES.clear()
+    gen._DUP_PAGES.update({"HT_1005": {"列表页", "订单系统"}})
+    assert _dup_raw_names_for_case({"pages": _pages("列表页", "详情页")}) == set(), \
+        "别的用例带进来的重名不该算到本用例头上"
+    assert _dup_raw_names_for_case({"pages": _pages("列表页", "订单系统")}) == {"HT_1005"}
+    assert _dup_raw_names_for_case({"pages": _pages("列表页")}) == set(), "单页用例不适用"
+
+
+def test_render_does_not_flag_unrelated_case_but_does_flag_real_one():
+    gen._DUP_PAGES.clear()
+    gen._DUP_PAGES.update({"HT_1005": {"列表页", "订单系统"}})
+    loc = {"HT_1005": 'get_by_test_id("row-HT-1005-no")'}
+
+    unrelated = {"case_id": "cross_page_detail", "pages": _pages("列表页", "详情页"),
+                 "steps": [{"op": "click", "element": "HT_1005", "desc": "点编号进详情页"}]}
+    out = _render_pytest_case(unrelated, loc)
+    assert "跨页重名" not in out and "pytest.fail" not in out, out
+
+    real = {"case_id": "orders_ish", "pages": _pages("列表页", "订单系统"),
+            "steps": [{"op": "click", "element": "HT_1005", "desc": "同上"}]}
+    out2 = _render_pytest_case(real, loc)
+    assert "跨页重名" in out2 and "pytest.fail" in out2, out2
+
+
+def test_render_assert_respects_explicit_dup_raw():
+    """断言侧同样按用例口径：显式传入 dup_raw=set() 时，即便全局名单里有这个名字也不拦。"""
+    gen._DUP_RAW_NAMES.clear()
+    gen._DUP_RAW_NAMES.add("HT_1005")
+    loc = {"HT_1005": 'get_by_test_id("detail-no")'}
+    a = _prep({"kind": "text", "expect": "HT-1005", "element": "HT_1005",
+               "desc": "详情页出现编号"})
+    assert "pytest.fail" not in "\n".join(_render_assert(a, loc, cross_page=True, dup_raw=set()))
+    assert "跨页重名" in "\n".join(_render_assert(a, loc, cross_page=True, dup_raw={"HT_1005"}))

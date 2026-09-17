@@ -60,6 +60,10 @@ def _extract_data(case: dict) -> dict:
         if st.get("value"):
             data[f"{st['op']}_{idx}"] = st["value"]
             idx += 1
+        # 行内定位的行锚文本（row_text）：它常含 {datetime} 这类动态占位符，必须走同一套抽离 + 解析
+        if st.get("row_text"):
+            data[f"row_text_{idx}"] = st["row_text"]
+            idx += 1
     for i, a in enumerate(case.get("asserts", [])):
         # 判据是「有没有 expect 字段」而不是「值是否为真」——0 / "" 都是合法期望值
         # （count 期望 0 行、value 期望空串=被清空），用真值判断会把它们吞掉，断言就静默变形了。
@@ -76,6 +80,9 @@ def _add_payload_refs(case: dict) -> dict:
         if st.get("value"):
             st["_payload_ref"] = f"{st['op']}_{idx}"
             idx += 1
+        if st.get("row_text"):
+            st["_row_ref"] = f"row_text_{idx}"
+            idx += 1
     for i, a in enumerate(case.get("asserts", [])):
         if "expect" in a:
             a["_payload_ref"] = f"expect_{i}"
@@ -88,20 +95,28 @@ def _add_payload_refs(case: dict) -> dict:
 _ASSERT_KINDS = {
     "text", "visible", "hidden", "count", "attr", "value", "url",
     "checked", "unchecked", "enabled", "disabled",
+    # 2026-09-17 新增：直接验「表格第一行的某列」——覆盖「新建后列表第一条记录就是它」这类需求
+    # （文本断言只能证明名字出现过，证明不了「它就是第一条」）
+    "first_row",
 }
 # 需要 expect 的 kind（期望值）
-_ASSERT_NEED_EXPECT = {"text", "count", "attr", "value", "url"}
+_ASSERT_NEED_EXPECT = {"text", "count", "attr", "value", "url", "first_row"}
 # 需要定位（selector 或 element→loc_map）的 kind
+#   ⚠️ first_row 不在其中：它用 `row_field`（列名）定位第一行的那一列，不需要 element/selector
 _ASSERT_NEED_LOC = {"visible", "hidden", "count", "attr", "value",
                     "checked", "unchecked", "enabled", "disabled"}
 
 
-def _render_assert(a: dict, loc_map: dict, cross_page: bool = False) -> list[str]:
+def _render_assert(a: dict, loc_map: dict, cross_page: bool = False,
+                   dup_raw: set[str] | None = None) -> list[str]:
     """把一条断言（cases 的 asserts[i]）翻译成生成脚本里的调用行。
 
     定位优先级：selector（手写用例显式给，确定性）> element（语义名 → generate 映射的 locator）。
     缺字段 / 未知 kind / 元素未映射 → pytest.fail（绝不静默少验一步 = 假绿）。
+
+    dup_raw：**本用例口径**的跨页重名集合（见 `_dup_raw_names_for_case`）；None 时才退到全局名单。
     """
+    dup = _DUP_RAW_NAMES if dup_raw is None else dup_raw
     kind = str(a.get("kind") or "text").strip()
     desc = a.get("desc", "")
     elem = a.get("element")
@@ -115,8 +130,14 @@ def _render_assert(a: dict, loc_map: dict, cross_page: bool = False) -> list[str
         return [f"    pytest.fail({'断言 kind=' + kind + ' 缺少 expect（期望值）'!r}, pytrace=False)"]
     if kind == "attr" and not a.get("name"):
         return [f"    pytest.fail({'断言 kind=attr 缺少 name（属性名）'!r}, pytrace=False)"]
+    if kind == "first_row" and not str(a.get("row_field") or "").strip():
+        return [f"    pytest.fail({'断言 kind=first_row 缺少 row_field（要验第一行的哪一列，如 orderName）'!r},"
+                f" pytrace=False)"]
+    if kind == "first_row":
+        # 期望值必须是「操作前可确定」的（如刚输入的订单名称）——由 AI 护栏与质量闸共同把关
+        return [f"    _assert_first_row(page, {str(a['row_field']).strip()!r}, {payload}, {desc!r})"]
 
-    if cross_page and elem and elem in _DUP_RAW_NAMES:
+    if cross_page and elem and elem in dup:
         reason = (f"跨页用例的断言用了跨页重名的原始名 {elem!r} —— 它在多个页面都存在，"
                   f"必须写成 {elem}@<页名> 之一（否则会落到另一页的元素上）。"
                   f"generate 日志里有 ⚠️ 跨页同名元素的唯一化清单")
@@ -196,6 +217,7 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
     steps = case.get("steps", [])
     asserts = case.get("asserts", [])
     is_cross_page = len(case.get("pages") or []) > 1
+    dup_raw = _dup_raw_names_for_case(case)      # 只认「本用例自己声明的页面」里的重名（见函数注释）
 
     by_step: dict[int, list[dict]] = {}
     tail: list[dict] = []
@@ -206,10 +228,15 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
         else:
             tail.append(a)
 
+    uses_tabs = any(st.get("op") in ("click_new_tab", "close_tab") for st in steps)
     lines = [
         f'def test_{cid}(page, ctx):',
         f'    """{name}"""',
         f'    _CURRENT_LOG["case_id"] = "{cid}"',
+    ]
+    if uses_tabs:
+        lines.append('    _t = _Tabs(page)          # 多 tab：点了会开新 tab 的控件后 page 会被重新绑定到新 tab')
+    lines += [
         f'    _goto(page, {case.get("base_url", "http://localhost:8000")!r})',
         f'    _log(page, "场景开始", f"case={cid}")',
         '',
@@ -221,9 +248,25 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
         lines.append(f'    # step {i+1}: {desc}')
         if op == "goto":
             lines.append(f"    _goto(page, {st.get('url', case.get('base_url'))!r})")
+        elif st.get("row_text") and st.get("cell_field"):
+            # ---- 行内定位步骤（按行内容锚行 + 取该行某列）----
+            # 为什么需要：新建记录的编号是**服务端动态分配**的 ⇒ AI 无法按语义名引用那一条，
+            # 只能「行锚文本（刚输入的名称）+ 列字段」组合定位。
+            row_ref = st.get("_row_ref")
+            if row_ref is None:
+                lines.append(f"    pytest.fail({'行内定位步骤缺少 row_text 数据引用（generator 内部错误）'!r},"
+                             f" pytrace=False)")
+            elif op in ("click", "click_new_tab"):
+                tabs_arg = "_t" if op == "click_new_tab" else "None"
+                expr = (f'_click_row_cell(page, row_text=_data({row_ref!r}, ctx), '
+                        f'cell_field={str(st["cell_field"])!r}, tabs={tabs_arg})')
+                lines.append(f'    page = {expr}' if op == "click_new_tab" else f'    {expr}')
+            else:
+                lines.append(f"    pytest.fail({'行内定位只支持 click / click_new_tab，当前 op=' + str(op)!r},"
+                             f" pytrace=False)")
         else:
             elem = st.get("element", "")
-            if is_cross_page and elem and elem in _DUP_RAW_NAMES:
+            if is_cross_page and elem and elem in dup_raw:
                 reason = (f"跨页用例的步骤用了跨页重名的原始名 {elem!r} —— 它在多个页面都存在，"
                           f"必须写成 {elem}@<页名> 之一（否则会静默落到另一页的 locator）")
                 lines.append(f"    _log(page, \"cross_page_ambiguous\", '跨页重名原始名: {elem}')")
@@ -254,6 +297,14 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
                              f'primary={primary}, value=_data({ref!r}, ctx))')
             elif op in ("click", "check", "press_enter"):
                 lines.append(f'    _act(page, "{op}", semantic={semantic}, primary={primary})')
+            elif op == "click_new_tab":
+                # 点「会开新 tab」的控件：等新 tab → 切过去 → 后续步骤落在新 tab 上（page 重新绑定）
+                lines.append(f'    page = _t.open_new(lambda: _act(page, "click", semantic={semantic},'
+                             f' primary={primary}))')
+            elif op == "close_tab":
+                # 点「返回」类按钮关闭当前 tab，切回上一个；关不掉 ⇒ 严格模式直接失败（不假绿）
+                lines.append(f'    page = _t.close_current(lambda: _act(page, "click", semantic={semantic},'
+                             f' primary={primary}))')
             else:
                 # 同上：未知动作也要显式失败，绝不静默少做一步
                 lines.append(f"    pytest.fail({'未知操作类型 ' + str(op) + '：generator 不支持，拒绝静默跳过'!r},"
@@ -261,13 +312,13 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
         lines.append(f'    _log(page, "{op}", f"{desc}")')
         # 该步之后的原地断言（after_step = i+1）
         for a in by_step.get(i + 1, []):
-            lines.extend(_render_assert(a, loc_map, cross_page=is_cross_page))
+            lines.extend(_render_assert(a, loc_map, cross_page=is_cross_page, dup_raw=dup_raw))
         lines.append("")
 
     if tail:
         lines.append("    # ---- 断言（用例末尾）----")
         for a in tail:
-            lines.extend(_render_assert(a, loc_map, cross_page=is_cross_page))
+            lines.extend(_render_assert(a, loc_map, cross_page=is_cross_page, dup_raw=dup_raw))
         lines.append("")
     return "\n".join(lines)
 
@@ -312,31 +363,64 @@ def _load_loc_map_from_element_map(path: Path) -> dict:
 
 _AMBIGUOUS_NAMES: set[str] = set()      # 本次 generate 里「同名但落点不同」的语义名（用到即显式失败）
 _DUP_RAW_NAMES: set[str] = set()        # 跨页重复过的**原始名**（跨页用例必须写成 原名@页名）
+_DUP_PAGES: dict[str, set[str]] = {}    # 原始名 → 出现过的页名集合（按用例过滤的判据，见下）
+
+
+def _dup_raw_names_for_case(case: dict) -> set[str]:
+    """**本用例口径**的「跨页重名原始名」集合：该名字出现的页面里，**至少两页是本用例声明的**才算。
+
+    为什么必须按用例过滤（2026-09-18 实测的假红）：`_DUP_RAW_NAMES` 是**所有**用例声明页面的并集
+    （订单场景带来「订单系统」页，它与「列表页」都有 HT_1001…HT_1020 链接 ⇒ 这些名字进并集），
+    而手写跨页用例 `cross_page_detail` / `ai_contracts_cross_page_011030` 的页面是「列表页+详情页」
+    —— 在它们自己的范围里 `HT_1005` **根本不重名**，却被全局名单判成「必须改名」⇒ 两个用例假红
+    （`cli run` 15 passed / 2 failed）。判据改成「本用例声明的页 ∩ 该名字出现的页 ≥ 2」后，
+    既保住「真跨页重名必须写 @页名」的告警，又不会误伤别的用例。
+    """
+    own = {str(p.get("name") or "") for p in (case.get("pages") or []) if str(p.get("name") or "")}
+    if len(own) < 2:
+        return set()
+    return {n for n, pgs in _DUP_PAGES.items() if len(set(pgs) & own) >= 2}
 
 
 def _collect_declared_pages(cases: list[dict]) -> list[tuple[str, str]]:
     """收集用例声明的页面 [(页名, url)]（去重、保序）—— 只有跨页用例（带 pages 字段）才算。
 
     P3：generate 的「现场 probe 补齐」要知道**该探哪些页**，否则跨页元素永远补不上。
+
+    ⚠️ **按 URL 去重，不只是按 (页名, url)**（2026-09-17 实测踩到的坑）：两个不同的场景给同一 URL
+    起不同页名（如 列表页 / 合同列表页）时，同一页面会被探两遍、同名元素在 `uniquify_across_pages`
+    眼里变成「跨页同名」⇒ **所有名字被加上 @页名 后缀**，于是**所有引用原始名的手写用例集体未映射**、
+    generate 直接被映射质量闸拦下（实测：订单场景一加进来就把整个仓库的 generate 打红）。
+    页名取**先遇到的声明**（同一 URL 就是同一页面，谁先声明用谁的名字），并打印说明。
     """
     out: list[tuple[str, str]] = []
-    seen = set()
+    by_url: dict[str, str] = {}
     for c in cases:
         for pg in (c.get("pages") or []):
-            key = (str(pg.get("name") or ""), str(pg.get("url") or ""))
-            if key[1] and key not in seen:
-                seen.add(key)
-                out.append(key)
+            pname = str(pg.get("name") or "")
+            url = str(pg.get("url") or "")
+            if not url:
+                continue
+            if url in by_url:
+                if by_url[url] != pname:
+                    print(f"[generate] ℹ️ 页面别名：{pname!r} 与 {by_url[url]!r} 是同一个 URL"
+                          f"（{url}）→ 只探一次，用先声明的页名 {by_url[url]!r}"
+                          f"（否则同名元素会被误判成跨页同名而全部改名）")
+                continue
+            by_url[url] = pname
+            out.append((pname, url))
     return out
 
 
-def _probe_declared_pages(pages: list[tuple[str, str]]) -> tuple[dict, set[str], set[str]]:
-    """按用例声明的页面逐页现场探测（P3 跨页补齐），返回 (loc_map, ambiguous_names)。
+def _probe_declared_pages(pages: list[tuple[str, str]]) -> tuple[dict, set[str], dict[str, set[str]]]:
+    """按用例声明的页面逐页现场探测（P3 跨页补齐），返回 (loc_map, ambiguous_names, dup_pages)。
 
     · 一个浏览器 + 一个 context 顺序 goto（本机 1.87G 无 swap，绝不为多页多开/并发）；
     · 每页做基础探测 + 弹窗补充（与单页老路径同一套逻辑）；
     · 合并时走**与 explore 同一套** `uniquify_across_pages`：同名跨页 → `原名@页名`。
       这样手写用例与 AI 用例的命名规则一致（不会两边各叫一套名）。
+    · dup_pages = {原始名: 出现过的页名集合} —— 供**按用例**判定「本用例里是否真重名」
+      （`_dup_raw_names_for_case`；全局一把抓会误伤别的用例，2026-09-18 实测）。
     · ambiguous 是**防御性**判据：正常路径下唯一化已保证名字不撞；万一同一名字落到不同 locator
       （说明探测/命名逻辑被改坏了）就记下来，生成时**显式失败**而不是静默挑一个。
     """
@@ -374,7 +458,8 @@ def _probe_declared_pages(pages: list[tuple[str, str]]) -> tuple[dict, set[str],
         b.close()
 
     merged_items, collisions = uniquify_across_pages(per_page)
-    dup_raw = {c["semantic_name"] for c in collisions}   # 原始名：跨页用例必须用 @页名 形式
+    # 原始名 → 出现过的页名集合（跨页用例必须用 @页名 形式；按用例过滤见 _dup_raw_names_for_case）
+    dup_pages: dict[str, set[str]] = {c["semantic_name"]: set(c["pages"]) for c in collisions}
     for c in collisions:
         print(f"[generate] ⚠️ 跨页同名元素 {c['semantic_name']!r} 出现在 {'、'.join(c['pages'])}"
               f" → 已唯一化为 "
@@ -393,7 +478,7 @@ def _probe_declared_pages(pages: list[tuple[str, str]]) -> tuple[dict, set[str],
                   f"（{loc_map[name]} vs {expr}）→ 用到它时显式失败（请改成唯一名或改用 selector）")
             continue
         loc_map[name] = expr
-    return loc_map, ambiguous, dup_raw
+    return loc_map, ambiguous, dup_pages
 
 
 class UnmappedElementsError(RuntimeError):
@@ -436,6 +521,7 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     scripts_dir = scripts_dir or SCRIPTS_DIR
     _AMBIGUOUS_NAMES.clear()      # 每次 generate 从零开始（避免上一次运行的歧义名单残留）
     _DUP_RAW_NAMES.clear()
+    _DUP_PAGES.clear()
     datasets_dir = scripts_dir / "datasets"
     datasets_dir.mkdir(parents=True, exist_ok=True)
     scripts_dir.mkdir(parents=True, exist_ok=True)
@@ -489,29 +575,29 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
                 pg = b.new_page()
                 pg.goto(TARGET_URL)
                 pg.wait_for_load_state("networkidle")
-                for it in probe_page(pg):
+                base_items = probe_page(pg)
+                for it in base_items:
                     live[it["semantic_name"]] = _semantic_to_locator_expr(it)
-                # 点开弹窗，补充弹窗内表单控件
-                for it in probe_page(pg):
-                    if it.get("role") == "button" and any(h in (it.get("name") or "") for h in ("新建", "添加", "新增")):
-                        try:
-                            pg.get_by_role("button", name=it["name"]).first.click()
-                            pg.wait_for_timeout(400)
-                            for it2 in probe_page(pg):
-                                live.setdefault(it2["semantic_name"], _semantic_to_locator_expr(it2))
-                        except Exception:
-                            pass
-                        break
+                # 弹窗/弹层补充：**与 explore 共用同一套探测**（_try_collect_modal_items —— 含嵌套
+                # picker 层、探完逐层关闭、无名「...」按钮也能识别）。
+                # ⚠️ 2026-09-17 实测的坑：这里原来自己点一遍「新建」按钮、**只探一层**
+                # ⇒ 弹层里逐行的「选择」（如 选择@<客户名>）永远补不上 ⇒ 手写用例报「元素未映射」，
+                # 整个 generate 被映射质量闸拦下（订单场景一进来就把既有手写用例集体打红）。
+                from .explorer import _try_collect_modal_items
+                for it in _try_collect_modal_items(pg, base_items):
+                    live.setdefault(it["semantic_name"], _semantic_to_locator_expr(it))
                 b.close()
             # ② 跨页用例：额外按声明的页面逐页探测（补 `原名@页名` 形式的跨页元素）
             if declared_pages:
-                page_live, amb, dup_raw = _probe_declared_pages(declared_pages)
+                page_live, amb, dup_pages = _probe_declared_pages(declared_pages)
                 for k, v in page_live.items():
                     live.setdefault(k, v)
                 _AMBIGUOUS_NAMES.clear()
                 _AMBIGUOUS_NAMES.update(amb)
+                _DUP_PAGES.clear()
+                _DUP_PAGES.update(dup_pages)
                 _DUP_RAW_NAMES.clear()
-                _DUP_RAW_NAMES.update(dup_raw)
+                _DUP_RAW_NAMES.update(dup_pages)
             if live_probe:
                 loc_map.update(live)
                 src_parts.append(f"现场probe(强制全量, {len(live)} 项)"
@@ -580,7 +666,12 @@ from conftest import (_CURRENT_LOG, _log, _data, _act, _goto,
                       _assert_visible, _assert_hidden, _assert_count,
                       _assert_attr, _assert_value,
                       _assert_checked, _assert_unchecked,
-                      _assert_enabled, _assert_disabled)
+                      _assert_enabled, _assert_disabled,
+                      # 2026-09-17 跨 tab / 行内定位 / 首行断言用的辅助
+                      # ⚠️ 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
+                      #    （实测：new 的 _Tabs 漏了 → verify 里 30 步用例第一步就 NameError；
+                      #     防复发检查见 tests/test_artifacts_health.py::test_test_cases_imports_every_conftest_helper）
+                      _Tabs, _click_row_cell, _assert_first_row)
 import pytest
 from playwright.sync_api import expect as _pw_expect
 
@@ -663,6 +754,22 @@ from framework.healer import Healer  # noqa: E402
 _SELF_HEAL = os.environ.get("HYBRID_SELF_HEAL", "1") != "0"
 _HEALER = Healer()   # 进程内单例：累积 heal 事件，会话结束统一落盘（可审 diff）
 
+def _freeze_placeholders(data):
+    """把**所有**含 {占位符} 的数据值一次性解析并固化回 data（返回 data）。
+
+    为什么需要它：`resolve_dynamic_inputs` 只处理 contractName / created_name 两个键，
+    其余键（fill_N / row_text_N / expect_N）原本走 `_data()` 的**惰性解析** —— 每次调用重新取 now()，
+    跨秒就得到不同的值。行内定位（行锚文本必须与刚填的值逐字相同）与「新建后首行断言」
+    都要求这几处**逐字一致**，所以必须在用例开头一次固化（口径同 resolve_dynamic_inputs：
+    填表值 = 断言值 = 行锚文本）。
+    """
+    for _ in range(2):               # 两轮：允许某个值里引用另一个仍含占位符的值
+        for k, v in list(data.items()):
+            if isinstance(v, str) and "{" in v:
+                data[k] = format_template(v, data)
+    return data
+
+
 # 用例上下文：数据 + 变量池 + 动态占位符固化
 class CaseCtx:
     __slots__ = ("case_id", "data", "vars")
@@ -671,6 +778,7 @@ class CaseCtx:
         self.data = data
         self.vars = {}          # 用例级变量池：存运行过程数据(编号/抓取值)，function-scope 隔离
         resolve_dynamic_inputs(self.data)   # 动态占位符 {datetime}→实际值(固化)
+        _freeze_placeholders(self.data)     # 其余键也一次固化（行内定位/首行断言要求逐字一致）
 
 
 def _data(key, ctx):
@@ -844,6 +952,132 @@ def _ready_timeout(url=""):
     if _READY_REQUIRED:
         raise RuntimeError(msg)
     print(msg, flush=True)
+
+
+# ============================================================================
+# 多 tab（跨 tab 流程）· 2026-09-17 新增
+# ----------------------------------------------------------------------------
+# 真实场景：点「查看订单」会**新开一个 tab**；点订单行里的合同编号又开一个 tab；
+# 合同详情页上的「返回」是**关闭该 tab**、回到订单列表页。
+# 设计：`_Tabs` 维护一个 tab 栈（最后一个是当前页）；生成脚本用
+#   page = _t.open_new(lambda: _act(page, "click", ...))
+#   page = _t.close_current(lambda: _act(page, "click", ...))
+# **重新绑定局部变量 page** ⇒ 后续步骤与断言自动落在当前 tab 上（旧的 page 变量指向的仍是旧 tab 对象，
+# 但我们所有步骤都读 `page`，所以重新赋值即"切页"）。
+# ============================================================================
+_TAB_TIMEOUT_MS = int(os.environ.get("HYBRID_TAB_TIMEOUT", "8000"))
+_TAB_CLOSE_STRICT = os.environ.get("HYBRID_TAB_CLOSE_STRICT", "1").strip().lower() not in ("0", "off", "false", "no")
+
+
+class _Tabs:
+    """tab 栈：支持「点开新 tab 并切过去」与「关当前 tab 回上一个」。"""
+
+    def __init__(self, page):
+        self.stack = [page]
+
+    @property
+    def page(self):
+        return self.stack[-1]
+
+    def open_new(self, click):
+        """执行 `click()`（那个会新开 tab 的点击）→ 等新 tab 出现 → 切过去 → 等数据就绪。"""
+        cur = self.page
+        try:
+            with cur.context.expect_page(timeout=_TAB_TIMEOUT_MS) as info:
+                click()
+        except Exception as e:
+            raise RuntimeError(
+                f"点了「会开新 tab」的控件，但 {_TAB_TIMEOUT_MS}ms 内没有新 tab 出现"
+                f"（{type(e).__name__}: {e}）。常见原因：① 该控件其实不会开新 tab"
+                f"（探针的 opens_new_tab 标记或场景判断有误）；② 弹窗被浏览器拦截；③ 点到的不是预想元素。"
+                f"排查：--debug 看逐步截图（log/<run_id>/shots/）。") from e
+        new = info.value
+        try:
+            new.wait_for_load_state("domcontentloaded")
+        except Exception:
+            pass
+        self.stack.append(new)
+        _wait_ready(new, new.url)
+        _log(new, "tab_open", f"已切到新 tab：{new.url}")
+        return new
+
+    def close_current(self, click):
+        """点「返回」类按钮 → 等当前 tab **真的关闭** → 切回上一个 tab。
+
+        ⚠️ 默认**严格**：需求就是「点返回会关闭该页面」—— 关不掉时静默切回 = 假绿
+        （看着过了，其实页面没关）。要放宽：HYBRID_TAB_CLOSE_STRICT=0。
+        """
+        cur = self.page
+        if len(self.stack) < 2:
+            raise RuntimeError("close_tab 用在了没有上一个 tab 的场景（它只用于「从新 tab 返回」）")
+        closed = True
+        try:
+            with cur.expect_event("close", timeout=_TAB_TIMEOUT_MS):
+                click()
+        except Exception:
+            closed = False
+        if not closed and _TAB_CLOSE_STRICT:
+            raise RuntimeError(
+                f"点「返回」后该 tab 在 {_TAB_TIMEOUT_MS}ms 内**没有关闭** —— 需求是「关闭该页面并返回上一页」，"
+                f"所以这是真失败（不是超时抖动）：① 该按钮可能只是普通跳转而不是关 tab；"
+                f"② 该 tab 不是脚本打开的 ⇒ 浏览器不允许 window.close()（用例里应**点击**打开它，别直接 goto）；"
+                f"③ 这个 tab 已被别的动作关掉了。放宽判定：HYBRID_TAB_CLOSE_STRICT=0。")
+        self.stack.pop()
+        prev = self.page
+        try:
+            prev.bring_to_front()
+        except Exception:
+            pass
+        _wait_ready(prev, prev.url)
+        _log(prev, "tab_close", f"已关闭上一 tab 并切回：{prev.url}（真的关了={closed}）")
+        return prev
+
+
+def _click_row_cell(page, row_text, cell_field, tabs=None):
+    """**行内定位**：在「包含 row_text 的那一行」里点 cell_field 列的链接（返回新 tab 或 None）。
+
+    为什么需要这个能力：新建记录的编号/合同号是**服务端动态分配**的，探测清单里不可能有它的语义名，
+    AI 无法按名字引用那一条 ⇒ 只能「按行内容锚定行 + 按列字段取元素」。
+    `data-field` 是被测页面既有约定（td[data-field='contractNo'] 这类）。
+
+    唯一性：含该文本的行必须**恰好 1 行**，否则直接失败 —— 宁可失败，也不点错行。
+    """
+    rows = page.locator("tbody tr").filter(has_text=row_text)
+    n = _count_attached(rows)
+    if n != 1:
+        raise RuntimeError(
+            f"行内定位失败：含文本 {row_text!r} 的行命中 {n} 个（要求恰好 1 个）。"
+            f" 常见原因：① 这段文本不在任何行里（上一步的新建没成功 / 名称写错）；"
+            f" ② 锚文本太短，多行都含它（用更长的独有片段）。")
+    target = rows.first.locator(f"td[data-field='{cell_field}'] a")
+    if target.count() == 0:
+        target = rows.first.locator(f"td[data-field='{cell_field}']")
+    kn = target.count()
+    if kn != 1:
+        raise RuntimeError(f"行内列 {cell_field!r} 的目标元素命中 {kn} 个（要求 1 个）")
+    _shot(page, f"row_{cell_field}")
+
+    def _do():
+        target.click()
+
+    if tabs is not None:
+        return tabs.open_new(_do)
+    _do()
+    _log(page, "row_click", f"已点「含 {row_text} 行」的 {cell_field} 列")
+    return None
+
+
+def _assert_first_row(page, field, expected, desc=""):
+    """断言「表格第一行的某列」包含期望文本 —— 直接覆盖「新建后列表第一条记录就是它」这类需求。
+
+    为什么单列一种断言 kind：文本断言只能证明「页面上出现过这个名字」，证明不了「它就是第一条」。
+    """
+    cell = page.locator(f"tbody tr:first-child td[data-field='{field}']")
+    _count_attached(cell)
+    if cell.count() == 0:
+        raise AssertionError(f"表格没有第一行、或没有 {field!r} 列 —— 无法验证「第一条记录」（断言无法成立）")
+    _expect(cell.first).to_contain_text(str(expected), timeout=_LOCATE_TIMEOUT_MS)
+    _ok(page, desc or f"第一行 {field} 含 {expected}", f"first_row_{field}", str(expected))
 
 
 # ---- 用例间数据复位（2026-09-14）----

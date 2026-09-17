@@ -16,7 +16,12 @@ from conftest import (_CURRENT_LOG, _log, _data, _act, _goto,
                       _assert_visible, _assert_hidden, _assert_count,
                       _assert_attr, _assert_value,
                       _assert_checked, _assert_unchecked,
-                      _assert_enabled, _assert_disabled)
+                      _assert_enabled, _assert_disabled,
+                      # 2026-09-17 跨 tab / 行内定位 / 首行断言用的辅助
+                      # ⚠️ 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
+                      #    （实测：new 的 _Tabs 漏了 → verify 里 30 步用例第一步就 NameError；
+                      #     防复发检查见 tests/test_artifacts_health.py::test_test_cases_imports_every_conftest_helper）
+                      _Tabs, _click_row_cell, _assert_first_row)
 import pytest
 from playwright.sync_api import expect as _pw_expect
 
@@ -147,6 +152,118 @@ def test_ai_contracts_search_by_no_000813(page, ctx):
     _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
     _log(page, "click", f"点击搜索按钮触发查询")
     _assert_text(page, _data('expect_0', ctx), '确认结果列表中出现编号为 HT-1005 的合同记录')
+
+
+def test_ai_orders_return_from_contract_004934(page, ctx):
+    """打开合同列表页，点击右上角的「查看订单」，系统会**新开一个 tab** 打开订单系统页面（订单列表页）；
+在该页点击「+ 新建订单」按钮，弹出「新建订单」弹窗：
+填写订单名称（用「退货订单-{datetime}」这个值）；
+点击「选择合同」打开合同弹层，选第一行（HT-1001）的「选择」；
+点击业务单元旁的「...」按钮打开弹层选第一行，同样方式给管理单元、帐套各选第一行；
+订单类型下拉选「退货订单」；
+点击「选择客户」选第一个客户，点击「选择销售员」选第一个销售员；
+在订单备注里填「AI 端到端自动化用例」；
+点击「提交」，弹窗关闭、订单列表刷新，确认**列表第一行的订单名称**就是我们刚填的那个订单名称；
+然后在订单列表里点击这一行的「合同编号」链接，它会**新开一个 tab** 打开该合同的详情页，
+确认新 tab 的 URL 是合同详情页且页面显示合同编号 HT-1001、合同名称 合同1；
+最后点击该详情页的「返回」按钮，这个 tab 被关闭，回到订单列表页面（确认还在订单列表页）。"""
+    _CURRENT_LOG["case_id"] = "ai_orders_return_from_contract_004934"
+    _t = _Tabs(page)          # 多 tab：点了会开新 tab 的控件后 page 会被重新绑定到新 tab
+    _goto(page, 'http://localhost:8000/')
+    _log(page, "场景开始", f"case=ai_orders_return_from_contract_004934")
+
+    # step 1: 打开合同列表页
+    _goto(page, 'http://localhost:8000/')
+    _log(page, "goto", f"打开合同列表页")
+    _assert_text(page, _data('expect_0', ctx), '确认合同列表页已加载（右上角查看订单链接）')
+
+    # step 2: 点击右上角「查看订单」，新开 tab 打开订单系统
+    page = _t.open_new(lambda: _act(page, "click", semantic='查看订单', primary=lambda p: p.get_by_test_id("link-orders")))
+    _log(page, "click_new_tab", f"点击右上角「查看订单」，新开 tab 打开订单系统")
+    _assert_url(page, _data('expect_1', ctx), '确认新 tab 是订单系统页')
+    _assert_text(page, _data('expect_2', ctx), '确认订单系统页独有文案')
+
+    # step 3: 点击「+ 新建订单」打开弹窗
+    _act(page, "click", semantic='新建订单', primary=lambda p: p.get_by_test_id("btn-new-order"))
+    _log(page, "click", f"点击「+ 新建订单」打开弹窗")
+
+    # step 4: 填写订单名称
+    _act(page, "fill", semantic='请输入订单名称', primary=lambda p: p.get_by_test_id("o-name"), value=_data('fill_0', ctx))
+    _log(page, "fill", f"填写订单名称")
+
+    # step 5: 打开选择合同弹层
+    _act(page, "click", semantic='选择合同', primary=lambda p: p.get_by_test_id("btn-pick-contract"))
+    _log(page, "click", f"打开选择合同弹层")
+
+    # step 6: 选中合同弹层第一行 HT-1001
+    _act(page, "click", semantic='选择@HT_1001', primary=lambda p: p.get_by_test_id("pick-contract-HT-1001"))
+    _log(page, "click", f"选中合同弹层第一行 HT-1001")
+
+    # step 7: 打开业务单元弹层
+    _act(page, "click", semantic='选择业务单元@新建订单', primary=lambda p: p.get_by_test_id("btn-pick-bu"))
+    _log(page, "click", f"打开业务单元弹层")
+
+    # step 8: 选中业务单元第一行 bu_a
+    _act(page, "click", semantic='选择@bu_a', primary=lambda p: p.get_by_test_id("pick-bu-bu_a"))
+    _log(page, "click", f"选中业务单元第一行 bu_a")
+
+    # step 9: 打开管理单元弹层
+    _act(page, "click", semantic='选择管理单元@新建订单', primary=lambda p: p.get_by_test_id("btn-pick-mu"))
+    _log(page, "click", f"打开管理单元弹层")
+
+    # step 10: 选中管理单元第一行 0021
+    _act(page, "click", semantic='选择@0021', primary=lambda p: p.get_by_test_id("pick-mu-0021"))
+    _log(page, "click", f"选中管理单元第一行 0021")
+
+    # step 11: 打开帐套弹层
+    _act(page, "click", semantic='选择帐套@新建订单', primary=lambda p: p.get_by_test_id("btn-pick-file"))
+    _log(page, "click", f"打开帐套弹层")
+
+    # step 12: 选中帐套第一行 001
+    _act(page, "click", semantic='选择@001', primary=lambda p: p.get_by_test_id("pick-file-001"))
+    _log(page, "click", f"选中帐套第一行 001")
+
+    # step 13: 订单类型下拉选「退货订单」
+    _act(page, "select", semantic='请选择_标准销售订单_退货订单_服务订单_电商订单', primary=lambda p: p.get_by_test_id("o-type"), value=_data('select_1', ctx))
+    _log(page, "select", f"订单类型下拉选「退货订单」")
+
+    # step 14: 打开选择客户弹层
+    _act(page, "click", semantic='选择客户@订单系统', primary=lambda p: p.get_by_test_id("btn-pick-cust"))
+    _log(page, "click", f"打开选择客户弹层")
+
+    # step 15: 选中第一个客户
+    _act(page, "click", semantic='选择@北京华信科技有限公司@订单系统', primary=lambda p: p.get_by_test_id("pick-cust-c1"))
+    _log(page, "click", f"选中第一个客户")
+
+    # step 16: 打开选择销售员弹层
+    _act(page, "click", semantic='选择销售员', primary=lambda p: p.get_by_test_id("btn-pick-salesman"))
+    _log(page, "click", f"打开选择销售员弹层")
+
+    # step 17: 选中第一个销售员
+    _act(page, "click", semantic='选择@张伟', primary=lambda p: p.get_by_test_id("pick-salesman-s1"))
+    _log(page, "click", f"选中第一个销售员")
+
+    # step 18: 填写订单备注
+    _act(page, "fill", semantic='订单备注_可不填', primary=lambda p: p.get_by_test_id("o-remark"), value=_data('fill_2', ctx))
+    _log(page, "fill", f"填写订单备注")
+
+    # step 19: 提交新建订单
+    _act(page, "click", semantic='提交@订单系统', primary=lambda p: p.get_by_test_id("btn-submit-order"))
+    _log(page, "click", f"提交新建订单")
+    _assert_first_row(page, 'orderName', _data('expect_3', ctx), '确认列表第一行订单名称就是刚填的值')
+
+    # step 20: 点击该行合同编号链接，新开 tab 打开合同详情页
+    page = _click_row_cell(page, row_text=_data('row_text_3', ctx), cell_field='contractNo', tabs=_t)
+    _log(page, "click_new_tab", f"点击该行合同编号链接，新开 tab 打开合同详情页")
+    _assert_url(page, _data('expect_4', ctx), '确认新 tab 是合同详情页')
+    _assert_text(page, _data('expect_5', ctx), '确认详情页显示合同编号 HT-1001')
+    _assert_text(page, _data('expect_6', ctx), '确认详情页显示合同名称 合同1')
+
+    # step 21: 点击详情页「返回」关闭本 tab
+    page = _t.close_current(lambda: _act(page, "click", semantic='返回', primary=lambda p: p.get_by_test_id("btn-back")))
+    _log(page, "close_tab", f"点击详情页「返回」关闭本 tab")
+    _assert_url(page, _data('expect_7', ctx), '确认回到订单列表页')
+    _assert_text(page, _data('expect_8', ctx), '确认仍在订单系统页')
 
 
 def test_ai_在合同列表页面的搜索框输入_1005_点击搜索按_235545(page, ctx):

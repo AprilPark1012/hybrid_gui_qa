@@ -42,6 +42,12 @@ class TestStep:
     value: str | None = None     # fill 的输入值
     assertion: str | None = None # expect 断言文本
     description: str = ""        # 人类可读步骤说明
+    # --- 跨 tab / 行内定位（2026-09-17 新增，均可选）---
+    # row_text + cell_field：**行内定位**（在「含 row_text 的那一行」里操作 cell_field 那一列）。
+    #   为什么需要：新建记录的编号是服务端动态分配的，AI 无法按语义名引用那一条记录。
+    # cell_field 同时用于 expect_first_row 断言（要验第一行的哪一列）。
+    row_text: str | None = None
+    cell_field: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -51,6 +57,8 @@ class TestStep:
             "value": self.value,
             "assertion": self.assertion,
             "description": self.description,
+            "row_text": self.row_text,
+            "cell_field": self.cell_field,
         }
 
     @classmethod
@@ -60,6 +68,7 @@ class TestStep:
             order=d["order"], action=d["action"], element=el,
             value=d.get("value"), assertion=d.get("assertion"),
             description=d.get("description", ""),
+            row_text=d.get("row_text"), cell_field=d.get("cell_field"),
         )
 
 

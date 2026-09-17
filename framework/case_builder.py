@@ -36,12 +36,16 @@ _OP_MAP = {
     "select": "select",
     "check": "check",
     "press_enter": "press_enter",
+    # 跨 tab 流程（2026-09-17）：点击**会开新 tab** 的控件并切过去 / 点「返回」关闭当前 tab 回上一个
+    "click_new_tab": "click_new_tab",
+    "close_tab": "close_tab",
 }
 
 # 断言动作（转为 asserts[]，不是步骤）
 #   expect_text → 文本断言（原有）
 #   expect_url  → URL 断言（P3 跨页：证明"确实换页了"，用刚加的 url 断言类型）
-_ASSERT_ACTIONS = {"expect_text", "expect_url"}
+#   expect_first_row → 「表格第一行某列含期望文本」（2026-09-17：新建后「列表第一条就是它」的判据）
+_ASSERT_ACTIONS = {"expect_text", "expect_url", "expect_first_row"}
 
 
 def slugify(text: str, maxlen: int = 24) -> str:
@@ -93,6 +97,17 @@ def elementmap_to_case(m: ElementMap, case_id: str | None = None,
                         "expect": exp,
                         "after_step": pos,
                     })
+            elif action == "expect_first_row":
+                # 行内定位的兄弟能力：验「表格第一行的某一列」（新建后列表第一条就是它）
+                exp = st.value or st.assertion
+                if exp:
+                    asserts.append({
+                        "kind": "first_row",
+                        "row_field": st.cell_field or "",
+                        "desc": st.description or f"断言第一行 {st.cell_field} 含 {exp}",
+                        "expect": exp,
+                        "after_step": pos,
+                    })
             elif st.assertion:
                 asserts.append({
                     "desc": st.description or f"断言出现 {st.assertion}",
@@ -120,6 +135,11 @@ def elementmap_to_case(m: ElementMap, case_id: str | None = None,
             item["element"] = semantic
         if st.value is not None:
             item["value"] = st.value
+        # 行内定位（2026-09-17）：行锚文本 + 列字段，原样透传给 cases（generator 据此渲染 _click_row_cell）
+        if st.row_text:
+            item["row_text"] = st.row_text
+        if st.cell_field:
+            item["cell_field"] = st.cell_field
         steps.append(item)
 
     case = {
@@ -295,7 +315,10 @@ def case_warnings(case: dict, guard: dict | None = None) -> list[str]:
     fill_values = {str(s.get("value")) for s in steps if s.get("op") == "fill" and s.get("value")}
     for a in asserts:
         exp = a.get("expect")
-        if isinstance(exp, str) and exp and exp in fill_values:
+        akind_now = str(a.get("kind") or "text").strip()
+        # first_row 豁免：它验的是「新建的记录落在第一行」，期望值**本来就该等于**刚填的输入值
+        # （text 断言证明不了位置）⇒ 这条「回显=假绿」告警对它不适用（2026-09-17）。
+        if (isinstance(exp, str) and exp and exp in fill_values and akind_now != "first_row"):
             warns.append(
                 f"断言 {exp!r} 与某 fill 步骤的输入值完全相同 → 疑似「断言输入回显」，"
                 f"用例会通过但实际没验证业务结果（假绿）"
@@ -320,11 +343,18 @@ def case_warnings(case: dict, guard: dict | None = None) -> list[str]:
         #    所以这里按「AI 链路只产 text 断言」把关。
         akind = str(a.get("kind") or "text").strip()
         # url 断言放行：它来自场景声明的页面清单（人给的确定性信息，跨页「换页证据」就用它）；
+        # first_row 断言放行（2026-09-17）：期望值是**操作前可确定**的输入值（如刚填的订单名称），
+        #   用来验「表格第一行就是刚建的那条」—— 这正是「有牙」的断言，不是猜出来的运行时值。
         # 其余结构化种类（count/attr/value/…）只给手写用例 —— 只有人能确定「操作前可确定」的期望值。
-        if akind not in ("text", "url"):
+        if akind not in ("text", "url", "first_row"):
             warns.append(
-                f"AI 断言用了 kind={akind} —— AI 链路只允许 text / url 断言（结构化种类是给手写用例的，"
-                f"因为只有人能确定『操作前可确定』的期望值，如行数/属性）"
+                f"AI 断言用了 kind={akind} —— AI 链路只允许 text / url / first_row 断言"
+                f"（其余结构化种类是给手写用例的，因为只有人能确定『操作前可确定』的期望值，如行数/属性）"
+            )
+        if akind == "first_row" and not str(a.get("row_field") or "").strip():
+            warns.append(
+                "AI 的 first_row 断言没给 row_field（要验第一行的哪一列，如 orderName/contractNo）"
+                "→ 生成脚本会直接失败，请补上列字段名"
             )
     if guard:
         must = [str(x) for x in (guard.get("must_contain") or [])]
@@ -339,8 +369,10 @@ def case_warnings(case: dict, guard: dict | None = None) -> list[str]:
             if any(f and f in e for e in exps):
                 warns.append(f"断言命中了本场景禁止项 {f!r}（assert_guard.forbidden）→ 该断言不是可靠期望值")
 
-    ops_need_el = {"click", "fill", "select", "check", "press_enter"}
-    naked = [s for s in steps if s.get("op") in ops_need_el and not s.get("element")]
+    ops_need_el = {"click", "fill", "select", "check", "press_enter", "click_new_tab", "close_tab"}
+    # 行内定位步骤不需要 element（它用 row_text + cell_field 定位）⇒ 不算「没绑元素」
+    naked = [s for s in steps if s.get("op") in ops_need_el and not s.get("element")
+             and not (s.get("row_text") and s.get("cell_field"))]
     if naked:
         detail = "；".join(f"{s.get('op')}（{s.get('desc') or '无描述'}）" for s in naked[:4])
         warns.append(

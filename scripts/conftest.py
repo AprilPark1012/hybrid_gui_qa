@@ -83,6 +83,22 @@ from framework.healer import Healer  # noqa: E402
 _SELF_HEAL = os.environ.get("HYBRID_SELF_HEAL", "1") != "0"
 _HEALER = Healer()   # 进程内单例：累积 heal 事件，会话结束统一落盘（可审 diff）
 
+def _freeze_placeholders(data):
+    """把**所有**含 {占位符} 的数据值一次性解析并固化回 data（返回 data）。
+
+    为什么需要它：`resolve_dynamic_inputs` 只处理 contractName / created_name 两个键，
+    其余键（fill_N / row_text_N / expect_N）原本走 `_data()` 的**惰性解析** —— 每次调用重新取 now()，
+    跨秒就得到不同的值。行内定位（行锚文本必须与刚填的值逐字相同）与「新建后首行断言」
+    都要求这几处**逐字一致**，所以必须在用例开头一次固化（口径同 resolve_dynamic_inputs：
+    填表值 = 断言值 = 行锚文本）。
+    """
+    for _ in range(2):               # 两轮：允许某个值里引用另一个仍含占位符的值
+        for k, v in list(data.items()):
+            if isinstance(v, str) and "{" in v:
+                data[k] = format_template(v, data)
+    return data
+
+
 # 用例上下文：数据 + 变量池 + 动态占位符固化
 class CaseCtx:
     __slots__ = ("case_id", "data", "vars")
@@ -91,6 +107,7 @@ class CaseCtx:
         self.data = data
         self.vars = {}          # 用例级变量池：存运行过程数据(编号/抓取值)，function-scope 隔离
         resolve_dynamic_inputs(self.data)   # 动态占位符 {datetime}→实际值(固化)
+        _freeze_placeholders(self.data)     # 其余键也一次固化（行内定位/首行断言要求逐字一致）
 
 
 def _data(key, ctx):
@@ -264,6 +281,132 @@ def _ready_timeout(url=""):
     if _READY_REQUIRED:
         raise RuntimeError(msg)
     print(msg, flush=True)
+
+
+# ============================================================================
+# 多 tab（跨 tab 流程）· 2026-09-17 新增
+# ----------------------------------------------------------------------------
+# 真实场景：点「查看订单」会**新开一个 tab**；点订单行里的合同编号又开一个 tab；
+# 合同详情页上的「返回」是**关闭该 tab**、回到订单列表页。
+# 设计：`_Tabs` 维护一个 tab 栈（最后一个是当前页）；生成脚本用
+#   page = _t.open_new(lambda: _act(page, "click", ...))
+#   page = _t.close_current(lambda: _act(page, "click", ...))
+# **重新绑定局部变量 page** ⇒ 后续步骤与断言自动落在当前 tab 上（旧的 page 变量指向的仍是旧 tab 对象，
+# 但我们所有步骤都读 `page`，所以重新赋值即"切页"）。
+# ============================================================================
+_TAB_TIMEOUT_MS = int(os.environ.get("HYBRID_TAB_TIMEOUT", "8000"))
+_TAB_CLOSE_STRICT = os.environ.get("HYBRID_TAB_CLOSE_STRICT", "1").strip().lower() not in ("0", "off", "false", "no")
+
+
+class _Tabs:
+    """tab 栈：支持「点开新 tab 并切过去」与「关当前 tab 回上一个」。"""
+
+    def __init__(self, page):
+        self.stack = [page]
+
+    @property
+    def page(self):
+        return self.stack[-1]
+
+    def open_new(self, click):
+        """执行 `click()`（那个会新开 tab 的点击）→ 等新 tab 出现 → 切过去 → 等数据就绪。"""
+        cur = self.page
+        try:
+            with cur.context.expect_page(timeout=_TAB_TIMEOUT_MS) as info:
+                click()
+        except Exception as e:
+            raise RuntimeError(
+                f"点了「会开新 tab」的控件，但 {_TAB_TIMEOUT_MS}ms 内没有新 tab 出现"
+                f"（{type(e).__name__}: {e}）。常见原因：① 该控件其实不会开新 tab"
+                f"（探针的 opens_new_tab 标记或场景判断有误）；② 弹窗被浏览器拦截；③ 点到的不是预想元素。"
+                f"排查：--debug 看逐步截图（log/<run_id>/shots/）。") from e
+        new = info.value
+        try:
+            new.wait_for_load_state("domcontentloaded")
+        except Exception:
+            pass
+        self.stack.append(new)
+        _wait_ready(new, new.url)
+        _log(new, "tab_open", f"已切到新 tab：{new.url}")
+        return new
+
+    def close_current(self, click):
+        """点「返回」类按钮 → 等当前 tab **真的关闭** → 切回上一个 tab。
+
+        ⚠️ 默认**严格**：需求就是「点返回会关闭该页面」—— 关不掉时静默切回 = 假绿
+        （看着过了，其实页面没关）。要放宽：HYBRID_TAB_CLOSE_STRICT=0。
+        """
+        cur = self.page
+        if len(self.stack) < 2:
+            raise RuntimeError("close_tab 用在了没有上一个 tab 的场景（它只用于「从新 tab 返回」）")
+        closed = True
+        try:
+            with cur.expect_event("close", timeout=_TAB_TIMEOUT_MS):
+                click()
+        except Exception:
+            closed = False
+        if not closed and _TAB_CLOSE_STRICT:
+            raise RuntimeError(
+                f"点「返回」后该 tab 在 {_TAB_TIMEOUT_MS}ms 内**没有关闭** —— 需求是「关闭该页面并返回上一页」，"
+                f"所以这是真失败（不是超时抖动）：① 该按钮可能只是普通跳转而不是关 tab；"
+                f"② 该 tab 不是脚本打开的 ⇒ 浏览器不允许 window.close()（用例里应**点击**打开它，别直接 goto）；"
+                f"③ 这个 tab 已被别的动作关掉了。放宽判定：HYBRID_TAB_CLOSE_STRICT=0。")
+        self.stack.pop()
+        prev = self.page
+        try:
+            prev.bring_to_front()
+        except Exception:
+            pass
+        _wait_ready(prev, prev.url)
+        _log(prev, "tab_close", f"已关闭上一 tab 并切回：{prev.url}（真的关了={closed}）")
+        return prev
+
+
+def _click_row_cell(page, row_text, cell_field, tabs=None):
+    """**行内定位**：在「包含 row_text 的那一行」里点 cell_field 列的链接（返回新 tab 或 None）。
+
+    为什么需要这个能力：新建记录的编号/合同号是**服务端动态分配**的，探测清单里不可能有它的语义名，
+    AI 无法按名字引用那一条 ⇒ 只能「按行内容锚定行 + 按列字段取元素」。
+    `data-field` 是被测页面既有约定（td[data-field='contractNo'] 这类）。
+
+    唯一性：含该文本的行必须**恰好 1 行**，否则直接失败 —— 宁可失败，也不点错行。
+    """
+    rows = page.locator("tbody tr").filter(has_text=row_text)
+    n = _count_attached(rows)
+    if n != 1:
+        raise RuntimeError(
+            f"行内定位失败：含文本 {row_text!r} 的行命中 {n} 个（要求恰好 1 个）。"
+            f" 常见原因：① 这段文本不在任何行里（上一步的新建没成功 / 名称写错）；"
+            f" ② 锚文本太短，多行都含它（用更长的独有片段）。")
+    target = rows.first.locator(f"td[data-field='{cell_field}'] a")
+    if target.count() == 0:
+        target = rows.first.locator(f"td[data-field='{cell_field}']")
+    kn = target.count()
+    if kn != 1:
+        raise RuntimeError(f"行内列 {cell_field!r} 的目标元素命中 {kn} 个（要求 1 个）")
+    _shot(page, f"row_{cell_field}")
+
+    def _do():
+        target.click()
+
+    if tabs is not None:
+        return tabs.open_new(_do)
+    _do()
+    _log(page, "row_click", f"已点「含 {row_text} 行」的 {cell_field} 列")
+    return None
+
+
+def _assert_first_row(page, field, expected, desc=""):
+    """断言「表格第一行的某列」包含期望文本 —— 直接覆盖「新建后列表第一条记录就是它」这类需求。
+
+    为什么单列一种断言 kind：文本断言只能证明「页面上出现过这个名字」，证明不了「它就是第一条」。
+    """
+    cell = page.locator(f"tbody tr:first-child td[data-field='{field}']")
+    _count_attached(cell)
+    if cell.count() == 0:
+        raise AssertionError(f"表格没有第一行、或没有 {field!r} 列 —— 无法验证「第一条记录」（断言无法成立）")
+    _expect(cell.first).to_contain_text(str(expected), timeout=_LOCATE_TIMEOUT_MS)
+    _ok(page, desc or f"第一行 {field} 含 {expected}", f"first_row_{field}", str(expected))
 
 
 # ---- 用例间数据复位（2026-09-14）----

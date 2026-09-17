@@ -1,7 +1,8 @@
 # BACKLOG · 下一步优化清单
 
 > 维护约定：动一项就划掉一项并补「实测证据」。
-> **当前基线 V7.5.3（2026-09-17）**：16 用例全绿（12 手写 + 4 AI）· 框架自测 **143 条** · verify 脚本 4 个
+> **当前基线：V7.5.3 + 订单场景批次（2026-09-18，未发版）**：17 用例全绿（12 手写 + 5 AI）·
+> 框架自测 **158 条** · verify 脚本 4 个
 > （断言正负向 / 跨页 / 弹层 / 慢目标；本批实跑 `verify_cross_page.py` ✅）。
 > 仓库：https://github.com/AprilPark1012/hybrid_gui_qa （Public · MIT · 单提交起步）。
 > ⚠️ 本框架的定位是**交付给团队用的产品**（不是个人脚本）—— 排序一律按下面两条规则，不按「做起来容不容易 / 顺不顺手」。
@@ -187,6 +188,63 @@ AprilPark1012 定调的四个目标优先级：**② AI 语义准 ≈ ① 降人
 
 ---
 
+## 〇-f、2026-09-17/18 批次：订单场景（跨 tab 端到端）· **AI 链路已跑通，改动待提交**
+
+```
+[本轮范围] AprilPark1012 2026-09-17 22:35 提出：设计跨 tab 场景
+           「合同页新建退货订单并查看订单详情」→ 要求 AI 端到端完成（用例生成 → 脚本生成 → 执行验证）。
+
+① 框架新能力（为多 tab 与动态行而加）
+   · probe：`opens_new_tab`（目标 `_blank` / window.open ⇒ 点击会开新 tab，不让 LLM 猜）
+            + `probe_row_fields()`（表格行内列清单 field/header，供 AI 做行内定位）
+   · element_map：TestStep 增 `row_text` / `cell_field`
+   · case_builder：新动作 `click_new_tab` / `close_tab` / 断言 `expect_first_row`（kind=first_row + row_field）
+   · generator/conftest：`_Tabs`（新 tab 切换/关闭 + 真的关了没）、`_click_row_cell`（行锚文本 + 列字段定位）、
+                        `_assert_first_row`（验「第一条就是刚建的那条」—— text 断言证明不了位置）
+
+② 本次修掉的两个真 bug（都是"看着对、其实点错/误伤"类）
+   (a) **同字段·跨区域·不同名字 ⇒ AI 静默选错控件**（服务 ②，本轮最大收获）
+       现象：AI 端到端连跑 6 次，6 次都把弹窗里的「订单名称」选成**筛选区**的框
+             （`订单名称_全模糊` label=订单名称 / placeholder=订单名称（全模糊） / container_heading=空
+               vs `请输入订单名称` label=订单名称 * / placeholder=请输入订单名称 / container_heading=新建订单）。
+       为什么两个闸门都没拦住：名字**完全不同** ⇒ `_shadowed_names`（只看完全同名）报不出来；
+             两个名字**都能映射到真实控件** ⇒ 不报「未映射」= **静默错映射**。
+       定位手段（可复用）：解失败那次的 `trace.zip` → `trace.network` 里**没有 POST /api/orders**
+             ⇒ 提交没发出 ⇒ 前端必填校验没过 ⇒ 弹窗字段根本没填进去（比读日志猜快得多）。
+       修法：`explorer._field_identity()`（label 归一化：去 `*`、去结尾「（全模糊）」）+ `_same_field_pairs()`
+             ⇒ 提示词里**显式列出**「同一字段的多个不同名字版本 + 各自所属区域」，并加规则 2c
+             （说明选错不会报未映射、只会悄悄操作到别的控件）。
+       证据：修后第 7 次 AI 端到端第 7 步自动变成 `请输入订单名称`；`--verify` 实测 **PASSED**；
+             回归 `tests/test_name_alignment.py` 新增 5 条（含"提示词里必须真出现这段披露"的接线判据）。
+
+   (b) **跨页重名告警按「全局并集」判定 ⇒ 误伤其它用例（假红）**（服务 ③ 底线）
+       现象：`cli run` **15 passed / 2 failed** —— 手写跨页用例 `cross_page_detail`、
+             `ai_contracts_cross_page_011030` 报「跨页用例的步骤用了跨页重名的原始名 'HT_1005'」。
+       根因：订单场景带来「订单系统」页，它与「列表页」都有 HT_1001…HT_1020 链接 ⇒ `HT_1005` 进全局名单；
+             而这两个用例自己声明的页面是「列表页+详情页」，**在它们范围内根本不重名**。
+       修法：`_DUP_RAW_NAMES` 旁增 `_DUP_PAGES`（名 → 出现过的页集合）+ `_dup_raw_names_for_case()`
+             ⇒ 判据改成「**本用例声明的页 ∩ 该名字出现的页 ≥ 2**」；`_render_assert(..., dup_raw=…)` 按用例透传。
+       证据：回归 `tests/test_assert_kinds_render.py` 新增 3 条（含"真重名仍必须拦"的反向判据，防修成漏拦）；
+             修后 `cli run` **17 passed / exit 0**。
+
+③ 交付物与实测
+   · `scenarios/orders/orders_return_from_contract.yml`（3 页 / 30 步 / 护栏 + 逐字语义名清单）
+   · AI 用例 `cases/ai_orders_return_from_contract_004934.json`（AI 端到端产物，0 未映射）
+   · **AI 端到端（真跑）**：`explore --ai --scenario-file …` → exit 0 · `--verify` 实测 PASSED（1 passed in 4.01s）
+     逐步骤证据：新 tab 开订单系统 ✔ 4 个弹层选值 + 类型/客户/销售员 ✔
+     首行断言「第一行订单名称 = 刚填的 退货订单-20260918005504」✔
+     点该行合同编号 → 新 tab 合同详情（?no=HT-1001&from=order）显示 HT-1001/合同1 ✔
+     点「返回」→ **tab 真的关了**(真的关了=True) 并回到订单列表 ✔
+   · 回归：`pytest tests/ -q` **158 passed** · `cli run` **17 passed / exit 0** · `generate` 未映射 0
+   · 内存纪律：本轮两次撞内存红线（一次 OOM 连杀 chrome + hermes ⇒ CLI 掉线）：跑浏览器前先看 MemAvailable，
+     先杀掉占 ~350MB 的 pyright 语言服务；`console` 有 `dmesg | grep oom-kill` 可复核。
+
+⏳ 待 AprilPark1012 拍板的三件：① 提交（框架改动 + 场景 + 用例 + 测试，走敏感词闸门）
+   ② 推送公开仓 ③ 是否升 **V7.6**（按版本规则：新增能力 ⇒ 递增 x2，而不是 x3 修复位）。
+```
+
+---
+
 ## 一、已排队（按上表顺序）
 
 ### ① 弱 url 断言质量闸 + 跨页面流程 ★ 服务 ② AI 语义准 —— ✅ **已完成（2026-09-17）**
@@ -275,18 +333,19 @@ AprilPark1012 定调的四个目标优先级：**② AI 语义准 ≈ ① 降人
 ```bash
 cd ~/hybrid_gui_qa && source .venv/bin/activate
 python -m demo.app &                       # 被测应用（8000）
-python -m pytest tests/ -q                 # 框架自测：期望 143 passed（130 原有 + 13 条换页证据闸门；秒级，不需 demo）
+python -m pytest tests/ -q                 # 框架自测：期望 158 passed（含换页证据闸门 / 名称对齐 / 跨页重名按用例判定；秒级，不需 demo）
 python tests/verify_slow_target.py         # ★ 慢目标闸门（自起 demo+代理，关键 6 条必须全绿；内存<650MB 会 SKIP exit 3）
 python tests/verify_assert_kinds.py        # 断言正/负向端到端（需 demo；写错必须 FAILED）
 python tests/verify_cross_page.py          # 跨页：三节判据 + 5 条负向必须全 FAILED（需 demo；内部负向段走 --allow-unmapped）
 python tests/verify_picker_layer.py        # 弹层回归（需 demo）
-python -m framework.cli all --workers 2    # 期望 16 passed + 预检降级为 1 worker
+python -m framework.cli all --workers 2    # 期望 17 passed + 预检降级为 1 worker
 dmesg -T | grep -ci "out of memory"        # 不得新增
 systemctl show hermes-gateway-<profile> -p NRestarts --value   # 应恒为 1
 python build_html.py                       # 同步培训页（无排版告警）
 git add -A && git commit && git push       # 版本纪律（推送凭据从 pass 现取，见 skill）
 ```
 
+> ⚠️ 跑浏览器前先看 MemAvailable（本机红线见 skill）：先杀掉 ~350MB 的 pyright 语言服务再跑，别并发跑浏览器。
 > 真值来源：`--version` 必须等于 `build_html.py` 里的 VERSION / VERSION_DATE（两处各写 = 漂移源，已有测试盯着）。
 > ⚠️ 本机 1.87G 无 swap：**别并发跑浏览器**（explore / generate / run / verify 一个跑完再跑下一个）。
 > 待 ① 批（含变异注入）落地后，复核清单增补 `python tests/verify_mutation.py`（需 demo；每个注入 bug 必须被抓到）。

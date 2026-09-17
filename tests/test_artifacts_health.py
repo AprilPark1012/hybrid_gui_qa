@@ -66,3 +66,37 @@ def test_no_unexpected_files_in_scripts():
     allowed = {"test_cases.py", "conftest.py", "datasets"}
     actual = {p.name for p in SCRIPTS.iterdir() if p.name != "__pycache__"}
     assert actual <= allowed, f"scripts/ 里有非产物文件：{sorted(actual - allowed)}"
+
+
+def test_test_cases_imports_every_conftest_helper():
+    """`test_cases.py` 用到的 conftest 辅助**必须**在它的 import 名单里。
+
+    2026-09-17 实测踩到：跨 tab 用的 `_Tabs` 已经被渲染进用例，却忘了加进
+    `from conftest import (...)` ⇒ verify 跑第一条跨 tab 用例就
+    `NameError: name '_Tabs' is not defined`（生成期无声，**运行期才炸**）。
+
+    判据（结构可查、不靠人记）：conftest 顶层定义的 `_` 前缀名字 ∩ test_cases 里真实 load 的 Name
+    ⊆ test_cases 的 import 名单。这类「模板渲染了、import 没跟上」的缺口以后都拦在这里。
+    """
+    import ast
+    cf_tree = ast.parse((SCRIPTS / "conftest.py").read_text(encoding="utf-8"))
+    tc_tree = ast.parse((SCRIPTS / "test_cases.py").read_text(encoding="utf-8"))
+
+    defined = {n.name for n in cf_tree.body
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+    defined |= {t.id for n in cf_tree.body if isinstance(n, ast.Assign)
+                for t in n.targets if isinstance(t, ast.Name)}
+    defined = {n for n in defined if n.startswith("_")}
+
+    imported: set[str] = set()
+    for node in ast.walk(tc_tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "conftest":
+            imported |= {a.name for a in node.names}
+        elif isinstance(node, ast.Import):
+            imported |= {a.name for a in node.names}
+    used = {n.id for n in ast.walk(tc_tree)
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+
+    missing = sorted((used & defined) - imported)
+    assert not missing, (f"test_cases.py 用了 conftest 里的 {missing} 却没 import（跑到那一步就 NameError）"
+                         f"⇒ 把这些名字加进 generator 的 `from conftest import (...)` 模板")

@@ -189,11 +189,68 @@ def render_cards() -> str:
 # ---------------- HTML 模板 ----------------
 
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "7.5.3"
-VERSION_DATE = "2026-09-17"
+VERSION = "7.6"
+VERSION_DATE = "2026-09-18"
 CHANGELOG = [
     dict(
-        version="7.5.3", date="2026-09-17", tag="当前版本",
+        version="7.6", date="2026-09-18", tag="当前版本",
+        theme="跨 tab 端到端（订单场景）· 行内定位 · 首行断言 —— 并修掉两处「看着对、其实不在验」的缺陷",
+        summary="本版主线：让框架能跑<b>真实的跨窗口业务流程</b>（点链接开新 tab → 在另一页填单 → "
+                "回到原 tab），并把 AI 规划链路里两处<b>不会报错却会出错</b>的地方修掉。"
+                "第一处（服务 ② AI 语义准）：同一个字段在<b>筛选区与弹窗里各有一个控件、名字却完全不同</b>时，"
+                "AI 会把弹窗字段选成筛选区那个 —— 两个名字都能映射到真实控件，所以既没有「未映射」告警、"
+                "也没有同名告警（实测连跑 6 次、6 次全错）。第二处（服务 ③ 稳定）：跨页重名原始名的告警按"
+                "<b>全局并集</b>判定，会把别的用例带进来的重名算到本用例头上 ⇒ 两条手写跨页用例假红。",
+        added=[
+            "<b>跨 tab 能力</b>：探针新增 <code>opens_new_tab</code>（<code>_blank</code> / "
+            "<code>window.open</code> ⇒ 点击会开新 tab，<b>不让 LLM 猜</b>）；动作新增 "
+            "<code>click_new_tab</code> / <code>close_tab</code>，生成脚本里的 <code>_Tabs</code> 负责句柄切换，"
+            "并<b>回读「真的关了没」</b>写进逐用例日志",
+            "<b>行内定位</b>：<code>probe_row_fields()</code> 探出表格行内列清单（field/header），"
+            "<code>TestStep</code> 增 <code>row_text</code> / <code>cell_field</code>，"
+            "生成脚本用 <code>_click_row_cell()</code>「行锚文本 + 列字段」点到<b>运行时新建出来的那一行</b>"
+            "（它的编号由服务端分配，语义清单里不可能有）",
+            "<b>首行断言</b>：新断言 kind <code>first_row</code>（<code>row_field</code> + 期望值）→ "
+            "<code>_assert_first_row()</code>。为什么单列一种 kind：文本断言只证明「页面上有这个名字」，"
+            "<b>证明不了它就是第一条</b>，而「新建后列表第一条就是它」是需求原文",
+            "<b>订单系统场景</b>：<code>scenarios/orders/orders_return_from_contract.yml</code>（3 页 / 30 步）"
+            "+ AI 端到端产物 <code>cases/ai_orders_return_from_contract_*.json</code>",
+            "<b>同字段·跨区域歧义披露</b>（<code>explorer._field_identity()</code> + "
+            "<code>_same_field_pairs()</code>）：按 label 归一化（去 <code>*</code>、去结尾「（全模糊）」）找出"
+            "「同一字段、不同区域、名字不同」的组合，<b>在提示词里显式列出</b>两个名字与各自区域，"
+            "并加规则 2c 点明「选错不会报未映射、只会悄悄操作到别的控件」",
+            "回归：<code>tests/test_name_alignment.py</code> 11 条（含「提示词里必须真出现这段披露」的"
+            "<b>接线判据</b>，防止函数单测绿而功能没接上）",
+        ],
+        changed=[
+            "<code>generate</code> 的跨页重名告警改为<b>按用例判定</b>：<code>_DUP_PAGES</code> 记「名字 → "
+            "出现过的页集合」，判据 = 「<b>本用例声明的页 ∩ 该名字出现的页 ≥ 2</b>」；"
+            "<code>_render_assert(..., dup_raw=…)</code> 按用例透传（防别的用例带进来的重名误伤）",
+            "<code>cases/cross_page_detail.json</code> / <code>cases/ai_contracts_cross_page_011030.json</code> "
+            "与订单场景并存时不再假红（用例本身一字未改，改的是判据口径）",
+            "<code>docs/BACKLOG-下一步优化.md</code> 新增〇-f 批次记录（根因 / 修法 / 证据 / 内存纪律）",
+        ],
+        fixed=[
+            "<b>AI 静默选错控件</b>（本轮最大收获）：弹窗字段 <code>请输入订单名称</code> 与筛选区 "
+            "<code>订单名称_全模糊</code> 名字<b>完全不同</b> ⇒ 原「同名不同区域」告警报不出来；"
+            "两者又都映射得到真实控件 ⇒ 不报「未映射」⇒ 用例一路跑到「提交后首行断言」才红。"
+            "修法：把歧义<b>显式摊在提示词里</b>（清单 + 规则 2c）。证据：修后 AI 自动选对，"
+            "<code>--verify</code> 实测 <b>PASSED</b>",
+            "<b>跨页重名告警误伤别的用例</b>：全局并集判定 ⇒ <code>cli run</code> 15 passed / 2 failed；"
+            "改为按用例判定后 <b>17 passed / exit 0</b>",
+        ],
+        notes=[
+            "定位手法留档（比读日志猜快得多）：解失败那次的 <code>log/&lt;run&gt;/traces/&lt;case&gt;_trace.zip</code>，"
+            "读 <code>trace.network</code> 的请求清单 —— 本次一眼看出<b>没有 POST /api/orders</b> ⇒ "
+            "提交根本没发出 ⇒ 前端必填校验没过 ⇒ 弹窗字段没填进去",
+            "本机内存红线重申：跑浏览器前先看 <code>MemAvailable</code>（编辑 .py 后会被拉起的语言服务占 ~350MB，先关掉）。"
+            "实测 OOM 会<b>连杀 chrome-headless 与 hermes 进程</b>，现象是「CLI 自己退出了」",
+            "回归口径：<code>pytest tests/ -q</code> <b>158 passed</b> · <code>cli run</code> "
+            "<b>17 passed / exit 0</b> · <code>generate</code> 未映射 0",
+        ],
+    ),
+    dict(
+        version="7.5.3", date="2026-09-17", tag="上一版",
         theme="假绿治理：换页证据闸（弱 url 断言）· F5 断言稳健化 · 质量闸健壮性 · 负向验证段复活",
         summary="本版<b>全是「假绿」类缺陷的修复</b>（用例照绿、其实没验到东西）："
                 "① AI 用 <code>expect_url = localhost</code> 当换页证据 —— 换页前后两个页面都含它，"

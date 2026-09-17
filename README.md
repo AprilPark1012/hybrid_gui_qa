@@ -1,8 +1,8 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V7.5.3**（2026-09-17）· 版本号单一来源：`build_html.py` 顶部 `VERSION`/`CHANGELOG`
-> （`python -m framework.cli --version` 也读它）。本次变更见 `RELEASE_NOTES_V7.5.3.md`；
-> 上一版见 `RELEASE_NOTES_V7.5.2.md`（脱敏收敛 + 交付包落库）。
+> 当前版本 **V7.6**（2026-09-18）· 版本号单一来源：`build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> （`python -m framework.cli --version` 也读它）。本次变更见 `RELEASE_NOTES_V7.6.md`；
+> 上一版见 `RELEASE_NOTES_V7.5.3.md`（假绿治理：换页证据闸 + 质量闸健壮性）。
 
 > 一个 Python 骨架，示范如何把 **Browser Use（AI 智能探索）** 和 **Playwright（确定性执行）**
 > 组合成一套混合测试框架：AI 负责理解意图、规划步骤、挑元素；Playwright 负责精确定位、
@@ -101,6 +101,21 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 - **归档保留策略**：`cli prune [--keep 20] [--dry-run]`，`output/element_maps/` 的 element_map/probe 快照各留最近 N 个（`HYBRID_KEEP_SNAPSHOTS` 可调）；explore/probe 每次结束自动静默清理。
 
 > 需 DeepSeek key（AI 语义识别链路）：在项目根 `.env` 配 `DEEPSEEK_API_KEY`（见「快速上手·第4节」）。
+
+---
+
+## 2026-09-18 变更要点 —— 跨 tab 端到端 · 行内定位 · 首行断言（V7.6）
+
+| 项 | 内容 |
+|---|---|
+| 跨 tab（新能力） | 探针新增 `opens_new_tab`（`_blank` / `window.open` ⇒ 点击会开新 tab，**不让 LLM 猜**）；动作新增 `click_new_tab` / `close_tab`，生成脚本 `_Tabs` 负责句柄切换并**回读「真的关了没」** |
+| 行内定位（新能力） | `probe_row_fields()` 探出表格行内列清单；`TestStep.row_text` / `cell_field` + `_click_row_cell()` —— 用于**运行时新建的那一行**（编号由服务端分配，语义清单里不可能有） |
+| 首行断言（新能力） | 新 kind `first_row`（`row_field` + 期望值）→ `_assert_first_row()`。文本断言只能证明「页面上有这个值」，**证明不了它在第一行** |
+| 修掉的安静缺陷① | **同字段·跨区域·不同名字 ⇒ AI 静默选错控件**：弹窗 `请输入订单名称` 与筛选区 `订单名称_全模糊` 名字完全不同 ⇒ 同名告警报不出来、又都映射得到真实控件 ⇒ 不报「未映射」（实测连跑 6 次 6 次全错）。修法：`_field_identity()` + `_same_field_pairs()` 把歧义**显式摊在提示词里**（含规则 2c 点明「选错不会报未映射」） |
+| 修掉的安静缺陷② | **跨页重名告警按全局并集判定 ⇒ 误伤别的用例**（`cli run` 15 passed / 2 failed 假红）：改成按用例判定（`_DUP_PAGES` + `_dup_raw_names_for_case()`，判据 = 本用例声明的页 ∩ 该名字出现的页 ≥ 2），并用反向测试钉住「真重名仍必须拦」 |
+| 定位手法留档 | 解失败那次的 `traces/<case>_trace.zip` → 读 `trace.network` 请求清单：一眼看出**没有 `POST /api/orders`** ⇒ 提交没发出 ⇒ 前端必填校验没过（比读日志猜快得多） |
+| 实测 | AI 端到端 `explore --ai --scenario-file scenarios/orders/orders_return_from_contract.yml` → **exit 0 · `--verify` PASSED**（新 tab 开订单系统 / 4 个弹层选值 / **首行断言命中** / 点合同编号开新 tab 看详情 / 点「返回」**tab 真的关了**）；`pytest tests/ -q` **158 passed** · `cli run` **17 passed / exit 0** · `generate` 未映射 0 |
+| 下一项 | **变异注入闸门**（往 demo 注入已知 bug，量「AI 产出的断言有没有牙」）—— 服务 ② AI 语义准 |
 
 ---
 

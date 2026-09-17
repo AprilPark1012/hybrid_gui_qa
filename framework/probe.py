@@ -29,6 +29,20 @@ def _slug(name: str) -> str:
     return s or "el"
 
 
+def readable_name(text: str, help_text: str) -> str:
+    """挑一个「有信息量」的名字来给控件命名。
+
+    纯标点的名字没有信息量：企业 UI 里「选择/更多」按钮常写成 `...`，与 title="选择业务单元"
+    配对。若直接用 `...` 当基础名，`_slug` 会把标点全吃掉 ⇒ 退化成 `el` / `el_2` / `el_3`
+    （2026-09-17 实测：订单页 3 个「...」按钮全叫 `el@…`，AI 与人工都认不出是哪一个）。
+    ⇒ 名字里没有任何字母/数字/汉字时，用 help_text（title / aria-describedby）兜底。
+    """
+    t = (text or "").strip()
+    if any(ch.isalnum() for ch in t):
+        return t
+    return (help_text or t).strip()
+
+
 def _visible(page: Page, locator) -> bool:
     try:
         return locator.is_visible()
@@ -281,12 +295,18 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
         text = (name or placeholder or label)[:60]
         test_id = (loc.get_attribute("data-testid") or "").strip()
 
+        # --- 跨 tab 流程（2026-09-17）：这个控件点了会不会**新开 tab**？ ---
+        # 判据：<a target="_blank">（含 formtarget）或 onclick 里出现 window.open。
+        # 为什么由探针给这个信号：AI 需要知道「这个点击要开新 tab 并切过去」，
+        # 而"会不会开新 tab"是 DOM 事实、不该让 LLM 猜（猜错就是点完还留在原页继续点，全乱）。
+        opens_new_tab = _opens_new_tab(loc, tag)
+
         # --- P4：抓近邻结构 + 帮助文本上下文（消歧用） ---
         nearby_text = _nearest_container_text(loc)
         container_heading = _nearest_heading(loc)
         help_text = _help_text(page, loc)
 
-        base = _slug(text or tag or f"el{i}")
+        base = _slug(readable_name(text, help_text) or tag or f"el{i}")
 
         items.append({
             "_base": base,                       # 第一遍：只攒基础名 + 上下文
@@ -304,9 +324,61 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
             "help_text": help_text,
             # 跨页流程（P3）：所属页面标记（单页场景为空串，行为不变）
             "page": page_name or "",
+            # 跨 tab 流程（2026-09-17）：点击是否新开 tab（探针给信号，AI 据此选 click_new_tab）
+            "opens_new_tab": opens_new_tab,
         })
     _assign_semantic_names(items)                # 第二遍：统一命名（同名 → 全部带上下文）
     return items
+
+
+def _opens_new_tab(loc, tag: str) -> bool:
+    """该控件点击后是否会新开 tab：`<a target=_blank>`（或 formtarget）或 onclick 里的 window.open。"""
+    try:
+        if tag == "a":
+            if (loc.get_attribute("target") or "").strip().lower() == "_blank":
+                return True
+        if (loc.get_attribute("formtarget") or "").strip().lower() == "_blank":
+            return True
+        onclick = (loc.get_attribute("onclick") or "")
+        if "window.open" in onclick:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def probe_row_fields(page: Page, max_tables: int = 5) -> list[dict]:
+    """探测「表格的行内列」清单 —— 供 AI 做**行内定位**（按行内容锚行 + 取该行某列）。
+
+    返回 [{"table": <表名/testid>, "field": "contractNo", "header": "合同编号"}, ...]
+
+    为什么需要它：新建记录的编号/合同号是**服务端动态分配**的，元素清单里不可能预先有它的语义名，
+    所以「点新建那一行的合同编号」这类步骤只能写成 `row_text`（行锚文本：刚输入的名称）+
+    `cell_field`（列字段，即页面里 `td[data-field=...]` 的值）。AI 必须知道有哪些 field 可用 ——
+    这个清单就是它的依据；不让 AI 猜 CSS（那是本项目铁律）。
+    """
+    out: list[dict] = []
+    try:
+        tables = page.locator("table")
+        n = min(tables.count(), max_tables)
+    except Exception:
+        return out
+    for ti in range(n):
+        tbl = tables.nth(ti)
+        try:
+            tname = (tbl.get_attribute("data-testid") or tbl.get_attribute("id") or f"table{ti}").strip()
+            headers = tbl.locator("thead th").all_inner_texts()
+            cells = tbl.locator("tbody tr").first.locator("td[data-field]")
+            m = cells.count()
+            for ci in range(m):
+                field = (cells.nth(ci).get_attribute("data-field") or "").strip()
+                if not field:
+                    continue
+                header = headers[ci].strip() if ci < len(headers) else ""
+                out.append({"table": tname, "field": field, "header": header})
+        except Exception:
+            continue
+    return out
 
 
 def uniquify_across_pages(pages_items: list[tuple[str, list[dict]]]) -> tuple[list[dict], list[dict]]:
