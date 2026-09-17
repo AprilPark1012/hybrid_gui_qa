@@ -1,8 +1,8 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V7.5.2**（2026-09-16）· 版本号单一来源：`build_html.py` 顶部 `VERSION`/`CHANGELOG`
-> （`python -m framework.cli --version` 也读它）。本次变更见 `RELEASE_NOTES_V7.5.2.md`；
-> 上一版交付修复见 `RELEASE_NOTES_V7.5.1.md`（V7.5 的坏产物治理）。
+> 当前版本 **V7.5.3**（2026-09-17）· 版本号单一来源：`build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> （`python -m framework.cli --version` 也读它）。本次变更见 `RELEASE_NOTES_V7.5.3.md`；
+> 上一版见 `RELEASE_NOTES_V7.5.2.md`（脱敏收敛 + 交付包落库）。
 
 > 一个 Python 骨架，示范如何把 **Browser Use（AI 智能探索）** 和 **Playwright（确定性执行）**
 > 组合成一套混合测试框架：AI 负责理解意图、规划步骤、挑元素；Playwright 负责精确定位、
@@ -101,6 +101,21 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 - **归档保留策略**：`cli prune [--keep 20] [--dry-run]`，`output/element_maps/` 的 element_map/probe 快照各留最近 N 个（`HYBRID_KEEP_SNAPSHOTS` 可调）；explore/probe 每次结束自动静默清理。
 
 > 需 DeepSeek key（AI 语义识别链路）：在项目根 `.env` 配 `DEEPSEEK_API_KEY`（见「快速上手·第4节」）。
+
+---
+
+## 2026-09-17 变更要点 —— 假绿治理：换页证据闸 + 质量闸健壮性（V7.5.3）
+
+| 项 | 内容 |
+|---|---|
+| 假绿（本版主线） | AI 用 `expect_url = localhost` 当「回到列表页」的证据 —— 换页前后**两页 URL 都含它** ⇒ 点击后立刻就能通过，等于没验换页。根因是**提示词在教 AI 这么写** |
+| 三层修复 | ① 提示词：只准用**只出现在目标页**的片段；明确禁止 `localhost` / `localhost:8000` / `127.0.0.1` 这类每页都含的片段；列表页（根路径）没有独有片段 ⇒ 用**该页独有文案**做 `text` 断言。② 红线闸门 `case_builder.case_errors()`（片段命中 ≥2 页 / 跨页用例里只是 `host[:端口]`）。③ **拒绝产物**：AI 落盘与 `generate` 两条路都 `CaseQualityError` → exit 2 + 人话，一个产物不写 |
+| 防误伤 | 单页用例里的 host 断言只**告警**（手写用例可能是有意的，如专门验 `host:port`）；host 判定改为「与已知页面 URL 的 host 精确比对」为主 —— 不再靠「像域名的正则」（`index.html` 曾被它误判成 host） |
+| F5 断言稳健化 | `cross_page_detail` 的「列表恢复全量 20 行」→「预置基线行 `row-HT-1001` 在列表里」（与本次运行新建的数据无关，不会被顶掉） |
+| 修掉的安静 bug | `case_warnings` 碰到非字符串期望值（`count` 的 `20`）直接 `TypeError` —— **守门人自己倒下 = 这道栅栏不存在**；「断言回显输入」比较改为全程字符串口径 |
+| 复活的验证段 | `tests/verify_cross_page.py` 负向段**自 V7.5.1 起就没跑起来**（负向用例④用不存在的元素名 → 映射质量闸拦下整个 generate → 脚本 exit 2，看着像失败其实自己没跑完）。负向段改走 `--allow-unmapped` 并写明原因 ⇒ 实测 **5 条负向全部 FAILED**（含新增「没回到列表页时，列表页独有文案断言必须失败」） |
+| 自测 | `pytest tests/ -q` → **143 passed**（+13 条 `tests/test_case_quality_gate.py`）· `cli run` → **16 passed / exit 0** · `verify_cross_page.py` → exit 0 · `generate` 未映射 0 处 / `_goto` 接线 32 处 |
+| 不做（诚实清单） | CI 落点与 Windows 侧并发隔离证据按 2026-09-17 裁定不做 / 不再追；**变异注入闸门**（量「AI 产出的断言有没有牙」）仍是下一项 |
 
 ---
 

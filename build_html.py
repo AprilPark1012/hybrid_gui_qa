@@ -189,11 +189,77 @@ def render_cards() -> str:
 # ---------------- HTML 模板 ----------------
 
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "7.5.2"
-VERSION_DATE = "2026-09-16"
+VERSION = "7.5.3"
+VERSION_DATE = "2026-09-17"
 CHANGELOG = [
     dict(
-        version="7.5.2", date="2026-09-16", tag="当前版本",
+        version="7.5.3", date="2026-09-17", tag="当前版本",
+        theme="假绿治理：换页证据闸（弱 url 断言）· F5 断言稳健化 · 质量闸健壮性 · 负向验证段复活",
+        summary="本版<b>全是「假绿」类缺陷的修复</b>（用例照绿、其实没验到东西）："
+                "① AI 用 <code>expect_url = localhost</code> 当换页证据 —— 换页前后两个页面都含它，"
+                "点击后立刻就能通过，<b>「确实换页了」这条关键证据悬空</b>，而根因是<b>提示词在教 AI 这么写</b>；"
+                "② 质量闸自己遇到非字符串期望值（<code>count</code> 的 <code>20</code>）就<b>崩溃</b> —— "
+                "守门人倒下等于这道栅栏不存在；③ 跨页用例里「列表恢复全量 20 行」这类<b>脆弱断言</b>"
+                "（与要验的事无关，还会被本次运行新建的数据顶掉）；"
+                "④ 一段负向验证<b>自 V7.5.1 起静默失效</b>（脚本 exit 2 看着像失败，其实是它自己没跑完）。",
+        added=[
+            "<b>换页证据红线闸</b>：<code>case_builder.case_errors()</code> 判定「换页证据必须只指向一页」——"
+            "片段在用例声明的多页 URL 里都命中（典型 <code>localhost</code>），或跨页用例里只是 "
+            "<code>host[:端口]</code> ⇒ <b>红线</b>；AI 落盘（<code>elementmap_to_cases_file</code>）与生成 "
+            "（<code>generator._gate_false_green</code>）<b>两条路都 raise <code>CaseQualityError</code></b> ⇒ "
+            "exit 2 + 人话（哪条用例、哪条断言、怎么改），<b>一个产物都不写</b>（口径同映射质量闸：产物永不允许带假绿）",
+            "<b>AI 提示词补规则（真根因）</b>：换页证据只准用<b>只出现在目标页</b>的片段；"
+            "点明<b>禁止</b> <code>localhost</code> / <code>localhost:8000</code> / <code>127.0.0.1</code> "
+            "这类<b>每个页面都含</b>的片段；目标页没有独有片段（如列表页就是根路径 <code>/</code>）⇒ "
+            "改用<b>该页独有文案</b>做 <code>text</code> 断言",
+            "<code>tests/test_case_quality_gate.py</code>（13 条，秒级不需 demo）：11 种断言 kind × 7 种期望值形态 × "
+            "4 种定位写法<b>都不许崩</b> · 弱证据必须被拦 · <b>真证据不许被误拦</b> · 仓库用例全量扫描无弱证据 · "
+            "两条产物路径的红线行为",
+        ],
+        changed=[
+            "<code>cases/ai_contracts_cross_page_011030.json</code>：「确认已回到列表页」的 "
+            "<code>expect_url</code> 从 <code>localhost</code> 换成<b>列表页独有文案</b> <code>新建合同</code>"
+            "（<code>text</code> 断言；列表页 URL 是根路径、没有独有片段）",
+            "<b>F5 断言稳健化</b>：<code>cases/cross_page_detail.json</code> 的「列表恢复全量 20 行」"
+            "（<code>count expect=20</code>）→「<b>预置基线行</b> <code>row-HT-1001</code> 在列表里」——"
+            "与本次运行新建的数据无关，不会被顶掉，且「回到列表页」另有「新建合同按钮可见」作证",
+            "<code>tests/verify_cross_page.py</code>：第二节新增「弱证据必被红线拦 + 真证据不许误拦」两条判据；"
+            "负向段改走 <code>generate --allow-unmapped</code>（<b>并写清原因</b>：负向用例故意用不存在的元素名，"
+            "映射质量闸会拦下整个 generate；产物只服务负向验证，收尾会重新生成干净产物）",
+            "<code>docs/BACKLOG-下一步优化.md</code> 基线/队列同步 + 新增〇-e 批次记录；"
+            "<code>docs/P3-跨页面流程-设计.md</code> 状态由「待确认」改为<b>「已实施」</b>；<code>build_html.py</code> 文案同步",
+        ],
+        fixed=[
+            "<b>质量闸自身崩溃</b>（安静而致命）：<code>case_builder.case_warnings</code> 遇到非字符串期望值"
+            "（<code>count</code> 的 <code>20</code>）直接 <code>TypeError: expected string or bytes-like "
+            "object, got 'int'</code> —— 旧写法把期望值喂给正则与哈希集合比较，只按字符串设计 ⇒ "
+            "文本形态检查<b>只对字符串生效</b>、「断言回显输入」比较<b>全程走字符串口径</b>。"
+            "教训：<b>守门人也要有守门人</b>（该函数此前只在 AI 链路跑过，一碰到手写 11 类断言用例就倒）",
+            "<b>负向验证段静默失效</b>：<code>tests/verify_cross_page.py</code> 的负向段<b>自 V7.5.1 起就没跑起来</b>"
+            "（负向用例④故意用不存在的元素名 ⇒ 被映射质量闸拦成 exit 2 ⇒ 脚本 return 2，"
+            "「N 条负向必须 FAILED」长期未执行）。修正后实测<b>5 条负向全部 FAILED</b>，"
+            "含新增「没回到列表页时，列表页独有文案断言必须失败」—— 证明替换后的证据<b>真的有牙</b>。"
+            "教训：<b>一段验证只要没人真跑它，就会静默退化；复核清单必须「真跑」，不是「它存在」</b>",
+            "<b>host 判定误判</b>：用「像域名的正则」判 host 会把 <code>index.html</code> 也判成 host ⇒ "
+            "改为两级判定：① 与已知页面 URL（<code>pages[].url</code> + <code>base_url</code>）的 "
+            "<code>host[:端口]</code> / 裸主机名<b>精确比对</b>（主判据）；② 形态兜底只认「纯主机名或带端口」",
+        ],
+        notes=[
+            "<b>自测与端到端证据（都真跑）</b>：<code>pytest tests/ -q</code> → <b>143 passed</b>"
+            "（130 + 13 新增）；<code>cli generate</code> → exit 0 · 未映射 <b>0</b> 处 · <code>_goto</code> 接线 32 处；"
+            "<code>cli run --workers 1</code> → <b>16 passed / exit 0</b>；<code>verify_cross_page.py</code> → "
+            "<b>exit 0</b>（三节判据 + 5 条负向全 FAILED）；两条改后的断言在逐用例日志里<b>真实执行</b>（不再空验）",
+            "<b>负向 CLI 证明</b>：喂一条 <code>expect = localhost</code> 的跨页用例 → <code>cli generate</code> "
+            "<b>exit 2</b> + 人话，且产物 <code>sha256</code> <b>一字未改</b>（确实一个产物都没写）",
+            "<b>不做（诚实清单，2026-09-17 裁定）</b>：CI 落点（需重建带 workflow 权限的 token）与 "
+            "Windows 侧并发隔离证据（本地已有两条真跑 CLI 的行为测试）—— 均按拍板从队列删除；"
+            "<b>变异注入闸门</b>（量「断言有没有牙」）仍待做，排在下一项",
+            "V7.5.1 包（未发出的过渡版，已被 V7.5.2 收敛替代）已按授权删除，原 sha256 留在 "
+            "<code>releases/SHA256SUMS.txt</code> 注释里备查",
+        ],
+    ),
+    dict(
+        version="7.5.2", date="2026-09-16", tag="上一版本",
         theme="脱敏收敛 · 交付包落库（仓库内 releases/）· 闸门可移植性",
         summary="本版是<b>对外交付与流程的收敛版</b>：清掉树内最后一处内部组织缩写、"
                 "把交付包从 <code>/tmp</code> 搬进仓库内 <code>releases/</code>（并挡住它不进包）、"
