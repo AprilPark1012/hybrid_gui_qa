@@ -16,6 +16,21 @@ from pathlib import Path
 
 from .config import BASE, CASES_DIR, SCRIPTS_DIR
 from .browser import CHROMIUM_ARGS
+from .case_builder import CaseQualityError, case_errors
+
+
+def _gate_false_green(cases: list[dict]) -> None:
+    """**假绿红线闸**（2026-09-17）：用例带红线问题 ⇒ 拒绝生成任何产物。
+
+    与映射质量闸（UnmappedElementsError）同一口径：**产物永不允许带假绿**。
+    目前红线只有一类 —— 换页证据（kind=url 断言）没有区分力（如 `expect: localhost`：
+    换页前后两个页面都含它 ⇒ 点击后立刻通过，等于没验换页）。
+    手写用例与 AI 用例一视同仁：这条讲的是「证据有没有牙」，与谁写的无关。
+    """
+    bad = [(str(c.get("case_id") or "(无名)"), case_errors(c)) for c in cases]
+    bad = [(cid, errs) for cid, errs in bad if errs]
+    if bad:
+        raise CaseQualityError(bad)
 
 
 def _chromium_args_literal() -> str:
@@ -427,6 +442,8 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
 
     case_files = sorted(cases_dir.glob("*.json"))
     cases = [json.loads(f.read_text(encoding="utf-8")) for f in case_files]
+    # 假绿红线闸：在读用例之后、算映射之前拦（有问题就一个产物都不写）
+    _gate_false_green(cases)
     # 需要映射的语义名：**步骤元素 + 断言元素都要**（断言也能用 element 定位，
     # 只收步骤元素会让「断言引用的元素」被误判成未映射 → 2026-09-13 修）
     needed = {st.get("element") for c in cases for st in c.get("steps", []) if st.get("element")}

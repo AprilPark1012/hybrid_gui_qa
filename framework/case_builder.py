@@ -23,6 +23,7 @@ import datetime as _dt
 import json
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .config import CASES_DIR
 from .element_map import ElementMap
@@ -146,12 +147,137 @@ _DYNAMIC_ASSERT_PATTERNS: list[tuple[re.Pattern, str]] = [
 ]
 
 
-def _dynamic_assert_kind(text: str) -> str | None:
-    """断言文本里是否含「运行时才知道」的内容（计数/时间戳/随机值）。"""
+def _dynamic_assert_kind(text) -> str | None:
+    """断言文本里是否含「运行时才知道」的内容（计数/时间戳/随机值）。
+
+    ⚠️ **只对字符串期望值做文本检查**：结构化断言的期望值可以是数字/布尔（典型 `count` 的 `20`）。
+    2026-09-17 实测：旧写法把 `expect: 20` 直接喂给正则 ⇒ `TypeError: expected string or bytes-like
+    object, got 'int'`，质量闸一碰到手写 11 类断言用例就崩（守门人自己倒下 = 没法守门）。
+    """
+    if not isinstance(text, str):
+        return None
     for pat, kind in _DYNAMIC_ASSERT_PATTERNS:
-        if pat.search(text or ""):
+        if pat.search(text):
             return kind
     return None
+
+
+# ============================================================================
+# P4 换页证据质量闸（2026-09-17）：弱 url 断言 = 假绿
+# ----------------------------------------------------------------------------
+# 背景（2026-09-14 实测挖出）：AI 给「点返回列表回到列表页」产过 `expect: localhost` ——
+# 而**上一个页面的 URL 也含 localhost** ⇒ 点击后立刻就能通过，根本没证明发生了换页
+# （跨页用例的关键证据悬空）。当时的 AI 提示词甚至**在教 AI 这么写**（见 explorer 规划规则）。
+#
+# 判据：**换页证据必须只指向一页**。匹配口径与生成脚本的 `_assert_url` 同源：
+#   非 http 片段 → 按「包含」匹配；以 http 开头 → 精确匹配。
+#
+# 分级（同「未映射元素」的红线口径：任何「少验一步还报绿」都必须显式失败）：
+#   · 跨页用例里 url 断言**唯一作用**就是换页证据 ⇒ **红线**（拒绝落盘 / 拒绝生成、带人话与非 0 退出）
+#   · 单页用例里的同类片段只**告警**（手写用例可能是有意的，如专门验 host:port；也可能根本没声明 pages）
+# ============================================================================
+REDLINE = "redline"
+WARN = "warn"
+
+# ⚠️ 别用「像域名的正则」判 host（实测踩到：`index.html` 会被 `^[\w.\-]+$` 判成 host）——
+# 改成「跟已知页面 URL 的 host[:端口] 对得上」为主、形态为兜底。
+_HOST_PORT_RE = re.compile(r"^[A-Za-z0-9\-]+(?::\d+)?$")          # localhost / localhost:8000
+_IPV4_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?$")       # 127.0.0.1 / 127.0.0.1:9999
+
+
+def _host_candidates(case: dict) -> set[str]:
+    """本用例「所有页共用的 host[:端口]」候选（含裸主机名）—— 来自 pages[].url 与 base_url。"""
+    urls = [str((p or {}).get("url") or "") for p in (case.get("pages") or [])]
+    if case.get("base_url"):
+        urls.append(str(case["base_url"]))
+    out: set[str] = set()
+    for u in urls:
+        if not u:
+            continue
+        net = urlsplit(u if "://" in u else "http://" + u).netloc.lower()
+        if net:
+            out.add(net)
+            out.add(net.split(":")[0])
+    return out
+
+
+def _is_host_only(frag: str, hosts: set[str]) -> bool:
+    """片段是不是「只有 host[:端口]、不含任何路径信息」—— 这种片段证明不了「到了哪一页」。"""
+    s = frag.strip().rstrip("/")
+    if "://" in s:
+        s = s.split("://", 1)[1].rstrip("/")
+    if hosts and s.lower() in hosts:                 # 跟已知页面 host 精确对得上 → 铁定是
+        return True
+    return bool(_IPV4_RE.match(s) or _HOST_PORT_RE.match(s))
+
+
+def _url_evidence_issues(case: dict) -> list[tuple[str, str]]:
+    """换页证据（`kind=url` 断言）的区分力检查 —— 返回 `[(级别, 说明)]`（级别见 REDLINE / WARN）。"""
+    asserts = case.get("asserts") or []
+    urls: list[str] = []
+    for p in (case.get("pages") or []):
+        u = str((p or {}).get("url") or "")
+        if u and u not in urls:                      # 去重保序
+            urls.append(u)
+    goto_urls = {str(s.get("url") or "") for s in (case.get("steps") or []) if s.get("op") == "goto"}
+    goto_urls.discard("")
+    multi = len(urls) > 1 or len(goto_urls) > 1
+    hosts = _host_candidates(case)
+
+    out: list[tuple[str, str]] = []
+    for a in asserts:
+        if str(a.get("kind") or "").strip() != "url":
+            continue
+        exp = a.get("expect")
+        if not isinstance(exp, str) or not exp.strip():
+            out.append((REDLINE, "url 断言没给 expect（无法判断它指向哪一页）→ 补上目标页独有的 URL 片段"))
+            continue
+        frag = exp.strip()
+        exact = frag.startswith("http")                       # 与 conftest._assert_url 同口径：精确 vs 包含
+        if exact:
+            hits = [u for u in urls if u.rstrip("/") == frag.rstrip("/")]
+        else:
+            hits = [u for u in urls if frag in u]
+        host_only = _is_host_only(frag, hosts)
+        if multi and host_only and not exact:
+            # 跨页用例 + 只有 host[:端口] 的片段 ⇒ 换页前后都能通过，证明不了换页（红线）
+            out.append((REDLINE,
+                        f"换页证据 {frag!r} 只是 host[:端口]：跨页用例里**每个页面都含它** ⇒ "
+                        f"换页前后都能通过，证明不了「确实换页了」（假绿）。改用只出现在目标页的片段"
+                        f"（如 contract_detail）；若目标页没有独有片段（多是列表页根路径 /）→ "
+                        f"改对该页独有文案做 text 断言"))
+        elif len(hits) >= 2:
+            out.append((REDLINE,
+                        f"换页证据 {frag!r} 在本用例声明的 {len(hits)} 个页面 URL 里都出现"
+                        f"（{'、'.join(hits[:3])}）⇒ 换页前后都能通过，证明不了「确实换页了」（假绿）。"
+                        f"改用只出现在目标页的片段（如 contract_detail）；"
+                        f"若目标页没有独有片段（多是列表页根路径 /）→ 改对该页独有文案做 text 断言"))
+        elif multi and not hits:
+            out.append((WARN,
+                        f"换页证据 {frag!r} 跟本用例声明的页面 URL 都对不上 ⇒ 该断言可能永远不会通过"
+                        f"（自造片段？）；要么改成清单里真实存在的片段，要么删掉它"))
+        elif host_only:
+            out.append((WARN,
+                        f"url 断言的期望值 {frag!r} 只是 host[:端口]：任何页面都含它，"
+                        f"若意图是证明换页则证明不了（单页用例里若只是想验『URL 含该 host』可忽略本告警）"))
+    return out
+
+
+def case_errors(case: dict, guard: dict | None = None) -> list[str]:
+    """**红线级**问题（假绿）——命中即不许落盘 / 不许生成产物（与映射质量闸同一口径）。"""
+    return [msg for level, msg in _url_evidence_issues(case) if level == REDLINE]
+
+
+class CaseQualityError(Exception):
+    """用例质量红线：产物永不允许带假绿 ⇒ 拒绝产出，并给出「改哪一条、怎么改」。"""
+
+    def __init__(self, entries: list[tuple[str, list[str]]]):
+        self.entries = entries
+        super().__init__("; ".join(f"{cid}: {len(errs)} 条红线" for cid, errs in entries))
+
+    @property
+    def total(self) -> int:
+        return sum(len(errs) for _cid, errs in self.entries)
 
 
 def case_warnings(case: dict, guard: dict | None = None) -> list[str]:
@@ -164,10 +290,12 @@ def case_warnings(case: dict, guard: dict | None = None) -> list[str]:
     steps = case.get("steps", [])
     asserts = case.get("asserts", [])
 
-    fill_values = {s.get("value") for s in steps if s.get("op") == "fill" and s.get("value")}
+    # 期望值可能是数字/布尔（结构化断言，如 count 的 20）⇒ 全程按字符串口径比对，
+    # 避免把 int 喂给正则/哈希集合（2026-09-17 修：旧写法对 `expect: 20` 直接 TypeError）
+    fill_values = {str(s.get("value")) for s in steps if s.get("op") == "fill" and s.get("value")}
     for a in asserts:
         exp = a.get("expect")
-        if exp and exp in fill_values:
+        if isinstance(exp, str) and exp and exp in fill_values:
             warns.append(
                 f"断言 {exp!r} 与某 fill 步骤的输入值完全相同 → 疑似「断言输入回显」，"
                 f"用例会通过但实际没验证业务结果（假绿）"
@@ -257,6 +385,9 @@ def case_warnings(case: dict, guard: dict | None = None) -> list[str]:
                 f"（可能漏了一步，也可能只是没验\"到了没\"）：{missed}"
             )
 
+    # ---- P4 换页证据质量闸（2026-09-17）：弱 url 断言（红线项见 case_errors）----
+    warns.extend(msg for _level, msg in _url_evidence_issues(case))
+
     return warns
 
 
@@ -299,5 +430,9 @@ def elementmap_to_cases_file(
     guard：场景护栏（assert_guard），参与落盘质量校验
     """
     case = elementmap_to_case(m, case_id=case_id, extra=extra)
+    red = case_errors(case, guard=guard)
+    if red:
+        # 红线（假绿）⇒ **拒绝落盘**：产物永不允许带假绿（与生成侧映射质量闸同一口径）
+        raise CaseQualityError([(case["case_id"], red)])
     warns = elementmap_warnings(m) + case_warnings(case, guard=guard)
     return write_case(case, cases_dir=cases_dir), warns

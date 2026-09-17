@@ -403,8 +403,10 @@ CHANGELOG = [
             "（跨页四段 / 弹层回归 / 断言正负向）",
             "反证留痕：塞一条脏数据 + <code>HYBRID_RESET_URL=off</code> 跑跨页用例 → 「20 行」断言 <b>FAILED</b>"
             "（说明复位确实在起作用）；看门狗用 <code>HYBRID_CASE_TIMEOUT=1</code> 实测 → 进程 exit 1 + 调用栈落盘",
-            "已知待办（诚实清单）：AI 给「返回列表」产的 url 断言只是 host（两页 URL 都含 ⇒ 等于没验换页），"
-            "计划给质量闸加静态检查；场景 <code>data</code> 参数化仍只解析不展开；跨页面流程仍不完整",
+            "已知待办（诚实清单）：AI 给「返回列表」产的 url 断言只是 host（两页 URL 都含 ⇒ 等于没验换页）"
+            "—— <b>2026-09-17 已修掉</b>：提示词禁止 host 片段 + 质量闸红线（拒绝落盘/生成）+ 用例改「目标页独有证据」；"
+            "跨页流程 D1~D4（pages 声明 / 原地断言 <code>after_step</code> / 跨页重名消解 / 换页证据闸）已全部落地；"
+            "场景 <code>data</code> 参数化仍只解析不展开",
             "文档口径修正：生成物 <code>scripts/conftest.py</code> 会 <code>import framework.data_driven / framework.healer</code> ⇒ "
             "<b>要在项目内运行</b>，不是「拷到哪儿都能独立跑」",
         ],

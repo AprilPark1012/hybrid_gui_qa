@@ -116,7 +116,7 @@ def test_ai_contracts_cross_page_011030(page, ctx):
     # step 5: 点击返回列表链接回到列表页
     _act(page, "click", semantic='返回列表', primary=lambda p: p.get_by_test_id("btn-back"))
     _log(page, "click", f"点击返回列表链接回到列表页")
-    _assert_url(page, _data('expect_4', ctx), '确认已回到列表页')
+    _assert_text(page, _data('expect_4', ctx), '确认已回到列表页（列表页独有的「新建合同」按钮文案 —— 列表页 URL 是根路径、没有独有片段，按弱 url 断言闸口径改用 text 断言做到达证据）')
 
     # step 6: 再次在关键字搜索框输入 1005
     _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_1', ctx))
@@ -399,7 +399,7 @@ def test_cross_page_detail(page, ctx):
     _act(page, "click", semantic='返回列表', primary=lambda p: p.get_by_test_id("btn-back"))
     _log(page, "click", f"点击详情页的「返回列表」回到列表页")
     _assert_visible(page, lambda p: p.locator("[data-testid='btn-new']"), semantic=None, desc='【回到列表页】「+ 新建合同」按钮可见（列表页特征）')
-    _assert_count(page, _data('expect_7', ctx), lambda p: p.locator('#tbody-contracts tr'), semantic=None, desc='【回到列表页】列表恢复全量 20 行（说明确实重进了列表页）')
+    _assert_count(page, _data('expect_7', ctx), lambda p: p.locator("#tbody-contracts tr[data-testid='row-HT-1001']"), semantic=None, desc='【回到列表页·基线】预置首行 HT-1001 在列表里（F5 稳健化：不再用「全量 20 行」——那条会被本次运行新建的数据顶掉，与「回到列表页」要验的事无关）')
 
     # step 6: 回到列表页后再输入关键字 1005
     _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_1', ctx))

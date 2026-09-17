@@ -183,6 +183,22 @@ def _report_unmapped(e) -> NoReturn:
     raise SystemExit(2)
 
 
+def _report_case_quality(e) -> NoReturn:
+    """假绿红线触发时的交代：哪条用例 / 什么证据没牙 / 怎么改 —— **绝不落产物**，exit 2。"""
+    print(f"\n[质量闸] ❌ 假绿红线拦下：{len(e.entries)} 条用例、共 {e.total} 处 → 拒绝产出任何产物")
+    for cid, errs in e.entries:
+        print(f"[质量闸]   用例 {cid}:")
+        for m in errs:
+            print(f"[质量闸]     · {m}")
+    print("[质量闸]    真因：换页证据（kind=url 的 expect）若在**多个页面**的 URL 里都出现，"
+          "换页前后都能通过 ⇒ 用例照样绿，但「确实换页了」这件事根本没被验到。")
+    print("[质量闸]    下一步：① 换成只出现在目标页的片段（详情页 → contract_detail）；"
+          "② 目标页没有独有 URL 片段（列表页就是根路径 /）→ 改对该页独有文案做 text 断言；"
+          "③ 顺带确认用例的页面清单 pages[].url 填全了。")
+    print("[质量闸]    （旧行为：这条假绿一路跑到报告里，靠人工复核才发现 —— 2026-09-14 就是。）")
+    raise SystemExit(2)
+
+
 def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
     """读 cases/*.json → 生成 scripts/（playwright 脚本 + scripts/datasets 抽离数据）。
 
@@ -196,6 +212,7 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
     """
     ensure_dirs()
     from pathlib import Path as _P
+    from .case_builder import CaseQualityError
     from .generator import UnmappedElementsError, generate_scripts
     rest = rest or []
     map_path = None
@@ -206,6 +223,8 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
     try:
         res = generate_scripts(element_map_path=map_path, live_probe="--live-probe" in rest,
                                allow_unmapped=allow_unmapped or ("--allow-unmapped" in rest))
+    except CaseQualityError as e:
+        _report_case_quality(e)
     except UnmappedElementsError as e:
         _report_unmapped(e)
     print(f"[generate] 读 cases/ → 生成 {res['count']} 个用例到 scripts/:")
@@ -274,8 +293,13 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
     cpath = None
     warns: list[str] = []
     if to_cases and not mock_fallback:
+        from .case_builder import CaseQualityError as _CaseQE
         from .case_builder import elementmap_to_cases_file
-        cpath, warns = elementmap_to_cases_file(emap, case_id=case_id, extra=extra, guard=guard_spec)
+        try:
+            cpath, warns = elementmap_to_cases_file(emap, case_id=case_id, extra=extra, guard=guard_spec)
+        except _CaseQE as e:
+            # 假绿红线（如换页证据只写 localhost）⇒ 拒绝落盘，绝不产出「看着绿、其实没验」的用例
+            _report_case_quality(e)
         print(f"          → 用例: {cpath}  （AI 用例，ai_ 前缀）")
         for w in warns:
             print(f"          ⚠️ 质量警告: {w}")

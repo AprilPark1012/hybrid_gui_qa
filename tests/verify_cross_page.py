@@ -81,6 +81,15 @@ NEGATIVE = {
                {"op": "click", "desc": "点一个不存在的元素", "element": "根本不存在的按钮"}],
         asserts=[{"kind": "text", "expect": "HT-1005"}],
     ),
+    # ⑤ 「回到列表页」的独有文案证据，在**没回到列表页**（还在详情页）时必须 FAILED
+    #    —— 2026-09-17：原来那条证据是 expect_url=localhost（换页前后都通过 = 没有牙），
+    #    换成「列表页独有文案」后，这条负向证明它真的有牙。
+    "weak_evidence_no_teeth": dict(
+        steps=[{"op": "goto", "desc": "直接打开详情页（不回到列表页）", "url": DETAIL}],
+        asserts=[{"kind": "text", "expect": "新建合同",
+                  "desc": "列表页独有文案（详情页没有该文案）—— 没回到列表页时必须失败",
+                  "after_step": 1}],
+    ),
 }
 
 
@@ -107,7 +116,16 @@ def _cleanup(written):
 
 
 def _gen():
-    r = subprocess.run([sys.executable, "-m", "framework.cli", "generate"],
+    """生成（含负向用例）。
+
+    ⚠️ 必须带 `--allow-unmapped`：负向用例 ④ 故意用一个**不存在的元素名**（就是为了证明
+    「元素名写错 ⇒ 该用例 FAILED，不许静默跳过」）。而 V7.5.1 的映射质量闸会因此把**整个** generate
+    拦成 exit 2（闸门本身是对的：有未映射就不许出产物）—— 实测该负向段**从 V7.5.1 起就再没跑起来过**
+    （2026-09-17 复跑时当场暴露）。
+    这里显式走调试逃生口：④ 会生成成 `pytest.fail` 存根 → 运行时 FAILED（正是负向段要验的结果）。
+    这些产物只服务于负向验证；跑完 `_cleanup()` 会**不带逃生口**重新生成干净产物。
+    """
+    r = subprocess.run([sys.executable, "-m", "framework.cli", "generate", "--allow-unmapped"],
                        cwd=BASE, capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env=_U8)
     return r.returncode, (r.stdout or "") + (r.stderr or "")
@@ -211,9 +229,9 @@ def main() -> int:
     print(f"  {('✅' if pos_ok else '❌')} test_cross_page_detail  "
           f"{((r.stdout or '').strip().splitlines() or [''])[-1][:90]}")
 
-    print("\n===== 二、质量闸：跨页用例缺 url 断言必须告警 =====")
+    print("\n===== 二、质量闸：跨页用例缺 url 断言必须告警；弱换页证据必须红线 =====\n")
     sys.path.insert(0, str(BASE))
-    from framework.case_builder import case_warnings   # noqa: E402
+    from framework.case_builder import case_errors, case_warnings   # noqa: E402
     warn = case_warnings({
         "pages": PAGES,
         "steps": [GOTO_LIST, FILL, SEARCH, CLICK_NO],
@@ -221,6 +239,16 @@ def main() -> int:
     })
     gate_ok = any("URL 断言" in w for w in warn)
     print(f"  {('✅' if gate_ok else '❌')} 告警命中: {[w for w in warn if 'URL 断言' in w] or warn}")
+    # 弱换页证据（expect=localhost：换页前后都通过）⇒ 红线必须拦
+    red = case_errors({"pages": PAGES, "steps": [GOTO_LIST, FILL, SEARCH, CLICK_NO],
+                       "asserts": [{"kind": "url", "expect": "localhost", "after_step": 4}]})
+    redline_ok = bool(red) and "假绿" in red[0]
+    print(f"  {('✅' if redline_ok else '❌')} 弱换页证据被红线拦下: {red[:1] or '（没拦住 —— 假绿会进产物！）'}")
+    # 反向：真证据（只出现在详情页的片段）不许被拦 —— 假拦会把人逼向绕过闸门
+    no_false_block = case_errors({"pages": PAGES, "steps": [GOTO_LIST, FILL, SEARCH, CLICK_NO],
+                                  "asserts": [{"kind": "url", "expect": "contract_detail",
+                                               "after_step": 4}]}) == []
+    print(f"  {('✅' if no_false_block else '❌')} 真换页证据（contract_detail）未被误拦")
 
     print("\n===== 三、负向：每条都必须 FAILED（防假绿）=====")
     written = _write_neg_cases()
@@ -246,10 +274,13 @@ def main() -> int:
         print(f"  {('✅' if ok else '❌')} {desc}  {detail}")
 
     print("\n===== 结论 =====")
-    if pos_ok and gate_ok and cross_ok and not bad:
-        print("全部符合预期 ✅（正向跨页 PASSED；质量闸告警；新建→详情页客户一致；负向全部 FAILED，无假绿）")
+    all_ok = pos_ok and gate_ok and redline_ok and no_false_block and cross_ok and not bad
+    if all_ok:
+        print("全部符合预期 ✅（正向跨页 PASSED；质量闸：缺 url 断言告警 / 弱证据被红线拦 / 真证据未误拦；"
+              "新建→详情页客户一致；负向全部 FAILED，无假绿）")
         return 0
     print(f"不符合预期 ❌  正向={'OK' if pos_ok else 'FAIL'}，质量闸={'OK' if gate_ok else 'FAIL'}，"
+          f"弱证据红线={'OK' if redline_ok else 'FAIL'}，真证据未误拦={'OK' if no_false_block else 'FAIL'}，"
           f"新建→详情页={'OK' if cross_ok else 'FAIL'}，假绿项={bad or '无'}")
     return 1
 

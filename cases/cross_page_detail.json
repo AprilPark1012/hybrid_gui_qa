@@ -66,9 +66,9 @@
     },
     {
       "kind": "count",
-      "selector": "#tbody-contracts tr",
-      "expect": 20,
-      "desc": "【回到列表页】列表恢复全量 20 行（说明确实重进了列表页）",
+      "selector": "#tbody-contracts tr[data-testid='row-HT-1001']",
+      "expect": 1,
+      "desc": "【回到列表页·基线】预置首行 HT-1001 在列表里（F5 稳健化：不再用「全量 20 行」——那条会被本次运行新建的数据顶掉，与「回到列表页」要验的事无关）",
       "after_step": 5
     },
     {

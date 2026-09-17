@@ -791,9 +791,11 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                     "或点击当前页上能跳过去的目标（如结果行里可点的编号/详情链接）；\n"
                   + "  · **换页必须有断言**（证明\"确实到了那一页\"）："
                     "action=expect_url + value=**逐字从上面页面清单里复制**该页 URL 里真实存在的片段"
-                    "（如详情页写 contract_detail，列表页写 localhost 或留空不要写），"
+                    "（如详情页写 contract_detail —— 只出现在目标页 URL 里的片段；"
+                    "⚠️ **禁止**用 localhost / localhost:8000 / 127.0.0.1 这类**每个页面都含**的片段"
+                    "当换页证据：点击前后都能通过 = 没验到换页，框架会直接拦下这种用例），"
                     "**禁止自造片段**（写 index.html / list 这类清单里没有的字符串就会直接失败）；"
-                    "或 action=expect_text + assertion=目标页的特征文本（更稳，推荐与 expect_url 一起用）；\n")
+                    "或 action=expect_text + assertion=目标页的特征文本（更稳，推荐与 expect_url 一起用；**目标页没有独有 URL 片段时改用它**，如列表页就是根路径 /）；\n")
         if collisions:
             prompt += ("跨页同名控件（同名的已自动加 @页名 后缀，清单里的名字即最终名，原样引用即可）：\n"
                        + "\n".join(f"  - {c['semantic_name']} → "

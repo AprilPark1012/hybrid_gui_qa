@@ -64,9 +64,8 @@
       "after_step": 4
     },
     {
-      "kind": "url",
-      "desc": "确认已回到列表页",
-      "expect": "localhost",
+      "desc": "确认已回到列表页（列表页独有的「新建合同」按钮文案 —— 列表页 URL 是根路径、没有独有片段，按弱 url 断言闸口径改用 text 断言做到达证据）",
+      "expect": "新建合同",
       "after_step": 5
     },
     {
