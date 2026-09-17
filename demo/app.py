@@ -51,6 +51,24 @@ BUS = ["bu_a", "bu_b", "bu_c"]
 
 REQUIRED = ("name", "mu", "file", "type", "cust", "bu")
 
+# ========== 订单系统主数据（2026-09-17 新增：AprilPark1012需求） ==========
+# 订单系统页面（orders.html）是**新 tab**打开的独立页面，数据同样以本文件为唯一来源。
+ORDER_TYPES = ["标准销售订单", "退货订单", "服务订单", "电商订单"]
+SALESMEN = [
+    {"id": "s1", "name": "张伟"},
+    {"id": "s2", "name": "李娜"},
+    {"id": "s3", "name": "王强"},
+    {"id": "s4", "name": "赵敏"},
+    {"id": "s5", "name": "陈磊"},
+    {"id": "s6", "name": "刘洋"},
+]
+ORDERS_PER_PAGE = 20          # 每页 20 条
+ORDER_PAGE_COUNT = 3          # 默认 3 页
+ORDER_PRESETS = ORDERS_PER_PAGE * ORDER_PAGE_COUNT      # 60 = 3 页 × 20 条
+REQUIRED_ORDER = ("name", "contract_no", "bu", "mu", "file", "order_type", "cust", "salesman")
+# ↑ 必填：订单名称 / 合同 / 业务单元 / 管理单元 / 帐套 / 订单类型 / 客户 / 销售员
+#   订单备注（remark）**选填**（唯一非必填项）
+
 # ⚠️ 必须是 RLock（可重入）：`_store()` 自己加锁，而调用方（do_GET/do_POST）通常已持有该锁，
 #    普通 Lock 会在第一次请求就**自死锁**（实测踩过：demo 整个卡住、curl 全部挂死）。
 _lock = threading.RLock()         # ThreadingTCPServer：数据要被多线程访问
@@ -110,12 +128,15 @@ def with_cust_name(row: dict) -> dict:
 
 
 def reset_data(part: str = "default") -> int:
-    """把**该分区**复位成预置 20 条，返回条数（测试用例间隔离用）。
+    """把**该分区**复位成预置数据（合同 20 条 + 订单 60 条），返回合同条数（测试用例间隔离用）。
 
     只清自己那份 —— 这是并发安全的关键：A worker 的复位不再抹掉 B worker 正在依赖的数据。
+    ⚠️ 2026-09-17：订单数据也在这里一起复位（订单页同样有「共 N 条 / 第一行是新订单」这类断言，
+    不复位会被上一条用例残留的新建订单打乱）。
     """
     with _lock:
         _STORES[part] = seed()
+        _ORDER_STORES[part] = seed_orders()
         return len(_STORES[part])
 
 
@@ -135,6 +156,135 @@ def create_contract(payload: dict, part: str = "default") -> tuple[dict, int]:
         row = {"no": no, **{k: str(payload[k]).strip() for k in REQUIRED}}
         lst.append(row)
         return with_cust_name(row), 201
+
+
+# ========== 订单系统：数据与业务（2026-09-17 新增，AprilPark1012需求） ==========
+# 与合同完全同源：内存 store、按分区隔离、编号由服务端分配。
+_ORDER_STORES: dict[str, list[dict]] = {}
+
+
+def seed_orders() -> list[dict]:
+    """预置 60 条订单（3 页 × 20 条）。
+
+    **所有字段都按序号确定（不随机）**：这样「某销售员命中 10 条」「业务单元 bu_a 命中 20 条」
+    这类断言才有确定的数（合同的 mu/file/bu 是随机的，订单这里刻意收严，便于断言条数与分页）。
+    口径：订单编号 SO-1001…SO-1060 · 订单名称 订单1…订单60 ·
+    合同编号 = 预置合同 HT-1001…HT-1020 循环（⇒ 点过去一定能看到**真实存在的**合同详情）；
+    客户/销售员/订单类型/业务单元/管理单元/帐套 都按 (序号-1) % 选项数 取值。
+    """
+    rows: list[dict] = []
+    for i in range(1, ORDER_PRESETS + 1):
+        rows.append({
+            "no": f"SO-{1000 + i}",
+            "contract_no": f"HT-{1000 + ((i - 1) % PRESETS) + 1}",
+            "name": f"订单{i}",
+            "mu": MUS[(i - 1) % len(MUS)],
+            "salesman": SALESMEN[(i - 1) % len(SALESMEN)]["id"],
+            "order_type": ORDER_TYPES[(i - 1) % len(ORDER_TYPES)],
+            "bu": BUS[(i - 1) % len(BUS)],
+            "file": FILES[(i - 1) % len(FILES)],
+            "cust": CUSTOMERS[(i - 1) % len(CUSTOMERS)]["id"],
+            "remark": "",
+        })
+    return rows
+
+
+def _order_store(part: str = "default") -> list[dict]:
+    """取（必要时创建）某分区的订单列表（与合同同一套分区口径）。"""
+    with _lock:
+        lst = _ORDER_STORES.get(part)
+        if lst is None:
+            lst = seed_orders()
+            _ORDER_STORES[part] = lst
+        return lst
+
+
+def with_order_names(row: dict) -> dict:
+    """补 salesmanName / custName —— 页面直接渲染，不必各自再查一遍。"""
+    d = dict(row)
+    d["salesmanName"] = next((s["name"] for s in SALESMEN if s["id"] == d.get("salesman")),
+                             d.get("salesman", ""))
+    d["custName"] = next((c["name"] for c in CUSTOMERS if c["id"] == d.get("cust")),
+                         d.get("cust", ""))
+    return d
+
+
+def dict_values(kind: str) -> list[str]:
+    """「...」选择弹层的候选值：业务单元 / 管理单元 / 帐套（三者选择方式一致）。"""
+    return {"bu": list(BUS), "mu": list(MUS), "file": list(FILES)}.get(kind or "", [])
+
+
+def filter_orders(rows: list[dict], q: dict) -> list[dict]:
+    """订单筛选口径（与页面上的提示文字一一对应）：
+
+      · 订单名称  **全模糊**（包含）
+      · 销售员    **右模糊**（前缀：姓名前缀 或 销售员编号前缀）
+      · 客户      **全模糊**（包含：客户名称 或 客户编号）
+      · 业务单元 / 管理单元 / 帐套  **精确**（值来自「...」弹层选择）
+    """
+    name = (q.get("name") or "").strip().lower()
+    salesman = (q.get("salesman") or "").strip().lower()
+    cust = (q.get("cust") or "").strip().lower()
+    out: list[dict] = []
+    for r in rows:
+        rr = with_order_names(r)
+        if name and name not in (r.get("name") or "").lower():
+            continue
+        if salesman and not ((rr["salesmanName"] or "").lower().startswith(salesman)
+                             or (r.get("salesman") or "").lower().startswith(salesman)):
+            continue
+        if cust and not ((rr["custName"] or "").lower().find(cust) >= 0
+                         or (r.get("cust") or "").lower().find(cust) >= 0):
+            continue
+        if q.get("bu") and r.get("bu") != q["bu"]:
+            continue
+        if q.get("mu") and r.get("mu") != q["mu"]:
+            continue
+        if q.get("file") and r.get("file") != q["file"]:
+            continue
+        out.append(rr)
+    return out
+
+
+def page_of(rows: list[dict], page: int, size: int) -> dict:
+    """分页信息 + 当前页数据（**页码从 1 起**；越界夹到有效范围，不抛错）。"""
+    try:
+        size = max(1, int(size or ORDERS_PER_PAGE))
+    except (TypeError, ValueError):
+        size = ORDERS_PER_PAGE
+    total = len(rows)
+    pages = max(1, (total + size - 1) // size)
+    try:
+        page = int(page or 1)
+    except (TypeError, ValueError):
+        page = 1
+    page = min(max(1, page), pages)
+    start = (page - 1) * size
+    return {"page": page, "size": size, "total": total, "pages": pages,
+            "items": rows[start:start + size]}
+
+
+def create_order(payload: dict, part: str = "default") -> tuple[dict, int]:
+    """新建销售订单：校验必填 → 分配订单编号 → **插到最前** → 落库。
+
+    ⚠️ 插到最前是需求要求：「点击提交，生成销售订单，回到订单系统页面，列表第一个就是我们新建的订单」
+      （列表顺序 = 存储顺序；分页按存储顺序切 ⇒ 第一页第一行就是它）。
+    """
+    missing = [k for k in REQUIRED_ORDER if not str(payload.get(k) or "").strip()]
+    if missing:
+        # 提示语与前端一致（用例的 assert_guard.forbidden 依赖这句不会被当正常结果）
+        return {"error": "请填写全部必填字段", "missing": missing}, 400
+    with _lock:
+        lst = _ORDER_STORES.setdefault(part, seed_orders())
+        seq = 2001 + len(lst)
+        no = f"SO-{seq}"
+        while any(r["no"] == no for r in lst):
+            seq += 1
+            no = f"SO-{seq}"
+        row = {"no": no, **{k: str(payload[k]).strip() for k in REQUIRED_ORDER}}
+        row["remark"] = str(payload.get("remark") or "").strip()      # 唯一选填项
+        lst.insert(0, row)                                            # ← 新订单在最前
+        return with_order_names(row), 201
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -162,7 +312,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # 供测试框架/CI 探测「目标是否支持按 worker 分区」—— 支持则并发安全，不支持则该降级为串行
             with _lock:
                 return self._send_json({"ok": True, "partitioned": PARTITIONS_ENABLED,
-                                        "presets": PRESETS, "partitions": sorted(_STORES.keys())})
+                                        "presets": PRESETS, "partitions": sorted(_STORES.keys()),
+                                        "order_presets": ORDER_PRESETS,
+                                        "orders_per_page": ORDERS_PER_PAGE,
+                                        "order_pages": ORDER_PAGE_COUNT})
         if path == "/api/customers":
             return self._send_json(CUSTOMERS)
         if path == "/api/contracts":
@@ -175,6 +328,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if row is None:
                 return self._send_json({"error": f"未找到该合同: {no}"}, 404)
             return self._send_json(with_cust_name(row))
+        # ---- 订单系统（2026-09-17 新增）----
+        if path == "/api/orders":
+            # 筛选 + 分页（**页码从 1 起**）；筛选口径见 filter_orders
+            q = {k: (v[0] if v else "") for k, v in
+                 urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
+            with _lock:
+                rows = filter_orders(_order_store(part), q)
+                return self._send_json(page_of(rows, q.get("page"), q.get("size")))
+        if path == "/api/order":
+            no = (urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("no") or [""])[0]
+            with _lock:
+                row = next((r for r in _order_store(part) if r["no"] == no), None)
+            if row is None:
+                return self._send_json({"error": f"未找到该订单: {no}"}, 404)
+            return self._send_json(with_order_names(row))
+        if path == "/api/salesmen":
+            return self._send_json(SALESMEN)
+        if path == "/api/dict":
+            # 「...」选择弹层的候选值：kind=bu|mu|file
+            kind = (urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("kind") or [""])[0]
+            return self._send_json({"kind": kind, "values": dict_values(kind)})
         if self.path in ("/", ""):
             # 根路径默认服务合同页（避免 SimpleHTTPRequestHandler 列出目录）
             self.path = "/" + DEFAULT_PAGE
@@ -196,6 +370,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._send_json({"error": f"请求体不是合法 JSON: {e}"}, 400)
             body, code = create_contract(payload if isinstance(payload, dict) else {}, part)
             return self._send_json(body, code)
+        if path == "/api/orders":
+            # 新建销售订单（必填校验在 create_order 里；订单备注选填）
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                payload = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+            except Exception as e:
+                return self._send_json({"error": f"请求体不是合法 JSON: {e}"}, 400)
+            body, code = create_order(payload if isinstance(payload, dict) else {}, part)
+            return self._send_json(body, code)
         return self._send_json({"error": f"未知接口: {path}"}, 404)
 
     def log_message(self, fmt, *args):  # 静默，避免刷屏
@@ -211,8 +394,11 @@ def main():
     n = reset_data("default")
     with _Server(("", PORT), Handler) as httpd:
         print(f"[demo app] serving {DIR} on http://localhost:{PORT} (page={DEFAULT_PAGE})")
-        print(f"[demo app] API: /api/customers /api/contracts /api/contract?no= /api/reset /api/health"
-              f"（已预置 {n} 条合同；分区={PARTITIONS_ENABLED}，用 ?w=<worker> 取独立分区）")
+        print(f"[demo app] API: /api/customers /api/contracts /api/contract?no= /api/orders /api/order?no= "
+              f"/api/salesmen /api/dict?kind= /api/reset /api/health"
+              f"（已预置 {n} 条合同 + {ORDER_PRESETS} 条订单；分区={PARTITIONS_ENABLED}，用 ?w=<worker> 取独立分区）")
+        print("[demo app] 页面: / (=合同管理) · /contracts.html · /contract_detail.html?no=HT-1005 · "
+              "/orders.html (订单系统) · /order_detail.html?no=SO-1001")
         httpd.serve_forever()
 
 

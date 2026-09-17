@@ -43,10 +43,15 @@
 <body data-hybrid-ready="0">
 <h1>合同管理系统</h1>
 
-<!-- 新建按钮 -->
+<!-- 新建按钮 / 订单系统入口 -->
 <div class="topbar">
   <div id="result-info" style="font-size:13px;color:#666;">共 <span id="total">0</span> 条合同</div>
-  <button id="btn-new" data-testid="btn-new">+ 新建合同</button>
+  <div style="display:flex;gap:12px;align-items:center;">
+    <!-- 2026-09-17 需求①：订单系统入口 —— 点击**新开一个 tab**打开订单系统页面（orders.html） -->
+    <a id="link-orders" data-testid="link-orders" href="/orders.html" target="_blank" rel="noopener"
+       style="font-size:13px;color:#2f6fed;">查看订单</a>
+    <button id="btn-new" data-testid="btn-new">+ 新建合同</button>
+  </div>
 </div>
 
 <!-- 搜索区 -->

@@ -32,7 +32,11 @@
      这种不存在的编号也会渲染出客户，会让人误以为数据是对的）。 -->
 <div class="topbar">
   <h1>合同详情</h1>
-  <span id="hint" style="font-size:13px;color:#888;"></span>
+  <span>
+    <span id="hint" style="font-size:13px;color:#888;"></span>
+    <!-- 2026-09-17 需求⑥：从订单页点「合同编号」打开时标记来源（此时按钮文案是「返回」且关闭本 tab） -->
+    <span id="from-hint" style="font-size:13px;color:#2f6fed;margin-left:8px;"></span>
+  </span>
 </div>
 
 <div class="wrap">
@@ -49,6 +53,9 @@
   </table>
 
   <div class="actions">
+    <!-- 正常入口（从合同列表点进来）：返回列表 = 回合同列表页。
+         注意：2026-09-17 需求⑥ —— 从**订单页**点「合同编号」进来时（?from=order），
+         本按钮文案变成「返回」，点击是**关闭本 tab**（回到订单系统页面）。见下方 applyBackMode()。 -->
     <a class="btn" data-testid="btn-back" id="btn-back" href="/">返回列表</a>
     <button class="primary" id="btn-edit" data-testid="btn-edit" type="button">编辑（未接入）</button>
   </div>
@@ -82,6 +89,22 @@ const FIELDS = {
   'd-bu':   r => r.bu,
 };
 
+// ---- 来源模式（2026-09-17 需求⑥）----
+// 从订单页点「合同编号」是用 target=_blank **新开 tab** 打开本页（带 ?from=order）：
+//   · 按钮文案「返回列表」→「返回」
+//   · 点击它 **关闭本 tab**（回到订单系统页面）
+// 用 window.close()：只对「脚本打开的窗口」有效 —— 正常路径满足；
+// 若是手工粘 URL 打开的 tab（浏览器不允许脚本关它），锚点默认跳转兜底回订单列表，不会卡死。
+const fromOrder = (new URLSearchParams(location.search).get('from') || '') === 'order';
+function applyBackMode(){
+  if(!fromOrder) return;
+  const back = document.getElementById('btn-back');
+  back.textContent = '返回';
+  back.setAttribute('href', '/orders.html');           // close 被拒时的兜底落点（不 preventDefault）
+  back.addEventListener('click', ()=>{ window.close(); });
+  document.getElementById('from-hint').textContent = '从订单系统打开';
+}
+
 async function render(){
   const no = new URLSearchParams(location.search).get('no') || '';
   const st = document.getElementById('status');
@@ -112,6 +135,7 @@ async function render(){
   st.textContent = '已加载详情: ' + r.no + ' ' + r.name;
   markReady();
 }
+applyBackMode();   // 需求⑥：从订单页（?from=order）进来时，按钮变「返回」且点击关本 tab
 render();
 
 // 详情页也可按编号搜索（跳到另一份合同的详情）—— 与列表页的「搜索」同名，

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>订单详情</title>
+<style>
+  *{box-sizing:border-box;}
+  body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:#f5f6f8;color:#222;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;background:#fff;
+          border-bottom:1px solid #e3e6ea;padding:14px 22px;}
+  h1{font-size:18px;margin:0;}
+  .wrap{max-width:840px;margin:22px auto;background:#fff;border:1px solid #e3e6ea;
+        border-radius:8px;padding:22px 26px;}
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  th,td{text-align:left;padding:9px 8px;border-bottom:1px solid #eef0f3;}
+  th{width:150px;color:#666;font-weight:400;background:#fafbfc;}
+  .actions{margin-top:18px;display:flex;gap:10px;}
+  button,.btn{font:inherit;padding:7px 16px;border-radius:6px;border:1px solid #cfd4da;
+              background:#fff;cursor:pointer;text-decoration:none;color:#222;display:inline-block;}
+  a{color:#2f6fed;}
+  #status-o{margin-top:14px;color:#0a0;font-size:13px;}
+  .empty{color:#c0392b;}
+</style>
+</head>
+<!-- 就绪契约（F1）：静态声明 data-hybrid-ready="0"，数据渲染完成后由 JS 置 "1"。 -->
+<body data-hybrid-ready="0">
+<!-- 2026-09-17 需求⑤：订单详情页 —— 参考合同详情页设计；
+     从订单列表点「订单编号」或「订单名称」**当前页跳转**到这里，按钮文案是「返回」（回订单列表页）。 -->
+<div class="topbar">
+  <h1>订单详情</h1>
+  <span id="hint" style="font-size:13px;color:#888;"></span>
+</div>
+
+<div class="wrap">
+  <table>
+    <tbody>
+      <tr><th>订单编号</th><td data-testid="detail-no" id="d-no">—</td></tr>
+      <tr><th>合同编号</th><td data-testid="detail-contract" id="d-contract">—</td></tr>
+      <tr><th>订单名称</th><td data-testid="detail-name" id="d-name">—</td></tr>
+      <tr><th>管理单元</th><td data-testid="detail-mu" id="d-mu">—</td></tr>
+      <tr><th>销售员</th><td data-testid="detail-salesman" id="d-salesman">—</td></tr>
+      <tr><th>订单类型</th><td data-testid="detail-type" id="d-type">—</td></tr>
+      <tr><th>业务单元</th><td data-testid="detail-bu" id="d-bu">—</td></tr>
+      <tr><th>帐套</th><td data-testid="detail-file" id="d-file">—</td></tr>
+      <tr><th>客户</th><td data-testid="detail-cust" id="d-cust">—</td></tr>
+      <tr><th>订单备注</th><td data-testid="detail-remark" id="d-remark">—</td></tr>
+    </tbody>
+  </table>
+
+  <div class="actions">
+    <a class="btn" data-testid="btn-back" id="btn-back" href="/orders.html">返回</a>
+  </div>
+  <div id="status-o" data-testid="detail-status"></div>
+</div>
+
+<script>
+// 分区（F6）+ 就绪契约（F1）：与列表页同一套约定
+const W = (window.__HYBRID_W || '').toString().trim();
+function apiUrl(path){
+  if(!W) return path;
+  return path + (path.indexOf('?') >= 0 ? '&' : '?') + 'w=' + encodeURIComponent(W);
+}
+function markReady(){ document.body.dataset.hybridReady = '1'; }
+
+const FIELDS = {
+  'd-no':       r => r.no,
+  'd-name':     r => r.name,
+  'd-mu':       r => r.mu,
+  'd-salesman': r => r.salesmanName,
+  'd-type':     r => r.order_type,
+  'd-bu':       r => r.bu,
+  'd-file':     r => r.file,
+  'd-cust':     r => r.custName,
+  'd-remark':   r => (r.remark || '—'),
+};
+
+async function render(){
+  const no = new URLSearchParams(location.search).get('no') || '';
+  const st = document.getElementById('status-o');
+  if(!/^SO-\d+$/.test(no)){
+    st.textContent = '缺少或非法的订单编号（示例：/order_detail.html?no=SO-1001）';
+    st.className = 'empty';
+    markReady();          // 参数非法也算「页面已定局」，否则测试会一直等就绪
+    return;
+  }
+  const resp = await fetch(apiUrl('/api/order?no=' + encodeURIComponent(no)));
+  if(!resp.ok){
+    const body = await resp.json().catch(()=>({}));
+    st.textContent = body.error || ('未找到该订单: ' + no);
+    st.className = 'empty';
+    document.getElementById('hint').textContent = no;
+    markReady();          // 查不到也是「已定局」
+    return;
+  }
+  const r = await resp.json();
+  for(const [id, pick] of Object.entries(FIELDS)){
+    document.getElementById(id).textContent = pick(r);
+  }
+  // 合同编号做成链接：**新 tab** 打开合同详情（与订单列表里点合同编号的行为一致）
+  const dc = document.getElementById('d-contract');
+  dc.innerHTML = `<a data-testid="detail-contract-link" target="_blank" rel="noopener"
+                      href="/contract_detail.html?no=${r.contract_no}&from=order">${r.contract_no}</a>`;
+  dc.dataset.contract = r.contract_no || '';
+  document.getElementById('d-cust').dataset.cust = r.cust || '';
+  document.getElementById('d-salesman').dataset.salesman = r.salesman || '';
+  document.getElementById('hint').textContent = r.no;
+  st.textContent = '已加载订单: ' + r.no + ' ' + r.name;
+  markReady();
+}
+render();
+</script>
+</body>
+</html>

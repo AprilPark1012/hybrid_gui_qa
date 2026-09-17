@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>订单系统</title>
+<style>
+  body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:#f5f6f8;color:#222;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;background:#fff;
+          border-bottom:1px solid #e3e6ea;padding:14px 22px;}
+  h1{font-size:18px;margin:0;}
+  .wrap{padding:18px 22px;}
+  .toolbar{margin:0 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+           background:#fff;border:1px solid #e3e6ea;border-radius:8px;padding:14px 16px;}
+  .toolbar label{font-size:13px;color:#555;display:flex;align-items:center;gap:6px;}
+  input,select{font:inherit;padding:6px 9px;border:1px solid #cfd4da;border-radius:5px;font-size:13px;}
+  input[readonly]{background:#f7f8fa;}
+  #tb-o-name{width:180px;}  #tb-o-salesman{width:180px;}  #tb-o-cust{width:170px;}
+  .pick-mini{width:130px;}
+  button{font:inherit;padding:6px 14px;border:none;border-radius:5px;cursor:pointer;font-size:13px;
+         background:#2f6fed;color:#fff;}
+  button.ghost{background:#f0f0f0;color:#333;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+  button.pick{padding:6px 10px;background:#e8eefc;color:#2f6fed;}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e3e6ea;border-radius:8px;
+        overflow:hidden;}
+  th,td{border-bottom:1px solid #eef0f3;padding:8px 10px;text-align:left;font-size:13px;}
+  th{background:#f5f7fa;color:#555;font-weight:400;}
+  tbody tr:nth-child(even){background:#fafbfc;}
+  a{color:#2f6fed;}
+  .pager{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:13px;color:#555;}
+  .pager button{min-width:34px;background:#fff;color:#333;border:1px solid #cfd4da;}
+  .pager button.active{background:#2f6fed;color:#fff;border-color:#2f6fed;}
+  #status-o{margin-top:12px;color:#0a0;font-size:13px;min-height:18px;}
+  .empty{text-align:center;color:#999;padding:26px;}
+  /* 弹窗（新建订单 + 各选择弹层） */
+  .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);}
+  .modal.show{display:flex;align-items:center;justify-content:center;}
+  .modal-box{background:#fff;border-radius:8px;padding:20px 24px;width:460px;max-height:88vh;overflow:auto;
+             box-shadow:0 8px 30px rgba(0,0,0,.3);}
+  .modal-box.wide{width:620px;}
+  .modal-box h3{margin:0 0 14px;font-size:17px;}
+  .field{margin-bottom:11px;}
+  .field label{display:block;font-size:12px;color:#666;margin-bottom:4px;}
+  .field input,.field select{width:100%;box-sizing:border-box;}
+  .pick-row{display:flex;gap:6px;}
+  .pick-row input{flex:1;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;}
+  /* 叠层顺序：新建订单之上再叠选择弹层 */
+  #modal-new-order{z-index:10;}
+  .pick-modal{z-index:20;}
+  .required-mark{color:#c0392b;}
+</style>
+</head>
+<!-- 就绪契约（F1）：静态声明 data-hybrid-ready="0"，数据渲染完成后由 JS 置 "1"；
+     测试框架 goto 之后等它 ⇒ 慢机器/高并发下不再「页面还在取数、脚本已经开始点」。 -->
+<body data-hybrid-ready="0">
+<div class="topbar">
+  <h1>订单系统</h1>
+  <div style="display:flex;gap:14px;align-items:center;font-size:13px;">
+    <div>共 <span id="total" data-testid="total-o">0</span> 条订单</div>
+    <a href="/" data-testid="link-contracts">合同管理</a>
+    <button id="btn-new-order" data-testid="btn-new-order">+ 新建订单</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <!-- 搜索区：订单名称(全模糊) / 销售员(右模糊) / 客户(全模糊) / 业务单元·管理单元·帐套 用「...」弹层选值 -->
+  <div class="toolbar">
+    <label>订单名称 <input id="tb-o-name" data-testid="tb-o-name" placeholder="订单名称（全模糊）" autocomplete="off"></label>
+    <label>销售员 <input id="tb-o-salesman" data-testid="tb-o-salesman" placeholder="销售员（右模糊：前缀匹配）" autocomplete="off"></label>
+    <label>客户 <input id="tb-o-cust" data-testid="tb-o-cust" placeholder="客户（全模糊）" autocomplete="off"></label>
+    <label>业务单元
+      <span class="pick-row">
+        <input id="tb-o-bu" class="pick-mini" data-testid="tb-o-bu" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-bu-search" data-testid="btn-pick-bu-search"
+                title="选择业务单元">...</button>
+      </span>
+    </label>
+    <label>管理单元
+      <span class="pick-row">
+        <input id="tb-o-mu" class="pick-mini" data-testid="tb-o-mu" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-mu-search" data-testid="btn-pick-mu-search"
+                title="选择管理单元">...</button>
+      </span>
+    </label>
+    <label>帐套
+      <span class="pick-row">
+        <input id="tb-o-file" class="pick-mini" data-testid="tb-o-file" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-file-search" data-testid="btn-pick-file-search"
+                title="选择帐套">...</button>
+      </span>
+    </label>
+    <button id="btn-search-o" data-testid="btn-search-o">搜索</button>
+    <button id="btn-reset-o" data-testid="btn-reset-o" class="ghost">重置</button>
+  </div>
+
+  <!-- 订单列表：9 列（订单编号 / 合同编号 / 订单名称 / 管理单元 / 销售员 / 订单类型 / 业务单元 / 帐套 / 客户） -->
+  <table id="tbl-orders" data-testid="tbl-orders">
+    <thead>
+      <tr>
+        <th>订单编号</th><th>合同编号</th><th>订单名称</th><th>管理单元</th><th>销售员</th>
+        <th>订单类型</th><th>业务单元</th><th>帐套</th><th>客户</th>
+      </tr>
+    </thead>
+    <tbody id="tbody-orders"></tbody>
+  </table>
+
+  <!-- 分页：默认 3 页 × 20 条 -->
+  <div class="pager">
+    <span id="page-info" data-testid="page-info">第 1 / 1 页</span>
+    <button id="btn-prev-o" data-testid="btn-prev-o" class="ghost" type="button">上一页</button>
+    <span id="pager" data-testid="pager"></span>
+    <button id="btn-next-o" data-testid="btn-next-o" class="ghost" type="button">下一页</button>
+  </div>
+  <div id="status-o" data-testid="status-o"></div>
+</div>
+
+<!-- ================= 新建订单弹窗（必填 8 项 + 备注选填） ================= -->
+<div id="modal-new-order" class="modal" data-testid="modal-new-order">
+  <div class="modal-box wide">
+    <h3>新建订单</h3>
+    <div class="field">
+      <label>订单名称 <span class="required-mark">*</span></label>
+      <input id="o-name" data-testid="o-name" placeholder="请输入订单名称" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>合同 <span class="required-mark">*</span></label>
+      <div class="pick-row">
+        <input id="o-contract" data-testid="o-contract" placeholder="请选择合同" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-contract" data-testid="btn-pick-contract">选择合同</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>业务单元 <span class="required-mark">*</span></label>
+      <div class="pick-row">
+        <input id="o-bu" data-testid="o-bu" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-bu" data-testid="btn-pick-bu"
+                title="选择业务单元">...</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>管理单元 <span class="required-mark">*</span></label>
+      <div class="pick-row">
+        <input id="o-mu" data-testid="o-mu" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-mu" data-testid="btn-pick-mu"
+                title="选择管理单元">...</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>帐套 <span class="required-mark">*</span></label>
+      <div class="pick-row">
+        <input id="o-file" data-testid="o-file" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-file" data-testid="btn-pick-file"
+                title="选择帐套">...</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>订单类型 <span class="required-mark">*</span></label>
+      <select id="o-type" data-testid="o-type">
+        <option value="">请选择</option>
+        <option value="标准销售订单">标准销售订单</option>
+        <option value="退货订单">退货订单</option>
+        <option value="服务订单">服务订单</option>
+        <option value="电商订单">电商订单</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>客户 <span class="required-mark">*</span></label>
+      <div class="pick-row">
+        <input id="o-cust" data-testid="o-cust" placeholder="请选择客户" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-cust" data-testid="btn-pick-cust">选择客户</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>销售员 <span class="required-mark">*</span></label>
+      <div class="pick-row">
+        <input id="o-salesman" data-testid="o-salesman" placeholder="请选择销售员" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-salesman" data-testid="btn-pick-salesman">选择销售员</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>订单备注（选填）</label>
+      <input id="o-remark" data-testid="o-remark" placeholder="订单备注（可不填）" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button id="btn-cancel-order" data-testid="btn-cancel-order" class="ghost" type="button">取消</button>
+      <button id="btn-submit-order" data-testid="btn-submit-order" type="button">提交</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 选择弹层 ×6 =================
+     需求③：业务单元 / 管理单元 / 帐套 三类「...」弹层**没有「取消」按钮**（选中即回填并关闭）。
+     需求④：新建订单里的「选择合同」与「业务单元」的设计一致（同样没有「取消」）。
+     客户 / 销售员沿用合同页既有设计（有「取消」，可以不改而退出）。 -->
+<div id="modal-pick-bu" class="modal pick-modal" data-testid="modal-pick-bu">
+  <div class="modal-box">
+    <h3>选择业务单元</h3>
+    <table data-testid="tbl-pick-bu"><thead><tr><th>业务单元</th><th style="width:90px;">操作</th></tr></thead>
+      <tbody id="tbody-pick-bu"></tbody></table>
+  </div>
+</div>
+<div id="modal-pick-mu" class="modal pick-modal" data-testid="modal-pick-mu">
+  <div class="modal-box">
+    <h3>选择管理单元</h3>
+    <table data-testid="tbl-pick-mu"><thead><tr><th>管理单元</th><th style="width:90px;">操作</th></tr></thead>
+      <tbody id="tbody-pick-mu"></tbody></table>
+  </div>
+</div>
+<div id="modal-pick-file" class="modal pick-modal" data-testid="modal-pick-file">
+  <div class="modal-box">
+    <h3>选择帐套</h3>
+    <table data-testid="tbl-pick-file"><thead><tr><th>帐套</th><th style="width:90px;">操作</th></tr></thead>
+      <tbody id="tbody-pick-file"></tbody></table>
+  </div>
+</div>
+<div id="modal-pick-contract" class="modal pick-modal" data-testid="modal-pick-contract">
+  <div class="modal-box wide">
+    <h3>选择合同</h3>
+    <table data-testid="tbl-pick-contract">
+      <thead><tr><th>合同编号</th><th>合同名称</th><th>客户</th><th style="width:90px;">操作</th></tr></thead>
+      <tbody id="tbody-pick-contract"></tbody>
+    </table>
+  </div>
+</div>
+<div id="modal-pick-cust" class="modal pick-modal" data-testid="modal-pick-cust">
+  <div class="modal-box wide">
+    <h3>选择客户</h3>
+    <table data-testid="tbl-pick-cust">
+      <thead><tr><th>客户名称</th><th>客户地址</th><th style="width:90px;">操作</th></tr></thead>
+      <tbody id="tbody-pick-cust"></tbody>
+    </table>
+    <div class="modal-actions">
+      <button id="btn-pick-cust-cancel" data-testid="btn-pick-cust-cancel" class="ghost" type="button">取消</button>
+    </div>
+  </div>
+</div>
+<div id="modal-pick-salesman" class="modal pick-modal" data-testid="modal-pick-salesman">
+  <div class="modal-box">
+    <h3>选择销售员</h3>
+    <table data-testid="tbl-pick-salesman"><thead><tr><th>销售员</th><th style="width:90px;">操作</th></tr></thead>
+      <tbody id="tbody-pick-salesman"></tbody></table>
+    <div class="modal-actions">
+      <button id="btn-pick-salesman-cancel" data-testid="btn-pick-salesman-cancel" class="ghost" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== 数据来源：服务端 API（与合同页同一套口径，唯一数据源是 demo/app.py） ==========
+let CUSTOMERS = [], CONTRACTS = [], SALESMEN = [];
+const DICT = { bu: [], mu: [], file: [] };
+
+// 分区（F6）：pytest-xdist 下 conftest 给每个 worker 的页面注入 window.__HYBRID_W，页面带进所有 /api 调用
+// 就绪（F1）：boot() 渲染完成后置 body[data-hybrid-ready="1"]，测试框架 goto 之后等它
+const W = (window.__HYBRID_W || '').toString().trim();
+function apiUrl(path){
+  if(!W) return path;
+  return path + (path.indexOf('?') >= 0 ? '&' : '?') + 'w=' + encodeURIComponent(W);
+}
+function markReady(){ document.body.dataset.hybridReady = '1'; }
+function $(id){ return document.getElementById(id); }
+
+let PAGE = 1;
+
+async function boot(){
+  CUSTOMERS = await (await fetch(apiUrl('/api/customers'))).json();
+  CONTRACTS = await (await fetch(apiUrl('/api/contracts'))).json();
+  SALESMEN  = await (await fetch(apiUrl('/api/salesmen'))).json();
+  for(const k of ['bu','mu','file']){
+    DICT[k] = (await (await fetch(apiUrl('/api/dict?kind=' + k))).json()).values || [];
+  }
+  renderPickRows('bu'); renderPickRows('mu'); renderPickRows('file');
+  renderPickRows('contract'); renderPickRows('cust'); renderPickRows('salesman');
+  await loadOrders(1);
+  markReady();          // ← 数据已就位：测试可以开始动作/断言了
+}
+
+// ========== 列表：筛选 + 分页（全部走服务端，口径见 demo/app.py 的 filter_orders / page_of） ==========
+function currentFilters(){
+  return {
+    name: $('tb-o-name').value.trim(),
+    salesman: $('tb-o-salesman').value.trim(),
+    cust: $('tb-o-cust').value.trim(),
+    bu: $('tb-o-bu').value,
+    mu: $('tb-o-mu').value,
+    file: $('tb-o-file').value,
+  };
+}
+async function loadOrders(page){
+  const f = currentFilters();
+  const qs = new URLSearchParams({page: String(page || 1), size: '20'});
+  Object.entries(f).forEach(([k,v])=>{ if(v) qs.set(k, v); });
+  const info = await (await fetch(apiUrl('/api/orders?' + qs.toString()))).json();
+  PAGE = info.page;
+  render(info.items);
+  renderPager(info);
+  return info;
+}
+function render(items){
+  const tb = $('tbody-orders');
+  if(!items.length){
+    tb.innerHTML = '<tr><td colspan="9" class="empty">无匹配数据</td></tr>';
+    return;
+  }
+  tb.innerHTML = items.map(o=>`<tr data-testid="orow-${o.no}">
+    <td data-field="orderNo"><a data-testid="olink-${o.no}" href="/order_detail.html?no=${o.no}">${o.no}</a></td>
+    <td data-field="contractNo"><a data-testid="clink-${o.no}" target="_blank" rel="noopener"
+        href="/contract_detail.html?no=${o.contract_no}&from=order">${o.contract_no}</a></td>
+    <td data-field="orderName"><a data-testid="nlink-${o.no}" href="/order_detail.html?no=${o.no}">${o.name}</a></td>
+    <td data-field="managementUnit">${o.mu}</td>
+    <td data-field="salesman" data-salesman="${o.salesman}">${o.salesmanName}</td>
+    <td data-field="orderType">${o.order_type}</td>
+    <td data-field="businessUnit">${o.bu}</td>
+    <td data-field="folder">${o.file}</td>
+    <td data-field="customer" data-cust="${o.cust}">${o.custName}</td>
+  </tr>`).join('');
+}
+function renderPager(info){
+  $('total').textContent = info.total;
+  $('page-info').textContent = `第 ${info.page} / ${info.pages} 页`;
+  $('btn-prev-o').disabled = info.page <= 1;
+  $('btn-next-o').disabled = info.page >= info.pages;
+  let html = '';
+  for(let p = 1; p <= info.pages; p++){
+    html += `<button type="button" data-testid="page-${p}" data-page="${p}"
+              class="${p === info.page ? 'active' : ''}">${p}</button>`;
+  }
+  $('pager').innerHTML = html;
+}
+$('pager').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-page]');
+  if(b) loadOrders(Number(b.dataset.page));
+});
+$('btn-prev-o').addEventListener('click', ()=>loadOrders(PAGE - 1));
+$('btn-next-o').addEventListener('click', ()=>loadOrders(PAGE + 1));
+
+// ========== 搜索 / 重置 ==========
+async function doSearch(){
+  const info = await loadOrders(1);          // 换条件后回到第 1 页
+  const f = currentFilters();
+  const parts = Object.entries(f).filter(([,v])=>v).map(([k,v])=>`${k}=${v}`);
+  $('status-o').textContent = `搜索完成，命中 ${info.total} 条` + (parts.length ? `（${parts.join('，')}）` : '');
+}
+$('btn-search-o').addEventListener('click', doSearch);
+$('btn-reset-o').addEventListener('click', async ()=>{
+  ['tb-o-name','tb-o-salesman','tb-o-cust','tb-o-bu','tb-o-mu','tb-o-file'].forEach(id=>{
+    $(id).value = ''; delete $(id).dataset.value;
+  });
+  await loadOrders(1);
+  $('status-o').textContent = '已重置';
+});
+['tb-o-name','tb-o-salesman','tb-o-cust'].forEach(id=>{
+  $(id).addEventListener('keydown', e=>{ if(e.key === 'Enter') doSearch(); });
+});
+
+// ========== 选择弹层（一套逻辑 × 6 类） ==========
+// targetIds：回填到哪些输入框（搜索区的同一个弹层与新建订单里的输入框共用）
+let _pickKind = null, _pickTargets = [];
+function renderPickRows(kind){
+  const body = $('tbody-pick-' + kind);
+  if(!body) return;
+  const btn = (v, label) => `<button type="button" data-testid="pick-${kind}-${v}"
+                              data-pick-value="${v}" data-pick-label="${label}">选择</button>`;
+  if(kind === 'bu' || kind === 'mu' || kind === 'file'){
+    body.innerHTML = DICT[kind].map(v=>`<tr data-testid="prow-${kind}-${v}">
+        <td data-field="value">${v}</td><td>${btn(v, v)}</td></tr>`).join('');
+  }else if(kind === 'contract'){
+    body.innerHTML = CONTRACTS.map(c=>`<tr data-testid="prow-contract-${c.no}">
+        <td data-field="contractNo">${c.no}</td>
+        <td data-field="contractName">${c.name}</td>
+        <td data-field="customer" data-cust="${c.cust}">${c.custName}</td>
+        <td>${btn(c.no, c.no)}</td></tr>`).join('');
+  }else if(kind === 'cust'){
+    body.innerHTML = CUSTOMERS.map(c=>`<tr data-testid="prow-cust-${c.id}" data-cust="${c.id}">
+        <td data-field="custName">${c.name}</td>
+        <td data-field="custAddr">${c.addr}</td>
+        <td>${btn(c.id, c.name)}</td></tr>`).join('');
+  }else if(kind === 'salesman'){
+    body.innerHTML = SALESMEN.map(s=>`<tr data-testid="prow-salesman-${s.id}">
+        <td data-field="salesmanName">${s.name}</td><td>${btn(s.id, s.name)}</td></tr>`).join('');
+  }
+}
+function openPick(kind, targetIds){
+  _pickKind = kind; _pickTargets = targetIds;
+  $('modal-pick-' + kind).classList.add('show');
+}
+function closePick(kind){ $('modal-pick-' + kind).classList.remove('show'); }
+document.querySelectorAll('.pick-modal').forEach(m=>{
+  m.addEventListener('click', e=>{
+    const b = e.target.closest('button[data-pick-value]');
+    if(!b) return;
+    _pickTargets.forEach(id=>{
+      const el = $(id);
+      el.value = b.dataset.pickLabel;
+      el.dataset.value = b.dataset.pickValue;      // 真正的取值（提交/搜索都用它）
+    });
+    closePick(_pickKind);
+  });
+});
+// 「...」与「选择」按钮 → 打开对应弹层（搜索区 / 新建订单 各一套，弹层共用）
+[['btn-pick-bu-search',['tb-o-bu']], ['btn-pick-mu-search',['tb-o-mu']], ['btn-pick-file-search',['tb-o-file']],
+ ['btn-pick-bu',['o-bu']], ['btn-pick-mu',['o-mu']], ['btn-pick-file',['o-file']],
+ ['btn-pick-contract',['o-contract']], ['btn-pick-cust',['o-cust']], ['btn-pick-salesman',['o-salesman']]
+].forEach(([btnId, targets])=>{
+  const kind = btnId.includes('contract') ? 'contract'
+             : btnId.includes('-cust') ? 'cust'
+             : btnId.includes('salesman') ? 'salesman'
+             : btnId.includes('-bu') ? 'bu' : btnId.includes('-mu') ? 'mu' : 'file';
+  $(btnId).addEventListener('click', ()=>openPick(kind, targets));
+});
+// 客户 / 销售员弹层有「取消」（沿用合同页既有设计）；业务单元/管理单元/帐套/合同弹层**没有取消按钮**（需求③④）
+$('btn-pick-cust-cancel').addEventListener('click', ()=>closePick('cust'));
+$('btn-pick-salesman-cancel').addEventListener('click', ()=>closePick('salesman'));
+
+// ========== 新建订单 ==========
+function val(id){ return ($(id).dataset.value || $(id).value || '').trim(); }
+function openNewOrder(){
+  ['o-name','o-remark'].forEach(id=>$(id).value = '');
+  ['o-contract','o-bu','o-mu','o-file','o-cust','o-salesman'].forEach(id=>{
+    $(id).value = ''; delete $(id).dataset.value;
+  });
+  $('o-type').value = '';
+  $('status-o').textContent = '';
+  $('modal-new-order').classList.add('show');
+}
+function closeNewOrder(){ $('modal-new-order').classList.remove('show'); }
+async function submitNewOrder(){
+  const payload = {
+    name: $('o-name').value.trim(),
+    contract_no: val('o-contract'),
+    bu: val('o-bu'),
+    mu: val('o-mu'),
+    file: val('o-file'),
+    order_type: $('o-type').value,
+    cust: val('o-cust'),
+    salesman: val('o-salesman'),
+    remark: $('o-remark').value.trim(),      // 选填
+  };
+  const missing = Object.entries(payload).filter(([k,v])=>k !== 'remark' && !v).map(([k])=>k);
+  if(missing.length){
+    $('status-o').textContent = '请填写全部必填字段';
+    return null;
+  }
+  const resp = await fetch(apiUrl('/api/orders'), {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
+  });
+  const rec = await resp.json().catch(()=>({}));
+  if(!resp.ok){
+    $('status-o').textContent = rec.error || ('提交失败（HTTP ' + resp.status + '）');
+    return null;
+  }
+  closeNewOrder();
+  // 需求④：提交后回到订单列表，且**列表第一个就是刚新建的订单** ⇒ 清掉筛选、回到第 1 页重取
+  ['tb-o-name','tb-o-salesman','tb-o-cust','tb-o-bu','tb-o-mu','tb-o-file'].forEach(id=>{
+    $(id).value = ''; delete $(id).dataset.value;
+  });
+  await loadOrders(1);
+  $('status-o').textContent = '已新增订单: ' + rec.no + ' ' + rec.name;
+  return {no: rec.no, name: rec.name};       // 供测试断言
+}
+$('btn-new-order').addEventListener('click', openNewOrder);
+$('btn-cancel-order').addEventListener('click', closeNewOrder);
+$('btn-submit-order').addEventListener('click', submitNewOrder);
+
+// expose for tests / 手工调试（控制台用；用例不依赖这些钩子）
+window.__orders = {
+  loadOrders, doSearch, submitNewOrder, openPick,
+  get page(){ return PAGE; },
+};
+
+boot();
+</script>
+</body>
+</html>
