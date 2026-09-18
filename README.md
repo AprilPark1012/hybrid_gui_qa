@@ -1,8 +1,8 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V7.6**（2026-09-18）· 版本号单一来源：`build_html.py` 顶部 `VERSION`/`CHANGELOG`
-> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V7.6.md`；
-> 上一版见 `releases/RELEASE_NOTES_V7.5.3.md`（假绿治理：换页证据闸 + 质量闸健壮性）。
+> 当前版本 **V7.7**（2026-09-18）· 版本号单一来源：`build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V7.7.md`；
+> 上一版见 `releases/RELEASE_NOTES_V7.6.md`（跨 tab 端到端 · 行内定位 · 首行断言）。
 > 历次升级日志都在 `releases/RELEASE_NOTES_V*.md`，**每次交付包会一并带上**。
 
 > 一个 Python 骨架，示范如何把 **Browser Use（AI 智能探索）** 和 **Playwright（确定性执行）**
@@ -104,6 +104,39 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 > 需 DeepSeek key（AI 语义识别链路）：在项目根 `.env` 配 `DEEPSEEK_API_KEY`（见「快速上手·第4节」）。
 
 ---
+
+## 2026-09-18（第二次）变更要点 —— 元素歧义闸门 + 离线 AI 链路（V7.7）
+
+| 项 | 内容 |
+|---|---|
+| 元素歧义闸门 S1 | `probe.assign_semantic_names()` 可重复调用并留痕（`base_name` / `ctx_token` / `name_source` / `base_conflict`）；`explorer._merge_items()` 改为「先按 test_id 去重 → 再在**合并后的全量清单**上重算命名」⇒ 同名控件不可能再被某一轮探测的裸名独占（`cli` / `explorer` 单页+跨页 / `generator` 四处同源） |
+| 元素歧义闸门 S2 | 缺失名若正是某个同名冲突组的 base 名，`generate` 报错**直接给候选**（不再是一句干巴巴的「元素未映射」） |
+| 元素歧义闸门 S3 | 生成物 `_item_for()` 模糊兜底收敛：候选唯一才接受并**写日志留痕**；候选 ≥2 **抛错并列候选**；`HYBRID_STRICT_LOCATE=1` 连唯一候选也不兜 |
+| LLM 录像（新能力） | `--llm-record` / `--llm-cassette` / `--llm-cassette-strict`：**严格键 + 结构键**双键回放；离线机器**不需要 key、不联网**；未命中给「最接近那份从第几行起不同」，绝不静默降级 |
+| 离线一条命令 | `offline_explore_chain.py`（随录像包发）：前置体检 → 回放识别 → `generate` → 试跑，全程把 LLM 端点指到黑洞以证「真没联网」 |
+| 弹层两种选中 | 合同页搜索区 = 输入框 + 弹层按钮；**弹层选中 = 精确命中、手工输入 = 右模糊**（既有语义零破坏）；客户/销售员弹层内可「+ 新建」并回填当前字段 |
+| 新增测试 | `tests/test_element_ambiguity_gate.py`（15 条，含**模板 ⇄ 生成物互锁**）· `tests/verify_element_ambiguity.py`（浏览器级复现事故形态）· `tests/verify_order_pick_create.py` |
+| 实测 | `pytest tests/ -q` **202 passed** · `cli run --workers 1` **17 passed / exit 0**（模糊兜底 0 次触发）· `verify_element_ambiguity.py` **exit 0** |
+
+### 离线跑 AI 链路（连不上外网 LLM 的机器怎么做）
+
+详细口径见 `releases/RELEASE_NOTES_V7.7.md` 第二节；这里给最常用的命令：
+
+```bash
+# 1) 录像放好 + 起被测 demo
+mkdir -p output && mv llm_cassettes output/      # 录像包解开后就是 output/llm_cassettes/
+python -m demo.app                                # 另开一个窗口常驻
+# 2) 一条命令跑通：前置体检 → 回放识别 → generate → 试跑
+python offline_explore_chain.py --repo . --run
+# 3) 等价的手动三步
+python -m framework.cli explore --ai --scenario-file scenarios/contracts/contracts_search_by_no.yml --llm-cassette
+python -m framework.cli generate
+python -m framework.cli run --workers 1
+```
+
+**三条铁律**：① 代码必须是含 `--llm-cassette` 的版本（V7.7 起）；
+② demo 与 `scenarios/` 必须与录制时**同版本**（回放键含场景文案 / 页面地址 / 控件骨架）；
+③ 数据值不同没关系（结构键兜底时**会告警**），只认逐字一致就加 `--llm-cassette-strict`。
 
 ## 2026-09-18 变更要点 —— 跨 tab 端到端 · 行内定位 · 首行断言（V7.6）
 
