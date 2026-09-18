@@ -5,7 +5,10 @@
 页面刷新不再丢数据（更接近真实系统）。
 
 接口（数据口径的**唯一来源**就是这个文件）：
-  GET  /api/customers             6 个客户主数据（名称 + 地址）
+  GET  /api/customers             该分区客户主数据（预置 6 个；可被「弹层内临时新建」追加）
+  POST /api/customers             需求③：临时新建客户 {name, addr?} → 201；名称空 → 400；同名 → 409
+  GET  /api/salesmen              该分区销售员主数据（预置 6 个；同上可临时新建）
+  POST /api/salesmen              需求③：临时新建销售员 {name} → 201；名称空 → 400；同名 → 409
   GET  /api/contracts             全部合同（含客户名称 custName）
   GET  /api/contract?no=HT-1005   单条；查不到 → 404 {"error": "未找到该合同: ..."}
   POST /api/contracts             新建 {name,mu,file,type,cust,bu} 全必填 → 201 + 新记录
@@ -76,6 +79,10 @@ _lock = threading.RLock()         # ThreadingTCPServer：数据要被多线程�
 #    pytest-xdist 下每个 worker 用自己的分区（`?w=gw0` / cookie），**并发时互不踩**；
 #    不带分区参数时用 "default"，行为与改造前完全一致（老用例/手工调试零影响）。
 _STORES: dict[str, list[dict]] = {}
+# 客户 / 销售员主数据也**按分区**（2026-09-18）：它们现在可被「弹层内临时新建」修改 ⇒ 必须与合同同口径隔离，
+# 否则 A worker 新建的客户 B worker 也能看到、reset 也复位不掉（并发下用例互相污染）。
+_CUST_STORES: dict[str, list[dict]] = {}
+_SALE_STORES: dict[str, list[dict]] = {}
 PRESETS = 20
 PARTITIONS_ENABLED = os.environ.get("HYBRID_TARGET_PARTITIONED", "1") != "0"
 
@@ -95,6 +102,30 @@ def _store(part: str = "default") -> list[dict]:
         if lst is None:
             lst = seed()
             _STORES[part] = lst
+        return lst
+
+
+def _cust_store(part: str = "default") -> list[dict]:
+    """取（必要时创建）某分区的**客户主数据**（2026-09-18：客户开始按分区存）。
+
+    为什么：需求③允许在弹层里**临时新建**客户 ⇒ 主数据变成可变的；若仍是模块级常量，
+    分区隔离就破了（见 _CUST_STORES 的注释）。
+    """
+    with _lock:
+        lst = _CUST_STORES.get(part)
+        if lst is None:
+            lst = [dict(c) for c in CUSTOMERS]      # 复制：别让各分区共享同一批可变对象
+            _CUST_STORES[part] = lst
+        return lst
+
+
+def _sale_store(part: str = "default") -> list[dict]:
+    """取（必要时创建）某分区的**销售员主数据**（同上）。"""
+    with _lock:
+        lst = _SALE_STORES.get(part)
+        if lst is None:
+            lst = [dict(s) for s in SALESMEN]
+            _SALE_STORES[part] = lst
         return lst
 
 
@@ -119,10 +150,13 @@ def seed() -> list[dict]:
     return rows
 
 
-def with_cust_name(row: dict) -> dict:
-    """给记录补上 custName（客户名称）—— 页面/接口都直接拿它渲染，不必各自再查一遍。"""
+def with_cust_name(row: dict, part: str = "default") -> dict:
+    """给记录补上 custName（客户名称）—— 页面/接口都直接拿它渲染，不必各自再查一遍。
+
+    ⚠️ 走**该分区**的客户表（临时新建的客户也在里面），不能用模块级常量。
+    """
     d = dict(row)
-    d["custName"] = next((c["name"] for c in CUSTOMERS if c["id"] == d.get("cust")),
+    d["custName"] = next((c["name"] for c in _cust_store(part) if c["id"] == d.get("cust")),
                          d.get("cust", ""))
     return d
 
@@ -137,6 +171,9 @@ def reset_data(part: str = "default") -> int:
     with _lock:
         _STORES[part] = seed()
         _ORDER_STORES[part] = seed_orders()
+        # 临时新建的客户/销售员也要复位掉，否则「弹层里只有 6 个客户」这类断言会被上一条用例污染
+        _CUST_STORES[part] = [dict(c) for c in CUSTOMERS]
+        _SALE_STORES[part] = [dict(s) for s in SALESMEN]
         return len(_STORES[part])
 
 
@@ -155,7 +192,7 @@ def create_contract(payload: dict, part: str = "default") -> tuple[dict, int]:
             no = f"HT-{seq}"
         row = {"no": no, **{k: str(payload[k]).strip() for k in REQUIRED}}
         lst.append(row)
-        return with_cust_name(row), 201
+        return with_cust_name(row, part), 201
 
 
 # ========== 订单系统：数据与业务（2026-09-17 新增，AprilPark1012需求） ==========
@@ -199,12 +236,12 @@ def _order_store(part: str = "default") -> list[dict]:
         return lst
 
 
-def with_order_names(row: dict) -> dict:
-    """补 salesmanName / custName —— 页面直接渲染，不必各自再查一遍。"""
+def with_order_names(row: dict, part: str = "default") -> dict:
+    """补 salesmanName / custName —— 页面直接渲染，不必各自再查一遍（走该分区的主数据）。"""
     d = dict(row)
-    d["salesmanName"] = next((s["name"] for s in SALESMEN if s["id"] == d.get("salesman")),
+    d["salesmanName"] = next((s["name"] for s in _sale_store(part) if s["id"] == d.get("salesman")),
                              d.get("salesman", ""))
-    d["custName"] = next((c["name"] for c in CUSTOMERS if c["id"] == d.get("cust")),
+    d["custName"] = next((c["name"] for c in _cust_store(part) if c["id"] == d.get("cust")),
                          d.get("cust", ""))
     return d
 
@@ -214,7 +251,7 @@ def dict_values(kind: str) -> list[str]:
     return {"bu": list(BUS), "mu": list(MUS), "file": list(FILES)}.get(kind or "", [])
 
 
-def filter_orders(rows: list[dict], q: dict) -> list[dict]:
+def filter_orders(rows: list[dict], q: dict, part: str = "default") -> list[dict]:
     """订单筛选口径（与页面上的提示文字一一对应）：
 
       · 订单名称  **全模糊**（包含）
@@ -227,7 +264,7 @@ def filter_orders(rows: list[dict], q: dict) -> list[dict]:
     cust = (q.get("cust") or "").strip().lower()
     out: list[dict] = []
     for r in rows:
-        rr = with_order_names(r)
+        rr = with_order_names(r, part)
         if name and name not in (r.get("name") or "").lower():
             continue
         if salesman and not ((rr["salesmanName"] or "").lower().startswith(salesman)
@@ -284,7 +321,49 @@ def create_order(payload: dict, part: str = "default") -> tuple[dict, int]:
         row = {"no": no, **{k: str(payload[k]).strip() for k in REQUIRED_ORDER}}
         row["remark"] = str(payload.get("remark") or "").strip()      # 唯一选填项
         lst.insert(0, row)                                            # ← 新订单在最前
-        return with_order_names(row), 201
+        return with_order_names(row, part), 201
+
+
+def create_customer(payload: dict, part: str = "default") -> tuple[dict, int]:
+    """需求③：弹层内**临时新建客户** → 落该分区主数据（后续搜索能搜到、订单能引用）。
+
+    口径：客户名称必填；**同名拒绝**（409）—— 「搜不到才新建」的场景下同名说明已存在，
+    允许重名只会让人分不清选的是哪一条；地址选填。id 由服务端分配（c7、c8…）。
+    """
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return {"error": "客户名称不能为空", "missing": ["name"]}, 400
+    with _lock:
+        lst = _cust_store(part)
+        if any(c["name"] == name for c in lst):
+            return {"error": f"客户已存在: {name}"}, 409
+        seq = len(lst) + 1
+        cid = f"c{seq}"
+        while any(c["id"] == cid for c in lst):
+            seq += 1
+            cid = f"c{seq}"
+        rec = {"id": cid, "name": name, "addr": str(payload.get("addr") or "").strip()}
+        lst.append(rec)
+        return dict(rec), 201
+
+
+def create_salesman(payload: dict, part: str = "default") -> tuple[dict, int]:
+    """需求③：弹层内**临时新建销售员** → 落该分区主数据。姓名必填，同名拒绝（409）。"""
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return {"error": "销售员姓名不能为空", "missing": ["name"]}, 400
+    with _lock:
+        lst = _sale_store(part)
+        if any(s["name"] == name for s in lst):
+            return {"error": f"销售员已存在: {name}"}, 409
+        seq = len(lst) + 1
+        sid = f"s{seq}"
+        while any(s["id"] == sid for s in lst):
+            seq += 1
+            sid = f"s{seq}"
+        rec = {"id": sid, "name": name}
+        lst.append(rec)
+        return dict(rec), 201
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -304,6 +383,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _path_only(self) -> str:
         return urllib.parse.urlsplit(self.path).path
 
+    def _body(self) -> tuple[dict, dict | None]:
+        """读并解析 JSON 请求体 → (payload, err)；err 非 None 时直接回 400。"""
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            payload = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+        except Exception as e:
+            return {}, {"error": f"请求体不是合法 JSON: {e}"}
+        return (payload if isinstance(payload, dict) else {}), None
+
     # ---- 路由 ----
     def do_GET(self):
         path = self._path_only()
@@ -315,26 +403,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                         "presets": PRESETS, "partitions": sorted(_STORES.keys()),
                                         "order_presets": ORDER_PRESETS,
                                         "orders_per_page": ORDERS_PER_PAGE,
-                                        "order_pages": ORDER_PAGE_COUNT})
+                                        "order_pages": ORDER_PAGE_COUNT,
+                                        # 能力声明：弹层内可临时新建客户/销售员（2026-09-18 需求③）
+                                        "cust_create": True, "salesman_create": True})
         if path == "/api/customers":
-            return self._send_json(CUSTOMERS)
+            with _lock:
+                return self._send_json([dict(c) for c in _cust_store(part)])
         if path == "/api/contracts":
             with _lock:
-                return self._send_json([with_cust_name(r) for r in _store(part)])
+                return self._send_json([with_cust_name(r, part) for r in _store(part)])
         if path == "/api/contract":
             no = (urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("no") or [""])[0]
             with _lock:
                 row = next((r for r in _store(part) if r["no"] == no), None)
             if row is None:
                 return self._send_json({"error": f"未找到该合同: {no}"}, 404)
-            return self._send_json(with_cust_name(row))
+            return self._send_json(with_cust_name(row, part))
         # ---- 订单系统（2026-09-17 新增）----
         if path == "/api/orders":
             # 筛选 + 分页（**页码从 1 起**）；筛选口径见 filter_orders
             q = {k: (v[0] if v else "") for k, v in
                  urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
             with _lock:
-                rows = filter_orders(_order_store(part), q)
+                rows = filter_orders(_order_store(part), q, part)
                 return self._send_json(page_of(rows, q.get("page"), q.get("size")))
         if path == "/api/order":
             no = (urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("no") or [""])[0]
@@ -342,9 +433,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 row = next((r for r in _order_store(part) if r["no"] == no), None)
             if row is None:
                 return self._send_json({"error": f"未找到该订单: {no}"}, 404)
-            return self._send_json(with_order_names(row))
+            return self._send_json(with_order_names(row, part))
         if path == "/api/salesmen":
-            return self._send_json(SALESMEN)
+            with _lock:
+                return self._send_json([dict(s) for s in _sale_store(part)])
         if path == "/api/dict":
             # 「...」选择弹层的候选值：kind=bu|mu|file
             kind = (urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("kind") or [""])[0]
@@ -378,6 +470,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._send_json({"error": f"请求体不是合法 JSON: {e}"}, 400)
             body, code = create_order(payload if isinstance(payload, dict) else {}, part)
+            return self._send_json(body, code)
+        # ---- 需求③：弹层内临时新建（落该分区主数据）----
+        if path == "/api/customers":
+            payload, err = self._body()
+            if err:
+                return self._send_json(err, 400)
+            body, code = create_customer(payload, part)
+            return self._send_json(body, code)
+        if path == "/api/salesmen":
+            payload, err = self._body()
+            if err:
+                return self._send_json(err, 400)
+            body, code = create_salesman(payload, part)
             return self._send_json(body, code)
         return self._send_json({"error": f"未知接口: {path}"}, 404)
 

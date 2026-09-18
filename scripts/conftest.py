@@ -576,6 +576,7 @@ def _item_for(hint, page):
     """semantic_name → probe 控件项。缓存优先；未命中才重探一次（兼容弹窗后出现的控件）。
 
     改造前每个动作都全页 probe（并发下页面时序不稳会超时）；现在只在首次/未命中时探。
+    ⚠️ 2026-09-18 批次 2 S3：逐字名不存在时不再「随便挑一个」—— 见 `_fuzzy_lookup`。
     """
     from framework.probe import probe_page
     it = _INDEX.get(hint)
@@ -583,11 +584,46 @@ def _item_for(hint, page):
         for x in probe_page(page):
             _INDEX.setdefault(x.get("semantic_name"), x)
         it = _INDEX.get(hint)
-    if it is None:                      # 模糊兜底（包含关系），与改造前一致
-        for k, v in _INDEX.items():
-            if k and (hint in k or k in hint):
-                return v
+    if it is None:
+        it = _fuzzy_lookup(hint)
     return it
+
+
+def _strict_locate() -> bool:
+    """HYBRID_STRICT_LOCATE=1/true/yes/on ⇒ 禁用模糊兜底（CI 语义：失败即报，绝不猜）。"""
+    return str(os.environ.get("HYBRID_STRICT_LOCATE", "")).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _fuzzy_lookup(hint):
+    """模糊兜底（包含关系）—— 批次 2 S3 收敛：**唯一候选才接受，多候选严格失败**。
+
+    旧写法（`for k, v in _INDEX.items(): if hint in k or k in hint: return v`）两个坑：
+      ① 多候选时按 **dict 顺序**拿第一个（顺序 = 探测顺序，页面多一个同名控件就可能换人）；
+      ② 全程**零告警** ⇒ 名字写错/过期时不会报失败，而是静默点到另一个控件（点错还报绿）。
+    这正是本项目最忌的那种「看着对、其实错」——同「绝不返回可能点错的 locator」红线。
+    现在：候选唯一 → 接受 + 打印并落日志（留痕，含改法建议）；候选 ≥2 → 抛错并列出候选；
+    `HYBRID_STRICT_LOCATE=1` ⇒ 连唯一候选也不兜（要求名字逐字准确，适合 CI）。
+    """
+    hits = [(k, v) for k, v in _INDEX.items() if k and (hint in k or k in hint)]
+    if len(hits) > 1:
+        cand = "、".join(f"{k}({v.get('test_id') or v.get('role') or '?'})" for k, v in hits[:8])
+        more = f" 等 {len(hits)} 个" if len(hits) > 8 else ""
+        raise RuntimeError(
+            f"语义名歧义：{hint!r} 逐字不存在，而清单里有多个名字含它 → {cand}{more}。"
+            f"模糊兜底不再「随便挑一个」（旧行为 = 按探测顺序静默挑，可能点到另一个控件还照样报绿）。"
+            f"下一步：① 用例里改用清单中的准确名（同名控件用 base@上下文 形式）；"
+            f"② 给该控件补 data-testid 让名字稳定唯一；③ 确认不是语义名过期 —— 页面改版后重跑 probe/generate。"
+        )
+    if not hits:
+        return None
+    if _strict_locate():
+        raise RuntimeError(
+            f"语义名未找到：{hint!r}（逐字不存在；模糊兜底已被 HYBRID_STRICT_LOCATE=1 禁用，"
+            f"清单里唯一接近的是 {hits[0][0]!r}）。改用准确名，或去掉该开关。"
+        )
+    _log(None, "locate", f"⚠️ 模糊兜底命中：{hint!r} → {hits[0][0]!r}"
+                         f"（逐字名不存在，靠包含关系蒙的；建议改用清单里的准确名）")
+    return hits[0][1]
 
 
 def _to_ref(it):

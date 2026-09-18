@@ -200,7 +200,7 @@ def test_ai_orders_return_from_contract_004934(page, ctx):
     _log(page, "click", f"选中合同弹层第一行 HT-1001")
 
     # step 7: 打开业务单元弹层
-    _act(page, "click", semantic='选择业务单元@新建订单', primary=lambda p: p.get_by_test_id("btn-pick-bu"))
+    _act(page, "click", semantic='选择业务单元', primary=lambda p: p.get_by_test_id("btn-pick-bu"))
     _log(page, "click", f"打开业务单元弹层")
 
     # step 8: 选中业务单元第一行 bu_a
@@ -208,7 +208,7 @@ def test_ai_orders_return_from_contract_004934(page, ctx):
     _log(page, "click", f"选中业务单元第一行 bu_a")
 
     # step 9: 打开管理单元弹层
-    _act(page, "click", semantic='选择管理单元@新建订单', primary=lambda p: p.get_by_test_id("btn-pick-mu"))
+    _act(page, "click", semantic='选择管理单元', primary=lambda p: p.get_by_test_id("btn-pick-mu"))
     _log(page, "click", f"打开管理单元弹层")
 
     # step 10: 选中管理单元第一行 0021
@@ -216,7 +216,7 @@ def test_ai_orders_return_from_contract_004934(page, ctx):
     _log(page, "click", f"选中管理单元第一行 0021")
 
     # step 11: 打开帐套弹层
-    _act(page, "click", semantic='选择帐套@新建订单', primary=lambda p: p.get_by_test_id("btn-pick-file"))
+    _act(page, "click", semantic='选择帐套', primary=lambda p: p.get_by_test_id("btn-pick-file"))
     _log(page, "click", f"打开帐套弹层")
 
     # step 12: 选中帐套第一行 001

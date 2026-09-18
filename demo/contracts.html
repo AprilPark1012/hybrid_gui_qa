@@ -36,6 +36,13 @@
   #modal-customer{z-index:20;}
   #modal-new{z-index:10;}
   #tbl-customers{margin-top:0;}
+  /* 2026-09-18 需求②：客户弹层里的行**本身**也能选中（点行 = 点该行「选择」按钮） */
+  #tbody-customers tr[data-pick]{cursor:pointer;}
+  #tbody-customers tr[data-pick]:hover{background:#eef4ff;}
+  /* 2026-09-18：搜索区客户字段加「...」弹层入口（与订单页同款样式） */
+  .pick-row{display:flex;gap:6px;align-items:center;}
+  .pick-row input{flex:1;}
+  button.pick{padding:6px 10px;background:#e8eefc;color:#2f6fed;}
 </style>
 </head>
 <!-- 就绪契约（F1）：静态声明 data-hybrid-ready="0"，数据渲染完成后由 JS 置 "1"；
@@ -60,7 +67,13 @@
   <!-- 2026-09-14 需求②：客户筛选由下拉框改为**输入框 + 右模糊（前缀）匹配**。
        匹配口径：客户名称前缀（大小写不敏感）或客户编号前缀（c1…）。
        「华信」这种包含但不前缀的输入**必须不命中**，用来证明是右模糊而不是包含匹配。 -->
-  <label>客户 <input id="tb-customer" data-testid="tb-customer" placeholder="客户名称（右模糊：前缀匹配）" autocomplete="off"></label>
+  <label>客户
+    <span class="pick-row">
+      <input id="tb-customer" data-testid="tb-customer" placeholder="客户名称（右模糊：前缀匹配）" autocomplete="off">
+      <button type="button" class="pick" id="btn-pick-c-search" data-testid="btn-pick-c-search"
+              title="按客户筛选">...</button>
+    </span>
+  </label>
   <label>业务单元
     <select id="sel-bu" data-testid="sel-bu">
       <option value="">全部业务单元</option>
@@ -212,34 +225,50 @@ function render(data){
 
 // ========== 客户列表弹层 ==========
 function renderCustomers(){
+  // 2026-09-18 需求②：行**本身**也带 data-pick ⇒ 点行任意位置 = 点该行的「选择」按钮（两种选中方式等效）
   document.getElementById('tbody-customers').innerHTML = CUSTOMERS.map(c=>`
-    <tr data-testid="crow-${c.id}" data-cust="${c.id}">
+    <tr data-testid="crow-${c.id}" data-cust="${c.id}" data-pick="${c.id}">
       <td data-field="custName">${c.name}</td>
       <td data-field="custAddr">${c.addr}</td>
       <td><button type="button" data-testid="pick-${c.id}" data-pick="${c.id}">选择</button></td>
     </tr>`).join('');
 }
 
-function openCustomerPicker(){ document.getElementById('modal-customer').classList.add('show'); }
+// 客户弹层有两个入口：新建合同表单（inp-c）与**搜索区**（tb-customer）
+// ⇒ 用「回填目标列表」区分，选中逻辑只有一份（与订单页同一套思路）。
+let _custTargets = ['inp-c'];
+function openCustomerPicker(targets){
+  _custTargets = (targets && targets.length) ? targets : ['inp-c'];
+  document.getElementById('modal-customer').classList.add('show');
+}
 function closeCustomerPicker(){ document.getElementById('modal-customer').classList.remove('show'); }
 function pickCustomer(id){
-  const box = document.getElementById('inp-c');
-  box.value = custById(id).name;      // 回填客户名称
-  box.dataset.cust = id;              // 真正的取值（提交时用）
+  const name = custById(id).name;
+  _custTargets.forEach(tid=>{
+    const box = document.getElementById(tid);
+    if(!box) return;
+    box.value = name;             // 回填客户名称（表单提交它；搜索区显示它）
+    box.dataset.cust = id;        // 真正的取值：表单提交用；搜索区用它做**精确**筛选
+  });
   closeCustomerPicker();
 }
-document.getElementById('btn-pick-c').addEventListener('click', openCustomerPicker);
-document.getElementById('inp-c').addEventListener('click', openCustomerPicker);   // 点输入框也能开
+document.getElementById('btn-pick-c').addEventListener('click', ()=>openCustomerPicker(['inp-c']));
+document.getElementById('inp-c').addEventListener('click', ()=>openCustomerPicker(['inp-c']));  // 点输入框也能开
+document.getElementById('btn-pick-c-search').addEventListener('click', ()=>openCustomerPicker(['tb-customer']));
 document.getElementById('btn-cust-cancel').addEventListener('click', closeCustomerPicker);
 document.getElementById('tbody-customers').addEventListener('click', e=>{
-  const btn = e.target.closest('button[data-pick]');
-  if(btn) pickCustomer(btn.dataset.pick);
+  // 2026-09-18 需求②：两种选中方式 —— 点「选择」按钮 或 **点整行**，都走同一条回填逻辑。
+  // closest 先命中更近的那个（点按钮→button；点行里其他位置→tr），互不干扰；
+  // 「取消」按钮在 modal-actions 里、不在 tr 内 ⇒ 点它不会被当成选中。
+  const hit = e.target.closest('button[data-pick], tr[data-pick]');
+  if(hit) pickCustomer(hit.dataset.pick);
 });
 
 // ========== 搜索（关键字：包含匹配；客户：**右模糊=前缀匹配**） ==========
 function doSearch(){
   const kw = document.getElementById('tb-keyword').value.trim().toLowerCase();
   const cust = document.getElementById('tb-customer').value.trim().toLowerCase();
+  const custPick = document.getElementById('tb-customer').dataset.cust || '';   // 弹层选中的客户 id
   const bu = document.getElementById('sel-bu').value;
   const result = CONTRACTS.filter(c=>{
     // 关键字：在 编号/名称/管理单元/合同类型/帐套 里匹配，名称用包含(模糊)
@@ -251,10 +280,14 @@ function doSearch(){
           || (c.file).toLowerCase().includes(kw)
           || (c.type).toLowerCase().includes(kw);
     }
-    // 客户：右模糊（前缀）—— 名称前缀 或 客户编号前缀；「华信」这种非前缀不命中
+    // 客户两种来源：
+    //   ① 弹层**选中**（有 data-cust）⇒ 精确命中该客户（与订单页的选择语义一致）；
+    //   ② 手工输入 ⇒ 右模糊（前缀）：名称前缀 或 客户编号前缀；「华信」这种非前缀**不命中**（既有需求，语义不动）。
     const custOk = !cust
-        || custNameOf(c).toLowerCase().startsWith(cust)
-        || (c.cust || '').toLowerCase().startsWith(cust);
+        ? true
+        : ((custPick && c.cust === custPick)
+           || custNameOf(c).toLowerCase().startsWith(cust)
+           || (c.cust || '').toLowerCase().startsWith(cust));
     const buOk = !bu || c.bu===bu;
     return kwOk && custOk && buOk;
   });
@@ -313,11 +346,14 @@ async function submitNew(){
 document.getElementById('btn-search').addEventListener('click', doSearch);
 document.getElementById('btn-reset').addEventListener('click', ()=>{
   ['tb-keyword','tb-customer','sel-bu'].forEach(id=>document.getElementById(id).value='');
+  delete document.getElementById('tb-customer').dataset.cust;   // 连「弹层选中」一起清，别残留精确条件
   doSearch();                              // 清空条件 → 回到全量列表（口径与「搜索」一致）
   document.getElementById('status').textContent='已重置';
 });
 document.getElementById('tb-keyword').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
 document.getElementById('tb-customer').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
+// 手工改动输入框 ⇒ 清掉「弹层选中」的 id（否则残留的精确条件会盖住手输的右模糊语义）
+document.getElementById('tb-customer').addEventListener('input', e=>{ delete e.target.dataset.cust; });
 document.getElementById('btn-new').addEventListener('click', openModal);
 document.getElementById('btn-cancel').addEventListener('click', closeModal);
 document.getElementById('btn-submit').addEventListener('click', submitNew);

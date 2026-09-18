@@ -27,6 +27,11 @@
   th{background:#f5f7fa;color:#555;font-weight:400;}
   tbody tr:nth-child(even){background:#fafbfc;}
   a{color:#2f6fed;}
+  /* 需求②：弹层里的行**本身**也能选中（点行 = 点该行「选择」按钮）—— 给个可点提示 */
+  tbody tr[data-pick-value]{cursor:pointer;}
+  tbody tr[data-pick-value]:hover{background:#eef4ff;}
+  /* 需求③：「新建」弹框叠在选择弹层之上（z-index 更高） */
+  .create-modal{z-index:30;}
   .pager{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:13px;color:#555;}
   .pager button{min-width:34px;background:#fff;color:#333;border:1px solid #cfd4da;}
   .pager button.active{background:#2f6fed;color:#fff;border-color:#2f6fed;}
@@ -73,21 +78,21 @@
       <span class="pick-row">
         <input id="tb-o-bu" class="pick-mini" data-testid="tb-o-bu" placeholder="请选择" readonly autocomplete="off">
         <button type="button" class="pick" id="btn-pick-bu-search" data-testid="btn-pick-bu-search"
-                title="选择业务单元">...</button>
+                title="按业务单元筛选">...</button>
       </span>
     </label>
     <label>管理单元
       <span class="pick-row">
         <input id="tb-o-mu" class="pick-mini" data-testid="tb-o-mu" placeholder="请选择" readonly autocomplete="off">
         <button type="button" class="pick" id="btn-pick-mu-search" data-testid="btn-pick-mu-search"
-                title="选择管理单元">...</button>
+                title="按管理单元筛选">...</button>
       </span>
     </label>
     <label>帐套
       <span class="pick-row">
         <input id="tb-o-file" class="pick-mini" data-testid="tb-o-file" placeholder="请选择" readonly autocomplete="off">
         <button type="button" class="pick" id="btn-pick-file-search" data-testid="btn-pick-file-search"
-                title="选择帐套">...</button>
+                title="按帐套筛选">...</button>
       </span>
     </label>
     <button id="btn-search-o" data-testid="btn-search-o">搜索</button>
@@ -231,6 +236,7 @@
       <tbody id="tbody-pick-cust"></tbody>
     </table>
     <div class="modal-actions">
+      <button id="btn-new-cust" data-testid="btn-new-cust" type="button">+ 新建客户</button>
       <button id="btn-pick-cust-cancel" data-testid="btn-pick-cust-cancel" class="ghost" type="button">取消</button>
     </div>
   </div>
@@ -241,7 +247,45 @@
     <table data-testid="tbl-pick-salesman"><thead><tr><th>销售员</th><th style="width:90px;">操作</th></tr></thead>
       <tbody id="tbody-pick-salesman"></tbody></table>
     <div class="modal-actions">
+      <button id="btn-new-salesman" data-testid="btn-new-salesman" type="button">+ 新建销售员</button>
       <button id="btn-pick-salesman-cancel" data-testid="btn-pick-salesman-cancel" class="ghost" type="button">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 需求③：叠在选择弹层之上的「临时新建」弹框（客户 / 销售员） =================
+     业务场景：在弹层里翻/搜，发现目标**不存在** ⇒ 不退出去重来，就地新建 ⇒ 提交后
+       ① 落进服务端**主数据**（后续搜索能搜到、订单能引用）
+       ② **直接回填**到订单新建页对应的客户/销售员字段
+       ③ 两层弹框一起关掉（先关新建层、再关选择层）
+     为什么叠一层而不是替换：真实系统就是这样弹的，且正好构成「跨弹框」链路（框架要能扛）。 -->
+<div id="modal-create-cust" class="modal create-modal" data-testid="modal-create-cust">
+  <div class="modal-box">
+    <h3>新建客户</h3>
+    <div class="field">
+      <label>客户名称 <span class="required-mark">*</span></label>
+      <input id="nc-name" data-testid="nc-name" placeholder="请输入客户名称" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>客户地址</label>
+      <input id="nc-addr" data-testid="nc-addr" placeholder="选填" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button id="btn-create-cust-cancel" data-testid="btn-create-cust-cancel" class="ghost" type="button">取消</button>
+      <button id="btn-create-cust-submit" data-testid="btn-create-cust-submit" type="button">提交</button>
+    </div>
+  </div>
+</div>
+<div id="modal-create-salesman" class="modal create-modal" data-testid="modal-create-salesman">
+  <div class="modal-box">
+    <h3>新建销售员</h3>
+    <div class="field">
+      <label>销售员姓名 <span class="required-mark">*</span></label>
+      <input id="ns-name" data-testid="ns-name" placeholder="请输入销售员姓名" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button id="btn-create-salesman-cancel" data-testid="btn-create-salesman-cancel" class="ghost" type="button">取消</button>
+      <button id="btn-create-salesman-submit" data-testid="btn-create-salesman-submit" type="button">提交</button>
     </div>
   </div>
 </div>
@@ -362,24 +406,36 @@ function renderPickRows(kind){
   if(!body) return;
   const btn = (v, label) => `<button type="button" data-testid="pick-${kind}-${v}"
                               data-pick-value="${v}" data-pick-label="${label}">选择</button>`;
+  // 需求②：行**本身**带同一组 data-pick-* ⇒ 点行任意位置 = 点该行的「选择」按钮（两种选中方式等效）
+  const row = (val_, label, cells) => `<tr data-testid="prow-${kind}-${val_}"
+        data-pick-value="${val_}" data-pick-label="${label}">${cells}</tr>`;
   if(kind === 'bu' || kind === 'mu' || kind === 'file'){
-    body.innerHTML = DICT[kind].map(v=>`<tr data-testid="prow-${kind}-${v}">
-        <td data-field="value">${v}</td><td>${btn(v, v)}</td></tr>`).join('');
+    body.innerHTML = DICT[kind].map(v=>row(v, v,
+        `<td data-field="value">${v}</td><td>${btn(v, v)}</td>`)).join('');
   }else if(kind === 'contract'){
-    body.innerHTML = CONTRACTS.map(c=>`<tr data-testid="prow-contract-${c.no}">
-        <td data-field="contractNo">${c.no}</td>
-        <td data-field="contractName">${c.name}</td>
-        <td data-field="customer" data-cust="${c.cust}">${c.custName}</td>
-        <td>${btn(c.no, c.no)}</td></tr>`).join('');
+    body.innerHTML = CONTRACTS.map(c=>row(c.no, c.no,
+        `<td data-field="contractNo">${c.no}</td>
+         <td data-field="contractName">${c.name}</td>
+         <td data-field="customer" data-cust="${c.cust}">${c.custName}</td>
+         <td>${btn(c.no, c.no)}</td>`)).join('');
   }else if(kind === 'cust'){
-    body.innerHTML = CUSTOMERS.map(c=>`<tr data-testid="prow-cust-${c.id}" data-cust="${c.id}">
-        <td data-field="custName">${c.name}</td>
-        <td data-field="custAddr">${c.addr}</td>
-        <td>${btn(c.id, c.name)}</td></tr>`).join('');
+    body.innerHTML = CUSTOMERS.map(c=>row(c.id, c.name,
+        `<td data-field="custName">${c.name}</td>
+         <td data-field="custAddr">${c.addr}</td>
+         <td>${btn(c.id, c.name)}</td>`)).join('');
   }else if(kind === 'salesman'){
-    body.innerHTML = SALESMEN.map(s=>`<tr data-testid="prow-salesman-${s.id}">
-        <td data-field="salesmanName">${s.name}</td><td>${btn(s.id, s.name)}</td></tr>`).join('');
+    body.innerHTML = SALESMEN.map(s=>row(s.id, s.name,
+        `<td data-field="salesmanName">${s.name}</td><td>${btn(s.id, s.name)}</td>`)).join('');
   }
+}
+// 回填（供「选中行/按钮」与「临时新建后回填」共用）：label 显示、data-value 存真正的取值
+function fillTargets(ids, value, label){
+  ids.forEach(id=>{
+    const el = $(id);
+    if(!el) return;
+    el.value = label;
+    el.dataset.value = value;
+  });
 }
 function openPick(kind, targetIds){
   _pickKind = kind; _pickTargets = targetIds;
@@ -388,13 +444,12 @@ function openPick(kind, targetIds){
 function closePick(kind){ $('modal-pick-' + kind).classList.remove('show'); }
 document.querySelectorAll('.pick-modal').forEach(m=>{
   m.addEventListener('click', e=>{
-    const b = e.target.closest('button[data-pick-value]');
+    // 需求②：两种选中方式 —— 点「选择」按钮 或 **点整行**，都走同一条回填逻辑。
+    // closest 先命中更近的那个（点按钮→button；点行里其他位置→tr），互不干扰。
+    // ⚠️「取消」按钮不在 tr 内 ⇒ 点它不会被当成选中（客户/销售员弹层的取消语义不受影响）。
+    const b = e.target.closest('button[data-pick-value], tr[data-pick-value]');
     if(!b) return;
-    _pickTargets.forEach(id=>{
-      const el = $(id);
-      el.value = b.dataset.pickLabel;
-      el.dataset.value = b.dataset.pickValue;      // 真正的取值（提交/搜索都用它）
-    });
+    fillTargets(_pickTargets, b.dataset.pickValue, b.dataset.pickLabel);
     closePick(_pickKind);
   });
 });
@@ -463,9 +518,45 @@ $('btn-new-order').addEventListener('click', openNewOrder);
 $('btn-cancel-order').addEventListener('click', closeNewOrder);
 $('btn-submit-order').addEventListener('click', submitNewOrder);
 
+// ========== 需求③：弹层内「临时新建」客户 / 销售员 → 落主数据 + 回填 ==========
+let _createKind = null;
+function openCreate(kind){
+  _createKind = kind;
+  if(kind === 'cust'){ $('nc-name').value = ''; $('nc-addr').value = ''; }
+  else { $('ns-name').value = ''; }
+  $('modal-create-' + kind).classList.add('show');
+}
+function closeCreate(kind){ $('modal-create-' + kind).classList.remove('show'); }
+async function submitCreate(kind){
+  const st = $('status-o');
+  const name = (kind === 'cust' ? $('nc-name').value : $('ns-name').value).trim();
+  if(!name){ st.textContent = (kind === 'cust' ? '客户' : '销售员') + '名称不能为空'; return null; }
+  const payload = kind === 'cust' ? {name, addr: $('nc-addr').value.trim()} : {name};
+  const resp = await fetch(apiUrl(kind === 'cust' ? '/api/customers' : '/api/salesmen'), {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
+  });
+  const rec = await resp.json().catch(()=>({}));
+  if(!resp.ok){ st.textContent = rec.error || ('新建失败（HTTP ' + resp.status + '）'); return null; }
+  // ① 落进本地主数据并重渲染该弹层 —— 新建这条**立刻能在弹层里看到**（后续也能搜到）
+  if(kind === 'cust') CUSTOMERS.push(rec); else SALESMEN.push(rec);
+  renderPickRows(kind);
+  // ② 直接回填到当前弹层的目标字段（订单新建页的客户/销售员）
+  fillTargets(_pickTargets, rec.id, rec.name);
+  // ③ 两层弹框一起关（先新建层、再选择层）
+  closeCreate(kind); closePick(kind);
+  st.textContent = '已新建' + (kind === 'cust' ? '客户' : '销售员') + ': ' + rec.id + ' ' + rec.name;
+  return {id: rec.id, name: rec.name};
+}
+$('btn-new-cust').addEventListener('click', ()=>openCreate('cust'));
+$('btn-new-salesman').addEventListener('click', ()=>openCreate('salesman'));
+$('btn-create-cust-cancel').addEventListener('click', ()=>closeCreate('cust'));
+$('btn-create-salesman-cancel').addEventListener('click', ()=>closeCreate('salesman'));
+$('btn-create-cust-submit').addEventListener('click', ()=>submitCreate('cust'));
+$('btn-create-salesman-submit').addEventListener('click', ()=>submitCreate('salesman'));
+
 // expose for tests / 手工调试（控制台用；用例不依赖这些钩子）
 window.__orders = {
-  loadOrders, doSearch, submitNewOrder, openPick,
+  loadOrders, doSearch, submitNewOrder, openPick, openCreate, submitCreate,
   get page(){ return PAGE; },
 };
 

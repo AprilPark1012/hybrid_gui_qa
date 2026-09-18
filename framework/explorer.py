@@ -1080,13 +1080,33 @@ def _close_layer_by_item(pg, items: list[dict]) -> None:
 
 
 def _merge_items(base: list[dict], extra: list[dict]) -> list[dict]:
-    """合并基础控件清单 + 弹窗控件清单，按 semantic_name 去重。"""
-    seen = {it.get("semantic_name") for it in base}
+    """合并同一页面的多轮探测结果（基础控件 + 弹窗/弹层），**并在合并之后统一重命名**。
+
+    2026-09-18 批次 2（S1）根因修复。旧实现按 `semantic_name` **字符串**去重，埋了两个坑：
+
+      ① 弹层控件是**另起一轮 `probe_page`** 探的、名字由那一轮自己分配 ⇒ 两轮各自命名时，
+         一个同名控件在「弹窗没开」那轮里是**唯一**的、独占裸名；另一枚在别的轮次里带 `@上下文`
+         后缀。于是**裸名归谁 = 探测那一刻谁可见**，下游拿着裸名根本分不清它指哪一个。
+         实测事故：合同页搜索区按钮与新建弹窗按钮同名，用例引用裸名，生成物指向被弹窗遮挡的
+         那一枚 ⇒ `Locator.click` 30s 超时 ⇒ 3 条用例红（demo 侧改名掩盖了症状，框架侧没修）。
+      ② 按名字去重 ≠ 按**元素身份**去重 ⇒ 同一个元素在不同轮次里名字变了会被收两遍。
+         （`_try_collect_modal_items._absorb` 已按 test_id/签名身份过滤，这里只补一道 test_id 兜底。）
+
+    现在：先按 test_id 去重（同一元素只留第一次），再 `probe.assign_semantic_names()` 在**全量清单**
+    上重算一次命名 ⇒ 同名控件**必然全部带上下文**，不可能再有谁独占裸名；
+    留痕字段（`base_name` / `name_source` / `base_conflict`）随产物一起给下游判歧义用。
+    """
+    from .probe import assign_semantic_names
     out = list(base)
+    seen_tid = {it.get("test_id") for it in base if it.get("test_id")}
     for it in extra:
-        if it.get("semantic_name") not in seen:
-            out.append(it)
-            seen.add(it["semantic_name"])
+        tid = it.get("test_id")
+        if tid and tid in seen_tid:
+            continue
+        if tid:
+            seen_tid.add(tid)
+        out.append(it)
+    assign_semantic_names(out)
     return out
 
 

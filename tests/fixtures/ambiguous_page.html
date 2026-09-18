@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<!--
+  元素歧义闸门（批次 2 · S1/S2）用的**事故形态 fixture** —— 刻意复现 2026-09-18 批次 1 那次真事故：
+  页面里有**两枚同名按钮**（都叫「选择客户」）：
+    · A：搜索区那枚，页面加载时就可见（data-testid=btn-pick-c-search）
+    · B：新建弹窗里那枚，**弹窗没开时探不到**（data-testid=btn-pick-c-modal）
+  为什么这个形状能复现问题：探测是**分轮**做的（先探基础页、再点开弹窗探一层），
+  每轮各自命名时 A 在「弹窗没开」那轮里是**唯一**的 ⇒ 它独占裸名「选择客户」，
+  于是用例引用裸名就静默落到 A 上，而它想点的往往是 B（被弹窗遮挡 ⇒ 点击超时）。
+
+  这个文件**只服务验证脚本**，不进 demo（demo 侧已把搜索区按钮改名 ⇒ 症状被掩盖，框架侧的根因当时没修）。
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>元素歧义闸门 fixture</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    .searchbar { border: 1px solid #ccc; padding: 8px; margin-bottom: 16px; }
+    .searchbar label { margin-right: 6px; }
+    button { padding: 4px 10px; }
+    .modal { position: fixed; left: 120px; top: 120px; width: 360px;
+             border: 2px solid #666; background: #fff; padding: 12px; z-index: 30; }
+    .modal h3 { margin: 0 0 8px 0; }
+    .field { margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <h2>合同管理</h2>
+
+  <!-- A：搜索区那枚「选择客户」—— 页面加载时可见 ⇒ 在「弹窗未开」那一轮里它独占裸名 -->
+  <div class="searchbar">
+    <label for="inp-c-search">客户</label>
+    <input id="inp-c-search" data-testid="inp-c-search" placeholder="请输入客户">
+    <button data-testid="btn-pick-c-search">选择客户</button>
+    <button data-testid="btn-search" id="btn-search">搜索</button>
+  </div>
+
+  <!-- 打开弹窗的入口（名字必须命中「新建」提示词，弹层探测才会去点它） -->
+  <button data-testid="btn-new" id="btn-new">新建合同</button>
+
+  <!-- B：弹窗里那枚「选择客户」—— 初始 display:none ⇒ 基础轮探不到它 -->
+  <div class="modal" id="modal-create" data-testid="modal-create" style="display:none">
+    <h3>新建合同</h3>
+    <div class="field"><label for="inp-name">合同名称</label>
+      <input id="inp-name" data-testid="inp-name"></div>
+    <div class="field"><label for="inp-cust-readonly">客户</label>
+      <input id="inp-cust-readonly" data-testid="inp-cust-readonly" readonly>
+      <button data-testid="btn-pick-c-modal">选择客户</button></div>
+    <button data-testid="btn-submit" id="btn-submit">提交</button>
+    <button data-testid="btn-cancel" id="btn-cancel">取消</button>
+  </div>
+
+  <script>
+    document.getElementById('btn-new').addEventListener('click', () => {
+      document.getElementById('modal-create').style.display = 'block';
+    });
+    document.getElementById('btn-cancel').addEventListener('click', () => {
+      document.getElementById('modal-create').style.display = 'none';
+    });
+  </script>
+</body>
+</html>

@@ -177,6 +177,17 @@ def _report_unmapped(e) -> NoReturn:
     print(f"[generate]    缺失项（共 {len(e.missing)} 个，最多列 20）：{shown}")
     if len(e.missing) > len(shown):
         print(f"[generate]    … 其余 {len(e.missing) - len(shown)} 个已省略")
+    conflicts = getattr(e, "conflicts", None) or {}
+    if conflicts:
+        # 批次 2（S1/S2）：这一档缺失不是「名字拼错」，而是**同名歧义**——页面上有 ≥2 个控件
+        # 争同一个基础名，探测已把它们全部唯一化（`base@上下文`），所以裸名不再存在。
+        # 直接给候选，别让人去猜（历史事故就是含糊报错把人绕了半天）。
+        print(f"[generate]    ⚠️ 其中 {len(conflicts)} 个是**同名歧义**（不是拼写错误）："
+              f"该名字在页面上对应 ≥2 个控件，探测已全部唯一化 ⇒ 裸名不存在了。请改用下列候选之一：")
+        for base, names in sorted(conflicts.items()):
+            print(f"[generate]      · {base!r} → 候选：{'、'.join(names)}")
+        print("[generate]    下一步：挑一个候选写进用例的 element（上下文后缀来自该控件所在区域/行），"
+              "或给该控件补 data-testid 让它有稳定唯一名。")
     print("[generate]    （旧行为：只打一句警告就照样落盘 ⇒ 产出「每步都是 pytest.fail 存根」的垃圾产物；"
           "2026-09-15 的 V7.5 交付事故就是它进包的）")
     print("[generate]    仅调试时可显式加 --allow-unmapped 放行；那样的产物永不允许进交付。")

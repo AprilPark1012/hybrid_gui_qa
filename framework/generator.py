@@ -362,8 +362,31 @@ def _load_loc_map_from_element_map(path: Path) -> dict:
 
 
 _AMBIGUOUS_NAMES: set[str] = set()      # 本次 generate 里「同名但落点不同」的语义名（用到即显式失败）
+_CONFLICT_BASES: dict[str, list[str]] = {}   # base 名 → 该同名冲突组里各控件现在的名字（批次 2 S1/S2 留痕）
 _DUP_RAW_NAMES: set[str] = set()        # 跨页重复过的**原始名**（跨页用例必须写成 原名@页名）
 _DUP_PAGES: dict[str, set[str]] = {}    # 原始名 → 出现过的页名集合（按用例过滤的判据，见下）
+
+
+def _record_conflict_bases(items: list[dict]) -> None:
+    """记下「同名冲突组」：base 名 → 该组各控件**现在的名字**（≥2 个才记）。
+
+    批次 2（S1/S2）留痕。用途：用例引用的名字若已不存在、但它**是某个冲突组的 base 名**，
+    报错必须直接说清「这个名字现在对应 N 个控件，请写成 `base@上下文` 之一（候选如下）」
+    —— 历史事故里只报一句「元素未映射」，查了半天才发现是两枚同名按钮在抢同一个名字。
+    """
+    groups: dict[str, list[str]] = {}
+    for it in items:
+        base, sn = it.get("base_name"), it.get("semantic_name")
+        if not base or not sn:
+            continue
+        if int(it.get("base_conflict") or 1) < 2:
+            continue                      # 该 base 在本轮清单里唯一 ⇒ 不是冲突组
+        names = groups.setdefault(base, [])
+        if sn not in names:
+            names.append(sn)
+    for base, names in groups.items():
+        if len(names) >= 2:
+            _CONFLICT_BASES.setdefault(base, sorted(names))
 
 
 def _dup_raw_names_for_case(case: dict) -> set[str]:
@@ -445,19 +468,21 @@ def _probe_declared_pages(pages: list[tuple[str, str]]) -> tuple[dict, set[str],
             #   ① 「客户弹层里选一行」这类控件在 generate 的现场补齐里永远看不到
             #      ⇒ 手写用例报「元素未映射」（实测 2026-09-14 踩到）；
             #   ② 弹窗不关，下一页的探测是在"弹窗盖着"的状态下做的，结果不可信。
-            from .explorer import _try_collect_modal_items
+            # 2026-09-18 批次 2（S1）：合并改走 `_merge_items`（合并后统一重命名），
+            # 与单页路径、explore 路径**同源** —— 否则同一页在两条路径上会产出两套名字。
+            from .explorer import _try_collect_modal_items, _merge_items
             layer = _try_collect_modal_items(pg, items)
             for it in layer:
                 it["page"] = pname or ""
-            merged = {i["semantic_name"]: i for i in items}
-            for i in layer:
-                merged.setdefault(i["semantic_name"], i)
+            merged_list = _merge_items(items, layer)
+            merged = {i["semantic_name"]: i for i in merged_list}
             print(f"[generate] 现场探测 [{pname or '页面1'}] {url} → {len(merged)} 个控件"
                   f"（含弹窗/弹层 {len(layer)} 个）")
             per_page.append((pname or "页面1", list(merged.values())))
         b.close()
 
     merged_items, collisions = uniquify_across_pages(per_page)
+    _record_conflict_bases(merged_items)
     # 原始名 → 出现过的页名集合（跨页用例必须用 @页名 形式；按用例过滤见 _dup_raw_names_for_case）
     dup_pages: dict[str, set[str]] = {c["semantic_name"]: set(c["pages"]) for c in collisions}
     for c in collisions:
@@ -490,10 +515,15 @@ class UnmappedElementsError(RuntimeError):
     口径（与「0 个用例 ⇒ exit 2」同源）：**拿不到定位就不要产出产物**，先失败、先说话。
     """
 
-    def __init__(self, missing, sources: str = "", probe_error: str | None = None):
+    def __init__(self, missing, sources: str = "", probe_error: str | None = None,
+                 conflicts: dict[str, list[str]] | None = None):
         self.missing = sorted(str(m) for m in missing)
         self.sources = sources
         self.probe_error = probe_error
+        # 批次 2（S1/S2）：缺失名里若有「某个同名冲突组的 base 名」，报错要直接给出候选，
+        # 而不是干巴巴一句「未映射」—— 让人一眼看出「这个名字现在对应 2 个控件，得消歧」。
+        self.conflicts = {k: v for k, v in (conflicts or {}).items()
+                          if k in set(self.missing)}
         super().__init__(f"{len(self.missing)} 个语义名未映射：{self.missing[:5]}…")
 
 
@@ -520,6 +550,7 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     cases_dir = cases_dir or CASES_DIR
     scripts_dir = scripts_dir or SCRIPTS_DIR
     _AMBIGUOUS_NAMES.clear()      # 每次 generate 从零开始（避免上一次运行的歧义名单残留）
+    _CONFLICT_BASES.clear()
     _DUP_RAW_NAMES.clear()
     _DUP_PAGES.clear()
     datasets_dir = scripts_dir / "datasets"
@@ -576,15 +607,18 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
                 pg.goto(TARGET_URL)
                 pg.wait_for_load_state("networkidle")
                 base_items = probe_page(pg)
-                for it in base_items:
-                    live[it["semantic_name"]] = _semantic_to_locator_expr(it)
                 # 弹窗/弹层补充：**与 explore 共用同一套探测**（_try_collect_modal_items —— 含嵌套
                 # picker 层、探完逐层关闭、无名「...」按钮也能识别）。
                 # ⚠️ 2026-09-17 实测的坑：这里原来自己点一遍「新建」按钮、**只探一层**
                 # ⇒ 弹层里逐行的「选择」（如 选择@<客户名>）永远补不上 ⇒ 手写用例报「元素未映射」，
                 # 整个 generate 被映射质量闸拦下（订单场景一进来就把既有手写用例集体打红）。
-                from .explorer import _try_collect_modal_items
-                for it in _try_collect_modal_items(pg, base_items):
+                # ⚠️ 2026-09-18 批次 2（S1）：合并必须走 `_merge_items`（**合并后统一重命名**）——
+                # 旧写法「基础页一轮命名 + 弹层一轮命名，再按名字 setdefault 合并」会让
+                # 「某一轮里恰好唯一」的控件独占裸名 ⇒ 用例引用裸名就落到**另一个**控件上（静默点错）。
+                from .explorer import _try_collect_modal_items, _merge_items
+                merged_items = _merge_items(base_items, _try_collect_modal_items(pg, base_items))
+                _record_conflict_bases(merged_items)
+                for it in merged_items:
                     live.setdefault(it["semantic_name"], _semantic_to_locator_expr(it))
                 b.close()
             # ② 跨页用例：额外按声明的页面逐页探测（补 `原名@页名` 形式的跨页元素）
@@ -622,7 +656,8 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     # 而「探测拿不到」是**生成期的已知错误**。让它继续落盘 = 产出一份看着合法的垃圾产物，
     # 且 generate 自己 exit 0 ⇒ 会被提交/打包/交付（2026-09-15 V7.5 交付事故就是这个）。
     if still_missing and not allow_unmapped:
-        raise UnmappedElementsError(still_missing, locator_sources, probe_error=probe_error)
+        raise UnmappedElementsError(still_missing, locator_sources, probe_error=probe_error,
+                                   conflicts=_CONFLICT_BASES)
 
     # 1) 抽离数据 → scripts/datasets/<case_id>.json
     for case in cases:
@@ -1247,6 +1282,7 @@ def _item_for(hint, page):
     """semantic_name → probe 控件项。缓存优先；未命中才重探一次（兼容弹窗后出现的控件）。
 
     改造前每个动作都全页 probe（并发下页面时序不稳会超时）；现在只在首次/未命中时探。
+    ⚠️ 2026-09-18 批次 2 S3：逐字名不存在时不再「随便挑一个」—— 见 `_fuzzy_lookup`。
     """
     from framework.probe import probe_page
     it = _INDEX.get(hint)
@@ -1254,11 +1290,46 @@ def _item_for(hint, page):
         for x in probe_page(page):
             _INDEX.setdefault(x.get("semantic_name"), x)
         it = _INDEX.get(hint)
-    if it is None:                      # 模糊兜底（包含关系），与改造前一致
-        for k, v in _INDEX.items():
-            if k and (hint in k or k in hint):
-                return v
+    if it is None:
+        it = _fuzzy_lookup(hint)
     return it
+
+
+def _strict_locate() -> bool:
+    """HYBRID_STRICT_LOCATE=1/true/yes/on ⇒ 禁用模糊兜底（CI 语义：失败即报，绝不猜）。"""
+    return str(os.environ.get("HYBRID_STRICT_LOCATE", "")).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _fuzzy_lookup(hint):
+    """模糊兜底（包含关系）—— 批次 2 S3 收敛：**唯一候选才接受，多候选严格失败**。
+
+    旧写法（`for k, v in _INDEX.items(): if hint in k or k in hint: return v`）两个坑：
+      ① 多候选时按 **dict 顺序**拿第一个（顺序 = 探测顺序，页面多一个同名控件就可能换人）；
+      ② 全程**零告警** ⇒ 名字写错/过期时不会报失败，而是静默点到另一个控件（点错还报绿）。
+    这正是本项目最忌的那种「看着对、其实错」——同「绝不返回可能点错的 locator」红线。
+    现在：候选唯一 → 接受 + 打印并落日志（留痕，含改法建议）；候选 ≥2 → 抛错并列出候选；
+    `HYBRID_STRICT_LOCATE=1` ⇒ 连唯一候选也不兜（要求名字逐字准确，适合 CI）。
+    """
+    hits = [(k, v) for k, v in _INDEX.items() if k and (hint in k or k in hint)]
+    if len(hits) > 1:
+        cand = "、".join(f"{k}({v.get('test_id') or v.get('role') or '?'})" for k, v in hits[:8])
+        more = f" 等 {len(hits)} 个" if len(hits) > 8 else ""
+        raise RuntimeError(
+            f"语义名歧义：{hint!r} 逐字不存在，而清单里有多个名字含它 → {cand}{more}。"
+            f"模糊兜底不再「随便挑一个」（旧行为 = 按探测顺序静默挑，可能点到另一个控件还照样报绿）。"
+            f"下一步：① 用例里改用清单中的准确名（同名控件用 base@上下文 形式）；"
+            f"② 给该控件补 data-testid 让名字稳定唯一；③ 确认不是语义名过期 —— 页面改版后重跑 probe/generate。"
+        )
+    if not hits:
+        return None
+    if _strict_locate():
+        raise RuntimeError(
+            f"语义名未找到：{hint!r}（逐字不存在；模糊兜底已被 HYBRID_STRICT_LOCATE=1 禁用，"
+            f"清单里唯一接近的是 {hits[0][0]!r}）。改用准确名，或去掉该开关。"
+        )
+    _log(None, "locate", f"⚠️ 模糊兜底命中：{hint!r} → {hits[0][0]!r}"
+                         f"（逐字名不存在，靠包含关系蒙的；建议改用清单里的准确名）")
+    return hits[0][1]
 
 
 def _to_ref(it):

@@ -236,35 +236,63 @@ def _ctx_token(nearby_text: str, container_heading: str, help_text: str) -> str:
     return ""
 
 
-def _assign_semantic_names(items: list[dict], max_len: int = 26) -> None:
-    """给探测结果统一分配 semantic_name（**两遍命名**，2026-09-14 改造）。
+def assign_semantic_names(items: list[dict], max_len: int = 26) -> None:
+    """给探测结果统一分配 semantic_name（**两遍命名，且可重复调用**，2026-09-14 / 2026-09-18 批次 2 改造）。
 
-    规则：基础名**全局唯一**时保持原名（老用例零影响，如「搜索」）；
+    规则：基础名**在本次传入的清单里唯一**时保持原名（老用例零影响，如「搜索」）；
     一旦同名（≥2 个），这一组**全部**带上上下文后缀 `base@上下文`，拿不到上下文才退回 `base_2/base_3`。
 
     为什么不沿用「第一个用原名、后续加序号」：
       ① 序号是 DOM 顺序，行序一变就指向别的行（脆弱）；
       ② 对 AI 就是"天书"——`选择_3` 是哪一行？而 `选择@北京华信科技有限公司` 一眼就懂；
       ③ 一致性：同一组按钮里"只有一个不带上下文"会让人误以为它是特殊的那一个。
+
+    ⚠️ **必须在「合并完所有探测轮次」之后重算一次**（2026-09-18 批次 2 S1 根因修复）：
+    弹窗/弹层是**另起一轮 `probe_page`** 探的（`explorer._try_collect_modal_items`），
+    每轮各自命名时，一个同名控件在「弹窗没开」那轮里是**唯一**的 ⇒ 它独占裸名；
+    另一个控件在别的轮次里带后缀 ⇒ **裸名归谁取决于探测那一刻谁可见**，下游根本分不清
+    （实测事故：两枚同名按钮，用例引用裸名，被静默映射到另一枚，点击被遮挡的按钮 30s 超时）。
+    ⇒ 落点：`explorer._merge_items()`（合并后统一重算）。
+
+    留痕字段（下游判歧义 / 给人话用，绝不静默）：
+      · `base_name`     唯一化前的基础名；
+      · `ctx_token`     上下文关键词（消歧依据）；
+      · `name_source`   `exact`（唯一，裸名）/ `ctx`（上下文消歧）/ `seq`（序号兜底）/ `page`（跨页唯一化，由
+                        `uniquify_across_pages` 写，且**不再被本函数改写**）；
+      · `base_conflict` 该 base 名在本清单里出现的**次数**（≥2 = 有过同名冲突）。
     """
     counts: dict[str, int] = {}
     for it in items:
-        counts[it["_base"]] = counts.get(it["_base"], 0) + 1
+        base = it.get("base_name") or it.pop("_base", "") or ""
+        if not base:
+            base = _slug(readable_name(it.get("text") or "", it.get("help_text") or "")
+                         or it.get("tag") or "")
+        it["base_name"] = base
+        it.setdefault("ctx_token", "")
+        counts[base] = counts.get(base, 0) + 1
     seen: set[str] = set()
     for it in items:
-        base, ctx = it.pop("_base"), it.pop("_ctx", "")
+        if it.get("name_source") == "page":        # 跨页唯一化后的名字是最终名，别再动
+            seen.add(it.get("semantic_name") or "")
+            continue
+        base = it["base_name"]
+        ctx = it.get("ctx_token") or ""
         if counts[base] == 1:
-            name = base
+            name, src = base, "exact"
         else:
             cand = f"{base}@{_slug(ctx)}"[:max_len].rstrip("_") if ctx else ""
-            name = cand if cand and cand not in seen else ""
-            if not name:
+            if cand and cand not in seen:
+                name, src = cand, "ctx"
+            else:
                 k = 2
                 name = f"{base}_{k}"
                 while name in seen:
                     k += 1
                     name = f"{base}_{k}"
+                src = "seq"
         it["semantic_name"] = name
+        it["name_source"] = src
+        it["base_conflict"] = counts[base]
         seen.add(name)
 
 
@@ -309,8 +337,11 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
         base = _slug(readable_name(text, help_text) or tag or f"el{i}")
 
         items.append({
-            "_base": base,                       # 第一遍：只攒基础名 + 上下文
-            "_ctx": _ctx_token(nearby_text, container_heading, help_text),
+            # 命名留痕（2026-09-18 批次 2 S1）：基础名与上下文关键词**留在产物里**，不再 pop 掉。
+            # 为什么必须留：合并多轮探测（基础页 + 弹窗/弹层）之后要能**重算**一次命名 ——
+            # 否则「某一轮里恰好唯一」的控件会独占裸名，下游拿着裸名分不清它指哪一个（事故根因）。
+            "base_name": base,
+            "ctx_token": _ctx_token(nearby_text, container_heading, help_text),
             "tag": tag,
             "role": role,
             "name": name,
@@ -327,8 +358,12 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
             # 跨 tab 流程（2026-09-17）：点击是否新开 tab（探针给信号，AI 据此选 click_new_tab）
             "opens_new_tab": opens_new_tab,
         })
-    _assign_semantic_names(items)                # 第二遍：统一命名（同名 → 全部带上下文）
+    assign_semantic_names(items)                 # 第二遍：统一命名（同名 → 全部带上下文）
     return items
+
+
+# 兼容旧名（改造前叫 `_assign_semantic_names`；外部/测试若引用旧名仍可用）
+_assign_semantic_names = assign_semantic_names
 
 
 def _opens_new_tab(loc, tag: str) -> bool:
@@ -406,7 +441,10 @@ def uniquify_across_pages(pages_items: list[tuple[str, list[dict]]]) -> tuple[li
         for it in items:
             sn = it.get("semantic_name") or ""
             if sn in dup:
-                it = dict(it, semantic_name=f"{sn}@{pname}", original_name=sn)
+                # 留痕口径与同页唯一化一致（2026-09-18 批次 2）：写明来源是「跨页」，
+                # 并让 `assign_semantic_names` 之后不再改写它（name_source == "page"）。
+                it = dict(it, semantic_name=f"{sn}@{pname}", original_name=sn,
+                          name_source="page")
             merged.append(it)
     collisions = [{"semantic_name": sn, "pages": pgs} for sn, pgs in sorted(dup.items())]
     return merged, collisions

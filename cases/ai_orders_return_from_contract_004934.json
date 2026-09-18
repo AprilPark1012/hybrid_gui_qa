@@ -37,7 +37,7 @@
     {
       "op": "click",
       "desc": "打开业务单元弹层",
-      "element": "选择业务单元@新建订单"
+      "element": "选择业务单元"
     },
     {
       "op": "click",
@@ -47,7 +47,7 @@
     {
       "op": "click",
       "desc": "打开管理单元弹层",
-      "element": "选择管理单元@新建订单"
+      "element": "选择管理单元"
     },
     {
       "op": "click",
@@ -57,7 +57,7 @@
     {
       "op": "click",
       "desc": "打开帐套弹层",
-      "element": "选择帐套@新建订单"
+      "element": "选择帐套"
     },
     {
       "op": "click",
