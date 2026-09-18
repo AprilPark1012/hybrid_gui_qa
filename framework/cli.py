@@ -242,11 +242,19 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
 
 
 def _arg_value(rest: list[str], flag: str) -> str | None:
-    """取 `--flag <value>` 的值（下一个 token 以 -- 开头视为缺值 → None）。"""
-    if flag in rest:
-        idx = rest.index(flag)
-        if idx + 1 < len(rest) and not rest[idx + 1].startswith("--"):
-            return rest[idx + 1]
+    """取 `--flag <value>` 的值（下一个 token 以 -- 开头视为缺值 → None）。
+
+    也认 `--flag=value`（2026-09-18）：`_validate_args` 本来就放行等号写法，
+    但本函数以前只认分离写法 ⇒ `--llm-record=/tmp/x` 这种会**静默退回默认目录**
+    （用户明给的路径被丢掉，属于「说了不听」）。两种写法现在等价。
+    """
+    for i, a in enumerate(rest):
+        if a == flag:
+            if i + 1 < len(rest) and not rest[i + 1].startswith("--"):
+                return rest[i + 1]
+            return None
+        if a.startswith(flag + "="):
+            return a.split("=", 1)[1]
     return None
 
 
@@ -263,7 +271,7 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
                  guard_text: str = "", guard_spec: dict | None = None,
                  case_id: str | None = None, extra: dict | None = None,
                  to_cases: bool = True, mock_fallback: bool = False,
-                 pages: list[dict] | None = None):
+                 pages: list[dict] | None = None, cassette=None, cassette_strict: bool = False):
     """跑一次 AI 语义识别（+ 可选落 cases/）。返回 (emap, case_path | None, warns)。
 
     pages（P3 跨页）：[{"name","url","page"}, ...]；给了 ≥2 页就按跨页模式探测与规划，
@@ -275,7 +283,8 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
     # 2026-09-11 修复：旧写法先探一次再交给 ai_explore ⇒ 连开两个 Chromium，内存吃紧时
     # 第二次探测失败，叠加 ai_explore 里的静默兜底 ⇒ AI 只能看到基础控件（弹窗字段全丢）。
     emap = ai_explore(scenario_text, [], url, allow_mock_fallback=mock_fallback,
-                      page_bg=page_bg, guard=guard_text, pages=pages)
+                      page_bg=page_bg, guard=guard_text, pages=pages, llm_cassette=cassette,
+                      cassette_strict=cassette_strict)
     print(f"{prefix}[explore] 生成 ElementMap: {len(emap.steps)} 步")
     for st in emap.steps:
         el = st.element
@@ -292,6 +301,10 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
 
     cpath = None
     warns: list[str] = []
+    if cassette is not None:
+        # 溯源：把「这条用例是录像回放出来的、还是当场问的 AI」写进用例文件 ——
+        # 复核的人不用回忆当时敲了什么命令（回放 ≠ 实时 AI，必须看得见）。
+        extra = {**(extra or {}), "llm_source": cassette.source_tag()}
     if to_cases and not mock_fallback:
         from .case_builder import CaseQualityError as _CaseQE
         from .case_builder import elementmap_to_cases_file
@@ -323,6 +336,16 @@ def cmd_explore(rest: list[str] = None):
       --mock-fallback           LLM 不可用时显式降级为确定性 mock（默认【拒绝】，且不写 cases/）
       --tag <t>（可重复）        目录批量时按 tag 过滤（OR 语义）
       --limit N                 目录批量时最多跑 N 条
+      --llm-record [DIR]        【录制】真调 LLM，成功后把「prompt → 回答」落盘
+                                （DIR 可省，默认 output/llm_cassettes）
+      --llm-cassette [DIR]      【回放】只读录像目录：命中即用（**不联网、不需要 key**）；
+                                先按严格键（prompt 逐字一致）找，找不到再用**结构键**兜底
+                                （同场景、同页面结构，但页面数据的值不同 —— 换台机器就是这样）
+                                ⇒ 结构键命中会**大声告警**，请核对后再用
+      --llm-cassette-strict     回放只认严格键（不要结构键兜底）
+      · 两者互斥；都不给 = 实时调用（与以前逐字一致，行为不变）
+      · 无外网的机器怎么用：先在**有外网**的机器上 --llm-record 录一次 → 把整个录像目录
+        拷过去 → 那台机器用 --llm-cassette，就能跑完整 explore（含默认 --verify 试跑）
     """
     ensure_dirs()
     rest = rest or []
@@ -334,6 +357,37 @@ def cmd_explore(rest: list[str] = None):
     mock_fallback = "--mock-fallback" in rest
     to_cases = "--no-cases" not in rest
     do_verify = "--no-verify" not in rest
+
+    # ---------- LLM 录像：录制 / 回放（2026-09-18）----------
+    # **只在显式给参数时启用** —— 默认一个字节都不变（实时调用），绝不自动切换模式。
+    from .llm_cassette import MODE_RECORD, MODE_REPLAY, Cassette, CassetteError
+    has_rec = "--llm-record" in rest or any(a.startswith("--llm-record=") for a in rest)
+    has_rep = "--llm-cassette" in rest or any(a.startswith("--llm-cassette=") for a in rest)
+    if has_rec and has_rep:
+        print("[explore] ❌ --llm-record 与 --llm-cassette 互斥：一次只能「录」或「放」"
+              "（要边录边放请分两次跑）")
+        raise SystemExit(2)
+    if (has_rec or has_rep) and mock_fallback:
+        print("[explore] ❌ --mock-fallback 与录像模式互斥：mock 是确定性假产物、录像里存的是"
+              "真 AI 回答 —— 混用没有意义")
+        raise SystemExit(2)
+    cassette = None
+    try:
+        if has_rec:
+            cassette = Cassette(MODE_RECORD, _arg_value(rest, "--llm-record"))
+        elif has_rep:
+            cassette = Cassette(MODE_REPLAY, _arg_value(rest, "--llm-cassette"))
+    except CassetteError as e:
+        print(f"[explore] ❌ {e}")
+        raise SystemExit(2) from None
+    cassette_strict = "--llm-cassette-strict" in rest
+    if cassette_strict and not has_rep:
+        print("[explore] ❌ --llm-cassette-strict 只与 --llm-cassette 搭配使用"
+              "（它的意思是「回放只认逐字一致的录像」）")
+        raise SystemExit(2)
+    if cassette is not None:
+        print(f"[explore] {cassette.banner()}"
+              + ("　· 只认严格键" if cassette_strict else ""))
 
     inline = _arg_value(rest, "--scenario")
     sfile = _arg_value(rest, "--scenario-file")
@@ -406,7 +460,8 @@ def cmd_explore(rest: list[str] = None):
                 job["text"], job["url"], label=job["label"], page_bg=job["page_bg"],
                 guard_text=job["guard_text"], guard_spec=job["guard_spec"],
                 case_id=job["case_id"], extra=job["extra"],
-                to_cases=to_cases, mock_fallback=mock_fallback, pages=job.get("pages"))
+                to_cases=to_cases, mock_fallback=mock_fallback, pages=job.get("pages"),
+                cassette=cassette, cassette_strict=cassette_strict)
         except AiExploreError as e:
             print(f"[explore] ❌ 【{job['label'] or '内联'}】{e}")
             raise SystemExit(2) from None
@@ -417,6 +472,10 @@ def cmd_explore(rest: list[str] = None):
             print("          ⚠️ mock 兜底产物 → 按约定【不落 cases/】（避免假 AI 用例污染用例库）")
 
     prune_snapshots(quiet_if_none=True)          # 归档保留策略：快照各留最近 N 个
+
+    if cassette is not None and cassette.is_replay:
+        print(f"[explore] ⚠️ 本次 AI 判断来自**录像回放**（{cassette.root}）："
+              f"是录制那一刻问出来的，不是现在实时问的 —— 用例里的 llm_source 字段已标注来源")
 
     if done and do_verify:
         if _verify_cases(done) is False:
@@ -668,6 +727,8 @@ FLAG_SPECS: dict[str, str | None] = {
     "--verify": None, "--no-verify": None,
     "--scenario": "value", "--scenario-file": "value", "--scenario-dir": "value",
     "--tag": "value", "--limit": "value",
+    # LLM 录像录制 / 回放（2026-09-18）：opt = 值可省（省了就用默认目录 output/llm_cassettes）
+    "--llm-cassette": "opt", "--llm-record": "opt", "--llm-cassette-strict": None,
     "--keep": "value", "--dry-run": None,
 }
 # 对 run/all 生效的通用参数（main 统一解析）
@@ -677,7 +738,8 @@ CMD_FLAGS: dict[str, set[str]] = {
     "probe": set(),
     "generate": {"--element-map", "--live-probe", "--allow-unmapped"},
     "explore": {"--ai", "--mock-fallback", "--no-cases", "--no-verify", "--verify",
-                "--scenario", "--scenario-file", "--scenario-dir", "--tag", "--limit"},
+                "--scenario", "--scenario-file", "--scenario-dir", "--tag", "--limit",
+                "--llm-cassette", "--llm-record", "--llm-cassette-strict"},
     "run": set(_COMMON_FLAGS),
     "all": set(_COMMON_FLAGS) | {"--allow-unmapped"},
     "prune": {"--keep", "--dry-run"},

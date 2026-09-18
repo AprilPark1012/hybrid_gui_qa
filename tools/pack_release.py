@@ -32,8 +32,13 @@ from framework.text_io import force_stdio, run_capture      # noqa: E402
 
 # 不进包的东西（与 .gitignore 口径一致 + 交付无关产物）
 EXCLUDE_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache", "log", "output",
-                "dist", "build", ".idea", ".vscode", "node_modules",
-                "releases"}          # 交付包库：在仓库里但绝不进包（与 .gitignore 同口径）
+                "dist", "build", ".idea", ".vscode", "node_modules"}
+# ⚠️ releases/ **不能**整体排除（2026-09-18 口径）：升级日志 RELEASE_NOTES_*.md 落在 releases/ 下，
+#    而它们是交付物的一部分，**必须进包**（AprilPark1012 明确要求「打压缩包时要带上这些升级日志文件」）。
+#    这里只放行升级日志；同目录下的交付包本体（zip/tar.gz）、records/ 内部记录、SHA256SUMS.txt
+#    一律不进包 —— 见 _is_release_note()。
+RELEASES_DIRNAME = "releases"
+RELEASE_NOTES_GLOB = "RELEASE_NOTES_*.md"
 EXCLUDE_SUFFIX = {".zip", ".tar.gz", ".pyc", ".pyo"}
 # 包里必须有的东西（少一个说明包不完整）
 REQUIRED = ("README.md", "build_html.py", "training.html", "framework/cli.py",
@@ -80,14 +85,33 @@ def collect_files(exclude_test_artifacts: bool = False) -> list[Path]:
         rel = p.relative_to(REPO)
         if any(part in EXCLUDE_DIRS for part in rel.parts):
             continue
+        if rel.parts and rel.parts[0] == RELEASES_DIRNAME and not _is_release_note(rel):
+            continue                      # releases/ 下**只**放行升级日志
         if p.suffix in EXCLUDE_SUFFIX or p.name.endswith(".tar.gz"):
             continue
         out.append(p)
     return sorted(set(out))
 
 
+def _is_release_note(rel: Path) -> bool:
+    """是不是「升级日志」（releases/RELEASE_NOTES_*.md）—— 唯一允许进包的 releases/ 内容。
+
+    判据用**文件名前缀**而不是完整路径：交付包内一律放在 `<tag>/releases/…`，
+    而历史包（≤V7.6）的升级日志在包根 ⇒ 两种形态都得知得出来。
+    """
+    return (len(rel.parts) == 2 and rel.parts[0] == RELEASES_DIRNAME
+            and rel.name.startswith("RELEASE_NOTES"))
+
+
+def repo_release_notes() -> list[str]:
+    """仓库 releases/ 下的升级日志清单（打包时用来核对「历史日志有没有全带上」）。"""
+    d = REPO / RELEASES_DIRNAME
+    return sorted(p.name for p in d.glob(RELEASE_NOTES_GLOB)) if d.is_dir() else []
+
+
 def check_zip(zip_path: Path, expect_cases: int | None = None,
-              require_notes_for: str | None = None) -> list[str]:
+              require_notes_for: str | None = None,
+              expect_notes: int | None = None) -> list[str]:
     """审计一个包：返回问题清单（空 = 通过）。**只用标准库，不依赖 unzip。**"""
     problems: list[str] = []
     with zipfile.ZipFile(zip_path) as z:
@@ -129,12 +153,19 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
         if bad:
             problems.append(f"包内含不该发的内容：{bad[:5]}{' …' if len(bad) > 5 else ''}")
 
-        if not any(k.startswith("RELEASE_NOTES") for k in rel):
-            problems.append("包内没有 RELEASE_NOTES_*.md（交付物缺一份）")
-        elif require_notes_for and require_notes_for != "unknown":
-            want = f"RELEASE_NOTES_V{require_notes_for}.md"
-            if want not in rel:
-                problems.append(f"包内没有本次版本的 {want}（版本号改了但发版说明没写）")
+        # 升级日志：按**文件名**判断（2026-09-18 起它们落在 releases/ 下；历史包在包根 ⇒ 两种都认）
+        notes = {k.rsplit("/", 1)[-1] for k in rel
+                 if k.rsplit("/", 1)[-1].startswith("RELEASE_NOTES")}
+        if not notes:
+            problems.append("包内没有 RELEASE_NOTES_*.md（升级日志是交付物的一部分）")
+        else:
+            if require_notes_for and require_notes_for != "unknown":
+                want = f"RELEASE_NOTES_V{require_notes_for}.md"
+                if want not in notes:
+                    problems.append(f"包内没有本次版本的 {want}（版本号改了但发版说明没写）")
+            if expect_notes is not None and len(notes) < expect_notes:
+                problems.append(f"包内升级日志只有 {len(notes)} 份，仓库里 {expect_notes} 份"
+                                f"（历史升级日志要一并带上）")
     return problems
 
 
@@ -149,10 +180,12 @@ def main() -> int:
     a = ap.parse_args()
 
     repo_cases = len(list((REPO / "cases").glob("*.json")))
+    repo_notes = repo_release_notes()
 
     if a.check:
         zp = Path(a.check)
         print(f"[pack] 审计 {zp}")
+        # 审计历史包时**不**强制「升级日志份数一致」：老包的日志在包根、份数也不同（形态差异不是缺陷）
         problems = check_zip(zp, expect_cases=repo_cases, require_notes_for=_version()[0])
         if problems:
             print(f"[pack] ❌ 发现 {len(problems)} 个问题：")
@@ -174,7 +207,8 @@ def main() -> int:
             z.write(p, arcname=f"{tag}/{p.relative_to(REPO).as_posix()}")
     print(f"[pack] 已写出 {out_zip}（{len(files)} 个文件，{out_zip.stat().st_size / 1024:.0f} KB）")
 
-    problems = check_zip(out_zip, expect_cases=repo_cases, require_notes_for=ver)
+    problems = check_zip(out_zip, expect_cases=repo_cases, require_notes_for=ver,
+                         expect_notes=len(repo_notes) or None)
     if a.allow_broken_artifacts:
         # 逃生口只降噪，不掩盖：问题照样打出来
         print("[pack] ⚠️⚠️ --allow-broken-artifacts 生效：问题只警告不拦（**永不允许用于交付**）")
@@ -191,7 +225,8 @@ def main() -> int:
         return 2
 
     sha = hashlib.sha256(out_zip.read_bytes()).hexdigest()
-    print(f"[pack] ✅ 包内自检通过（cases={repo_cases} · 未映射=0 · _goto 接线在 · 无 output/log/.env）")
+    print(f"[pack] ✅ 包内自检通过（cases={repo_cases} · 升级日志 {len(repo_notes)} 份 · "
+          f"未映射=0 · _goto 接线在 · 无 output/log/.env）")
     print(f"[pack] sha256 {sha}")
     return 0
 

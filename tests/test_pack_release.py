@@ -41,8 +41,14 @@ def _assert_value(page, element, expect): ...
 
 
 def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
-              unmapped_extra: str = "", skip_case: bool = False) -> Path:
-    """造一个「结构完整」的最小交付包，只让被测判据不同。"""
+              unmapped_extra: str = "", skip_case: bool = False,
+              notes_path: str = "pkg/releases/RELEASE_NOTES_V9.9.md",
+              extra_notes: tuple[str, ...] = ()) -> Path:
+    """造一个「结构完整」的最小交付包，只让被测判据不同。
+
+    升级日志默认放 `pkg/releases/` 下（2026-09-18 起的落点）；`notes_path` 可改成包根（历史形态）。
+    """
+    tmp_path.mkdir(parents=True, exist_ok=True)
     zp = tmp_path / "pkg.zip"
     entries = {
         "pkg/README.md": "# x\n",
@@ -59,7 +65,9 @@ def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
     if not skip_case:
         entries["pkg/cases/x.json"] = '{"case_id": "x", "steps": []}'
     if notes:
-        entries["pkg/RELEASE_NOTES_V9.9.md"] = "# 9.9\n"
+        entries[notes_path] = "# 9.9\n"
+    for n in extra_notes:
+        entries[f"pkg/releases/{n}"] = "# 旧版升级日志\n"
     with zipfile.ZipFile(zp, "w") as z:
         for name, content in entries.items():
             z.writestr(name, content)
@@ -86,6 +94,24 @@ def test_missing_release_notes_for_current_version_is_caught(tmp_path):
     assert any("RELEASE_NOTES" in p for p in problems), problems
 
 
+def test_release_notes_recognized_in_both_layouts(tmp_path):
+    """升级日志在 releases/ 下（新落点）与在包根（历史包）都要认得出来。"""
+    zp = _make_zip(tmp_path, GOOD_TESTS)                       # pkg/releases/RELEASE_NOTES_V9.9.md
+    assert pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9") == []
+    zp2 = _make_zip(tmp_path / "old", GOOD_TESTS, notes_path="pkg/RELEASE_NOTES_V9.9.md")
+    assert pack_release.check_zip(zp2, expect_cases=1, require_notes_for="9.9") == []
+
+
+def test_missing_history_release_notes_is_caught(tmp_path):
+    """★ 交付包要带**全部**历史升级日志（AprilPark1012 2026-09-18 要求）：只带当前版本那份要报出来。"""
+    zp = _make_zip(tmp_path, GOOD_TESTS)
+    problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9", expect_notes=3)
+    assert any("升级日志" in p for p in problems), problems
+    zp2 = _make_zip(tmp_path / "full", GOOD_TESTS,
+                    extra_notes=("RELEASE_NOTES_V9.8.md", "RELEASE_NOTES_V9.7.md"))
+    assert pack_release.check_zip(zp2, expect_cases=1, require_notes_for="9.9", expect_notes=3) == []
+
+
 def test_case_count_mismatch_is_caught(tmp_path):
     """包内 cases 数量与仓库不一致 ⇒ 报出来（打包漏文件/多余文件）。"""
     zp = _make_zip(tmp_path, GOOD_TESTS, skip_case=True)
@@ -103,3 +129,9 @@ def test_collect_files_keeps_sources_and_drops_runtime_cruft():
     bad = [r for r in rel if r.startswith(("output/", "log/", ".venv/"))
            or "__pycache__" in r or r.endswith((".zip", ".tar.gz", ".env"))]
     assert not bad, f"包里有不该发的内容：{bad[:5]}"
+    # 升级日志必须进包；releases/ 下其它东西（交付包本体 / 内部记录）不得进包（2026-09-18 口径）
+    notes = [r for r in rel if r.startswith("releases/")
+             and r.rsplit("/", 1)[-1].startswith("RELEASE_NOTES")]
+    assert notes, "升级日志（releases/RELEASE_NOTES_*.md）没被收进包"
+    leaked = [r for r in rel if r.startswith("releases/") and r not in notes]
+    assert not leaked, f"releases/ 下不该进包的内容混进来了：{leaked[:5]}"

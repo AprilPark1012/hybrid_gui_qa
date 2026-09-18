@@ -50,6 +50,11 @@ class _PlanModel(BaseModel):
     steps: list[_StepModel] = Field(default_factory=list)
 
 
+# 规划用的 system 提示（**唯一出处**）：主路径与文本兜底路径必须用同一份，
+# 否则录像键 sha256(system + prompt) 会因两条路径不同而对不上。
+_PLANNER_SYSTEM = "你是 GUI 自动化测试规划师。只输出 JSON。"
+
+
 def _norm_name(s: str) -> str:
     """语义名规范化（去下划线/空格/标点 + 小写）—— 用于 AI 名字与探测名的模糊对齐。"""
     import re
@@ -417,6 +422,7 @@ def _collect_pages_context(pages: list[dict], items: list[dict]):
 def ai_explore(
     scenario: str, items: list[dict], url: str, allow_mock_fallback: bool = False,
     page_bg: str = "", guard: str = "", pages: list[dict] | None = None,
+    llm_cassette=None, cassette_strict: bool = False,
 ) -> ElementMap:
     """【LLM 语义识别】理解意图、规划步骤、挑元素（ChatDeepSeek 直连编排，非 Agent）。
 
@@ -428,6 +434,10 @@ def ai_explore(
 
     LLM 完全不可用时：默认 raise AiExploreError（拒绝产出假 AI 用例）；
     allow_mock_fallback=True（CLI 的 --mock-fallback）才显式降级为确定性 mock。
+
+    llm_cassette（2026-09-18，见 framework/llm_cassette.py）：录制 / 回放。
+    回放模式**完全不联网、也不需要 key**（连 llm_from_env 都不调）——
+    连不上外网的机器（如受管网络里的工作电脑）也能跑完这条 AI 链路。
     """
     import asyncio
 
@@ -446,7 +456,136 @@ def ai_explore(
     return asyncio.run(  # type: ignore
         _ai_explore_async(scenario, page_items, url, dom_ctx=dom_ctx,
                           allow_mock_fallback=allow_mock_fallback, page_bg=page_bg, guard=guard,
-                          pages=pages, collisions=collisions, row_fields=row_fields)
+                          pages=pages, collisions=collisions, row_fields=row_fields,
+                          llm_cassette=llm_cassette, cassette_strict=cassette_strict)
+    )
+
+
+def _llm_model_name(obj=None) -> str:
+    """LLM 模型名（录像元信息 / 日志用；**不参与录像键**）。
+
+    各 provider 的属性名不一样（model_name / model），逐个试 —— 都没有就退回环境默认。
+    """
+    import os
+    for attr in ("model_name", "model"):
+        v = getattr(obj, attr, None)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+
+
+def _note_err(errs: list, msg: str) -> None:
+    """累积失败原因（去重与渲染交给最终报错那一步，这里只管攒）。"""
+    errs.append(msg)
+
+
+def _llm_failure_hint(detail: str) -> str:
+    """按错误特征给出「最可能是什么问题 + 下一步」—— 报错要给人话，别让人自己猜。
+
+    2026-09-18 实测：端点不可达时旧提示语把真因冲掉、只报「文本解析没抽出步骤」，
+    使用者会去查解析器而不是查网络（= 把环境问题伪装成代码问题）。
+    """
+    d = detail or ""
+    if re.search(r"Connection error|ConnectError|ConnectTimeout|timed out|Timeout|"
+                 r"Name or service not known|getaddrinfo|nodename nor servname|"
+                 r"Temporary failure in name resolution|SSL|Proxy|Connection refused", d, re.I):
+        return ("⚠️ 看起来是**网络 / 端点不可达**（不是解析问题）⇒ 检查 DEEPSEEK_BASE_URL、"
+                "代理、出网权限；\n   完全离线的机器改用录像：有外网的机器 --llm-record，本机 --llm-cassette。\n")
+    if re.search(r"401|403|invalid_api_key|Authentication|Unauthorized|Incorrect API key|"
+                 r"insufficient|balance", d, re.I):
+        return "⚠️ 看起来是 **key / 鉴权 / 额度**问题 ⇒ 检查 DEEPSEEK_API_KEY 是否有效、余额是否够。\n"
+    if re.search(r"429|rate limit|Too Many Requests|overloaded", d, re.I):
+        return "⚠️ 看起来是**上游限流** ⇒ 稍后重试，或调大 HYBRID_LLM_ATTEMPTS（重试已带退避）。\n"
+    return ""
+
+
+def _dump_plan(p):
+    """结构化输出 → 可 JSON 落盘的 dict（pydantic v2 / v1 / 原生 dict 都兼容）。"""
+    if p is None:
+        return None
+    if hasattr(p, "model_dump"):
+        try:
+            return p.model_dump()
+        except Exception:
+            pass
+    if hasattr(p, "dict") and callable(getattr(p, "dict")):
+        try:
+            return p.dict()
+        except Exception:
+            pass
+    if isinstance(p, dict):
+        return p
+    return None
+
+
+def _save_to_cassette(cassette, prompt: str, model: str, structured, raw_text,
+                      key_struct: str = "") -> None:
+    """录制：把这次真正拿到的回答落盘（结构化 / 文本各存一条，回放时按序尝试）。
+
+    同时落一个**结构键**（不含业务数据值）—— 供「另一台机器 / 跑过测试的机器」回放时兜底命中。
+    """
+    resps = []
+    dumped = _dump_plan(structured)
+    if dumped is not None:
+        resps.append({"kind": "structured", "completion": dumped})
+    if raw_text:
+        resps.append({"kind": "text", "completion": raw_text})
+    p = cassette.store(prompt, model, _PLANNER_SYSTEM, resps, key_struct=key_struct)
+    if p:
+        print(f"      [explore] [LLM] 已录制 → {p}（同场景可在无外网机器上 --llm-cassette 回放）")
+
+
+def _replay_from_cassette(cassette, prompt: str, items: list[dict], first_url: str,
+                          scenario: str, pages: list[dict] | None = None,
+                          struct_key_value: str = "", strict_only: bool = False) -> ElementMap:
+    """离线回放：从录像里取回答，走**与 live 完全相同**的解析链路（绝不联网）。
+
+    录到的回答可能有两条（结构化 / 文本）：按序尝试，第一个能解析出步骤的胜出
+    —— 顺序与 live 的「先结构化、失败再文本」一致。
+
+    命中方式两种，都在日志里说清楚（绝不含糊）：
+      · strict：prompt 逐字相同 ⇒ 最高保真；
+      · struct：只有页面/控件**结构**相同、业务数据的值不同（另一台机器、或跑过测试的机器
+        就是这种，实测必然发生）⇒ **大声告警**：步骤是录制当时针对那批数据做的判断，请核对。
+    """
+    rec = cassette.lookup(prompt, _PLANNER_SYSTEM,
+                          struct_key_value=struct_key_value, strict_only=strict_only)
+    if rec is None:
+        from .llm_cassette import render_miss_help
+        tail = "；已按 --llm-cassette-strict 禁用结构键兜底" if strict_only else "，结构键也没找到"
+        raise AiExploreError(
+            "离线回放（--llm-cassette）：录像目录里**没有这一份**（严格键不匹配" + tail + "）。\n"
+            + render_miss_help(prompt, _PLANNER_SYSTEM, cassette.root)
+        )
+    if rec.get("_match") == "struct":
+        print(f"      [explore] [LLM] ⚠️ 按**结构键**命中录像 {rec.get('key')}"
+              f"（录制于 {rec.get('created_at')}）：页面/控件**结构**相同，但**页面数据的值**与录制时不同"
+              f"（另一台机器、或跑过测试的机器就是这种）。\n"
+              f"                       ⇒ 步骤是录制当时针对那批数据做的判断，**请核对后再用**；"
+              f"只认逐字一致请加 --llm-cassette-strict。")
+    else:
+        print(f"      [explore] [LLM] 回放录像 {rec.get('key')}（录制于 {rec.get('created_at')}，"
+              f"模型 {rec.get('model')}）—— 本次**没有**实时调用 AI")
+    errs: list[str] = []
+    for r in (rec.get("responses") or []):
+        kind = r.get("kind")
+        try:
+            if kind == "structured":
+                steps = _plan_to_steps(_PlanModel(**(r.get("completion") or {})), items)
+            elif kind == "text":
+                steps = _parse_steps_text(r.get("completion") or "", items)
+            else:
+                continue
+        except Exception as e:                       # noqa: BLE001
+            _note_err(errs, f"回放 {kind} 路径 {type(e).__name__}: {str(e)[:160]}")
+            continue
+        if steps:
+            steps = _apply_semantic_calibration(steps, items)
+            return _finalize_map(first_url, scenario, steps, pages=pages)
+    detail = "；".join(dict.fromkeys(errs)) or "没有任何一条回答能解析出步骤"
+    raise AiExploreError(
+        f"录像命中但解析不出步骤（{detail}）—— 录的那份与当前框架 / 控件清单可能不兼容。\n"
+        "  ⇒ 核对两台机器的框架版本与 demo 页面是否一致，或重录一份。"
     )
 
 
@@ -476,7 +615,7 @@ async def _ai_explore_async(
     scenario: str, page_items: list[dict], url: str, dom_ctx: list[dict] | None = None,
     allow_mock_fallback: bool = False, page_bg: str = "", guard: str = "",
     pages: list[dict] | None = None, collisions: list[dict] | None = None,
-    row_fields: list[dict] | None = None,
+    row_fields: list[dict] | None = None, llm_cassette=None, cassette_strict: bool = False,
 ) -> ElementMap:
     """【异步阶段】只做 LLM 语义识别：读场景 + 控件清单 + DOM 上下文 → 步骤。
 
@@ -488,7 +627,18 @@ async def _ai_explore_async(
     prompt = _build_planner_prompt(scenario, page_items, url, dom_ctx, page_bg=page_bg, guard=guard,
                                    pages=pages, collisions=collisions, row_fields=row_fields)
     first_url = (pages[0]["url"] if pages else url)
+
+    # ① 离线回放（--llm-cassette）：命中即用 —— **刻意放在 llm_from_env() 之前**，
+    #    因为离线机器常常连 .env 都没配（回放不需要 key，也不联网）。
+    if llm_cassette is not None and llm_cassette.is_replay:
+        from .llm_cassette import struct_key
+        return _replay_from_cassette(
+            llm_cassette, prompt, page_items, first_url, scenario, pages=pages,
+            struct_key_value=struct_key(scenario, page_items, pages, _PLANNER_SYSTEM),
+            strict_only=cassette_strict)
+
     obj = llm_from_env()   # ChatDeepSeek(deepseek) / ChatOpenAI 等
+    model_name = _llm_model_name(obj)      # 录像元信息（不参与键，见 llm_cassette.cassette_key）
 
     # ★ 连接池由**我们自己**持有并关闭（2026-09-13 批量 --scenario-dir 实测的坑）：
     #   browser-use 的 `ChatDeepSeek._client()` 每次 ainvoke 都 new 一个 AsyncOpenAI，
@@ -516,7 +666,8 @@ async def _ai_explore_async(
     # （同一 prompt 第 1 次成功、第 2 次报 ModelProviderError: Extra data: line 1 column 550），
     # 属上游不稳 ⇒ 带退避重试（HYBRID_LLM_ATTEMPTS 可调），不能一次发抖就判死刑。
     n_attempts = max(1, int(os.environ.get("HYBRID_LLM_ATTEMPTS", "3")))
-    last_err = "未拿到可用步骤"
+    errs: list[str] = []          # 累积每次失败的原因（**不再后写覆盖先写** —— 见函数尾部注释）
+    raw_plan = raw_text = None    # 录制用：本次真正拿到的原始回答
 
     try:
         for attempt in range(1, n_attempts + 1):
@@ -527,32 +678,40 @@ async def _ai_explore_async(
                 try:
                     from browser_use.llm.messages import SystemMessage, UserMessage
                     msgs = [
-                        SystemMessage(content="你是 GUI 自动化测试规划师。只输出 JSON。"),
+                        SystemMessage(content=_PLANNER_SYSTEM),
                         UserMessage(content=prompt),
                     ]
                     r = await obj.ainvoke(msgs, output_format=_PlanModel)
+                    raw_plan = r.completion           # 录制用：真拿到的结构化回答
                     steps = _plan_to_steps(r.completion, page_items)
                     if not steps:
-                        last_err = "结构化输出解析不出步骤"
+                        _note_err(errs, "结构化输出解析不出步骤")
                 except Exception as e:
-                    last_err = f"output_format 路径 {type(e).__name__}: {str(e)[:120]}"
-                    print(f"      [explore] 第 {attempt}/{n_attempts} 次结构化输出失败 → {last_err}")
+                    raw_plan = None
+                    _note_err(errs, f"结构化输出路径 {type(e).__name__}: {str(e)[:160]}")
+                    print(f"      [explore] 第 {attempt}/{n_attempts} 次结构化输出失败 → {errs[-1]}")
 
             # 路径2：纯文本 + 宽松解析（兼容无 output_format 的 provider；必须用 async 版，
             # 不能再走 asyncio.run 的 _get_llm_text —— 在事件循环里调它会直接 RuntimeError）
             if not steps:
                 try:
                     text = await _get_llm_text_async(obj, prompt)
+                    raw_text = text or None           # 录制用
                     steps = _parse_steps_text(text, page_items) if text else []
                     if not steps:
-                        last_err = f"文本解析没抽出步骤（返回 {len(text)} 字符）"
+                        _note_err(errs, f"文本解析没抽出步骤（返回 {len(text)} 字符）")
                 except Exception as e:
-                    last_err = f"文本路径 {type(e).__name__}: {str(e)[:120]}"
-                    print(f"      [explore] 第 {attempt}/{n_attempts} 次文本解析失败 → {last_err}")
+                    _note_err(errs, f"文本路径 {type(e).__name__}: {str(e)[:160]}")
+                    print(f"      [explore] 第 {attempt}/{n_attempts} 次文本解析失败 → {errs[-1]}")
 
             if steps:
                 if attempt > 1:
                     print(f"      [explore] 第 {attempt}/{n_attempts} 次重试成功（上游抖动，重试即恢复）")
+                if llm_cassette is not None and llm_cassette.is_record:
+                    from .llm_cassette import struct_key
+                    _save_to_cassette(llm_cassette, prompt, model_name, raw_plan, raw_text,
+                                      key_struct=struct_key(scenario, page_items, pages,
+                                                            _PLANNER_SYSTEM))
                 steps = _apply_semantic_calibration(steps, page_items)
                 return _finalize_map(first_url, scenario, steps, pages=pages)
 
@@ -572,10 +731,17 @@ async def _ai_explore_async(
 
     # 重试用尽 —— 绝不静默用 mock 冒充 AI 产物（2026-09-11 修复的假 AI 缺陷）
     if not allow_mock_fallback:
+        # ⚠️ 2026-09-18 修：以前是单个 `last_err` 字符串、**后写覆盖先写** ⇒
+        #   连接失败（真因）会被随后那次「文本解析没抽出步骤（返回 0 字符）」冲掉，
+        #   于是「没网」被报成「解析器坏了」（实测：端点指到黑洞端口时提示语就是这个误导）。
+        #   现在把每一次失败都攒下来、去重保序，并按特征给出「最可能是什么问题 + 下一步」。
+        detail = "；".join(dict.fromkeys(errs)) or "未拿到可用步骤"
         raise AiExploreError(
-            f"AI 语义识别失败（已重试 {n_attempts} 次）：{last_err}。"
-            "已拒绝用 mock 冒充 AI 产物（不写假 AI 用例）；请检查 key/网络/限流后重试；"
-            "若确实要降级成确定性 mock，显式加 --mock-fallback。"
+            f"AI 语义识别失败（已重试 {n_attempts} 次）：{detail}。\n"
+            f"{_llm_failure_hint(detail)}"
+            "已拒绝用 mock 冒充 AI 产物（不写假 AI 用例）。\n"
+            "若这台机器连不上外网：可在有外网的机器上 `--llm-record` 录一份，"
+            "再把目录拷过来用 `--llm-cassette` 离线回放（回放不联网、不需要 key）。"
         )
     print("      [explore] ⚠️ LLM 不可用 → 按 --mock-fallback 显式降级为【确定性 mock】"
           "（这不是 AI 产物，不会写入 cases/）")
@@ -613,7 +779,7 @@ async def _get_llm_text_async(obj, prompt: str) -> str:
         try:
             from browser_use.llm.messages import SystemMessage, UserMessage
             r = await obj.ainvoke([
-                SystemMessage(content="你是 GUI 自动化测试规划师。只输出 JSON。"),
+                SystemMessage(content=_PLANNER_SYSTEM),
                 UserMessage(content=prompt),
             ])
             c = getattr(r, "completion", None)
