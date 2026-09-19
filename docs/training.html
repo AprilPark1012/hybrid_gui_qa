@@ -221,8 +221,8 @@
 ├── <b>output/</b>                    ✅ 运行时证据(probe/plan/heal/trace,可清)
 ├── <b>log/&lt;run_id&gt;/</b>             本次运行 逐用例 .log + report.html + traces(可清)
 ├── README.md                       本框架文档
-├── build_html.py                    生成 training.html 培训页
-└── training.html                   ★ 这份培训文档</pre>
+├── build_html.py                    生成 docs/training.html 培训页
+└── docs/training.html              ★ 这份培训文档（docs/ 里唯一的对外文档）</pre>
   </div>
   <div style="margin-top:12px;">
     <div class="pt"><div class="ico">🧭</div><h4>新员工怎么用这份地图找东西</h4>
@@ -1198,7 +1198,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">372</span><code></code></div>
 <div class="code-line"><span class="ln">373</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># ---- 小工具 ----</span></code></div>
 <div class="code-line"><span class="ln">374</span><code>    <span class="k">def</span> _send_json(self, obj, code: int = 200) -&gt; <span class="k">None</span>:</code></div>
-<div class="code-line"><span class="ln">375</span><code>        body = json.dumps(obj, ensure_ascii=<span class="k">False</span>).encode(&quot;utf-8&quot;)</code></div>
+<div class="code-line"><span class="ln">375</span><code>        body = json.dumps(obj, ensure_ascii=<span <span class="k">class</span>="k">False</span>).encode(&quot;utf-8&quot;)</code></div>
 <div class="code-line"><span class="ln">376</span><code>        self.send_response(code)</code></div>
 <div class="code-line"><span class="ln">377</span><code>        self.send_header(&quot;Content-Type&quot;, &quot;application/json; charset=utf-8&quot;)</code></div>
 <div class="code-line"><span class="ln">378</span><code>        self.send_header(&quot;Content-Length&quot;, str(len(body)))</code></div>
@@ -1491,7 +1491,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">10</span><code>load_dotenv(BASE / &quot;.env&quot;)</code></div>
 <div class="code-line"><span class="ln">11</span><code>_hermes_env = Path.home() / &quot;.hermes&quot; / &quot;.env&quot;</code></div>
 <div class="code-line"><span class="ln">12</span><code><span class="k">if</span> _hermes_env.exists():</code></div>
-<div class="code-line"><span class="ln">13</span><code>    load_dotenv(_hermes_env, override=<span class="k">False</span>)   <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 项目 .env 优先，Hermes 兜底</span></code></div>
+<div class="code-line"><span class="ln">13</span><code>    load_dotenv(_hermes_env, override=<span <span class="k">class</span>="k">False</span>)   <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 项目 .env 优先，Hermes 兜底</span></code></div>
 <div class="code-line"><span class="ln">14</span><code></code></div>
 <div class="code-line"><span class="ln">15</span><code><span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># ---- 被测应用 ----</span></code></div>
 <div class="code-line"><span class="ln">16</span><code><span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 目标地址：TARGET_URL（本项目老名字）&gt; HYBRID_BASE_URL（生成脚本/target_probe 用的名字）&gt; 默认。</span></code></div>
@@ -1531,7 +1531,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">49</span><code>    <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">50</span><code>        <span class="k">from</span> browser_use.llm <span <span class="k">class</span>="k">import</span> ChatBrowserUse, ChatOpenAI, ChatAnthropic, ChatGoogle</code></div>
 <div class="code-line"><span class="ln">51</span><code>    <span <span class="k">class</span>="k">except</span> ImportError <span class="k">as</span> e:</code></div>
-<div class="code-line"><span class="ln">52</span><code>        <span <span class="k">class</span>="k">raise</span> ImportError(</code></div>
+<div class="code-line"><span class="ln">52</span><code>        <span class="k">raise</span> ImportError(</code></div>
 <div class="code-line"><span class="ln">53</span><code>            &quot;browser-use 未安装。pip install browser-use 后重试。&quot;</code></div>
 <div class="code-line"><span class="ln">54</span><code>        ) <span class="k">from</span> e</code></div>
 <div class="code-line"><span class="ln">55</span><code></code></div>
@@ -1554,7 +1554,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">72</span><code>            model=os.environ.get(&quot;DEEPSEEK_MODEL&quot;, &quot;deepseek-chat&quot;),</code></div>
 <div class="code-line"><span class="ln">73</span><code>            temperature=0.0,</code></div>
 <div class="code-line"><span class="ln">74</span><code>        )</code></div>
-<div class="code-line"><span class="ln">75</span><code>    <span <span class="k">class</span>="k">raise</span> RuntimeError(</code></div>
+<div class="code-line"><span class="ln">75</span><code>    <span class="k">raise</span> RuntimeError(</code></div>
 <div class="code-line"><span class="ln">76</span><code>        &quot;未检测到 LLM 环境变量。请在 .env 配置 BROWSER_USE_API_KEY / &quot;</code></div>
 <div class="code-line"><span class="ln">77</span><code>        &quot;OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / DEEPSEEK_API_KEY 之一。&quot;</code></div>
 <div class="code-line"><span class="ln">78</span><code>    )</code></div>
@@ -1675,7 +1675,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">84</span><code>                &quot;steps&quot;: [s.to_dict() <span class="k">for</span> s <span class="k">in</span> self.steps]}</code></div>
 <div class="code-line"><span class="ln">85</span><code></code></div>
 <div class="code-line"><span class="ln">86</span><code>    <span class="k">def</span> to_json(self, path) -&gt; <span class="k">None</span>:</code></div>
-<div class="code-line"><span class="ln">87</span><code>        path.write_text(json.dumps(self.to_dict(), ensure_ascii=<span class="k">False</span>, indent=2),</code></div>
+<div class="code-line"><span class="ln">87</span><code>        path.write_text(json.dumps(self.to_dict(), ensure_ascii=<span <span class="k">class</span>="k">False</span>, indent=2),</code></div>
 <div class="code-line"><span class="ln">88</span><code>                        encoding=&quot;utf-8&quot;)</code></div>
 <div class="code-line"><span class="ln">89</span><code></code></div>
 <div class="code-line"><span class="ln">90</span><code>    @classmethod</code></div>
@@ -1741,7 +1741,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">47</span><code>    <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">48</span><code>        <span <span class="k">class</span>="k">return</span> locator.is_visible()</code></div>
 <div class="code-line"><span class="ln">49</span><code>    <span <span class="k">class</span>="k">except</span> Exception:</code></div>
-<div class="code-line"><span class="ln">50</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">50</span><code>        <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">51</span><code></code></div>
 <div class="code-line"><span class="ln">52</span><code></code></div>
 <div class="code-line"><span class="ln">53</span><code><span class="k">def</span> _accessible_name(locator) -&gt; str:</code></div>
@@ -2083,7 +2083,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">379</span><code>            <span <span class="k">class</span>="k">return</span> <span class="k">True</span></code></div>
 <div class="code-line"><span class="ln">380</span><code>    <span <span class="k">class</span>="k">except</span> Exception:</code></div>
 <div class="code-line"><span class="ln">381</span><code>        <span class="k">pass</span></code></div>
-<div class="code-line"><span class="ln">382</span><code>    <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">382</span><code>    <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">383</span><code></code></div>
 <div class="code-line"><span class="ln">384</span><code></code></div>
 <div class="code-line"><span class="ln">385</span><code><span class="k">def</span> probe_row_fields(page: Page, max_tables: int = 5) -&gt; list[dict]:</code></div>
@@ -2509,7 +2509,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">337</span><code>    跨页流程（P3）：pages 给 ≥2 页时走 `_collect_pages_context`（一个浏览器顺序探每页 + 同名唯一化）；</code></div>
 <div class="code-line"><span class="ln">338</span><code>    单页（pages 为空/只有 1 页）走原来的路径，**行为与改造前完全一致**。</code></div>
 <div class="code-line"><span class="ln">339</span><code></code></div>
-<div class="code-line"><span class="ln">340</span><code>    ⚠️ 必须在事件循环**之外**调用。2026-09-11 修复的真 bug：这段探测原来写在 <span <span class="k">class</span>="k">async</span> 函数里，</code></div>
+<div class="code-line"><span class="ln">340</span><code>    ⚠️ 必须在事件循环**之外**调用。2026-09-11 修复的真 bug：这段探测原来写在 <span class="k">async</span> 函数里，</code></div>
 <div class="code-line"><span class="ln">341</span><code>    `sync_playwright()` 在 asyncio loop 中必然抛</code></div>
 <div class="code-line"><span class="ln">342</span><code>    &quot;It looks like you are using Playwright Sync API inside the asyncio loop&quot;，</code></div>
 <div class="code-line"><span class="ln">343</span><code>    然后被一处静默 `<span <span class="k">class</span>="k">except</span>` 兜底成&quot;只有外部清单、没有弹窗控件、没有 DOM 上下文&quot; ——</code></div>
@@ -2593,9 +2593,9 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">421</span><code></code></div>
 <div class="code-line star"><span class="ln">422</span><code><span class="k">def</span> ai_explore(</code></div>
 <div class="code-note">⭐ <b>真·AI 探索入口：读场景+清单，智能规划（需 DeepSeek key）。LLM 不可用时【报错退出】而非静默用 mock 顶替。</b></div>
-<div class="code-line"><span class="ln">423</span><code>    scenario: str, items: list[dict], url: str, allow_mock_fallback: bool = <span class="k">False</span>,</code></div>
+<div class="code-line"><span class="ln">423</span><code>    scenario: str, items: list[dict], url: str, allow_mock_fallback: bool = <span <span class="k">class</span>="k">False</span>,</code></div>
 <div class="code-line"><span class="ln">424</span><code>    page_bg: str = &quot;&quot;, guard: str = &quot;&quot;, pages: list[dict] | <span class="k">None</span> = <span class="k">None</span>,</code></div>
-<div class="code-line"><span class="ln">425</span><code>    llm_cassette=<span class="k">None</span>, cassette_strict: bool = <span class="k">False</span>,</code></div>
+<div class="code-line"><span class="ln">425</span><code>    llm_cassette=<span class="k">None</span>, cassette_strict: bool = <span <span class="k">class</span>="k">False</span>,</code></div>
 <div class="code-line"><span class="ln">426</span><code>) -&gt; ElementMap:</code></div>
 <div class="code-line"><span class="ln">427</span><code>    &quot;&quot;&quot;【LLM 语义识别】理解意图、规划步骤、挑元素（ChatDeepSeek 直连编排，非 Agent）。</code></div>
 <div class="code-line"><span class="ln">428</span><code></code></div>
@@ -2605,7 +2605,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">432</span><code>    pages（P3 跨页，可选）：[{&quot;name&quot;,&quot;url&quot;,&quot;page&quot;}, ...]，≥2 页时按跨页模式探测与规划；</code></div>
 <div class="code-line"><span class="ln">433</span><code>    不传/只 1 页 → 单页老路径（行为不变）。</code></div>
 <div class="code-line"><span class="ln">434</span><code></code></div>
-<div class="code-line"><span class="ln">435</span><code>    LLM 完全不可用时：默认 <span <span class="k">class</span>="k">raise</span> AiExploreError（拒绝产出假 AI 用例）；</code></div>
+<div class="code-line"><span class="ln">435</span><code>    LLM 完全不可用时：默认 <span class="k">raise</span> AiExploreError（拒绝产出假 AI 用例）；</code></div>
 <div class="code-line"><span class="ln">436</span><code>    allow_mock_fallback=<span class="k">True</span>（CLI 的 --mock-fallback）才显式降级为确定性 mock。</code></div>
 <div class="code-line"><span class="ln">437</span><code></code></div>
 <div class="code-line"><span class="ln">438</span><code>    llm_cassette（2026-09-18，见 framework/llm_cassette.py）：录制 / 回放。</code></div>
@@ -2622,7 +2622,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">449</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 表格行内列清单（2026-09-17）：喂给 AI 做行内定位 —— 没有它，AI 只能猜 CSS（本项目铁律：绝不让 LLM 产 selector）</span></code></div>
 <div class="code-line"><span class="ln">450</span><code>    row_fields = ctx[4] <span class="k">if</span> len(ctx) &gt; 4 <span class="k">else</span> []</code></div>
 <div class="code-line"><span class="ln">451</span><code>    <span class="k">if</span> <span class="k">not</span> page_items:</code></div>
-<div class="code-line"><span class="ln">452</span><code>        <span <span class="k">class</span>="k">raise</span> AiExploreError(&quot;页面探测失败且没有备用控件清单 → 拒绝在信息不全时硬猜（会选错控件）。&quot;</code></div>
+<div class="code-line"><span class="ln">452</span><code>        <span class="k">raise</span> AiExploreError(&quot;页面探测失败且没有备用控件清单 → 拒绝在信息不全时硬猜（会选错控件）。&quot;</code></div>
 <div class="code-line"><span class="ln">453</span><code>                             f&quot;原因：{err}&quot;)</code></div>
 <div class="code-line"><span class="ln">454</span><code></code></div>
 <div class="code-line"><span class="ln">455</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># ② 异步阶段：LLM 语义识别（ChatDeepSeek）</span></code></div>
@@ -2710,7 +2710,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">537</span><code></code></div>
 <div class="code-line"><span class="ln">538</span><code><span class="k">def</span> _replay_from_cassette(cassette, prompt: str, items: list[dict], first_url: str,</code></div>
 <div class="code-line"><span class="ln">539</span><code>                          scenario: str, pages: list[dict] | <span class="k">None</span> = <span class="k">None</span>,</code></div>
-<div class="code-line"><span class="ln">540</span><code>                          struct_key_value: str = &quot;&quot;, strict_only: bool = <span class="k">False</span>) -&gt; ElementMap:</code></div>
+<div class="code-line"><span class="ln">540</span><code>                          struct_key_value: str = &quot;&quot;, strict_only: bool = <span <span class="k">class</span>="k">False</span>) -&gt; ElementMap:</code></div>
 <div class="code-line"><span class="ln">541</span><code>    &quot;&quot;&quot;离线回放：从录像里取回答，走**与 live 完全相同**的解析链路（绝不联网）。</code></div>
 <div class="code-line"><span class="ln">542</span><code></code></div>
 <div class="code-line"><span class="ln">543</span><code>    录到的回答可能有两条（结构化 / 文本）：按序尝试，第一个能解析出步骤的胜出</code></div>
@@ -2726,7 +2726,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">553</span><code>    <span class="k">if</span> rec is <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">554</span><code>        <span class="k">from</span> .llm_cassette <span <span class="k">class</span>="k">import</span> render_miss_help</code></div>
 <div class="code-line"><span class="ln">555</span><code>        tail = &quot;；已按 --llm-cassette-strict 禁用结构键兜底&quot; <span class="k">if</span> strict_only <span class="k">else</span> &quot;，结构键也没找到&quot;</code></div>
-<div class="code-line"><span class="ln">556</span><code>        <span <span class="k">class</span>="k">raise</span> AiExploreError(</code></div>
+<div class="code-line"><span class="ln">556</span><code>        <span class="k">raise</span> AiExploreError(</code></div>
 <div class="code-line"><span class="ln">557</span><code>            &quot;离线回放（--llm-cassette）：录像目录里**没有这一份**（严格键不匹配&quot; + tail + &quot;）。\n&quot;</code></div>
 <div class="code-line"><span class="ln">558</span><code>            + render_miss_help(prompt, _PLANNER_SYSTEM, cassette.root)</code></div>
 <div class="code-line"><span class="ln">559</span><code>        )</code></div>
@@ -2756,13 +2756,13 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">583</span><code>            steps = _apply_semantic_calibration(steps, items)</code></div>
 <div class="code-line"><span class="ln">584</span><code>            <span <span class="k">class</span>="k">return</span> _finalize_map(first_url, scenario, steps, pages=pages)</code></div>
 <div class="code-line"><span class="ln">585</span><code>    detail = &quot;；&quot;.join(dict.fromkeys(errs)) <span class="k">or</span> &quot;没有任何一条回答能解析出步骤&quot;</code></div>
-<div class="code-line"><span class="ln">586</span><code>    <span <span class="k">class</span>="k">raise</span> AiExploreError(</code></div>
+<div class="code-line"><span class="ln">586</span><code>    <span class="k">raise</span> AiExploreError(</code></div>
 <div class="code-line"><span class="ln">587</span><code>        f&quot;录像命中但解析不出步骤（{detail}）—— 录的那份与当前框架 / 控件清单可能不兼容。\n&quot;</code></div>
 <div class="code-line"><span class="ln">588</span><code>        &quot;  ⇒ 核对两台机器的框架版本与 demo 页面是否一致，或重录一份。&quot;</code></div>
 <div class="code-line"><span class="ln">589</span><code>    )</code></div>
 <div class="code-line"><span class="ln">590</span><code></code></div>
 <div class="code-line"><span class="ln">591</span><code></code></div>
-<div class="code-line"><span class="ln">592</span><code><span <span class="k">class</span>="k">async</span> <span class="k">def</span> _aclose_llm(obj) -&gt; <span class="k">None</span>:</code></div>
+<div class="code-line"><span class="ln">592</span><code><span class="k">async</span> <span class="k">def</span> _aclose_llm(obj) -&gt; <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">593</span><code>    &quot;&quot;&quot;兜底：若 LLM 对象自己提供了 `aclose()`/`close()`，就在**本场景的 loop 还活着时**关掉它。</code></div>
 <div class="code-line"><span class="ln">594</span><code></code></div>
 <div class="code-line"><span class="ln">595</span><code>    ⚠️ 别把 `getattr(obj, &quot;_client&quot;)` 当客户端用：browser-use 的 `ChatDeepSeek._client`</code></div>
@@ -2784,12 +2784,12 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">611</span><code>            <span class="k">pass</span></code></div>
 <div class="code-line"><span class="ln">612</span><code></code></div>
 <div class="code-line"><span class="ln">613</span><code></code></div>
-<div class="code-line star"><span class="ln">614</span><code><span <span class="k">class</span>="k">async</span> <span class="k">def</span> _ai_explore_async(</code></div>
+<div class="code-line star"><span class="ln">614</span><code><span class="k">async</span> <span class="k">def</span> _ai_explore_async(</code></div>
 <div class="code-note">⭐ <b>方案C：DeepSeek 读自然语言场景+probe清单 → 产轻量步骤 JSON。</b></div>
 <div class="code-line"><span class="ln">615</span><code>    scenario: str, page_items: list[dict], url: str, dom_ctx: list[dict] | <span class="k">None</span> = <span class="k">None</span>,</code></div>
-<div class="code-line"><span class="ln">616</span><code>    allow_mock_fallback: bool = <span class="k">False</span>, page_bg: str = &quot;&quot;, guard: str = &quot;&quot;,</code></div>
+<div class="code-line"><span class="ln">616</span><code>    allow_mock_fallback: bool = <span <span class="k">class</span>="k">False</span>, page_bg: str = &quot;&quot;, guard: str = &quot;&quot;,</code></div>
 <div class="code-line"><span class="ln">617</span><code>    pages: list[dict] | <span class="k">None</span> = <span class="k">None</span>, collisions: list[dict] | <span class="k">None</span> = <span class="k">None</span>,</code></div>
-<div class="code-line"><span class="ln">618</span><code>    row_fields: list[dict] | <span class="k">None</span> = <span class="k">None</span>, llm_cassette=<span class="k">None</span>, cassette_strict: bool = <span class="k">False</span>,</code></div>
+<div class="code-line"><span class="ln">618</span><code>    row_fields: list[dict] | <span class="k">None</span> = <span class="k">None</span>, llm_cassette=<span class="k">None</span>, cassette_strict: bool = <span <span class="k">class</span>="k">False</span>,</code></div>
 <div class="code-line"><span class="ln">619</span><code>) -&gt; ElementMap:</code></div>
 <div class="code-line"><span class="ln">620</span><code>    &quot;&quot;&quot;【异步阶段】只做 LLM 语义识别：读场景 + 控件清单 + DOM 上下文 → 步骤。</code></div>
 <div class="code-line"><span class="ln">621</span><code></code></div>
@@ -2865,7 +2865,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">691</span><code>                    _note_err(errs, f&quot;结构化输出路径 {type(e).__name__}: {str(e)[:160]}&quot;)</code></div>
 <div class="code-line"><span class="ln">692</span><code>                    print(f&quot;      [explore] 第 {attempt}/{n_attempts} 次结构化输出失败 → {errs[-1]}&quot;)</code></div>
 <div class="code-line"><span class="ln">693</span><code></code></div>
-<div class="code-line"><span class="ln">694</span><code>            <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 路径2：纯文本 + 宽松解析（兼容无 output_format 的 provider；必须用 <span <span class="k">class</span>="k">async</span> 版，</span></code></div>
+<div class="code-line"><span class="ln">694</span><code>            <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 路径2：纯文本 + 宽松解析（兼容无 output_format 的 provider；必须用 <span class="k">async</span> 版，</span></code></div>
 <div class="code-line"><span class="ln">695</span><code>            <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 不能再走 asyncio.run 的 _get_llm_text —— 在事件循环里调它会直接 RuntimeError）</span></code></div>
 <div class="code-line"><span class="ln">696</span><code>            <span class="k">if</span> <span class="k">not</span> steps:</code></div>
 <div class="code-line"><span class="ln">697</span><code>                <span class="k">try</span>:</code></div>
@@ -2910,7 +2910,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">736</span><code>        <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#   于是「没网」被报成「解析器坏了」（实测：端点指到黑洞端口时提示语就是这个误导）。</span></code></div>
 <div class="code-line"><span class="ln">737</span><code>        <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#   现在把每一次失败都攒下来、去重保序，并按特征给出「最可能是什么问题 + 下一步」。</span></code></div>
 <div class="code-line"><span class="ln">738</span><code>        detail = &quot;；&quot;.join(dict.fromkeys(errs)) <span class="k">or</span> &quot;未拿到可用步骤&quot;</code></div>
-<div class="code-line"><span class="ln">739</span><code>        <span <span class="k">class</span>="k">raise</span> AiExploreError(</code></div>
+<div class="code-line"><span class="ln">739</span><code>        <span class="k">raise</span> AiExploreError(</code></div>
 <div class="code-line"><span class="ln">740</span><code>            f&quot;AI 语义识别失败（已重试 {n_attempts} 次）：{detail}。\n&quot;</code></div>
 <div class="code-line"><span class="ln">741</span><code>            f&quot;{_llm_failure_hint(detail)}&quot;</code></div>
 <div class="code-line"><span class="ln">742</span><code>            &quot;已拒绝用 mock 冒充 AI 产物（不写假 AI 用例）。\n&quot;</code></div>
@@ -2942,8 +2942,8 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">768</span><code>    <span <span class="k">class</span>="k">return</span> (resp.choices[0].message.content <span class="k">or</span> &quot;&quot;) <span class="k">if</span> resp.choices <span class="k">else</span> &quot;&quot;</code></div>
 <div class="code-line"><span class="ln">769</span><code></code></div>
 <div class="code-line"><span class="ln">770</span><code></code></div>
-<div class="code-line"><span class="ln">771</span><code><span <span class="k">class</span>="k">async</span> <span class="k">def</span> _get_llm_text_async(obj, prompt: str) -&gt; str:</code></div>
-<div class="code-line"><span class="ln">772</span><code>    &quot;&quot;&quot;从 LLM 拿纯文本（**<span <span class="k">class</span>="k">async</span> 版**）——供事件循环内使用。</code></div>
+<div class="code-line"><span class="ln">771</span><code><span class="k">async</span> <span class="k">def</span> _get_llm_text_async(obj, prompt: str) -&gt; str:</code></div>
+<div class="code-line"><span class="ln">772</span><code>    &quot;&quot;&quot;从 LLM 拿纯文本（**<span class="k">async</span> 版**）——供事件循环内使用。</code></div>
 <div class="code-line"><span class="ln">773</span><code></code></div>
 <div class="code-line"><span class="ln">774</span><code>    为什么单独写一个：原来的 `_get_llm_text` 内部用 `asyncio.run(...)`，而 ai_explore 的</code></div>
 <div class="code-line"><span class="ln">775</span><code>    调用链本身就跑在 `asyncio.run` 里 ⇒ 在协程里再调它会 RuntimeError（被 <span <span class="k">class</span>="k">except</span> 吞掉），</code></div>
@@ -3136,11 +3136,11 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">961</span><code>    &quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">962</span><code>    <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">963</span><code>        <span class="k">if</span> pg.is_closed():</code></div>
-<div class="code-line"><span class="ln">964</span><code>            <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">964</span><code>            <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">965</span><code>        pg.evaluate(&quot;1&quot;)</code></div>
 <div class="code-line"><span class="ln">966</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">True</span></code></div>
 <div class="code-line"><span class="ln">967</span><code>    <span <span class="k">class</span>="k">except</span> Exception:</code></div>
-<div class="code-line"><span class="ln">968</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">968</span><code>        <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">969</span><code></code></div>
 <div class="code-line"><span class="ln">970</span><code></code></div>
 <div class="code-line"><span class="ln">971</span><code><span class="k">def</span> _wait_fresh_items(pg, absorb, timeout_s: float = _LAYER_RENDER_WAIT_S) -&gt; list[dict]:</code></div>
@@ -3168,11 +3168,11 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">993</span><code>    并保留 `btn-pick-*` 这类命名形态兜底；仍然**排除**提交/删除/取消类（点了会毁掉探测上下文）。</code></div>
 <div class="code-line"><span class="ln">994</span><code>    &quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">995</span><code>    <span class="k">if</span> it.get(&quot;role&quot;) <span class="k">not</span> <span class="k">in</span> (&quot;button&quot;, &quot;link&quot;):</code></div>
-<div class="code-line"><span class="ln">996</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">996</span><code>        <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">997</span><code>    blob = &quot; &quot;.join(str(it.get(k) <span class="k">or</span> &quot;&quot;) <span class="k">for</span> k <span class="k">in</span></code></div>
 <div class="code-line"><span class="ln">998</span><code>                    (&quot;name&quot;, &quot;help_text&quot;, &quot;nearby_text&quot;, &quot;container_heading&quot;, &quot;test_id&quot;))</code></div>
 <div class="code-line"><span class="ln">999</span><code>    <span class="k">if</span> any(a <span class="k">in</span> blob <span class="k">for</span> a <span class="k">in</span> _LAYER_AVOID_HINTS):</code></div>
-<div class="code-line"><span class="ln">1000</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">1000</span><code>        <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">1001</span><code>    <span class="k">if</span> any(h <span class="k">in</span> blob <span class="k">for</span> h <span class="k">in</span> _LAYER_OPEN_HINTS):</code></div>
 <div class="code-line"><span class="ln">1002</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">True</span></code></div>
 <div class="code-line"><span class="ln">1003</span><code>    <span <span class="k">class</span>="k">return</span> &quot;pick&quot; <span class="k">in</span> str(it.get(&quot;test_id&quot;) <span class="k">or</span> &quot;&quot;).lower()</code></div>
@@ -3183,7 +3183,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1008</span><code></code></div>
 <div class="code-line"><span class="ln">1009</span><code>    打开后立刻用该层内的「取消/关闭」按钮（按 test_id 精确定位 —— 页面上同名「取消」往往有多个）</code></div>
 <div class="code-line"><span class="ln">1010</span><code>    把这一层关掉，避免层叠影响后续点击。</code></div>
-<div class="code-line"><span class="ln">1011</span><code>    ⚠️ 失败必须**打印原因**：以前这里静默 <span <span class="k">class</span>="k">return</span> <span class="k">False</span>，导致「层没探到」和「层里啥也没有」</code></div>
+<div class="code-line"><span class="ln">1011</span><code>    ⚠️ 失败必须**打印原因**：以前这里静默 <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span>，导致「层没探到」和「层里啥也没有」</code></div>
 <div class="code-line"><span class="ln">1012</span><code>    在日志上长得一模一样（2026-09-14 实测踩到：客户列表层没被收集，日志里一点线索都没有）。</code></div>
 <div class="code-line"><span class="ln">1013</span><code>    &quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">1014</span><code>    <span class="k">from</span> .probe <span <span class="k">class</span>="k">import</span> probe_page</code></div>
@@ -3194,7 +3194,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1019</span><code>        n = loc.count()</code></div>
 <div class="code-line"><span class="ln">1020</span><code>        <span class="k">if</span> n != 1:</code></div>
 <div class="code-line"><span class="ln">1021</span><code>            print(f&quot;      [explore] ℹ️ 弹层候选「{shown}」命中 {n} 个（要求唯一）→ 跳过&quot;)</code></div>
-<div class="code-line"><span class="ln">1022</span><code>            <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">1022</span><code>            <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">1023</span><code>        loc.first.click()</code></div>
 <div class="code-line"><span class="ln">1024</span><code>        fresh = _wait_fresh_items(pg, absorb)</code></div>
 <div class="code-line"><span class="ln">1025</span><code>        <span class="k">if</span> <span class="k">not</span> fresh:</code></div>
@@ -3203,7 +3203,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1028</span><code>                      f&quot;—— 这不是「没有弹层」，是环境事故，本层控件会缺失&quot;)</code></div>
 <div class="code-line"><span class="ln">1029</span><code>            <span class="k">else</span>:</code></div>
 <div class="code-line"><span class="ln">1030</span><code>                print(f&quot;      [explore] ℹ️ 点开「{shown}」后没有出现新的可见控件（不是弹层？）→ 跳过&quot;)</code></div>
-<div class="code-line"><span class="ln">1031</span><code>            <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">1031</span><code>            <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">1032</span><code>        print(f&quot;      [explore] 弹层探测：点开「{shown}」→ 新收集 {len(fresh)} 个控件&quot;</code></div>
 <div class="code-line"><span class="ln">1033</span><code>              f&quot;（{&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;, &#x27;.join(_one_line(x.get(&#x27;semantic_name&#x27;, &#x27;&#x27;), 18) <span class="k">for</span> x <span class="k">in</span> fresh[:4])}…）&quot;)</span></code></div>
 <div class="code-line"><span class="ln">1034</span><code>        _close_layer_by_item(pg, fresh)</code></div>
@@ -3211,7 +3211,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1036</span><code>    <span <span class="k">class</span>="k">except</span> Exception <span class="k">as</span> e:</code></div>
 <div class="code-line"><span class="ln">1037</span><code>        hint = &quot;&quot; <span class="k">if</span> _page_alive(pg) <span class="k">else</span> &quot;（页面/渲染进程已失效：崩溃或被 OOM 杀 → 环境事故，不是页面没有弹层）&quot;</code></div>
 <div class="code-line"><span class="ln">1038</span><code>        print(f&quot;      [explore] ⚠️ 弹层探测失败（{shown}）：{type(e).__name__}: {str(e)[:140]}{hint}&quot;)</code></div>
-<div class="code-line"><span class="ln">1039</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">1039</span><code>        <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">1040</span><code></code></div>
 <div class="code-line"><span class="ln">1041</span><code></code></div>
 <div class="code-line"><span class="ln">1042</span><code><span class="k">def</span> _close_layer_by_item(pg, items: list[dict]) -&gt; <span class="k">None</span>:</code></div>
@@ -3399,12 +3399,12 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1223</span><code>        prompt += &quot;页面已探测出以下可交互控件（**已按页分组**，只有这些可用，绝不自己编造 selector）:\n&quot;</code></div>
 <div class="code-line"><span class="ln">1224</span><code>        <span class="k">for</span> pg <span class="k">in</span> pages:</code></div>
 <div class="code-line"><span class="ln">1225</span><code>            grp = by_page.get(pg[&quot;name&quot;]) <span class="k">or</span> []</code></div>
-<div class="code-line"><span class="ln">1226</span><code>            prompt += (f&quot;【{pg[&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;name&#x27;]}】{json.dumps(grp[:budget_per_page], ensure_ascii=<span class="k">False</span>, indent=1)}\n&quot;)</span></code></div>
+<div class="code-line"><span class="ln">1226</span><code>            prompt += (f&quot;【{pg[&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;name&#x27;]}】{json.dumps(grp[:budget_per_page], ensure_ascii=<span <span class="k">class</span>="k">False</span>, indent=1)}\n&quot;)</span></code></div>
 <div class="code-line"><span class="ln">1227</span><code>        prompt += &quot;\n&quot;</code></div>
 <div class="code-line"><span class="ln">1228</span><code>    <span class="k">else</span>:</code></div>
 <div class="code-line"><span class="ln">1229</span><code>        prompt += (</code></div>
 <div class="code-line"><span class="ln">1230</span><code>            f&quot;页面已探测出以下可交互控件（只有这些可用，绝不自己编造 selector）:\n&quot;</code></div>
-<div class="code-line"><span class="ln">1231</span><code>            f&quot;{json.dumps(items[:60], ensure_ascii=<span class="k">False</span>, indent=1)}\n\n&quot;</code></div>
+<div class="code-line"><span class="ln">1231</span><code>            f&quot;{json.dumps(items[:60], ensure_ascii=<span <span class="k">class</span>="k">False</span>, indent=1)}\n\n&quot;</code></div>
 <div class="code-line"><span class="ln">1232</span><code>        )</code></div>
 <div class="code-line"><span class="ln">1233</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 同名控件（同一页不同区域）—— 最容易被 AI「只写前半段」的陷阱，显式列出来</span></code></div>
 <div class="code-line"><span class="ln">1234</span><code>    pairs = _shadowed_names(items)</code></div>
@@ -3430,7 +3430,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1254</span><code>        prompt += (</code></div>
 <div class="code-line"><span class="ln">1255</span><code>            &quot;表格行内列清单（**行内定位**用：row_text 取那一行里的唯一锚文本，&quot;</code></div>
 <div class="code-line"><span class="ln">1256</span><code>            &quot;cell_field 只能取下面这些 field，禁止自造）:\n&quot;</code></div>
-<div class="code-line"><span class="ln">1257</span><code>            f&quot;{json.dumps(row_fields[:80], ensure_ascii=<span class="k">False</span>, indent=1)}\n\n&quot;</code></div>
+<div class="code-line"><span class="ln">1257</span><code>            f&quot;{json.dumps(row_fields[:80], ensure_ascii=<span <span class="k">class</span>="k">False</span>, indent=1)}\n\n&quot;</code></div>
 <div class="code-line"><span class="ln">1258</span><code>        )</code></div>
 <div class="code-line"><span class="ln">1259</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 场景文件带来的两块增量（内联模式下为空，行为与从前完全一致）</span></code></div>
 <div class="code-line"><span class="ln">1260</span><code>    <span class="k">if</span> page_bg:</code></div>
@@ -3442,7 +3442,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1266</span><code>        prompt += (</code></div>
 <div class="code-line"><span class="ln">1267</span><code>            f&quot;额外 DOM 上下文（含全局索引 idx / 可见性 visible / 状态 disabled,readonly；&quot;</code></div>
 <div class="code-line"><span class="ln">1268</span><code>            f&quot;同名控件务必用 visible + 邻近文本综合判断是否为目标）:\n&quot;</code></div>
-<div class="code-line"><span class="ln">1269</span><code>            f&quot;{json.dumps(dom_ctx[:80], ensure_ascii=<span class="k">False</span>, indent=1)}\n\n&quot;</code></div>
+<div class="code-line"><span class="ln">1269</span><code>            f&quot;{json.dumps(dom_ctx[:80], ensure_ascii=<span <span class="k">class</span>="k">False</span>, indent=1)}\n\n&quot;</code></div>
 <div class="code-line"><span class="ln">1270</span><code>        )</code></div>
 <div class="code-line"><span class="ln">1271</span><code>    prompt += (</code></div>
 <div class="code-line"><span class="ln">1272</span><code>        f&quot;请把场景规划成【JSON 步骤】，格式（严格按此，不要多余字段）:\n&quot;</code></div>
@@ -3591,14 +3591,14 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1414</span><code>    &quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">1415</span><code>    <span <span class="k">class</span>="k">import</span> re</code></div>
 <div class="code-line"><span class="ln">1416</span><code>    a = _to_char_set(text_a, strip_actions=<span class="k">True</span>)</code></div>
-<div class="code-line"><span class="ln">1417</span><code>    b = _to_char_set(text_b, strip_actions=<span class="k">False</span>)</code></div>
+<div class="code-line"><span class="ln">1417</span><code>    b = _to_char_set(text_b, strip_actions=<span <span class="k">class</span>="k">False</span>)</code></div>
 <div class="code-line"><span class="ln">1418</span><code>    <span class="k">if</span> <span class="k">not</span> a <span class="k">or</span> <span class="k">not</span> b:</code></div>
 <div class="code-line"><span class="ln">1419</span><code>        <span <span class="k">class</span>="k">return</span> 0.0</code></div>
 <div class="code-line"><span class="ln">1420</span><code>    inter = len(a &amp; b)</code></div>
 <div class="code-line"><span class="ln">1421</span><code>    <span <span class="k">class</span>="k">return</span> inter / max(1, min(len(a), len(b)))</code></div>
 <div class="code-line"><span class="ln">1422</span><code></code></div>
 <div class="code-line"><span class="ln">1423</span><code></code></div>
-<div class="code-line"><span class="ln">1424</span><code><span class="k">def</span> _to_char_set(text: str, strip_actions: bool = <span class="k">False</span>) -&gt; set[str]:</code></div>
+<div class="code-line"><span class="ln">1424</span><code><span class="k">def</span> _to_char_set(text: str, strip_actions: bool = <span <span class="k">class</span>="k">False</span>) -&gt; set[str]:</code></div>
 <div class="code-line"><span class="ln">1425</span><code>    &quot;&quot;&quot;去标点/空格；strip_actions=<span class="k">True</span> 时再剔纯动作动词（仅 desc 侧用）。&quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">1426</span><code>    <span <span class="k">class</span>="k">import</span> re</code></div>
 <div class="code-line"><span class="ln">1427</span><code>    s = text <span class="k">or</span> &quot;&quot;</code></div>
@@ -4066,7 +4066,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">408</span><code>            <span class="k">for</span> frag <span class="k">in</span> url_asserts:</code></div>
 <div class="code-line"><span class="ln">409</span><code>                <span class="k">if</span> frag <span class="k">and</span> (frag <span class="k">in</span> u <span class="k">or</span> (tail <span class="k">and</span> frag <span class="k">in</span> tail)):</code></div>
 <div class="code-line"><span class="ln">410</span><code>                    <span <span class="k">class</span>="k">return</span> <span class="k">True</span></code></div>
-<div class="code-line"><span class="ln">411</span><code>            <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">411</span><code>            <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">412</span><code></code></div>
 <div class="code-line"><span class="ln">413</span><code>        missed = [u <span class="k">for</span> u <span class="k">in</span> declared <span class="k">if</span> <span class="k">not</span> _visited(u)]</code></div>
 <div class="code-line"><span class="ln">414</span><code>        <span class="k">if</span> missed:</code></div>
@@ -4106,7 +4106,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">448</span><code>    while path.exists():</code></div>
 <div class="code-line"><span class="ln">449</span><code>        path = cases_dir / f&quot;{cid}-{n}.json&quot;</code></div>
 <div class="code-line"><span class="ln">450</span><code>        n += 1</code></div>
-<div class="code-line"><span class="ln">451</span><code>    path.write_text(json.dumps(case, ensure_ascii=<span class="k">False</span>, indent=2), encoding=&quot;utf-8&quot;)</code></div>
+<div class="code-line"><span class="ln">451</span><code>    path.write_text(json.dumps(case, ensure_ascii=<span <span class="k">class</span>="k">False</span>, indent=2), encoding=&quot;utf-8&quot;)</code></div>
 <div class="code-line"><span class="ln">452</span><code>    <span <span class="k">class</span>="k">return</span> path</code></div>
 <div class="code-line"><span class="ln">453</span><code></code></div>
 <div class="code-line"><span class="ln">454</span><code></code></div>
@@ -4124,7 +4124,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">465</span><code>    red = case_errors(case, guard=guard)</code></div>
 <div class="code-line"><span class="ln">466</span><code>    <span class="k">if</span> red:</code></div>
 <div class="code-line"><span class="ln">467</span><code>        <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 红线（假绿）⇒ **拒绝落盘**：产物永不允许带假绿（与生成侧映射质量闸同一口径）</span></code></div>
-<div class="code-line"><span class="ln">468</span><code>        <span <span class="k">class</span>="k">raise</span> CaseQualityError([(case[&quot;case_id&quot;], red)])</code></div>
+<div class="code-line"><span class="ln">468</span><code>        <span class="k">raise</span> CaseQualityError([(case[&quot;case_id&quot;], red)])</code></div>
 <div class="code-line"><span class="ln">469</span><code>    warns = elementmap_warnings(m) + case_warnings(case, guard=guard)</code></div>
 <div class="code-line"><span class="ln">470</span><code>    <span <span class="k">class</span>="k">return</span> write_case(case, cases_dir=cases_dir), warns</code></div></div>
     </section>
@@ -4260,7 +4260,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">122</span><code>        <span <span class="k">class</span>="k">return</span> []</code></div>
 <div class="code-line"><span class="ln">123</span><code>    <span class="k">if</span> isinstance(value, list):</code></div>
 <div class="code-line"><span class="ln">124</span><code>        <span <span class="k">class</span>="k">return</span> value</code></div>
-<div class="code-line"><span class="ln">125</span><code>    <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{path}: 字段 {field_name} 应为列表，实际是 {type(value).__name__}&quot;)</code></div>
+<div class="code-line"><span class="ln">125</span><code>    <span class="k">raise</span> ScenarioError(f&quot;{path}: 字段 {field_name} 应为列表，实际是 {type(value).__name__}&quot;)</code></div>
 <div class="code-line"><span class="ln">126</span><code></code></div>
 <div class="code-line"><span class="ln">127</span><code></code></div>
 <div class="code-line star"><span class="ln">128</span><code><span class="k">def</span> load_scenario_file(path) -&gt; Scenario:</code></div>
@@ -4268,60 +4268,60 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">129</span><code>    &quot;&quot;&quot;读 + 校验一个场景文件；任何不合法都抛 ScenarioError（绝不静默兜底）。&quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">130</span><code>    p = Path(path)</code></div>
 <div class="code-line"><span class="ln">131</span><code>    <span class="k">if</span> <span class="k">not</span> p.exists():</code></div>
-<div class="code-line"><span class="ln">132</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;场景文件不存在: {p}&quot;)</code></div>
+<div class="code-line"><span class="ln">132</span><code>        <span class="k">raise</span> ScenarioError(f&quot;场景文件不存在: {p}&quot;)</code></div>
 <div class="code-line"><span class="ln">133</span><code>    <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">134</span><code>        raw = yaml.safe_load(p.read_text(encoding=&quot;utf-8&quot;))</code></div>
 <div class="code-line"><span class="ln">135</span><code>    <span <span class="k">class</span>="k">except</span> yaml.YAMLError <span class="k">as</span> e:</code></div>
-<div class="code-line"><span class="ln">136</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: YAML 语法错误 → {e}&quot;) <span class="k">from</span> <span class="k">None</span></code></div>
+<div class="code-line"><span class="ln">136</span><code>        <span class="k">raise</span> ScenarioError(f&quot;{p}: YAML 语法错误 → {e}&quot;) <span class="k">from</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">137</span><code>    <span class="k">if</span> raw is <span class="k">None</span>:</code></div>
-<div class="code-line"><span class="ln">138</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: 文件为空（没有可解析的字段）&quot;)</code></div>
+<div class="code-line"><span class="ln">138</span><code>        <span class="k">raise</span> ScenarioError(f&quot;{p}: 文件为空（没有可解析的字段）&quot;)</code></div>
 <div class="code-line"><span class="ln">139</span><code>    <span class="k">if</span> <span class="k">not</span> isinstance(raw, dict):</code></div>
-<div class="code-line"><span class="ln">140</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: 顶层应为映射（key: value），实际是 {type(raw).__name__}&quot;)</code></div>
+<div class="code-line"><span class="ln">140</span><code>        <span class="k">raise</span> ScenarioError(f&quot;{p}: 顶层应为映射（key: value），实际是 {type(raw).__name__}&quot;)</code></div>
 <div class="code-line"><span class="ln">141</span><code></code></div>
 <div class="code-line"><span class="ln">142</span><code>    warns: list[str] = []</code></div>
 <div class="code-line"><span class="ln">143</span><code>    text = str(raw.get(&quot;scenario&quot;) <span class="k">or</span> &quot;&quot;).strip()</code></div>
 <div class="code-line"><span class="ln">144</span><code>    <span class="k">if</span> <span class="k">not</span> text:</code></div>
-<div class="code-line"><span class="ln">145</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: 缺少必填字段 scenario（自然语言动作流）&quot;)</code></div>
+<div class="code-line"><span class="ln">145</span><code>        <span class="k">raise</span> ScenarioError(f&quot;{p}: 缺少必填字段 scenario（自然语言动作流）&quot;)</code></div>
 <div class="code-line"><span class="ln">146</span><code></code></div>
 <div class="code-line"><span class="ln">147</span><code>    sid = str(raw.get(&quot;id&quot;) <span class="k">or</span> p.stem).strip()</code></div>
 <div class="code-line"><span class="ln">148</span><code>    <span class="k">if</span> <span class="k">not</span> _ID_RE.match(sid):</code></div>
-<div class="code-line"><span class="ln">149</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: id {sid!r} 不合法（要求小写蛇形，正则 ^[a-z][a-z0-9_]*$）&quot;)</code></div>
+<div class="code-line"><span class="ln">149</span><code>        <span class="k">raise</span> ScenarioError(f&quot;{p}: id {sid!r} 不合法（要求小写蛇形，正则 ^[a-z][a-z0-9_]*$）&quot;)</code></div>
 <div class="code-line"><span class="ln">150</span><code>    <span class="k">if</span> sid != p.stem:</code></div>
 <div class="code-line"><span class="ln">151</span><code>        warns.append(f&quot;id({sid}) 与文件名({p.stem}) 不一致 → 以 id 为准（建议改成一致，避免溯源断裂）&quot;)</code></div>
 <div class="code-line"><span class="ln">152</span><code></code></div>
 <div class="code-line"><span class="ln">153</span><code>    target = raw.get(&quot;target&quot;) <span class="k">or</span> {}</code></div>
 <div class="code-line"><span class="ln">154</span><code>    <span class="k">if</span> <span class="k">not</span> isinstance(target, dict):</code></div>
-<div class="code-line"><span class="ln">155</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: target 应为映射（url / page / preconditions）&quot;)</code></div>
+<div class="code-line"><span class="ln">155</span><code>        <span class="k">raise</span> ScenarioError(f&quot;{p}: target 应为映射（url / page / preconditions）&quot;)</code></div>
 <div class="code-line"><span class="ln">156</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># ---- 跨页流程（P3）：pages 列表 ----</span></code></div>
 <div class="code-line"><span class="ln">157</span><code>    raw_pages = raw.get(&quot;pages&quot;)</code></div>
 <div class="code-line"><span class="ln">158</span><code>    pages: list[ScenarioPage] = []</code></div>
 <div class="code-line"><span class="ln">159</span><code>    <span class="k">if</span> raw_pages is <span class="k">not</span> <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">160</span><code>        <span class="k">if</span> <span class="k">not</span> isinstance(raw_pages, list):</code></div>
-<div class="code-line"><span class="ln">161</span><code>            <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: pages 应为列表（每项含 name / url / page）&quot;)</code></div>
+<div class="code-line"><span class="ln">161</span><code>            <span class="k">raise</span> ScenarioError(f&quot;{p}: pages 应为列表（每项含 name / url / page）&quot;)</code></div>
 <div class="code-line"><span class="ln">162</span><code>        <span class="k">if</span> target.get(&quot;url&quot;):</code></div>
-<div class="code-line"><span class="ln">163</span><code>            <span <span class="k">class</span>="k">raise</span> ScenarioError(</code></div>
+<div class="code-line"><span class="ln">163</span><code>            <span class="k">raise</span> ScenarioError(</code></div>
 <div class="code-line"><span class="ln">164</span><code>                f&quot;{p}: pages 与 target.url 互斥 —— 多页写 pages，单页写 target.url（不猜你的意图）&quot;)</code></div>
 <div class="code-line"><span class="ln">165</span><code>        <span class="k">for</span> i, pg <span class="k">in</span> enumerate(raw_pages, 1):</code></div>
 <div class="code-line"><span class="ln">166</span><code>            <span class="k">if</span> <span class="k">not</span> isinstance(pg, dict):</code></div>
-<div class="code-line"><span class="ln">167</span><code>                <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: pages[{i}] 应为映射（name / url / page）&quot;)</code></div>
+<div class="code-line"><span class="ln">167</span><code>                <span class="k">raise</span> ScenarioError(f&quot;{p}: pages[{i}] 应为映射（name / url / page）&quot;)</code></div>
 <div class="code-line"><span class="ln">168</span><code>            pname = str(pg.get(&quot;name&quot;) <span class="k">or</span> &quot;&quot;).strip()</code></div>
 <div class="code-line"><span class="ln">169</span><code>            purl = str(pg.get(&quot;url&quot;) <span class="k">or</span> &quot;&quot;).strip()</code></div>
 <div class="code-line"><span class="ln">170</span><code>            <span class="k">if</span> <span class="k">not</span> pname:</code></div>
-<div class="code-line"><span class="ln">171</span><code>                <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: pages[{i}] 缺少 name（页名，AI 与日志都靠它区分页面）&quot;)</code></div>
+<div class="code-line"><span class="ln">171</span><code>                <span class="k">raise</span> ScenarioError(f&quot;{p}: pages[{i}] 缺少 name（页名，AI 与日志都靠它区分页面）&quot;)</code></div>
 <div class="code-line"><span class="ln">172</span><code>            <span class="k">if</span> <span class="k">not</span> purl.startswith(&quot;http&quot;):</code></div>
-<div class="code-line"><span class="ln">173</span><code>                <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: pages[{i}].url 必须是完整 http(s) 地址，实际 {purl!r}&quot;</code></div>
+<div class="code-line"><span class="ln">173</span><code>                <span class="k">raise</span> ScenarioError(f&quot;{p}: pages[{i}].url 必须是完整 http(s) 地址，实际 {purl!r}&quot;</code></div>
 <div class="code-line"><span class="ln">174</span><code>                                    f&quot;（跨页要能直连，否则 AI 只能靠点、不可靠）&quot;)</code></div>
 <div class="code-line"><span class="ln">175</span><code>            <span class="k">if</span> any(x.name == pname <span class="k">for</span> x <span class="k">in</span> pages):</code></div>
-<div class="code-line"><span class="ln">176</span><code>                <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: pages 里页名重复：{pname!r}（页名是元素唯一化的依据，必须唯一）&quot;)</code></div>
+<div class="code-line"><span class="ln">176</span><code>                <span class="k">raise</span> ScenarioError(f&quot;{p}: pages 里页名重复：{pname!r}（页名是元素唯一化的依据，必须唯一）&quot;)</code></div>
 <div class="code-line"><span class="ln">177</span><code>            pages.append(ScenarioPage(name=pname, url=purl, page=str(pg.get(&quot;page&quot;) <span class="k">or</span> &quot;&quot;)))</code></div>
 <div class="code-line"><span class="ln">178</span><code>        <span class="k">if</span> len(pages) == 1:</code></div>
 <div class="code-line"><span class="ln">179</span><code>            warns.append(&quot;pages 只给了一个页面 —— 等价于单页场景（跨页至少 2 页）&quot;)</code></div>
 <div class="code-line"><span class="ln">180</span><code>    guard = raw.get(&quot;assert_guard&quot;) <span class="k">or</span> {}</code></div>
 <div class="code-line"><span class="ln">181</span><code>    <span class="k">if</span> <span class="k">not</span> isinstance(guard, dict):</code></div>
-<div class="code-line"><span class="ln">182</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: assert_guard 应为映射（must_contain / forbidden）&quot;)</code></div>
+<div class="code-line"><span class="ln">182</span><code>        <span class="k">raise</span> ScenarioError(f&quot;{p}: assert_guard 应为映射（must_contain / forbidden）&quot;)</code></div>
 <div class="code-line"><span class="ln">183</span><code>    data = raw.get(&quot;data&quot;) <span class="k">or</span> []</code></div>
 <div class="code-line"><span class="ln">184</span><code>    <span class="k">if</span> <span class="k">not</span> isinstance(data, list):</code></div>
-<div class="code-line"><span class="ln">185</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{p}: data 应为列表（每组数据一项）&quot;)</code></div>
+<div class="code-line"><span class="ln">185</span><code>        <span class="k">raise</span> ScenarioError(f&quot;{p}: data 应为列表（每组数据一项）&quot;)</code></div>
 <div class="code-line"><span class="ln">186</span><code>    <span class="k">if</span> data:</code></div>
 <div class="code-line"><span class="ln">187</span><code>        warns.append(f&quot;data 暂未展开（一期只解析不展开）：{len(data)} 组数据被忽略&quot;)</code></div>
 <div class="code-line"><span class="ln">188</span><code></code></div>
@@ -4355,11 +4355,11 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">215</span><code>    &quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">216</span><code>    r = Path(root <span class="k">or</span> SCENARIOS_DIR)</code></div>
 <div class="code-line"><span class="ln">217</span><code>    <span class="k">if</span> <span class="k">not</span> r.exists():</code></div>
-<div class="code-line"><span class="ln">218</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;场景目录不存在: {r}&quot;)</code></div>
+<div class="code-line"><span class="ln">218</span><code>        <span class="k">raise</span> ScenarioError(f&quot;场景目录不存在: {r}&quot;)</code></div>
 <div class="code-line"><span class="ln">219</span><code>    files = [f <span class="k">for</span> f <span class="k">in</span> sorted(r.rglob(&quot;*&quot;))</code></div>
 <div class="code-line"><span class="ln">220</span><code>             <span class="k">if</span> f.is_file() <span class="k">and</span> f.suffix.lower() <span class="k">in</span> _EXTS <span class="k">and</span> <span class="k">not</span> f.name.upper().startswith(&quot;README&quot;)]</code></div>
 <div class="code-line"><span class="ln">221</span><code>    <span class="k">if</span> <span class="k">not</span> files:</code></div>
-<div class="code-line"><span class="ln">222</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{r} 下没有找到 *.yml / *.yaml 场景文件&quot;)</code></div>
+<div class="code-line"><span class="ln">222</span><code>        <span class="k">raise</span> ScenarioError(f&quot;{r} 下没有找到 *.yml / *.yaml 场景文件&quot;)</code></div>
 <div class="code-line"><span class="ln">223</span><code></code></div>
 <div class="code-line"><span class="ln">224</span><code>    scenarios: list[Scenario] = []</code></div>
 <div class="code-line"><span class="ln">225</span><code>    errors: list[str] = []</code></div>
@@ -4369,13 +4369,13 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">229</span><code>        <span <span class="k">class</span>="k">except</span> ScenarioError <span class="k">as</span> e:</code></div>
 <div class="code-line"><span class="ln">230</span><code>            errors.append(str(e))</code></div>
 <div class="code-line"><span class="ln">231</span><code>    <span class="k">if</span> errors:</code></div>
-<div class="code-line"><span class="ln">232</span><code>        <span <span class="k">class</span>="k">raise</span> ScenarioError(&quot;以下场景文件不合法，已中止：\n  - &quot; + &quot;\n  - &quot;.join(errors))</code></div>
+<div class="code-line"><span class="ln">232</span><code>        <span class="k">raise</span> ScenarioError(&quot;以下场景文件不合法，已中止：\n  - &quot; + &quot;\n  - &quot;.join(errors))</code></div>
 <div class="code-line"><span class="ln">233</span><code></code></div>
 <div class="code-line"><span class="ln">234</span><code>    <span class="k">if</span> tags:</code></div>
 <div class="code-line"><span class="ln">235</span><code>        want = {str(t).lower() <span class="k">for</span> t <span class="k">in</span> tags}</code></div>
 <div class="code-line"><span class="ln">236</span><code>        hit = [s <span class="k">for</span> s <span class="k">in</span> scenarios <span class="k">if</span> want &amp; {str(t).lower() <span class="k">for</span> t <span class="k">in</span> s.tags}]</code></div>
 <div class="code-line"><span class="ln">237</span><code>        <span class="k">if</span> <span class="k">not</span> hit:</code></div>
-<div class="code-line"><span class="ln">238</span><code>            <span <span class="k">class</span>="k">raise</span> ScenarioError(f&quot;{r} 下没有 tag 命中 {sorted(want)} 的场景&quot;)</code></div>
+<div class="code-line"><span class="ln">238</span><code>            <span class="k">raise</span> ScenarioError(f&quot;{r} 下没有 tag 命中 {sorted(want)} 的场景&quot;)</code></div>
 <div class="code-line"><span class="ln">239</span><code>        scenarios = hit</code></div>
 <div class="code-line"><span class="ln">240</span><code></code></div>
 <div class="code-line"><span class="ln">241</span><code>    scenarios.sort(key=<span <span class="k">class</span>="k">lambda</span> s: (_PRIO_ORDER.get(s.priority.lower(), 9), str(s.path)))</code></div>
@@ -4438,7 +4438,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">46</span><code>    &quot;&quot;&quot;方向③：Tier1 命中唯一后，回读该元素实际语义，与目标意图核对。</code></div>
 <div class="code-line"><span class="ln">47</span><code></code></div>
 <div class="code-line"><span class="ln">48</span><code>    目的：防止&quot;AI 选对了名字、但命中的元素语义与目标不符&quot;（如选中了另一个</code></div>
-<div class="code-line"><span class="ln">49</span><code>    长得像 / 弹窗里同名控件）。若太不像 → 返回 <span class="k">False</span>，让 resolve_locator 降级。</code></div>
+<div class="code-line"><span class="ln">49</span><code>    长得像 / 弹窗里同名控件）。若太不像 → 返回 <span <span class="k">class</span>="k">False</span>，让 resolve_locator 降级。</code></div>
 <div class="code-line"><span class="ln">50</span><code>    阈值 INTENT_MIN_SIM=0.15（保守，只拦明显不符的；包含关系直接通过）。</code></div>
 <div class="code-line"><span class="ln">51</span><code>    &quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">52</span><code>    hint = (el.page_hint <span class="k">or</span> el.semantic_name <span class="k">or</span> &quot;&quot;).strip()</code></div>
@@ -4460,7 +4460,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">68</span><code>    sim = SequenceMatcher(<span class="k">None</span>, hint, actual).ratio()</code></div>
 <div class="code-line"><span class="ln">69</span><code>    <span class="k">if</span> sim &gt;= INTENT_MIN_SIM <span class="k">or</span> hint <span class="k">in</span> actual <span class="k">or</span> actual <span class="k">in</span> hint:</code></div>
 <div class="code-line"><span class="ln">70</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">True</span></code></div>
-<div class="code-line"><span class="ln">71</span><code>    <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">71</span><code>    <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">72</span><code></code></div>
 <div class="code-line"><span class="ln">73</span><code></code></div>
 <div class="code-line"><span class="ln">74</span><code><span class="k">def</span> _try_test_id(page: Page, el: ElementRef):</code></div>
@@ -4650,7 +4650,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">256</span><code>    返回 {ok, locator(字符串), locator_obj(真实Locator对象), strategy,</code></div>
 <div class="code-line"><span class="ln">257</span><code>          count, confidence, healed}</code></div>
 <div class="code-line"><span class="ln">258</span><code>      - ok=<span class="k">True</span>: 唯一命中，locator_obj 可直接执行。</code></div>
-<div class="code-line"><span class="ln">259</span><code>      - ok=<span class="k">False</span>: T1/T2 都无把握 → 如实报错，不猜。</code></div>
+<div class="code-line"><span class="ln">259</span><code>      - ok=<span <span class="k">class</span>="k">False</span>: T1/T2 都无把握 → 如实报错，不猜。</code></div>
 <div class="code-line"><span class="ln">260</span><code>    tier2_threshold / tier2_gap 可由 Healer 自愈时放宽。</code></div>
 <div class="code-line"><span class="ln">261</span><code>  &quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">262</span><code>    <span class="k">for</span> strategy, conf <span class="k">in</span> TIER1:</code></div>
@@ -4665,14 +4665,14 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">270</span><code>                    continue   <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 复验不过 → 降级到下一个 Tier1 策略</span></code></div>
 <div class="code-line"><span class="ln">271</span><code>                <span <span class="k">class</span>="k">return</span> {&quot;ok&quot;: <span class="k">True</span>, &quot;locator&quot;: expr, &quot;locator_obj&quot;: loc_obj,</code></div>
 <div class="code-line"><span class="ln">272</span><code>                        &quot;strategy&quot;: strategy, &quot;count&quot;: cnt,</code></div>
-<div class="code-line"><span class="ln">273</span><code>                        &quot;confidence&quot;: conf, &quot;healed&quot;: <span class="k">False</span>}</code></div>
+<div class="code-line"><span class="ln">273</span><code>                        &quot;confidence&quot;: conf, &quot;healed&quot;: <span <span class="k">class</span>="k">False</span>}</code></div>
 <div class="code-line"><span class="ln">274</span><code>            <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># count&gt;1 歧义 → 降级下一策略；count==0 找不到 → 跳过</span></code></div>
 <div class="code-line"><span class="ln">275</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># Tier1 全败 → Tier2 指纹兜底</span></code></div>
 <div class="code-line"><span class="ln">276</span><code>    t2 = _tier2_fingerprint(page, el, tier2_threshold, tier2_gap)</code></div>
 <div class="code-line"><span class="ln">277</span><code>    <span class="k">if</span> t2:</code></div>
 <div class="code-line"><span class="ln">278</span><code>        <span <span class="k">class</span>="k">return</span> t2</code></div>
-<div class="code-line"><span class="ln">279</span><code>    <span <span class="k">class</span>="k">return</span> {&quot;ok&quot;: <span class="k">False</span>, &quot;locator&quot;: <span class="k">None</span>, &quot;locator_obj&quot;: <span class="k">None</span>,</code></div>
-<div class="code-line"><span class="ln">280</span><code>            &quot;strategy&quot;: <span class="k">None</span>, &quot;count&quot;: <span class="k">None</span>, &quot;confidence&quot;: 0.0, &quot;healed&quot;: <span class="k">False</span>,</code></div>
+<div class="code-line"><span class="ln">279</span><code>    <span <span class="k">class</span>="k">return</span> {&quot;ok&quot;: <span <span class="k">class</span>="k">False</span>, &quot;locator&quot;: <span class="k">None</span>, &quot;locator_obj&quot;: <span class="k">None</span>,</code></div>
+<div class="code-line"><span class="ln">280</span><code>            &quot;strategy&quot;: <span class="k">None</span>, &quot;count&quot;: <span class="k">None</span>, &quot;confidence&quot;: 0.0, &quot;healed&quot;: <span <span class="k">class</span>="k">False</span>,</code></div>
 <div class="code-line"><span class="ln">281</span><code>            &quot;reason&quot;: &quot;Tier1 语义 &amp; Tier2 指纹均无法唯一确定，请补 data-testid 或核对语义&quot;}</code></div></div>
     </section>
 
@@ -4714,7 +4714,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">30</span><code>    bad = [(str(c.get(&quot;case_id&quot;) <span class="k">or</span> &quot;(无名)&quot;), case_errors(c)) <span class="k">for</span> c <span class="k">in</span> cases]</code></div>
 <div class="code-line"><span class="ln">31</span><code>    bad = [(cid, errs) <span class="k">for</span> cid, errs <span class="k">in</span> bad <span class="k">if</span> errs]</code></div>
 <div class="code-line"><span class="ln">32</span><code>    <span class="k">if</span> bad:</code></div>
-<div class="code-line"><span class="ln">33</span><code>        <span <span class="k">class</span>="k">raise</span> CaseQualityError(bad)</code></div>
+<div class="code-line"><span class="ln">33</span><code>        <span class="k">raise</span> CaseQualityError(bad)</code></div>
 <div class="code-line"><span class="ln">34</span><code></code></div>
 <div class="code-line"><span class="ln">35</span><code></code></div>
 <div class="code-line"><span class="ln">36</span><code><span class="k">def</span> _chromium_args_literal() -&gt; str:</code></div>
@@ -4758,7 +4758,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">74</span><code></code></div>
 <div class="code-line"><span class="ln">75</span><code><span class="k">def</span> _add_payload_refs(case: dict) -&gt; dict:</code></div>
 <div class="code-line"><span class="ln">76</span><code>    &quot;&quot;&quot;把 cases 步骤里的字面 value 替换成 _payload_ref 标记，脚本生成时按它取 _data(key, ctx)。&quot;&quot;&quot;</code></div>
-<div class="code-line"><span class="ln">77</span><code>    case = json.loads(json.dumps(case, ensure_ascii=<span class="k">False</span>))  <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 深拷贝，不改源</span></code></div>
+<div class="code-line"><span class="ln">77</span><code>    case = json.loads(json.dumps(case, ensure_ascii=<span <span class="k">class</span>="k">False</span>))  <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 深拷贝，不改源</span></code></div>
 <div class="code-line"><span class="ln">78</span><code>    idx = 0</code></div>
 <div class="code-line"><span class="ln">79</span><code>    <span class="k">for</span> st <span class="k">in</span> case.get(&quot;steps&quot;, []):</code></div>
 <div class="code-line"><span class="ln">80</span><code>        <span class="k">if</span> st.get(&quot;value&quot;):</code></div>
@@ -4791,7 +4791,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">107</span><code>                    &quot;checked&quot;, &quot;unchecked&quot;, &quot;enabled&quot;, &quot;disabled&quot;}</code></div>
 <div class="code-line"><span class="ln">108</span><code></code></div>
 <div class="code-line"><span class="ln">109</span><code></code></div>
-<div class="code-line"><span class="ln">110</span><code><span class="k">def</span> _render_assert(a: dict, loc_map: dict, cross_page: bool = <span class="k">False</span>,</code></div>
+<div class="code-line"><span class="ln">110</span><code><span class="k">def</span> _render_assert(a: dict, loc_map: dict, cross_page: bool = <span <span class="k">class</span>="k">False</span>,</code></div>
 <div class="code-line"><span class="ln">111</span><code>                   dup_raw: set[str] | <span class="k">None</span> = <span class="k">None</span>) -&gt; list[str]:</code></div>
 <div class="code-line"><span class="ln">112</span><code>    &quot;&quot;&quot;把一条断言（cases 的 asserts[i]）翻译成生成脚本里的调用行。</code></div>
 <div class="code-line"><span class="ln">113</span><code></code></div>
@@ -4809,14 +4809,14 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">125</span><code></code></div>
 <div class="code-line"><span class="ln">126</span><code>    <span class="k">if</span> kind <span class="k">not</span> <span class="k">in</span> _ASSERT_KINDS:</code></div>
 <div class="code-line"><span class="ln">127</span><code>        <span <span class="k">class</span>="k">return</span> [f&quot;    pytest.fail({&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;未知断言类型 &#x27; + kind + &#x27;：generator 不支持，拒绝静默跳过&#x27;!r},&quot;</span></code></div>
-<div class="code-line"><span class="ln">128</span><code>                f&quot; pytrace=<span class="k">False</span>)&quot;]</code></div>
+<div class="code-line"><span class="ln">128</span><code>                f&quot; pytrace=<span <span class="k">class</span>="k">False</span>)&quot;]</code></div>
 <div class="code-line"><span class="ln">129</span><code>    <span class="k">if</span> kind <span class="k">in</span> _ASSERT_NEED_EXPECT <span class="k">and</span> payload is <span class="k">None</span>:</code></div>
-<div class="code-line"><span class="ln">130</span><code>        <span <span class="k">class</span>="k">return</span> [f&quot;    pytest.fail({&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;断言 kind=&#x27; + kind + &#x27; 缺少 expect（期望值）&#x27;!r}, pytrace=<span class="k">False</span>)&quot;]</span></code></div>
+<div class="code-line"><span class="ln">130</span><code>        <span <span class="k">class</span>="k">return</span> [f&quot;    pytest.fail({&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;断言 kind=&#x27; + kind + &#x27; 缺少 expect（期望值）&#x27;!r}, pytrace=<span <span class="k">class</span>="k">False</span>)&quot;]</span></code></div>
 <div class="code-line"><span class="ln">131</span><code>    <span class="k">if</span> kind == &quot;attr&quot; <span class="k">and</span> <span class="k">not</span> a.get(&quot;name&quot;):</code></div>
-<div class="code-line"><span class="ln">132</span><code>        <span <span class="k">class</span>="k">return</span> [f&quot;    pytest.fail({&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;断言 kind=attr 缺少 name（属性名）&#x27;!r}, pytrace=<span class="k">False</span>)&quot;]</span></code></div>
+<div class="code-line"><span class="ln">132</span><code>        <span <span class="k">class</span>="k">return</span> [f&quot;    pytest.fail({&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;断言 kind=attr 缺少 name（属性名）&#x27;!r}, pytrace=<span <span class="k">class</span>="k">False</span>)&quot;]</span></code></div>
 <div class="code-line"><span class="ln">133</span><code>    <span class="k">if</span> kind == &quot;first_row&quot; <span class="k">and</span> <span class="k">not</span> str(a.get(&quot;row_field&quot;) <span class="k">or</span> &quot;&quot;).strip():</code></div>
 <div class="code-line"><span class="ln">134</span><code>        <span <span class="k">class</span>="k">return</span> [f&quot;    pytest.fail({&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;断言 kind=first_row 缺少 row_field（要验第一行的哪一列，如 orderName）&#x27;!r},&quot;</span></code></div>
-<div class="code-line"><span class="ln">135</span><code>                f&quot; pytrace=<span class="k">False</span>)&quot;]</code></div>
+<div class="code-line"><span class="ln">135</span><code>                f&quot; pytrace=<span <span class="k">class</span>="k">False</span>)&quot;]</code></div>
 <div class="code-line"><span class="ln">136</span><code>    <span class="k">if</span> kind == &quot;first_row&quot;:</code></div>
 <div class="code-line"><span class="ln">137</span><code>        <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 期望值必须是「操作前可确定」的（如刚输入的订单名称）——由 AI 护栏与质量闸共同把关</span></code></div>
 <div class="code-line"><span class="ln">138</span><code>        <span <span class="k">class</span>="k">return</span> [f&quot;    _assert_first_row(page, {str(a[&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;row_field&#x27;]).strip()!r}, {payload}, {desc!r})&quot;]</span></code></div>
@@ -4826,7 +4826,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">142</span><code>                  f&quot;必须写成 {elem}@&lt;页名&gt; 之一（否则会落到另一页的元素上）。&quot;</code></div>
 <div class="code-line"><span class="ln">143</span><code>                  f&quot;generate 日志里有 ⚠️ 跨页同名元素的唯一化清单&quot;)</code></div>
 <div class="code-line"><span class="ln">144</span><code>        <span <span class="k">class</span>="k">return</span> [f&quot;    _log(page, \&quot;cross_page_ambiguous\&quot;, &<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;跨页重名原始名: {elem}&#x27;)&quot;,</span></code></div>
-<div class="code-line"><span class="ln">145</span><code>                f&quot;    pytest.fail({reason!r}, pytrace=<span class="k">False</span>)&quot;]</code></div>
+<div class="code-line"><span class="ln">145</span><code>                f&quot;    pytest.fail({reason!r}, pytrace=<span <span class="k">class</span>="k">False</span>)&quot;]</code></div>
 <div class="code-line"><span class="ln">146</span><code></code></div>
 <div class="code-line"><span class="ln">147</span><code>    prim = <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">148</span><code>    <span class="k">if</span> sel:</code></div>
@@ -4836,17 +4836,17 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">152</span><code>            reason = (f&quot;断言语义名歧义：{elem!r} 在多页命中不同 locator → 无法确定用哪一个；&quot;</code></div>
 <div class="code-line"><span class="ln">153</span><code>                      f&quot;请改成唯一名或改用 selector（绝不猜）&quot;)</code></div>
 <div class="code-line"><span class="ln">154</span><code>            <span <span class="k">class</span>="k">return</span> [f&quot;    _log(page, \&quot;ambiguous\&quot;, &<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;断言语义名歧义: {elem}&#x27;)&quot;,</span></code></div>
-<div class="code-line"><span class="ln">155</span><code>                    f&quot;    pytest.fail({reason!r}, pytrace=<span class="k">False</span>)&quot;]</code></div>
+<div class="code-line"><span class="ln">155</span><code>                    f&quot;    pytest.fail({reason!r}, pytrace=<span <span class="k">class</span>="k">False</span>)&quot;]</code></div>
 <div class="code-line"><span class="ln">156</span><code>        loc = loc_map.get(elem)</code></div>
 <div class="code-line"><span class="ln">157</span><code>        <span class="k">if</span> loc is <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">158</span><code>            reason = (f&quot;断言元素未映射：语义名 {elem!r} 不在探测清单/快照里 → 断言无法定位&quot;</code></div>
 <div class="code-line"><span class="ln">159</span><code>                      f&quot;（generate 日志有 ⚠️ 仍未映射）；请检查 element 拼写，或改用 selector&quot;)</code></div>
 <div class="code-line"><span class="ln">160</span><code>            <span <span class="k">class</span>="k">return</span> [f&quot;    _log(page, \&quot;unmapped\&quot;, &<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;断言元素未映射: {elem}&#x27;)&quot;,</span></code></div>
-<div class="code-line"><span class="ln">161</span><code>                    f&quot;    pytest.fail({reason!r}, pytrace=<span class="k">False</span>)&quot;]</code></div>
+<div class="code-line"><span class="ln">161</span><code>                    f&quot;    pytest.fail({reason!r}, pytrace=<span <span class="k">class</span>="k">False</span>)&quot;]</code></div>
 <div class="code-line"><span class="ln">162</span><code>        prim = f&quot;<span <span class="k">class</span>="k">lambda</span> p: p.{loc}&quot;</code></div>
 <div class="code-line"><span class="ln">163</span><code>    <span class="k">if</span> kind <span class="k">in</span> _ASSERT_NEED_LOC <span class="k">and</span> prim is <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">164</span><code>        <span <span class="k">class</span>="k">return</span> [f&quot;    pytest.fail({&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;断言 kind=&#x27; + kind + &#x27; 需要 selector 或 element 才能定位&#x27;!r},&quot;</span></code></div>
-<div class="code-line"><span class="ln">165</span><code>                f&quot; pytrace=<span class="k">False</span>)&quot;]</code></div>
+<div class="code-line"><span class="ln">165</span><code>                f&quot; pytrace=<span <span class="k">class</span>="k">False</span>)&quot;]</code></div>
 <div class="code-line"><span class="ln">166</span><code></code></div>
 <div class="code-line"><span class="ln">167</span><code>    semantic = repr(elem) <span class="k">if</span> elem <span class="k">else</span> &quot;<span class="k">None</span>&quot;</code></div>
 <div class="code-line"><span class="ln">168</span><code>    d = f&quot;{desc!r}&quot;</code></div>
@@ -4884,7 +4884,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">199</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 上下文锚点</span></code></div>
 <div class="code-line"><span class="ln">200</span><code>    <span class="k">if</span> it.get(&quot;nearby_text&quot;) <span class="k">and</span> it.get(&quot;role&quot;):</code></div>
 <div class="code-line"><span class="ln">201</span><code>        <span <span class="k">class</span>="k">return</span> f&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;locator(&quot;li&quot;).filter(has_text=&quot;{it[&quot;nearby_text&quot;]}&quot;).get_by_role(&quot;{it[&quot;role&quot;]}&quot;)&#x27;</span></code></div>
-<div class="code-line"><span class="ln">202</span><code>    <span <span class="k">class</span>="k">raise</span> RuntimeError(f&quot;元素 {it.get(&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;semantic_name&#x27;)} 无可用定位语义&quot;)</span></code></div>
+<div class="code-line"><span class="ln">202</span><code>    <span class="k">raise</span> RuntimeError(f&quot;元素 {it.get(&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;semantic_name&#x27;)} 无可用定位语义&quot;)</span></code></div>
 <div class="code-line"><span class="ln">203</span><code></code></div>
 <div class="code-line"><span class="ln">204</span><code></code></div>
 <div class="code-line"><span class="ln">205</span><code><span class="k">def</span> _render_pytest_case(case: dict, loc_map: dict) -&gt; str:</code></div>
@@ -4940,7 +4940,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">255</span><code>            row_ref = st.get(&quot;_row_ref&quot;)</code></div>
 <div class="code-line"><span class="ln">256</span><code>            <span class="k">if</span> row_ref is <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">257</span><code>                lines.append(f&quot;    pytest.fail({&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;行内定位步骤缺少 row_text 数据引用（generator 内部错误）&#x27;!r},&quot;</span></code></div>
-<div class="code-line"><span class="ln">258</span><code>                             f&quot; pytrace=<span class="k">False</span>)&quot;)</code></div>
+<div class="code-line"><span class="ln">258</span><code>                             f&quot; pytrace=<span <span class="k">class</span>="k">False</span>)&quot;)</code></div>
 <div class="code-line"><span class="ln">259</span><code>            <span class="k">elif</span> op <span class="k">in</span> (&quot;click&quot;, &quot;click_new_tab&quot;):</code></div>
 <div class="code-line"><span class="ln">260</span><code>                tabs_arg = &quot;_t&quot; <span class="k">if</span> op == &quot;click_new_tab&quot; <span class="k">else</span> &quot;<span class="k">None</span>&quot;</code></div>
 <div class="code-line"><span class="ln">261</span><code>                expr = (f&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;_click_row_cell(page, row_text=_data({row_ref!r}, ctx), &#x27;</span></code></div>
@@ -4948,14 +4948,14 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">263</span><code>                lines.append(f&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;    page = {expr}&#x27; <span class="k">if</span> op == &quot;click_new_tab&quot; <span class="k">else</span> f&#x27;    {expr}&#x27;)</span></code></div>
 <div class="code-line"><span class="ln">264</span><code>            <span class="k">else</span>:</code></div>
 <div class="code-line"><span class="ln">265</span><code>                lines.append(f&quot;    pytest.fail({&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;行内定位只支持 click / click_new_tab，当前 op=&#x27; + str(op)!r},&quot;</span></code></div>
-<div class="code-line"><span class="ln">266</span><code>                             f&quot; pytrace=<span class="k">False</span>)&quot;)</code></div>
+<div class="code-line"><span class="ln">266</span><code>                             f&quot; pytrace=<span <span class="k">class</span>="k">False</span>)&quot;)</code></div>
 <div class="code-line"><span class="ln">267</span><code>        <span class="k">else</span>:</code></div>
 <div class="code-line"><span class="ln">268</span><code>            elem = st.get(&quot;element&quot;, &quot;&quot;)</code></div>
 <div class="code-line"><span class="ln">269</span><code>            <span class="k">if</span> is_cross_page <span class="k">and</span> elem <span class="k">and</span> elem <span class="k">in</span> dup_raw:</code></div>
 <div class="code-line"><span class="ln">270</span><code>                reason = (f&quot;跨页用例的步骤用了跨页重名的原始名 {elem!r} —— 它在多个页面都存在，&quot;</code></div>
 <div class="code-line"><span class="ln">271</span><code>                          f&quot;必须写成 {elem}@&lt;页名&gt; 之一（否则会静默落到另一页的 locator）&quot;)</code></div>
 <div class="code-line"><span class="ln">272</span><code>                lines.append(f&quot;    _log(page, \&quot;cross_page_ambiguous\&quot;, &<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;跨页重名原始名: {elem}&#x27;)&quot;)</span></code></div>
-<div class="code-line"><span class="ln">273</span><code>                lines.append(f&quot;    pytest.fail({reason!r}, pytrace=<span class="k">False</span>)&quot;)</code></div>
+<div class="code-line"><span class="ln">273</span><code>                lines.append(f&quot;    pytest.fail({reason!r}, pytrace=<span <span class="k">class</span>="k">False</span>)&quot;)</code></div>
 <div class="code-line"><span class="ln">274</span><code>                continue</code></div>
 <div class="code-line"><span class="ln">275</span><code>            loc = loc_map.get(elem) <span class="k">if</span> elem <span class="k">not</span> <span class="k">in</span> _AMBIGUOUS_NAMES <span class="k">else</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">276</span><code>            <span class="k">if</span> elem <span class="k">in</span> _AMBIGUOUS_NAMES:</code></div>
@@ -4963,7 +4963,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">278</span><code>                          f&quot;（generate 日志有 ⚠️ 多页命中）→ 请改成唯一名，或改用 selector 精确定位；&quot;</code></div>
 <div class="code-line"><span class="ln">279</span><code>                          f&quot;绝不猜一个可能点错的 locator&quot;)</code></div>
 <div class="code-line"><span class="ln">280</span><code>                lines.append(f&quot;    _log(page, \&quot;ambiguous\&quot;, &<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;语义名歧义: {elem}&#x27;)&quot;)</span></code></div>
-<div class="code-line"><span class="ln">281</span><code>                lines.append(f&quot;    pytest.fail({reason!r}, pytrace=<span class="k">False</span>)&quot;)</code></div>
+<div class="code-line"><span class="ln">281</span><code>                lines.append(f&quot;    pytest.fail({reason!r}, pytrace=<span <span class="k">class</span>="k">False</span>)&quot;)</code></div>
 <div class="code-line"><span class="ln">282</span><code>                continue</code></div>
 <div class="code-line"><span class="ln">283</span><code>            <span class="k">if</span> loc is <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">284</span><code>                <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 不静默跳过：只留注释的话，这一步被丢掉、用例照样 PASSED = 假绿</span></code></div>
@@ -4972,7 +4972,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">287</span><code>                          f&quot;（generate 日志有 ⚠️ 仍未映射）；请检查用例里的 element 拼写，&quot;</code></div>
 <div class="code-line"><span class="ln">288</span><code>                          f&quot;或先跑 probe 刷新快照&quot;)</code></div>
 <div class="code-line"><span class="ln">289</span><code>                lines.append(f&quot;    _log(page, \&quot;unmapped\&quot;, &<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;元素未映射: {elem}&#x27;)&quot;)</span></code></div>
-<div class="code-line"><span class="ln">290</span><code>                lines.append(f&quot;    pytest.fail({reason!r}, pytrace=<span class="k">False</span>)&quot;)</code></div>
+<div class="code-line"><span class="ln">290</span><code>                lines.append(f&quot;    pytest.fail({reason!r}, pytrace=<span <span class="k">class</span>="k">False</span>)&quot;)</code></div>
 <div class="code-line"><span class="ln">291</span><code>                continue</code></div>
 <div class="code-line"><span class="ln">292</span><code>            primary = f&quot;<span <span class="k">class</span>="k">lambda</span> p: p.{loc}&quot;</code></div>
 <div class="code-line"><span class="ln">293</span><code>            semantic = repr(elem) <span class="k">if</span> elem <span class="k">else</span> &quot;<span class="k">None</span>&quot;</code></div>
@@ -4993,7 +4993,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">308</span><code>            <span class="k">else</span>:</code></div>
 <div class="code-line"><span class="ln">309</span><code>                <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 同上：未知动作也要显式失败，绝不静默少做一步</span></code></div>
 <div class="code-line"><span class="ln">310</span><code>                lines.append(f&quot;    pytest.fail({&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;未知操作类型 &#x27; + str(op) + &#x27;：generator 不支持，拒绝静默跳过&#x27;!r},&quot;</span></code></div>
-<div class="code-line"><span class="ln">311</span><code>                             f&quot; pytrace=<span class="k">False</span>)&quot;)</code></div>
+<div class="code-line"><span class="ln">311</span><code>                             f&quot; pytrace=<span <span class="k">class</span>="k">False</span>)&quot;)</code></div>
 <div class="code-line"><span class="ln">312</span><code>        lines.append(f&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;    _log(page, &quot;{op}&quot;, f&quot;{desc}&quot;)&#x27;)</span></code></div>
 <div class="code-line"><span class="ln">313</span><code>        <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 该步之后的原地断言（after_step = i+1）</span></code></div>
 <div class="code-line"><span class="ln">314</span><code>        <span class="k">for</span> a <span class="k">in</span> by_step.get(i + 1, []):</code></div>
@@ -5214,8 +5214,8 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">529</span><code></code></div>
 <div class="code-line star"><span class="ln">530</span><code><span class="k">def</span> generate_scripts(cases_dir: Path | <span class="k">None</span> = <span class="k">None</span>, scripts_dir: Path | <span class="k">None</span> = <span class="k">None</span>,</code></div>
 <div class="code-note">⭐ <b>核心：读 cases → 生成 scripts/test_cases.py + 抽离 datasets。</b></div>
-<div class="code-line"><span class="ln">531</span><code>                     element_map_path: Path | <span class="k">None</span> = <span class="k">None</span>, live_probe: bool = <span class="k">False</span>,</code></div>
-<div class="code-line"><span class="ln">532</span><code>                     allow_unmapped: bool = <span class="k">False</span>) -&gt; dict:</code></div>
+<div class="code-line"><span class="ln">531</span><code>                     element_map_path: Path | <span class="k">None</span> = <span class="k">None</span>, live_probe: bool = <span <span class="k">class</span>="k">False</span>,</code></div>
+<div class="code-line"><span class="ln">532</span><code>                     allow_unmapped: bool = <span <span class="k">class</span>="k">False</span>) -&gt; dict:</code></div>
 <div class="code-line"><span class="ln">533</span><code>    &quot;&quot;&quot;读 cases/*.json → 生成 scripts/test_cases.py + scripts/conftest.py + scripts/datasets/&lt;case_id&gt;.json。</code></div>
 <div class="code-line"><span class="ln">534</span><code></code></div>
 <div class="code-line"><span class="ln">535</span><code>    定位来源（Req2：**消费 probe 生成的 element.map**，而不是每次自己现场重探）：</code></div>
@@ -5342,14 +5342,14 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">656</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 而「探测拿不到」是**生成期的已知错误**。让它继续落盘 = 产出一份看着合法的垃圾产物，</span></code></div>
 <div class="code-line"><span class="ln">657</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 且 generate 自己 exit 0 ⇒ 会被提交/打包/交付（2026-09-15 V7.5 交付事故就是这个）。</span></code></div>
 <div class="code-line"><span class="ln">658</span><code>    <span class="k">if</span> still_missing <span class="k">and</span> <span class="k">not</span> allow_unmapped:</code></div>
-<div class="code-line"><span class="ln">659</span><code>        <span <span class="k">class</span>="k">raise</span> UnmappedElementsError(still_missing, locator_sources, probe_error=probe_error,</code></div>
+<div class="code-line"><span class="ln">659</span><code>        <span class="k">raise</span> UnmappedElementsError(still_missing, locator_sources, probe_error=probe_error,</code></div>
 <div class="code-line"><span class="ln">660</span><code>                                   conflicts=_CONFLICT_BASES)</code></div>
 <div class="code-line"><span class="ln">661</span><code></code></div>
 <div class="code-line"><span class="ln">662</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 1) 抽离数据 → scripts/datasets/&lt;case_id&gt;.json</span></code></div>
 <div class="code-line"><span class="ln">663</span><code>    <span class="k">for</span> case <span class="k">in</span> cases:</code></div>
 <div class="code-line"><span class="ln">664</span><code>        data = _extract_data(case)</code></div>
 <div class="code-line"><span class="ln">665</span><code>        (datasets_dir / f&quot;{case[&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;case_id&#x27;]}.json&quot;).write_text(</span></code></div>
-<div class="code-line"><span class="ln">666</span><code>            json.dumps(data, ensure_ascii=<span class="k">False</span>, indent=2), encoding=&quot;utf-8&quot;)</code></div>
+<div class="code-line"><span class="ln">666</span><code>            json.dumps(data, ensure_ascii=<span <span class="k">class</span>="k">False</span>, indent=2), encoding=&quot;utf-8&quot;)</code></div>
 <div class="code-line"><span class="ln">667</span><code></code></div>
 <div class="code-line"><span class="ln">668</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 2) 生成 pytest 用例函数（locator 内联）</span></code></div>
 <div class="code-line"><span class="ln">669</span><code>    rewritten = [_add_payload_refs(c) <span class="k">for</span> c <span class="k">in</span> cases]</code></div>
@@ -5452,7 +5452,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">766</span><code></code></div>
 <div class="code-line"><span class="ln">767</span><code></code></div>
 <div class="code-line"><span class="ln">768</span><code><span class="k">def</span> _launch_opts(headless):</code></div>
-<div class="code-line"><span class="ln">769</span><code>    &quot;&quot;&quot;headless=<span class="k">True</span> 无头(默认)；<span class="k">False</span> 有头(显示浏览器)。</code></div>
+<div class="code-line"><span class="ln">769</span><code>    &quot;&quot;&quot;headless=<span class="k">True</span> 无头(默认)；<span <span class="k">class</span>="k">False</span> 有头(显示浏览器)。</code></div>
 <div class="code-line"><span class="ln">770</span><code>    支持 HYBRID_SLOWMO=&lt;毫秒&gt; 放慢每个动作，方便肉眼看用例一步步走。&quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">771</span><code>    args = list(CHROMIUM_ARGS)</code></div>
 <div class="code-line"><span class="ln">772</span><code>    heap = os.environ.get(&quot;HYBRID_JS_HEAP_MB&quot;)</code></div>
@@ -5528,7 +5528,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">842</span><code>        <span <span class="k">class</span>="k">import</span> shutil</code></div>
 <div class="code-line"><span class="ln">843</span><code>        shutil.rmtree(RUN_LOG_DIR, ignore_errors=<span class="k">True</span>)</code></div>
 <div class="code-line"><span class="ln">844</span><code>    RUN_LOG_DIR.mkdir(parents=<span class="k">True</span>, exist_ok=<span class="k">True</span>)</code></div>
-<div class="code-line"><span class="ln">845</span><code>    <span <span class="k">class</span>="k">yield</span> RUN_LOG_DIR</code></div>
+<div class="code-line"><span class="ln">845</span><code>    <span class="k">yield</span> RUN_LOG_DIR</code></div>
 <div class="code-line"><span class="ln">846</span><code></code></div>
 <div class="code-line"><span class="ln">847</span><code></code></div>
 <div class="code-line"><span class="ln">848</span><code><span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># ---- 用例级看门狗（2026-09-14）----</span></code></div>
@@ -5569,16 +5569,16 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">883</span><code>    <span <span class="k">class</span>="k">import</span> faulthandler</code></div>
 <div class="code-line"><span class="ln">884</span><code>    secs = (_CASE_TIMEOUT <span class="k">or</span> &quot;&quot;).strip().lower()</code></div>
 <div class="code-line"><span class="ln">885</span><code>    <span class="k">if</span> secs <span class="k">in</span> (&quot;&quot;, &quot;0&quot;, &quot;off&quot;, &quot;none&quot;, &quot;false&quot;):</code></div>
-<div class="code-line"><span class="ln">886</span><code>        <span <span class="k">class</span>="k">yield</span> <span class="k">None</span></code></div>
+<div class="code-line"><span class="ln">886</span><code>        <span class="k">yield</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">887</span><code>        <span <span class="k">class</span>="k">return</span></code></div>
 <div class="code-line"><span class="ln">888</span><code>    <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">889</span><code>        faulthandler.dump_traceback_later(int(float(secs)), exit=<span class="k">True</span>, file=_watchdog_sink())</code></div>
 <div class="code-line"><span class="ln">890</span><code>    <span <span class="k">class</span>="k">except</span> Exception <span class="k">as</span> e:</code></div>
 <div class="code-line"><span class="ln">891</span><code>        print(f&quot;[setup] ⚠️ 用例看门狗没装上（HYBRID_CASE_TIMEOUT={_CASE_TIMEOUT!r}）：{e}&quot;, flush=<span class="k">True</span>)</code></div>
-<div class="code-line"><span class="ln">892</span><code>        <span <span class="k">class</span>="k">yield</span> <span class="k">None</span></code></div>
+<div class="code-line"><span class="ln">892</span><code>        <span class="k">yield</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">893</span><code>        <span <span class="k">class</span>="k">return</span></code></div>
 <div class="code-line"><span class="ln">894</span><code>    <span class="k">try</span>:</code></div>
-<div class="code-line"><span class="ln">895</span><code>        <span <span class="k">class</span>="k">yield</span> <span class="k">None</span></code></div>
+<div class="code-line"><span class="ln">895</span><code>        <span class="k">yield</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">896</span><code>    finally:</code></div>
 <div class="code-line"><span class="ln">897</span><code>        faulthandler.cancel_dump_traceback_later()</code></div>
 <div class="code-line"><span class="ln">898</span><code></code></div>
@@ -5671,7 +5671,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">985</span><code>    msg = (f&quot;[ready] ⚠️ 等待页面数据就绪超时（{_READY_TIMEOUT_MS}ms）：{url}&quot;</code></div>
 <div class="code-line"><span class="ln">986</span><code>           f&quot; —— 页面可能卡在取数或报错；用 --debug 看逐步截图（log/&lt;run_id&gt;/shots/）与浏览器 console。&quot;)</code></div>
 <div class="code-line"><span class="ln">987</span><code>    <span class="k">if</span> _READY_REQUIRED:</code></div>
-<div class="code-line"><span class="ln">988</span><code>        <span <span class="k">class</span>="k">raise</span> RuntimeError(msg)</code></div>
+<div class="code-line"><span class="ln">988</span><code>        <span class="k">raise</span> RuntimeError(msg)</code></div>
 <div class="code-line"><span class="ln">989</span><code>    print(msg, flush=<span class="k">True</span>)</code></div>
 <div class="code-line"><span class="ln">990</span><code></code></div>
 <div class="code-line"><span class="ln">991</span><code></code></div>
@@ -5707,7 +5707,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1021</span><code>            <span class="k">with</span> cur.context.expect_page(timeout=_TAB_TIMEOUT_MS) <span class="k">as</span> info:</code></div>
 <div class="code-line"><span class="ln">1022</span><code>                click()</code></div>
 <div class="code-line"><span class="ln">1023</span><code>        <span <span class="k">class</span>="k">except</span> Exception <span class="k">as</span> e:</code></div>
-<div class="code-line"><span class="ln">1024</span><code>            <span <span class="k">class</span>="k">raise</span> RuntimeError(</code></div>
+<div class="code-line"><span class="ln">1024</span><code>            <span class="k">raise</span> RuntimeError(</code></div>
 <div class="code-line"><span class="ln">1025</span><code>                f&quot;点了「会开新 tab」的控件，但 {_TAB_TIMEOUT_MS}ms 内没有新 tab 出现&quot;</code></div>
 <div class="code-line"><span class="ln">1026</span><code>                f&quot;（{type(e).__name__}: {e}）。常见原因：① 该控件其实不会开新 tab&quot;</code></div>
 <div class="code-line"><span class="ln">1027</span><code>                f&quot;（探针的 opens_new_tab 标记或场景判断有误）；② 弹窗被浏览器拦截；③ 点到的不是预想元素。&quot;</code></div>
@@ -5730,15 +5730,15 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1044</span><code>        &quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">1045</span><code>        cur = self.page</code></div>
 <div class="code-line"><span class="ln">1046</span><code>        <span class="k">if</span> len(self.stack) &lt; 2:</code></div>
-<div class="code-line"><span class="ln">1047</span><code>            <span <span class="k">class</span>="k">raise</span> RuntimeError(&quot;close_tab 用在了没有上一个 tab 的场景（它只用于「从新 tab 返回」）&quot;)</code></div>
+<div class="code-line"><span class="ln">1047</span><code>            <span class="k">raise</span> RuntimeError(&quot;close_tab 用在了没有上一个 tab 的场景（它只用于「从新 tab 返回」）&quot;)</code></div>
 <div class="code-line"><span class="ln">1048</span><code>        closed = <span class="k">True</span></code></div>
 <div class="code-line"><span class="ln">1049</span><code>        <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">1050</span><code>            <span class="k">with</span> cur.expect_event(&quot;close&quot;, timeout=_TAB_TIMEOUT_MS):</code></div>
 <div class="code-line"><span class="ln">1051</span><code>                click()</code></div>
 <div class="code-line"><span class="ln">1052</span><code>        <span <span class="k">class</span>="k">except</span> Exception:</code></div>
-<div class="code-line"><span class="ln">1053</span><code>            closed = <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">1053</span><code>            closed = <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">1054</span><code>        <span class="k">if</span> <span class="k">not</span> closed <span class="k">and</span> _TAB_CLOSE_STRICT:</code></div>
-<div class="code-line"><span class="ln">1055</span><code>            <span <span class="k">class</span>="k">raise</span> RuntimeError(</code></div>
+<div class="code-line"><span class="ln">1055</span><code>            <span class="k">raise</span> RuntimeError(</code></div>
 <div class="code-line"><span class="ln">1056</span><code>                f&quot;点「返回」后该 tab 在 {_TAB_TIMEOUT_MS}ms 内**没有关闭** —— 需求是「关闭该页面并返回上一页」，&quot;</code></div>
 <div class="code-line"><span class="ln">1057</span><code>                f&quot;所以这是真失败（不是超时抖动）：① 该按钮可能只是普通跳转而不是关 tab；&quot;</code></div>
 <div class="code-line"><span class="ln">1058</span><code>                f&quot;② 该 tab 不是脚本打开的 ⇒ 浏览器不允许 window.close()（用例里应**点击**打开它，别直接 goto）；&quot;</code></div>
@@ -5766,7 +5766,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1080</span><code>    rows = page.locator(&quot;tbody tr&quot;).filter(has_text=row_text)</code></div>
 <div class="code-line"><span class="ln">1081</span><code>    n = _count_attached(rows)</code></div>
 <div class="code-line"><span class="ln">1082</span><code>    <span class="k">if</span> n != 1:</code></div>
-<div class="code-line"><span class="ln">1083</span><code>        <span <span class="k">class</span>="k">raise</span> RuntimeError(</code></div>
+<div class="code-line"><span class="ln">1083</span><code>        <span class="k">raise</span> RuntimeError(</code></div>
 <div class="code-line"><span class="ln">1084</span><code>            f&quot;行内定位失败：含文本 {row_text!r} 的行命中 {n} 个（要求恰好 1 个）。&quot;</code></div>
 <div class="code-line"><span class="ln">1085</span><code>            f&quot; 常见原因：① 这段文本不在任何行里（上一步的新建没成功 / 名称写错）；&quot;</code></div>
 <div class="code-line"><span class="ln">1086</span><code>            f&quot; ② 锚文本太短，多行都含它（用更长的独有片段）。&quot;)</code></div>
@@ -5775,7 +5775,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1089</span><code>        target = rows.first.locator(f&quot;td[data-field=&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;{cell_field}&#x27;]&quot;)</span></code></div>
 <div class="code-line"><span class="ln">1090</span><code>    kn = target.count()</code></div>
 <div class="code-line"><span class="ln">1091</span><code>    <span class="k">if</span> kn != 1:</code></div>
-<div class="code-line"><span class="ln">1092</span><code>        <span <span class="k">class</span>="k">raise</span> RuntimeError(f&quot;行内列 {cell_field!r} 的目标元素命中 {kn} 个（要求 1 个）&quot;)</code></div>
+<div class="code-line"><span class="ln">1092</span><code>        <span class="k">raise</span> RuntimeError(f&quot;行内列 {cell_field!r} 的目标元素命中 {kn} 个（要求 1 个）&quot;)</code></div>
 <div class="code-line"><span class="ln">1093</span><code>    _shot(page, f&quot;row_{cell_field}&quot;)</code></div>
 <div class="code-line"><span class="ln">1094</span><code></code></div>
 <div class="code-line"><span class="ln">1095</span><code>    <span class="k">def</span> _do():</code></div>
@@ -5796,7 +5796,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1110</span><code>    cell = page.locator(f&quot;tbody tr:first-child td[data-field=&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;{field}&#x27;]&quot;)</span></code></div>
 <div class="code-line"><span class="ln">1111</span><code>    _count_attached(cell)</code></div>
 <div class="code-line"><span class="ln">1112</span><code>    <span class="k">if</span> cell.count() == 0:</code></div>
-<div class="code-line"><span class="ln">1113</span><code>        <span <span class="k">class</span>="k">raise</span> AssertionError(f&quot;表格没有第一行、或没有 {field!r} 列 —— 无法验证「第一条记录」（断言无法成立）&quot;)</code></div>
+<div class="code-line"><span class="ln">1113</span><code>        <span class="k">raise</span> AssertionError(f&quot;表格没有第一行、或没有 {field!r} 列 —— 无法验证「第一条记录」（断言无法成立）&quot;)</code></div>
 <div class="code-line"><span class="ln">1114</span><code>    _expect(cell.first).to_contain_text(str(expected), timeout=_LOCATE_TIMEOUT_MS)</code></div>
 <div class="code-line"><span class="ln">1115</span><code>    _ok(page, desc <span class="k">or</span> f&quot;第一行 {field} 含 {expected}&quot;, f&quot;first_row_{field}&quot;, str(expected))</code></div>
 <div class="code-line"><span class="ln">1116</span><code></code></div>
@@ -5816,7 +5816,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1130</span><code>    &quot;&quot;&quot;每条用例开始前把被测应用的数据复位（默认 POST http://localhost:8000/api/reset）。&quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">1131</span><code>    url = (_RESET_URL <span class="k">or</span> &quot;&quot;).strip()</code></div>
 <div class="code-line"><span class="ln">1132</span><code>    <span class="k">if</span> url.lower() <span class="k">in</span> _RESET_OFF:</code></div>
-<div class="code-line"><span class="ln">1133</span><code>        <span <span class="k">class</span>="k">yield</span> <span class="k">None</span></code></div>
+<div class="code-line"><span class="ln">1133</span><code>        <span class="k">yield</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">1134</span><code>        <span <span class="k">class</span>="k">return</span></code></div>
 <div class="code-line"><span class="ln">1135</span><code>    <span <span class="k">class</span>="k">import</span> urllib.request</code></div>
 <div class="code-line"><span class="ln">1136</span><code>    target = _with_partition(url)</code></div>
@@ -5828,13 +5828,13 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1142</span><code>    <span <span class="k">class</span>="k">except</span> Exception <span class="k">as</span> e:</code></div>
 <div class="code-line"><span class="ln">1143</span><code>        print(f&quot;[setup] ⚠️ 数据复位失败（{target}）：{type(e).__name__}: {e}&quot;</code></div>
 <div class="code-line"><span class="ln">1144</span><code>              f&quot; —— 用例之间可能互相污染（要关掉这条提示：HYBRID_RESET_URL=off）&quot;, flush=<span class="k">True</span>)</code></div>
-<div class="code-line"><span class="ln">1145</span><code>    <span <span class="k">class</span>="k">yield</span> <span class="k">None</span></code></div>
+<div class="code-line"><span class="ln">1145</span><code>    <span class="k">yield</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">1146</span><code></code></div>
 <div class="code-line"><span class="ln">1147</span><code></code></div>
 <div class="code-line"><span class="ln">1148</span><code>@pytest.fixture(scope=&quot;session&quot;, autouse=<span class="k">True</span>)</code></div>
 <div class="code-line"><span class="ln">1149</span><code><span class="k">def</span> _dump_heals_at_session_end():</code></div>
 <div class="code-line"><span class="ln">1150</span><code>    &quot;&quot;&quot;会话结束把自愈记录落盘（可审 diff）；带 worker 后缀，避免并发同秒同名相撞。&quot;&quot;&quot;</code></div>
-<div class="code-line"><span class="ln">1151</span><code>    <span <span class="k">class</span>="k">yield</span></code></div>
+<div class="code-line"><span class="ln">1151</span><code>    <span class="k">yield</span></code></div>
 <div class="code-line"><span class="ln">1152</span><code>    <span class="k">if</span> _HEALER.events:</code></div>
 <div class="code-line"><span class="ln">1153</span><code>        worker = os.environ.get(&quot;PYTEST_XDIST_WORKER&quot;, &quot;main&quot;)</code></div>
 <div class="code-line"><span class="ln">1154</span><code>        paths = _HEALER.dump(suffix=f&quot;_{worker}&quot;)</code></div>
@@ -5889,7 +5889,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1203</span><code><span class="k">def</span> _pool():</code></div>
 <div class="code-line"><span class="ln">1204</span><code>    &quot;&quot;&quot;会话级浏览器池（每场一个 Chromium；kill 掉也不用管，下一场重新起）。&quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">1205</span><code>    pool = _BrowserPool(_launch_opts(<span class="k">not</span> _is_headed()))</code></div>
-<div class="code-line"><span class="ln">1206</span><code>    <span <span class="k">class</span>="k">yield</span> pool</code></div>
+<div class="code-line"><span class="ln">1206</span><code>    <span class="k">yield</span> pool</code></div>
 <div class="code-line"><span class="ln">1207</span><code>    pool.close()</code></div>
 <div class="code-line"><span class="ln">1208</span><code></code></div>
 <div class="code-line"><span class="ln">1209</span><code></code></div>
@@ -5913,7 +5913,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1227</span><code>    context.tracing.start(screenshots=<span class="k">True</span>, snapshots=<span class="k">True</span>)</code></div>
 <div class="code-line"><span class="ln">1228</span><code>    pg = context.new_page()</code></div>
 <div class="code-line"><span class="ln">1229</span><code>    <span class="k">try</span>:</code></div>
-<div class="code-line"><span class="ln">1230</span><code>        <span <span class="k">class</span>="k">yield</span> pg</code></div>
+<div class="code-line"><span class="ln">1230</span><code>        <span class="k">yield</span> pg</code></div>
 <div class="code-line"><span class="ln">1231</span><code>    finally:</code></div>
 <div class="code-line"><span class="ln">1232</span><code>        trace_dir = RUN_LOG_DIR / &quot;traces&quot;</code></div>
 <div class="code-line"><span class="ln">1233</span><code>        trace_dir.mkdir(parents=<span class="k">True</span>, exist_ok=<span class="k">True</span>)</code></div>
@@ -6000,7 +6000,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1314</span><code>    <span class="k">if</span> len(hits) &gt; 1:</code></div>
 <div class="code-line"><span class="ln">1315</span><code>        cand = &quot;、&quot;.join(f&quot;{k}({v.get(&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;test_id&#x27;) <span class="k">or</span> v.get(&#x27;role&#x27;) <span class="k">or</span> &#x27;?&#x27;})&quot; <span class="k">for</span> k, v <span class="k">in</span> hits[:8])</span></code></div>
 <div class="code-line"><span class="ln">1316</span><code>        more = f&quot; 等 {len(hits)} 个&quot; <span class="k">if</span> len(hits) &gt; 8 <span class="k">else</span> &quot;&quot;</code></div>
-<div class="code-line"><span class="ln">1317</span><code>        <span <span class="k">class</span>="k">raise</span> RuntimeError(</code></div>
+<div class="code-line"><span class="ln">1317</span><code>        <span class="k">raise</span> RuntimeError(</code></div>
 <div class="code-line"><span class="ln">1318</span><code>            f&quot;语义名歧义：{hint!r} 逐字不存在，而清单里有多个名字含它 → {cand}{more}。&quot;</code></div>
 <div class="code-line"><span class="ln">1319</span><code>            f&quot;模糊兜底不再「随便挑一个」（旧行为 = 按探测顺序静默挑，可能点到另一个控件还照样报绿）。&quot;</code></div>
 <div class="code-line"><span class="ln">1320</span><code>            f&quot;下一步：① 用例里改用清单中的准确名（同名控件用 base@上下文 形式）；&quot;</code></div>
@@ -6009,7 +6009,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1323</span><code>    <span class="k">if</span> <span class="k">not</span> hits:</code></div>
 <div class="code-line"><span class="ln">1324</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">1325</span><code>    <span class="k">if</span> _strict_locate():</code></div>
-<div class="code-line"><span class="ln">1326</span><code>        <span <span class="k">class</span>="k">raise</span> RuntimeError(</code></div>
+<div class="code-line"><span class="ln">1326</span><code>        <span class="k">raise</span> RuntimeError(</code></div>
 <div class="code-line"><span class="ln">1327</span><code>            f&quot;语义名未找到：{hint!r}（逐字不存在；模糊兜底已被 HYBRID_STRICT_LOCATE=1 禁用，&quot;</code></div>
 <div class="code-line"><span class="ln">1328</span><code>            f&quot;清单里唯一接近的是 {hits[0][0]!r}）。改用准确名，或去掉该开关。&quot;</code></div>
 <div class="code-line"><span class="ln">1329</span><code>        )</code></div>
@@ -6041,7 +6041,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1355</span><code>    <span class="k">from</span> framework.element_map <span <span class="k">class</span>="k">import</span> TestStep</code></div>
 <div class="code-line"><span class="ln">1356</span><code>    it = _item_for(hint, page)</code></div>
 <div class="code-line"><span class="ln">1357</span><code>    <span class="k">if</span> it is <span class="k">None</span>:</code></div>
-<div class="code-line"><span class="ln">1358</span><code>        <span <span class="k">class</span>="k">raise</span> RuntimeError(</code></div>
+<div class="code-line"><span class="ln">1358</span><code>        <span class="k">raise</span> RuntimeError(</code></div>
 <div class="code-line"><span class="ln">1359</span><code>            f&quot;元素语义未找到: {hint} —— 确定性主定位没命中，语义兜底也没找到这个语义名。&quot;</code></div>
 <div class="code-line"><span class="ln">1360</span><code>            f&quot;常见原因：① 页面还在异步取数/弹层未渲染（慢机器与高并发下常见；检查就绪契约或设 HYBRID_READY_SELECTOR）；&quot;</code></div>
 <div class="code-line"><span class="ln">1361</span><code>            f&quot;② 弹层没打开（先确认上一步点击是否生效）；③ 语义名过期（页面改版后要重跑 probe/generate）。&quot;</code></div>
@@ -6059,8 +6059,8 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1373</span><code>        <span class="k">if</span> h.get(&quot;recovered&quot;):</code></div>
 <div class="code-line"><span class="ln">1374</span><code>            _log(page, &quot;heal&quot;, f&quot;{hint} 自愈 -&gt; {h[&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;strategy&#x27;]} conf={h[&#x27;confidence&#x27;]}&quot;)</span></code></div>
 <div class="code-line"><span class="ln">1375</span><code>            <span <span class="k">class</span>="k">return</span> h[&quot;locator_obj&quot;]</code></div>
-<div class="code-line"><span class="ln">1376</span><code>        <span <span class="k">class</span>="k">raise</span> RuntimeError(f&quot;元素定位失败且自愈未成功: {hint}（{h.get(&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;reason&#x27;) <span class="k">or</span> &#x27;未知&#x27;}）&quot;)</span></code></div>
-<div class="code-line"><span class="ln">1377</span><code>    <span <span class="k">class</span>="k">raise</span> RuntimeError(f&quot;元素定位失败: {hint}（{r.get(&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;reason&#x27;)}）&quot;)</span></code></div>
+<div class="code-line"><span class="ln">1376</span><code>        <span class="k">raise</span> RuntimeError(f&quot;元素定位失败且自愈未成功: {hint}（{h.get(&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;reason&#x27;) <span class="k">or</span> &#x27;未知&#x27;}）&quot;)</span></code></div>
+<div class="code-line"><span class="ln">1377</span><code>    <span class="k">raise</span> RuntimeError(f&quot;元素定位失败: {hint}（{r.get(&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;reason&#x27;)}）&quot;)</span></code></div>
 <div class="code-line"><span class="ln">1378</span><code></code></div>
 <div class="code-line"><span class="ln">1379</span><code></code></div>
 <div class="code-line"><span class="ln">1380</span><code><span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># ---- 调试模式（cli run --debug）产物：逐步截图 + 录像 ----</span></code></div>
@@ -6108,9 +6108,9 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1422</span><code>            _log(page, &quot;warn&quot;, f&quot;primary 失效 → 语义兜底 {semantic} ({type(e).__name__})&quot;)</code></div>
 <div class="code-line"><span class="ln">1423</span><code>    <span class="k">if</span> loc is <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">1424</span><code>        <span class="k">if</span> <span class="k">not</span> _SELF_HEAL:</code></div>
-<div class="code-line"><span class="ln">1425</span><code>            <span <span class="k">class</span>="k">raise</span> RuntimeError(f&quot;确定性 locator 失效且 HYBRID_SELF_HEAL=0（不做推测性定位）: {semantic <span class="k">or</span> action}&quot;)</code></div>
+<div class="code-line"><span class="ln">1425</span><code>            <span class="k">raise</span> RuntimeError(f&quot;确定性 locator 失效且 HYBRID_SELF_HEAL=0（不做推测性定位）: {semantic <span class="k">or</span> action}&quot;)</code></div>
 <div class="code-line"><span class="ln">1426</span><code>        <span class="k">if</span> <span class="k">not</span> semantic:</code></div>
-<div class="code-line"><span class="ln">1427</span><code>            <span <span class="k">class</span>="k">raise</span> RuntimeError(f&quot;确定性 locator 失效且无语义兜底: {action}&quot;)</code></div>
+<div class="code-line"><span class="ln">1427</span><code>            <span class="k">raise</span> RuntimeError(f&quot;确定性 locator 失效且无语义兜底: {action}&quot;)</code></div>
 <div class="code-line"><span class="ln">1428</span><code>        loc = _loc(semantic, page)</code></div>
 <div class="code-line"><span class="ln">1429</span><code>    <span class="k">if</span> action == &quot;click&quot;:</code></div>
 <div class="code-line"><span class="ln">1430</span><code>        loc.click()</code></div>
@@ -6123,7 +6123,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1437</span><code>    <span class="k">elif</span> action == &quot;press_enter&quot;:</code></div>
 <div class="code-line"><span class="ln">1438</span><code>        loc.press(&quot;Enter&quot;)</code></div>
 <div class="code-line"><span class="ln">1439</span><code>    <span class="k">else</span>:</code></div>
-<div class="code-line"><span class="ln">1440</span><code>        <span <span class="k">class</span>="k">raise</span> NotImplementedError(f&quot;未知动作: {action}&quot;)</code></div>
+<div class="code-line"><span class="ln">1440</span><code>        <span class="k">raise</span> NotImplementedError(f&quot;未知动作: {action}&quot;)</code></div>
 <div class="code-line"><span class="ln">1441</span><code>    _shot(page, f&quot;{action}_{semantic <span class="k">or</span> &<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;&#x27;}&quot;)      # 调试模式：动作执行后存一张图</span></code></div>
 <div class="code-line"><span class="ln">1442</span><code></code></div>
 <div class="code-line"><span class="ln">1443</span><code></code></div>
@@ -6173,7 +6173,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1487</span><code><span class="k">def</span> _resolve(page, primary, semantic=<span class="k">None</span>, *, unique=<span class="k">True</span>):</code></div>
 <div class="code-line"><span class="ln">1488</span><code>    &quot;&quot;&quot;断言定位：主用确定性 locator；失效才走语义兜底/自愈（与 _act 同策略）。</code></div>
 <div class="code-line"><span class="ln">1489</span><code></code></div>
-<div class="code-line"><span class="ln">1490</span><code>    unique=<span class="k">False</span> 用于「复数元素」断言（count）——命中的 locator 本来就允许多个/零个，</code></div>
+<div class="code-line"><span class="ln">1490</span><code>    unique=<span <span class="k">class</span>="k">False</span> 用于「复数元素」断言（count）——命中的 locator 本来就允许多个/零个，</code></div>
 <div class="code-line"><span class="ln">1491</span><code>    不能按「必须唯一」判定。</code></div>
 <div class="code-line"><span class="ln">1492</span><code>    &quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">1493</span><code>    loc = <span class="k">None</span></code></div>
@@ -6181,7 +6181,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1495</span><code>        <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">1496</span><code>            cand = primary(page)</code></div>
 <div class="code-line"><span class="ln">1497</span><code>            <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># F2：unique=<span class="k">True</span>（要唯一命中的断言）→ 有界等待后再判；</span></code></div>
-<div class="code-line"><span class="ln">1498</span><code>            <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#     unique=<span class="k">False</span>（count 这类复数断言）保持瞬时判定 —— 「期望 0 个」是合法用例，</span></code></div>
+<div class="code-line"><span class="ln">1498</span><code>            <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#     unique=<span <span class="k">class</span>="k">False</span>（count 这类复数断言）保持瞬时判定 —— 「期望 0 个」是合法用例，</span></code></div>
 <div class="code-line"><span class="ln">1499</span><code>            <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#     等它 attached 只会白等一个超时。</span></code></div>
 <div class="code-line"><span class="ln">1500</span><code>            n = cand.count() <span class="k">if</span> <span class="k">not</span> unique <span class="k">else</span> _count_attached(cand)</code></div>
 <div class="code-line"><span class="ln">1501</span><code>            <span class="k">if</span> n == 1 <span class="k">or</span> <span class="k">not</span> unique:</code></div>
@@ -6194,13 +6194,13 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1508</span><code>            _log(page, &quot;warn&quot;, f&quot;断言 primary 失效 → 语义兜底 {semantic} ({type(e).__name__})&quot;)</code></div>
 <div class="code-line"><span class="ln">1509</span><code>    <span class="k">if</span> loc is <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">1510</span><code>        <span class="k">if</span> <span class="k">not</span> unique:</code></div>
-<div class="code-line"><span class="ln">1511</span><code>            <span <span class="k">class</span>="k">raise</span> RuntimeError(f&quot;复数元素断言必须有确定性 locator（selector / 已映射 element）: {semantic}&quot;)</code></div>
+<div class="code-line"><span class="ln">1511</span><code>            <span class="k">raise</span> RuntimeError(f&quot;复数元素断言必须有确定性 locator（selector / 已映射 element）: {semantic}&quot;)</code></div>
 <div class="code-line"><span class="ln">1512</span><code>        <span class="k">if</span> <span class="k">not</span> _SELF_HEAL:</code></div>
-<div class="code-line"><span class="ln">1513</span><code>            <span <span class="k">class</span>="k">raise</span> RuntimeError(f&quot;断言 locator 失效且 HYBRID_SELF_HEAL=0（不做推测性定位）: {semantic}&quot;)</code></div>
+<div class="code-line"><span class="ln">1513</span><code>            <span class="k">raise</span> RuntimeError(f&quot;断言 locator 失效且 HYBRID_SELF_HEAL=0（不做推测性定位）: {semantic}&quot;)</code></div>
 <div class="code-line"><span class="ln">1514</span><code>        <span class="k">if</span> <span class="k">not</span> semantic:</code></div>
 <div class="code-line"><span class="ln">1515</span><code>            <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># F3：说人话 —— 旧文案「既没 selector 也没 element」与事实相反（该断言其实有 selector），</span></code></div>
 <div class="code-line"><span class="ln">1516</span><code>            <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#     实测把排查方向带偏。这里给出真实原因 + 下一步。</span></code></div>
-<div class="code-line"><span class="ln">1517</span><code>            <span <span class="k">class</span>="k">raise</span> RuntimeError(</code></div>
+<div class="code-line"><span class="ln">1517</span><code>            <span class="k">raise</span> RuntimeError(</code></div>
 <div class="code-line"><span class="ln">1518</span><code>                f&quot;断言主定位失效：等了 {_LOCATE_TIMEOUT_MS}ms 仍然是 0 个元素；该断言用的是 selector，没有语义兜底可走。&quot;</code></div>
 <div class="code-line"><span class="ln">1519</span><code>                f&quot; 常见原因：① 刚做完 goto/点击，页面还在异步取数（给页面加就绪契约，或设 HYBRID_READY_SELECTOR）；&quot;</code></div>
 <div class="code-line"><span class="ln">1520</span><code>                f&quot; ② 元素真的不在了（真 bug）；③ 结果行还没渲染出来。&quot;</code></div>
@@ -6226,7 +6226,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1540</span><code></code></div>
 <div class="code-line"><span class="ln">1541</span><code><span class="k">def</span> _assert_count(page, n, primary, semantic=<span class="k">None</span>, desc=&quot;&quot;):</code></div>
 <div class="code-line"><span class="ln">1542</span><code>    &quot;&quot;&quot;元素数量（如结果行数）——注意 expect 必须是**操作前可确定**的值，别拿运行时计数硬凑。&quot;&quot;&quot;</code></div>
-<div class="code-line"><span class="ln">1543</span><code>    loc = _resolve(page, primary, semantic, unique=<span class="k">False</span>)</code></div>
+<div class="code-line"><span class="ln">1543</span><code>    loc = _resolve(page, primary, semantic, unique=<span <span class="k">class</span>="k">False</span>)</code></div>
 <div class="code-line"><span class="ln">1544</span><code>    _expect(loc).to_have_count(int(n))</code></div>
 <div class="code-line"><span class="ln">1545</span><code>    _ok(page, desc <span class="k">or</span> f&quot;{semantic <span class="k">or</span> &<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;该元素&#x27;} 数量 = {n}&quot;, f&quot;count_{semantic <span class="k">or</span> &#x27;selector&#x27;}&quot;, f&quot;count={n}&quot;)</span></code></div>
 <div class="code-line"><span class="ln">1546</span><code></code></div>
@@ -6326,7 +6326,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">36</span><code>        <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">37</span><code>            loc.first.wait_for(timeout=3000)</code></div>
 <div class="code-line"><span class="ln">38</span><code>        <span <span class="k">class</span>="k">except</span> Exception:</code></div>
-<div class="code-line"><span class="ln">39</span><code>            loc = page.get_by_text(t.assertion, exact=<span class="k">False</span>)</code></div>
+<div class="code-line"><span class="ln">39</span><code>            loc = page.get_by_text(t.assertion, exact=<span <span class="k">class</span>="k">False</span>)</code></div>
 <div class="code-line"><span class="ln">40</span><code>            loc.first.wait_for(timeout=5000)</code></div>
 <div class="code-line"><span class="ln">41</span><code>        expect(loc).to_be_visible()          <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># web-first：自动重试</span></code></div>
 <div class="code-line"><span class="ln">42</span><code>        log(f&quot;assert_text -&gt; {t.assertion!r}  ✓&quot;)</code></div>
@@ -6342,7 +6342,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">51</span><code>    <span class="k">if</span> <span class="k">not</span> resolved[&quot;ok&quot;]:</code></div>
 <div class="code-line"><span class="ln">52</span><code>        healed = healer.try_heal(page, t)</code></div>
 <div class="code-line"><span class="ln">53</span><code>        <span class="k">if</span> <span class="k">not</span> healed[&quot;recovered&quot;]:</code></div>
-<div class="code-line"><span class="ln">54</span><code>            <span <span class="k">class</span>="k">raise</span> RuntimeError(</code></div>
+<div class="code-line"><span class="ln">54</span><code>            <span class="k">raise</span> RuntimeError(</code></div>
 <div class="code-line"><span class="ln">55</span><code>                f&quot;[{t.order}] {t.element.semantic_name} 定位失败且自愈未成功: &quot;</code></div>
 <div class="code-line"><span class="ln">56</span><code>                f&quot;{healed.get(&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;reason&#x27;) <span class="k">or</span> &#x27;未知&#x27;}。请补 data-testid 或人工确认。&quot;</span></code></div>
 <div class="code-line"><span class="ln">57</span><code>            )</code></div>
@@ -6371,7 +6371,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">79</span><code>    <span class="k">elif</span> a == &quot;press_enter&quot;:</code></div>
 <div class="code-line"><span class="ln">80</span><code>        loc.press(&quot;Enter&quot;)</code></div>
 <div class="code-line"><span class="ln">81</span><code>    <span class="k">else</span>:</code></div>
-<div class="code-line"><span class="ln">82</span><code>        <span <span class="k">class</span>="k">raise</span> NotImplementedError(f&quot;未知动作: {a}&quot;)</code></div>
+<div class="code-line"><span class="ln">82</span><code>        <span class="k">raise</span> NotImplementedError(f&quot;未知动作: {a}&quot;)</code></div>
 <div class="code-line"><span class="ln">83</span><code></code></div>
 <div class="code-line"><span class="ln">84</span><code></code></div>
 <div class="code-line"><span class="ln">85</span><code><span class="k">def</span> run_scenario(m: ElementMap, headless: bool = <span class="k">True</span>, save_trace: bool = <span class="k">True</span>) -&gt; list[str]:</code></div>
@@ -6385,7 +6385,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">93</span><code>        browser = p.chromium.launch(**launch_opts(headless=headless))</code></div>
 <div class="code-line"><span class="ln">94</span><code>        context = browser.new_context()</code></div>
 <div class="code-line"><span class="ln">95</span><code>        <span class="k">if</span> save_trace:</code></div>
-<div class="code-line"><span class="ln">96</span><code>            context.tracing.start(screenshots=<span class="k">True</span>, snapshots=<span class="k">True</span>, sources=<span class="k">False</span>)</code></div>
+<div class="code-line"><span class="ln">96</span><code>            context.tracing.start(screenshots=<span class="k">True</span>, snapshots=<span class="k">True</span>, sources=<span <span class="k">class</span>="k">False</span>)</code></div>
 <div class="code-line"><span class="ln">97</span><code>        page = context.new_page()</code></div>
 <div class="code-line"><span class="ln">98</span><code>        <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">99</span><code>            <span class="k">for</span> t <span class="k">in</span> m.steps:</code></div>
@@ -6397,7 +6397,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">105</span><code>                print(f&quot;      ✗ 场景失败，但期间发生 {len(healer.events)} 次自愈 &quot;</code></div>
 <div class="code-line"><span class="ln">106</span><code>                      f&quot;→ 疑似真 bug 或自愈点错，请人工确认 heal diff&quot;)</code></div>
 <div class="code-line"><span class="ln">107</span><code>            print(f&quot;      ✗ 执行失败: {e}&quot;)</code></div>
-<div class="code-line"><span class="ln">108</span><code>            <span <span class="k">class</span>="k">raise</span></code></div>
+<div class="code-line"><span class="ln">108</span><code>            <span class="k">raise</span></code></div>
 <div class="code-line"><span class="ln">109</span><code>        finally:</code></div>
 <div class="code-line"><span class="ln">110</span><code>            <span class="k">if</span> healer.events:</code></div>
 <div class="code-line"><span class="ln">111</span><code>                paths = healer.dump()</code></div>
@@ -6435,7 +6435,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <p class="file-desc">Phase 3·自愈闭环：定位失败不中断，再协商 locator + 业务断言兜底 + 可审 diff。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code>&quot;&quot;&quot;【Healer】自愈闭环 —— Phase 3 核心，把&quot;降人力&quot;推到极致。</code></div>
 <div class="code-line"><span class="ln">2</span><code></code></div>
-<div class="code-line"><span class="ln">3</span><code>职责：当一个测试步骤的元素定位失败（resolve_locator 返回 ok=<span class="k">False</span>）时，</code></div>
+<div class="code-line"><span class="ln">3</span><code>职责：当一个测试步骤的元素定位失败（resolve_locator 返回 ok=<span <span class="k">class</span>="k">False</span>）时，</code></div>
 <div class="code-line"><span class="ln">4</span><code>**不中断整个场景**，而是进入分层自愈流程：</code></div>
 <div class="code-line"><span class="ln">5</span><code></code></div>
 <div class="code-line"><span class="ln">6</span><code>  Level-A  确定性再协商：放宽 Tier2 指纹阈值再找一次（无 LLM，确定性强）</code></div>
@@ -6479,7 +6479,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">44</span><code></code></div>
 <div class="code-line"><span class="ln">45</span><code>    <span class="k">def</span> to_markdown(self) -&gt; str:</code></div>
 <div class="code-line"><span class="ln">46</span><code>        <span <span class="k">class</span>="k">return</span> (f&quot;<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>### Step {self.step} · `{self.semantic_name}` · **{self.result}**\n&quot;</span></code></div>
-<div class="code-line"><span class="ln">47</span><code>                f&quot;- 原语义: `{json.dumps(self.original_semantics, ensure_ascii=<span class="k">False</span>)}`\n&quot;</code></div>
+<div class="code-line"><span class="ln">47</span><code>                f&quot;- 原语义: `{json.dumps(self.original_semantics, ensure_ascii=<span <span class="k">class</span>="k">False</span>)}`\n&quot;</code></div>
 <div class="code-line"><span class="ln">48</span><code>                f&quot;- 自愈 locator: `{self.healed_locator}`\n&quot;</code></div>
 <div class="code-line"><span class="ln">49</span><code>                f&quot;- 策略: `{self.strategy}` · 置信度 **{self.confidence}**\n&quot;</code></div>
 <div class="code-line"><span class="ln">50</span><code>                f&quot;- 业务后置断言: `{self.business_ok}`\n&quot;)</code></div>
@@ -6497,11 +6497,11 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">61</span><code>        &quot;&quot;&quot;对定位失败的 step 尝试自愈。business_assert 是可选后置校验 callable。&quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">62</span><code>        el = step.element</code></div>
 <div class="code-line"><span class="ln">63</span><code>        <span class="k">if</span> el is <span class="k">None</span> <span class="k">or</span> step.action <span class="k">in</span> (&quot;goto&quot;, &quot;expect_text&quot;):</code></div>
-<div class="code-line"><span class="ln">64</span><code>            <span <span class="k">class</span>="k">return</span> {&quot;recovered&quot;: <span class="k">False</span>, &quot;reason&quot;: &quot;无目标元素或无需定位&quot;}</code></div>
+<div class="code-line"><span class="ln">64</span><code>            <span <span class="k">class</span>="k">return</span> {&quot;recovered&quot;: <span <span class="k">class</span>="k">False</span>, &quot;reason&quot;: &quot;无目标元素或无需定位&quot;}</code></div>
 <div class="code-line"><span class="ln">65</span><code>        <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 尝试 Level-A / Level-B，拿到一个&quot;唯一命中&quot;的 locator</span></code></div>
 <div class="code-line"><span class="ln">66</span><code>        resolved = self._negotiate(page, el)</code></div>
 <div class="code-line"><span class="ln">67</span><code>        <span class="k">if</span> <span class="k">not</span> resolved[&quot;ok&quot;]:</code></div>
-<div class="code-line"><span class="ln">68</span><code>            <span <span class="k">class</span>="k">return</span> self._record(step, resolved, recovered=<span class="k">False</span>,</code></div>
+<div class="code-line"><span class="ln">68</span><code>            <span <span class="k">class</span>="k">return</span> self._record(step, resolved, recovered=<span <span class="k">class</span>="k">False</span>,</code></div>
 <div class="code-line"><span class="ln">69</span><code>                                business_ok=<span class="k">None</span>, result=&quot;failed&quot;)</code></div>
 <div class="code-line"><span class="ln">70</span><code>        <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 唯一性校验通过 → 业务后置断言兜底</span></code></div>
 <div class="code-line"><span class="ln">71</span><code>        business_ok = <span class="k">True</span></code></div>
@@ -6509,13 +6509,13 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">73</span><code>            <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">74</span><code>                business_ok = business_assert(resolved[&quot;locator_obj&quot;])</code></div>
 <div class="code-line"><span class="ln">75</span><code>            <span <span class="k">class</span>="k">except</span> Exception <span class="k">as</span> e:</code></div>
-<div class="code-line"><span class="ln">76</span><code>                business_ok = <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">76</span><code>                business_ok = <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">77</span><code>                resolved[&quot;reason&quot;] = f&quot;业务后置断言未通过: {e}&quot;</code></div>
 <div class="code-line star"><span class="ln">78</span><code>        result = &quot;recovered&quot; <span class="k">if</span> business_ok <span class="k">else</span> &quot;real_bug&quot;</code></div>
 <div class="code-note">⭐ <b>业务断言通过 → 才算自愈成功。</b></div>
 <div class="code-line"><span class="ln">79</span><code>        <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># real_bug → 不返回可用 locator（防止掩盖真 bug）</span></code></div>
 <div class="code-line"><span class="ln">80</span><code>        <span class="k">if</span> result == &quot;real_bug&quot;:</code></div>
-<div class="code-line"><span class="ln">81</span><code>            resolved = {&quot;ok&quot;: <span class="k">False</span>, &quot;locator&quot;: <span class="k">None</span>, &quot;locator_obj&quot;: <span class="k">None</span>,</code></div>
+<div class="code-line"><span class="ln">81</span><code>            resolved = {&quot;ok&quot;: <span <span class="k">class</span>="k">False</span>, &quot;locator&quot;: <span class="k">None</span>, &quot;locator_obj&quot;: <span class="k">None</span>,</code></div>
 <div class="code-line"><span class="ln">82</span><code>                        &quot;reason&quot;: &quot;自愈后业务断言未通过（疑似真 bug，请人工确认）&quot;}</code></div>
 <div class="code-line"><span class="ln">83</span><code>        <span <span class="k">class</span>="k">return</span> self._record(step, resolved, recovered=(result == &quot;recovered&quot;),</code></div>
 <div class="code-line"><span class="ln">84</span><code>                            business_ok=business_ok, result=result)</code></div>
@@ -6545,17 +6545,17 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">108</span><code>        <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">109</span><code>            llm = llm_from_env()</code></div>
 <div class="code-line"><span class="ln">110</span><code>        <span <span class="k">class</span>="k">except</span> Exception <span class="k">as</span> e:</code></div>
-<div class="code-line"><span class="ln">111</span><code>            <span <span class="k">class</span>="k">return</span> {&quot;ok&quot;: <span class="k">False</span>, &quot;reason&quot;: f&quot;LLM 未就绪: {e}&quot;}</code></div>
+<div class="code-line"><span class="ln">111</span><code>            <span <span class="k">class</span>="k">return</span> {&quot;ok&quot;: <span <span class="k">class</span>="k">False</span>, &quot;reason&quot;: f&quot;LLM 未就绪: {e}&quot;}</code></div>
 <div class="code-line"><span class="ln">112</span><code>        semantics = {k: getattr(el, k) <span class="k">for</span> k <span class="k">in</span></code></div>
 <div class="code-line"><span class="ln">113</span><code>                     (&quot;role&quot;, &quot;name&quot;, &quot;label&quot;, &quot;placeholder&quot;, &quot;text&quot;, &quot;test_id&quot;)</code></div>
 <div class="code-line"><span class="ln">114</span><code>                     <span class="k">if</span> getattr(el, k)}</code></div>
-<div class="code-line"><span class="ln">115</span><code>        prompt = (f&quot;目标元素语义: {_json.dumps(semantics, ensure_ascii=<span class="k">False</span>)}\n&quot;</code></div>
+<div class="code-line"><span class="ln">115</span><code>        prompt = (f&quot;目标元素语义: {_json.dumps(semantics, ensure_ascii=<span <span class="k">class</span>="k">False</span>)}\n&quot;</code></div>
 <div class="code-line"><span class="ln">116</span><code>                  f&quot;意图: {el.page_hint <span class="k">or</span> el.semantic_name}\n&quot;</code></div>
-<div class="code-line"><span class="ln">117</span><code>                  f&quot;页面候选: {_json.dumps(candidates[:30], ensure_ascii=<span class="k">False</span>)}\n&quot;</code></div>
+<div class="code-line"><span class="ln">117</span><code>                  f&quot;页面候选: {_json.dumps(candidates[:30], ensure_ascii=<span <span class="k">class</span>="k">False</span>)}\n&quot;</code></div>
 <div class="code-line"><span class="ln">118</span><code>                  f&quot;请挑出最匹配目标语义的候选 semantic_name，只输出一个名字。&quot;)</code></div>
 <div class="code-line"><span class="ln">119</span><code>        <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 这里用 LLM 的文本返回挑一个最接近候选；再走唯一性。</span></code></div>
 <div class="code-line"><span class="ln">120</span><code>        <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># （教学骨架：真实可用 structured_output 拿可控对象。无 key 环境此步不被触发。）</span></code></div>
-<div class="code-line"><span class="ln">121</span><code>        <span <span class="k">class</span>="k">return</span> {&quot;ok&quot;: <span class="k">False</span>, &quot;reason&quot;: &quot;LLM 重猜路径已预留（需 key 才能启用）&quot;}</code></div>
+<div class="code-line"><span class="ln">121</span><code>        <span <span class="k">class</span>="k">return</span> {&quot;ok&quot;: <span <span class="k">class</span>="k">False</span>, &quot;reason&quot;: &quot;LLM 重猜路径已预留（需 key 才能启用）&quot;}</code></div>
 <div class="code-line"><span class="ln">122</span><code></code></div>
 <div class="code-line"><span class="ln">123</span><code>    <span class="k">def</span> _record(self, step: TestStep, resolved: dict, recovered: bool,</code></div>
 <div class="code-line"><span class="ln">124</span><code>                business_ok: bool | <span class="k">None</span>, result: str) -&gt; dict:</code></div>
@@ -6603,7 +6603,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">165</span><code>        jp = HEALS_DIR / f&quot;heals_{ts}.json&quot;</code></div>
 <div class="code-line"><span class="ln">166</span><code>        mp = HEALS_DIR / f&quot;heals_{ts}.md&quot;</code></div>
 <div class="code-line"><span class="ln">167</span><code>        jp.write_text(json.dumps([e.to_dict() <span class="k">for</span> e <span class="k">in</span> self.events],</code></div>
-<div class="code-line"><span class="ln">168</span><code>                                 ensure_ascii=<span class="k">False</span>, indent=2), encoding=&quot;utf-8&quot;)</code></div>
+<div class="code-line"><span class="ln">168</span><code>                                 ensure_ascii=<span <span class="k">class</span>="k">False</span>, indent=2), encoding=&quot;utf-8&quot;)</code></div>
 <div class="code-line"><span class="ln">169</span><code>        mp.write_text(&quot;<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 自愈记录（可审 diff）\n\n&quot; + &quot;\n\n&quot;.join(</span></code></div>
 <div class="code-line"><span class="ln">170</span><code>            e.to_markdown() <span class="k">for</span> e <span class="k">in</span> self.events), encoding=&quot;utf-8&quot;)</code></div>
 <div class="code-line"><span class="ln">171</span><code>        <span <span class="k">class</span>="k">return</span> [str(jp), str(mp)]</code></div></div>
@@ -6640,7 +6640,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">23</span><code>        p = BASE / p</code></div>
 <div class="code-line"><span class="ln">24</span><code>    data = json.loads(p.read_text(encoding=&quot;utf-8&quot;))</code></div>
 <div class="code-line"><span class="ln">25</span><code>    <span class="k">if</span> &quot;type&quot; <span class="k">not</span> <span class="k">in</span> data:</code></div>
-<div class="code-line"><span class="ln">26</span><code>        <span <span class="k">class</span>="k">raise</span> ValueError(f&quot;dataset {p} 缺少 type 字段（search/create）&quot;)</code></div>
+<div class="code-line"><span class="ln">26</span><code>        <span class="k">raise</span> ValueError(f&quot;dataset {p} 缺少 type 字段（search/create）&quot;)</code></div>
 <div class="code-line"><span class="ln">27</span><code>    <span <span class="k">class</span>="k">return</span> data</code></div>
 <div class="code-line"><span class="ln">28</span><code></code></div>
 <div class="code-line"><span class="ln">29</span><code></code></div>
@@ -6657,7 +6657,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">40</span><code>    base_url = index.get(&quot;defaults&quot;, {}).get(&quot;base_url&quot;, &quot;http://localhost:8000&quot;)</code></div>
 <div class="code-line"><span class="ln">41</span><code>    <span class="k">for</span> t <span class="k">in</span> index.get(&quot;tests&quot;, []):</code></div>
 <div class="code-line"><span class="ln">42</span><code>        data = load_dataset(t[&quot;dataset&quot;])</code></div>
-<div class="code-line"><span class="ln">43</span><code>        <span <span class="k">class</span>="k">yield</span> {</code></div>
+<div class="code-line"><span class="ln">43</span><code>        <span class="k">yield</span> {</code></div>
 <div class="code-line"><span class="ln">44</span><code>            &quot;case_id&quot;: t[&quot;case_id&quot;],</code></div>
 <div class="code-line"><span class="ln">45</span><code>            &quot;type&quot;: t[&quot;type&quot;],</code></div>
 <div class="code-line"><span class="ln">46</span><code>            &quot;dataset&quot;: t[&quot;dataset&quot;],</code></div>
@@ -6896,9 +6896,9 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">68</span><code>                <span class="k">if</span> v <span class="k">in</span> _TRUE_WORDS:</code></div>
 <div class="code-line"><span class="ln">69</span><code>                    <span <span class="k">class</span>="k">return</span> <span class="k">True</span></code></div>
 <div class="code-line"><span class="ln">70</span><code>                <span class="k">if</span> v <span class="k">in</span> _FALSE_WORDS:</code></div>
-<div class="code-line"><span class="ln">71</span><code>                    <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">71</span><code>                    <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">72</span><code>            <span <span class="k">class</span>="k">return</span> <span class="k">True</span></code></div>
-<div class="code-line"><span class="ln">73</span><code>    <span <span class="k">class</span>="k">return</span> <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">73</span><code>    <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">74</span><code></code></div>
 <div class="code-line"><span class="ln">75</span><code></code></div>
 <div class="code-line"><span class="ln">76</span><code><span class="k">def</span> _headed_from(rest: list[str]) -&gt; bool:</code></div>
@@ -6959,7 +6959,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">131</span><code>        print(f&quot;\n[probe] ❌ 探测没跑：{why}&quot;)</code></div>
 <div class="code-line"><span class="ln">132</span><code>        print(&quot;[probe]    目标地址可用 TARGET_URL / HYBRID_BASE_URL 覆盖（两者等效）；&quot;</code></div>
 <div class="code-line"><span class="ln">133</span><code>              &quot;demo 起好后重跑 `python -m framework.cli probe`（或 all）&quot;)</code></div>
-<div class="code-line"><span class="ln">134</span><code>        <span <span class="k">class</span>="k">raise</span> SystemExit(2)</code></div>
+<div class="code-line"><span class="ln">134</span><code>        <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">135</span><code>    <span class="k">from</span> playwright.sync_api <span <span class="k">class</span>="k">import</span> sync_playwright</code></div>
 <div class="code-line"><span class="ln">136</span><code>    <span <span class="k">class</span>="k">import</span> json</code></div>
 <div class="code-line"><span class="ln">137</span><code>    <span class="k">from</span> .explorer <span <span class="k">class</span>="k">import</span> _try_collect_modal_items, _merge_items</code></div>
@@ -6974,7 +6974,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">146</span><code>        items = _merge_items(items, layer_items)</code></div>
 <div class="code-line"><span class="ln">147</span><code>        b.close()</code></div>
 <div class="code-line"><span class="ln">148</span><code>    out = config.ELEMENT_MAP_DIR / f&quot;probe_{_now()}.json&quot;</code></div>
-<div class="code-line"><span class="ln">149</span><code>    out.write_text(json.dumps(items, ensure_ascii=<span class="k">False</span>, indent=2), encoding=&quot;utf-8&quot;)</code></div>
+<div class="code-line"><span class="ln">149</span><code>    out.write_text(json.dumps(items, ensure_ascii=<span <span class="k">class</span>="k">False</span>, indent=2), encoding=&quot;utf-8&quot;)</code></div>
 <div class="code-line"><span class="ln">150</span><code>    prune_snapshots(quiet_if_none=<span class="k">True</span>)          <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># 归档保留策略（静默：无可清理就不打印）</span></code></div>
 <div class="code-line"><span class="ln">151</span><code>    n_layer = sum(1 <span class="k">for</span> it <span class="k">in</span> items <span class="k">if</span> it.get(&quot;source&quot;) == &quot;layer&quot;)</code></div>
 <div class="code-line"><span class="ln">152</span><code>    print(f&quot;[probe] 探测到 {len(items)} 个交互元素（其中弹窗/弹层内 {n_layer} 个）→ {out}&quot;)</code></div>
@@ -7019,7 +7019,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">191</span><code>    print(&quot;[generate]    （旧行为：只打一句警告就照样落盘 ⇒ 产出「每步都是 pytest.fail 存根」的垃圾产物；&quot;</code></div>
 <div class="code-line"><span class="ln">192</span><code>          &quot;2026-09-15 的 V7.5 交付事故就是它进包的）&quot;)</code></div>
 <div class="code-line"><span class="ln">193</span><code>    print(&quot;[generate]    仅调试时可显式加 --allow-unmapped 放行；那样的产物永不允许进交付。&quot;)</code></div>
-<div class="code-line"><span class="ln">194</span><code>    <span <span class="k">class</span>="k">raise</span> SystemExit(2)</code></div>
+<div class="code-line"><span class="ln">194</span><code>    <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">195</span><code></code></div>
 <div class="code-line"><span class="ln">196</span><code></code></div>
 <div class="code-line"><span class="ln">197</span><code><span class="k">def</span> _report_case_quality(e) -&gt; NoReturn:</code></div>
@@ -7035,10 +7035,10 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">207</span><code>          &quot;② 目标页没有独有 URL 片段（列表页就是根路径 /）→ 改对该页独有文案做 text 断言；&quot;</code></div>
 <div class="code-line"><span class="ln">208</span><code>          &quot;③ 顺带确认用例的页面清单 pages[].url 填全了。&quot;)</code></div>
 <div class="code-line"><span class="ln">209</span><code>    print(&quot;[质量闸]    （旧行为：这条假绿一路跑到报告里，靠人工复核才发现 —— 2026-09-14 就是。）&quot;)</code></div>
-<div class="code-line"><span class="ln">210</span><code>    <span <span class="k">class</span>="k">raise</span> SystemExit(2)</code></div>
+<div class="code-line"><span class="ln">210</span><code>    <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">211</span><code></code></div>
 <div class="code-line"><span class="ln">212</span><code></code></div>
-<div class="code-line star"><span class="ln">213</span><code><span class="k">def</span> cmd_generate(rest: list[str] = <span class="k">None</span>, allow_unmapped: bool = <span class="k">False</span>):</code></div>
+<div class="code-line star"><span class="ln">213</span><code><span class="k">def</span> cmd_generate(rest: list[str] = <span class="k">None</span>, allow_unmapped: bool = <span <span class="k">class</span>="k">False</span>):</code></div>
 <div class="code-note">⭐ <b>场景②阶段1：读 cases → 生成 scripts/（locator 翻译 + 数据抽离）。</b></div>
 <div class="code-line"><span class="ln">214</span><code>    &quot;&quot;&quot;读 cases/*.json → 生成 scripts/（playwright 脚本 + scripts/datasets 抽离数据）。</code></div>
 <div class="code-line"><span class="ln">215</span><code></code></div>
@@ -7078,7 +7078,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">249</span><code>    <span class="k">if</span> res[&quot;count&quot;] == 0:</code></div>
 <div class="code-line"><span class="ln">250</span><code>        print(&quot;[generate] ❌ cases/ 里一个用例都没有 → 没有生成任何可执行测试。&quot;</code></div>
 <div class="code-line"><span class="ln">251</span><code>              &quot;先写 cases/*.json，或用 explore --ai 让 AI 出题&quot;)</code></div>
-<div class="code-line"><span class="ln">252</span><code>        <span <span class="k">class</span>="k">raise</span> SystemExit(2)</code></div>
+<div class="code-line"><span class="ln">252</span><code>        <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">253</span><code></code></div>
 <div class="code-line"><span class="ln">254</span><code></code></div>
 <div class="code-line"><span class="ln">255</span><code><span class="k">def</span> _arg_value(rest: list[str], flag: str) -&gt; str | <span class="k">None</span>:</code></div>
@@ -7111,8 +7111,8 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-note">⭐ <b>备 url/page_bg/guard/case_id → 交给 ai_explore（CLI 自己不探测）。</b></div>
 <div class="code-line"><span class="ln">282</span><code>                 guard_text: str = &quot;&quot;, guard_spec: dict | <span class="k">None</span> = <span class="k">None</span>,</code></div>
 <div class="code-line"><span class="ln">283</span><code>                 case_id: str | <span class="k">None</span> = <span class="k">None</span>, extra: dict | <span class="k">None</span> = <span class="k">None</span>,</code></div>
-<div class="code-line"><span class="ln">284</span><code>                 to_cases: bool = <span class="k">True</span>, mock_fallback: bool = <span class="k">False</span>,</code></div>
-<div class="code-line"><span class="ln">285</span><code>                 pages: list[dict] | <span class="k">None</span> = <span class="k">None</span>, cassette=<span class="k">None</span>, cassette_strict: bool = <span class="k">False</span>):</code></div>
+<div class="code-line"><span class="ln">284</span><code>                 to_cases: bool = <span class="k">True</span>, mock_fallback: bool = <span <span class="k">class</span>="k">False</span>,</code></div>
+<div class="code-line"><span class="ln">285</span><code>                 pages: list[dict] | <span class="k">None</span> = <span class="k">None</span>, cassette=<span class="k">None</span>, cassette_strict: bool = <span <span class="k">class</span>="k">False</span>):</code></div>
 <div class="code-line"><span class="ln">286</span><code>    &quot;&quot;&quot;跑一次 AI 语义识别（+ 可选落 cases/）。返回 (emap, case_path | <span class="k">None</span>, warns)。</code></div>
 <div class="code-line"><span class="ln">287</span><code></code></div>
 <div class="code-line"><span class="ln">288</span><code>    pages（P3 跨页）：[{&quot;name&quot;,&quot;url&quot;,&quot;page&quot;}, ...]；给了 ≥2 页就按跨页模式探测与规划，</code></div>
@@ -7194,7 +7194,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">363</span><code>    <span class="k">if</span> &quot;--ai&quot; <span class="k">not</span> <span class="k">in</span> rest:</code></div>
 <div class="code-line"><span class="ln">364</span><code>        print(&quot;[explore] ❌ 缺 --ai：explore 只做真 AI 语义识别（不提供隐式降级 —— 静默兜底=造假）。&quot;)</code></div>
 <div class="code-line"><span class="ln">365</span><code>        print(&quot;          要跑确定性链路请用： python -m framework.cli probe → generate → run&quot;)</code></div>
-<div class="code-line"><span class="ln">366</span><code>        <span <span class="k">class</span>="k">raise</span> SystemExit(2)</code></div>
+<div class="code-line"><span class="ln">366</span><code>        <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">367</span><code></code></div>
 <div class="code-line"><span class="ln">368</span><code>    mock_fallback = &quot;--mock-fallback&quot; <span class="k">in</span> rest</code></div>
 <div class="code-line"><span class="ln">369</span><code>    to_cases = &quot;--no-cases&quot; <span class="k">not</span> <span class="k">in</span> rest</code></div>
@@ -7208,11 +7208,11 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">377</span><code>    <span class="k">if</span> has_rec <span class="k">and</span> has_rep:</code></div>
 <div class="code-line"><span class="ln">378</span><code>        print(&quot;[explore] ❌ --llm-record 与 --llm-cassette 互斥：一次只能「录」或「放」&quot;</code></div>
 <div class="code-line"><span class="ln">379</span><code>              &quot;（要边录边放请分两次跑）&quot;)</code></div>
-<div class="code-line"><span class="ln">380</span><code>        <span <span class="k">class</span>="k">raise</span> SystemExit(2)</code></div>
+<div class="code-line"><span class="ln">380</span><code>        <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">381</span><code>    <span class="k">if</span> (has_rec <span class="k">or</span> has_rep) <span class="k">and</span> mock_fallback:</code></div>
 <div class="code-line"><span class="ln">382</span><code>        print(&quot;[explore] ❌ --mock-fallback 与录像模式互斥：mock 是确定性假产物、录像里存的是&quot;</code></div>
 <div class="code-line"><span class="ln">383</span><code>              &quot;真 AI 回答 —— 混用没有意义&quot;)</code></div>
-<div class="code-line"><span class="ln">384</span><code>        <span <span class="k">class</span>="k">raise</span> SystemExit(2)</code></div>
+<div class="code-line"><span class="ln">384</span><code>        <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">385</span><code>    cassette = <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">386</span><code>    <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">387</span><code>        <span class="k">if</span> has_rec:</code></div>
@@ -7221,12 +7221,12 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">390</span><code>            cassette = Cassette(MODE_REPLAY, _arg_value(rest, &quot;--llm-cassette&quot;))</code></div>
 <div class="code-line"><span class="ln">391</span><code>    <span <span class="k">class</span>="k">except</span> CassetteError <span class="k">as</span> e:</code></div>
 <div class="code-line"><span class="ln">392</span><code>        print(f&quot;[explore] ❌ {e}&quot;)</code></div>
-<div class="code-line"><span class="ln">393</span><code>        <span <span class="k">class</span>="k">raise</span> SystemExit(2) <span class="k">from</span> <span class="k">None</span></code></div>
+<div class="code-line"><span class="ln">393</span><code>        <span class="k">raise</span> SystemExit(2) <span class="k">from</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">394</span><code>    cassette_strict = &quot;--llm-cassette-strict&quot; <span class="k">in</span> rest</code></div>
 <div class="code-line"><span class="ln">395</span><code>    <span class="k">if</span> cassette_strict <span class="k">and</span> <span class="k">not</span> has_rep:</code></div>
 <div class="code-line"><span class="ln">396</span><code>        print(&quot;[explore] ❌ --llm-cassette-strict 只与 --llm-cassette 搭配使用&quot;</code></div>
 <div class="code-line"><span class="ln">397</span><code>              &quot;（它的意思是「回放只认逐字一致的录像」）&quot;)</code></div>
-<div class="code-line"><span class="ln">398</span><code>        <span <span class="k">class</span>="k">raise</span> SystemExit(2)</code></div>
+<div class="code-line"><span class="ln">398</span><code>        <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">399</span><code>    <span class="k">if</span> cassette is <span class="k">not</span> <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">400</span><code>        print(f&quot;[explore] {cassette.banner()}&quot;</code></div>
 <div class="code-line"><span class="ln">401</span><code>              + (&quot;　· 只认严格键&quot; <span class="k">if</span> cassette_strict <span class="k">else</span> &quot;&quot;))</code></div>
@@ -7238,7 +7238,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">407</span><code>                                 (&quot;--scenario-dir&quot;, sdir)) <span class="k">if</span> v]</code></div>
 <div class="code-line"><span class="ln">408</span><code>    <span class="k">if</span> len(given) &gt; 1:</code></div>
 <div class="code-line"><span class="ln">409</span><code>        print(f&quot;[explore] ❌ 参数互斥：{&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;、&#x27;.join(g[0] <span class="k">for</span> g <span class="k">in</span> given)} 只能给一个（不猜你的意图）&quot;)</span></code></div>
-<div class="code-line"><span class="ln">410</span><code>        <span <span class="k">class</span>="k">raise</span> SystemExit(2)</code></div>
+<div class="code-line"><span class="ln">410</span><code>        <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">411</span><code></code></div>
 <div class="code-line"><span class="ln">412</span><code>    <span class="k">from</span> .case_builder <span <span class="k">class</span>="k">import</span> make_case_id_from_scenario_id</code></div>
 <div class="code-line"><span class="ln">413</span><code></code></div>
@@ -7263,7 +7263,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">432</span><code>            scs = discover_scenarios(Path(sdir), tags=tags, limit=int(lim) <span class="k">if</span> lim <span class="k">else</span> <span class="k">None</span>)</code></div>
 <div class="code-line"><span class="ln">433</span><code>        <span <span class="k">class</span>="k">except</span> ScenarioError <span class="k">as</span> e:</code></div>
 <div class="code-line"><span class="ln">434</span><code>            print(f&quot;[explore] ❌ {e}&quot;)</code></div>
-<div class="code-line"><span class="ln">435</span><code>            <span <span class="k">class</span>="k">raise</span> SystemExit(2) <span class="k">from</span> <span class="k">None</span></code></div>
+<div class="code-line"><span class="ln">435</span><code>            <span class="k">raise</span> SystemExit(2) <span class="k">from</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">436</span><code>        print(f&quot;[explore] 场景目录: {sdir} → 命中 {len(scs)} 个场景&quot;</code></div>
 <div class="code-line"><span class="ln">437</span><code>              + (f&quot;（tag={&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;,&#x27;.join(tags)}）&quot; <span class="k">if</span> tags <span class="k">else</span> &quot;&quot;))</span></code></div>
 <div class="code-line"><span class="ln">438</span><code>        <span class="k">for</span> sc <span class="k">in</span> scs:</code></div>
@@ -7277,7 +7277,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">446</span><code>            sc = load_scenario_file(Path(sfile))</code></div>
 <div class="code-line"><span class="ln">447</span><code>        <span <span class="k">class</span>="k">except</span> ScenarioError <span class="k">as</span> e:</code></div>
 <div class="code-line"><span class="ln">448</span><code>            print(f&quot;[explore] ❌ {e}&quot;)</code></div>
-<div class="code-line"><span class="ln">449</span><code>            <span <span class="k">class</span>="k">raise</span> SystemExit(2) <span class="k">from</span> <span class="k">None</span></code></div>
+<div class="code-line"><span class="ln">449</span><code>            <span class="k">raise</span> SystemExit(2) <span class="k">from</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">450</span><code>        <span class="k">for</span> w <span class="k">in</span> sc.warnings:</code></div>
 <div class="code-line"><span class="ln">451</span><code>            print(f&quot;  ⚠️ [{sc.id}] {w}&quot;)</code></div>
 <div class="code-line"><span class="ln">452</span><code>        print(f&quot;[explore] 场景文件: {sfile}（id={sc.id}&quot;</code></div>
@@ -7306,7 +7306,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">475</span><code>                cassette=cassette, cassette_strict=cassette_strict)</code></div>
 <div class="code-line"><span class="ln">476</span><code>        <span <span class="k">class</span>="k">except</span> AiExploreError <span class="k">as</span> e:</code></div>
 <div class="code-line"><span class="ln">477</span><code>            print(f&quot;[explore] ❌ 【{job[&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;label&#x27;] <span class="k">or</span> &#x27;内联&#x27;}】{e}&quot;)</span></code></div>
-<div class="code-line"><span class="ln">478</span><code>            <span <span class="k">class</span>="k">raise</span> SystemExit(2) <span class="k">from</span> <span class="k">None</span></code></div>
+<div class="code-line"><span class="ln">478</span><code>            <span class="k">raise</span> SystemExit(2) <span class="k">from</span> <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">479</span><code>        last_emap = emap</code></div>
 <div class="code-line"><span class="ln">480</span><code>        <span class="k">if</span> cpath:</code></div>
 <div class="code-line"><span class="ln">481</span><code>            done.append((job[&quot;label&quot;], cpath.stem))</code></div>
@@ -7320,10 +7320,10 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">489</span><code>              f&quot;是录制那一刻问出来的，不是现在实时问的 —— 用例里的 llm_source 字段已标注来源&quot;)</code></div>
 <div class="code-line"><span class="ln">490</span><code></code></div>
 <div class="code-line"><span class="ln">491</span><code>    <span class="k">if</span> done <span class="k">and</span> do_verify:</code></div>
-<div class="code-line"><span class="ln">492</span><code>        <span class="k">if</span> _verify_cases(done) is <span class="k">False</span>:</code></div>
+<div class="code-line"><span class="ln">492</span><code>        <span class="k">if</span> _verify_cases(done) is <span <span class="k">class</span>="k">False</span>:</code></div>
 <div class="code-line"><span class="ln">493</span><code>            print(&quot;[explore] ❌ 有 AI 用例【实测未通过】→ 不可当可用用例（请修正场景/断言后重来；&quot;</code></div>
 <div class="code-line"><span class="ln">494</span><code>                  &quot;坏用例仍在 cases/ 里，确认后可删）&quot;)</code></div>
-<div class="code-line"><span class="ln">495</span><code>            <span <span class="k">class</span>="k">raise</span> SystemExit(3)</code></div>
+<div class="code-line"><span class="ln">495</span><code>            <span class="k">raise</span> SystemExit(3)</code></div>
 <div class="code-line"><span class="ln">496</span><code>    <span class="k">elif</span> done:</code></div>
 <div class="code-line"><span class="ln">497</span><code>        print(&quot;          ℹ️ 按 --no-verify 跳过试跑校验（这些用例未经实测验证）&quot;)</code></div>
 <div class="code-line"><span class="ln">498</span><code></code></div>
@@ -7335,7 +7335,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">503</span><code>    &quot;&quot;&quot;新用例试跑校验：generate 一次 + 逐条 pytest 单跑（explore 的「交付即验证」闸门）。</code></div>
 <div class="code-line"><span class="ln">504</span><code></code></div>
 <div class="code-line"><span class="ln">505</span><code>    entries: [(label, case_name)] —— label 用于批量时标明是哪条场景。</code></div>
-<div class="code-line"><span class="ln">506</span><code>    返回 <span class="k">True</span>=全部实测通过 / <span class="k">False</span>=有失败 / <span class="k">None</span>=校验没能执行（环境问题，不判死刑）。</code></div>
+<div class="code-line"><span class="ln">506</span><code>    返回 <span class="k">True</span>=全部实测通过 / <span <span class="k">class</span>="k">False</span>=有失败 / <span class="k">None</span>=校验没能执行（环境问题，不判死刑）。</code></div>
 <div class="code-line"><span class="ln">507</span><code>    &quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">508</span><code>    <span class="k">from</span> .config <span <span class="k">class</span>="k">import</span> SCRIPTS_DIR</code></div>
 <div class="code-line"><span class="ln">509</span><code></code></div>
@@ -7368,7 +7368,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">536</span><code>        <span class="k">if</span> r.returncode == 0:</code></div>
 <div class="code-line"><span class="ln">537</span><code>            print(f&quot;  ✅ {tag}校验通过：该用例实测 PASSED（校验日志 {log}）&quot;)</code></div>
 <div class="code-line"><span class="ln">538</span><code>        <span class="k">else</span>:</code></div>
-<div class="code-line"><span class="ln">539</span><code>            all_ok = <span class="k">False</span></code></div>
+<div class="code-line"><span class="ln">539</span><code>            all_ok = <span <span class="k">class</span>="k">False</span></code></div>
 <div class="code-line"><span class="ln">540</span><code>            print(f&quot;  ❌ {tag}校验失败：该用例实测 FAILED（断言是猜的？页面结构变了？）校验日志 {log}&quot;)</code></div>
 <div class="code-line"><span class="ln">541</span><code>            <span class="k">for</span> line <span class="k">in</span> text.splitlines():</code></div>
 <div class="code-line"><span class="ln">542</span><code>                s = line.strip()</code></div>
@@ -7398,7 +7398,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">565</span><code>            keep = int(rest[i + 1])</code></div>
 <div class="code-line"><span class="ln">566</span><code>    dry = &quot;--dry-run&quot; <span class="k">in</span> rest</code></div>
 <div class="code-line"><span class="ln">567</span><code>    print(f&quot;[prune] 快照保留策略：每类保留最近 {keep} 个（{&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;dry-run 预演，不删&#x27; <span class="k">if</span> dry <span class="k">else</span> &#x27;实际清理&#x27;}）&quot;)</span></code></div>
-<div class="code-line"><span class="ln">568</span><code>    removed = prune_snapshots(keep=keep, dry_run=dry, quiet_if_none=<span class="k">False</span>)</code></div>
+<div class="code-line"><span class="ln">568</span><code>    removed = prune_snapshots(keep=keep, dry_run=dry, quiet_if_none=<span <span class="k">class</span>="k">False</span>)</code></div>
 <div class="code-line"><span class="ln">569</span><code>    print(f&quot;[prune] {&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;将清理&#x27; <span class="k">if</span> dry <span class="k">else</span> &#x27;已清理&#x27;} {len(removed)} 个快照文件&quot;)</span></code></div>
 <div class="code-line"><span class="ln">570</span><code>    <span class="k">if</span> dry <span class="k">and</span> removed:</code></div>
 <div class="code-line"><span class="ln">571</span><code>        <span class="k">for</span> f <span class="k">in</span> removed[:5]:</code></div>
@@ -7407,16 +7407,16 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">574</span><code>            print(f&quot;          … 其余 {len(removed) - 5} 个&quot;)</code></div>
 <div class="code-line"><span class="ln">575</span><code></code></div>
 <div class="code-line"><span class="ln">576</span><code></code></div>
-<div class="code-line star"><span class="ln">577</span><code><span class="k">def</span> cmd_run(workers: int | <span class="k">None</span> = <span class="k">None</span>, debug: bool = <span class="k">False</span>, force_workers: bool = <span class="k">False</span>,</code></div>
+<div class="code-line star"><span class="ln">577</span><code><span class="k">def</span> cmd_run(workers: int | <span class="k">None</span> = <span class="k">None</span>, debug: bool = <span <span class="k">class</span>="k">False</span>, force_workers: bool = <span <span class="k">class</span>="k">False</span>,</code></div>
 <div class="code-note">⭐ <b>场景②阶段2：资源预检 + pytest 并发执行 + HTML 报告。</b></div>
 <div class="code-line"><span class="ln">578</span><code>            cases: list[str] | <span class="k">None</span> = <span class="k">None</span>, slowmo: int | <span class="k">None</span> = <span class="k">None</span>,</code></div>
-<div class="code-line"><span class="ln">579</span><code>            isolated_target: bool = <span class="k">False</span>):</code></div>
+<div class="code-line"><span class="ln">579</span><code>            isolated_target: bool = <span <span class="k">class</span>="k">False</span>):</code></div>
 <div class="code-line"><span class="ln">580</span><code>    &quot;&quot;&quot;用 pytest 执行 scripts/test_cases.py + 日志整合 + HTML 报告。</code></div>
 <div class="code-line"><span class="ln">581</span><code></code></div>
 <div class="code-line"><span class="ln">582</span><code>    debug=<span class="k">True</span>（`--debug`，别名 `--headed`）＝ **调试开关**（默认关，只在调试时用）。</code></div>
 <div class="code-line"><span class="ln">583</span><code>      开了 = &quot;我要看得见这次执行&quot;：单浏览器、顺序跑、动作放慢（默认 200ms，`--slowmo N` 可改），</code></div>
 <div class="code-line"><span class="ln">584</span><code>      然后分两种情况（都不报错）：</code></div>
-<div class="code-line"><span class="ln">585</span><code>        · 有图形显示（Windows 桌面 / 带 X 的 Linux）→ `headless=<span class="k">False</span>`，**Chromium 窗口弹出来**，</code></div>
+<div class="code-line"><span class="ln">585</span><code>        · 有图形显示（Windows 桌面 / 带 X 的 Linux）→ `headless=<span <span class="k">class</span>="k">False</span>`，**Chromium 窗口弹出来**，</code></div>
 <div class="code-line"><span class="ln">586</span><code>          看着它一步步执行到用例结束；</code></div>
 <div class="code-line"><span class="ln">587</span><code>        · 无图形显示（服务器）→ **不改需求，改成录下来**：整条用例录成 `log/&lt;run_id&gt;/videos/&lt;case_id&gt;.webm`，</code></div>
 <div class="code-line"><span class="ln">588</span><code>          并且每一步存一张图 `log/&lt;run_id&gt;/shots/&lt;case_id&gt;/01_*.png`（直接打开就能看），另有 trace 可交互回放。</code></div>
@@ -7436,7 +7436,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">602</span><code>        print(&quot;[run] ❌ scripts/test_cases.py 不存在 → 没有可跑的东西（先跑 generate）&quot;)</code></div>
 <div class="code-line"><span class="ln">603</span><code>        print(&quot;      （2026-09-13 修：这里以前只提示一句就 <span <span class="k">class</span>="k">return</span>，**exit 0** —— &quot;</code></div>
 <div class="code-line"><span class="ln">604</span><code>              &quot;CI/脚本调用方会把\&quot;什么都没跑\&quot;误判成成功）&quot;)</code></div>
-<div class="code-line"><span class="ln">605</span><code>        <span <span class="k">class</span>="k">raise</span> SystemExit(2)</code></div>
+<div class="code-line"><span class="ln">605</span><code>        <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">606</span><code></code></div>
 <div class="code-line"><span class="ln">607</span><code>    <span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>># ---- 资源预检：按可用内存裁定并发（本次 OOM 事故的根治点）----</span></code></div>
 <div class="code-line"><span class="ln">608</span><code>    n, why = safe_workers(workers)</code></div>
@@ -7538,12 +7538,12 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">704</span><code>    <span class="k">if</span> r.returncode != 0:</code></div>
 <div class="code-line"><span class="ln">705</span><code>        print(f&quot;[run] ❌ 以 pytest 退出码 {r.returncode} 结束（1=有用例失败 / 5=没匹配到用例 / &quot;</code></div>
 <div class="code-line"><span class="ln">706</span><code>              f&quot;其它=执行环境问题）→ cli 同样返回该退出码，别把它当成功&quot;)</code></div>
-<div class="code-line"><span class="ln">707</span><code>        <span <span class="k">class</span>="k">raise</span> SystemExit(r.returncode)</code></div>
+<div class="code-line"><span class="ln">707</span><code>        <span class="k">raise</span> SystemExit(r.returncode)</code></div>
 <div class="code-line"><span class="ln">708</span><code></code></div>
 <div class="code-line"><span class="ln">709</span><code></code></div>
-<div class="code-line"><span class="ln">710</span><code><span class="k">def</span> cmd_all(workers: int | <span class="k">None</span> = <span class="k">None</span>, debug: bool = <span class="k">False</span>, force_workers: bool = <span class="k">False</span>,</code></div>
+<div class="code-line"><span class="ln">710</span><code><span class="k">def</span> cmd_all(workers: int | <span class="k">None</span> = <span class="k">None</span>, debug: bool = <span <span class="k">class</span>="k">False</span>, force_workers: bool = <span <span class="k">class</span>="k">False</span>,</code></div>
 <div class="code-line"><span class="ln">711</span><code>            cases: list[str] | <span class="k">None</span> = <span class="k">None</span>, slowmo: int | <span class="k">None</span> = <span class="k">None</span>,</code></div>
-<div class="code-line"><span class="ln">712</span><code>            isolated_target: bool = <span class="k">False</span>, allow_unmapped: bool = <span class="k">False</span>):</code></div>
+<div class="code-line"><span class="ln">712</span><code>            isolated_target: bool = <span <span class="k">class</span>="k">False</span>, allow_unmapped: bool = <span <span class="k">class</span>="k">False</span>):</code></div>
 <div class="code-line"><span class="ln">713</span><code>    &quot;&quot;&quot;probe → generate → run 一条龙。</code></div>
 <div class="code-line"><span class="ln">714</span><code></code></div>
 <div class="code-line"><span class="ln">715</span><code>    ⚠️ 需要被测目标在跑（`python -m demo.app`）：任一步拿不到目标都会**在生成期就红**，</code></div>
@@ -7607,7 +7607,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">773</span><code>        print(f&quot;        {hint}&quot;, file=sys.stderr)</code></div>
 <div class="code-line"><span class="ln">774</span><code>    print(&quot;        （本项目约定：看不懂的参数一律报错，不静默忽略；&quot;</code></div>
 <div class="code-line"><span class="ln">775</span><code>          &quot;总览见 python -m framework.cli --help）&quot;, file=sys.stderr)</code></div>
-<div class="code-line"><span class="ln">776</span><code>    <span <span class="k">class</span>="k">raise</span> SystemExit(2)</code></div>
+<div class="code-line"><span class="ln">776</span><code>    <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">777</span><code></code></div>
 <div class="code-line"><span class="ln">778</span><code></code></div>
 <div class="code-line"><span class="ln">779</span><code><span class="k">def</span> _validate_args(cmd: str, rest: list[str]) -&gt; <span class="k">None</span>:</code></div>
@@ -7800,20 +7800,20 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">53</span><code>    <span <span class="k">class</span>="k">except</span> urllib.error.URLError <span class="k">as</span> e:</code></div>
 <div class="code-line"><span class="ln">54</span><code>        reason = getattr(e, &quot;reason&quot;, e)</code></div>
 <div class="code-line"><span class="ln">55</span><code>        <span class="k">if</span> &quot;refused&quot; <span class="k">in</span> str(reason).lower():</code></div>
-<div class="code-line"><span class="ln">56</span><code>            <span <span class="k">class</span>="k">return</span> <span class="k">False</span>, (f&quot;连不上 {base}（ConnectionRefused）⇒ 被测目标没起：&quot;</code></div>
+<div class="code-line"><span class="ln">56</span><code>            <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span>, (f&quot;连不上 {base}（ConnectionRefused）⇒ 被测目标没起：&quot;</code></div>
 <div class="code-line"><span class="ln">57</span><code>                           f&quot;另开一个窗口跑 `python -m demo.app`（默认 8000）&quot;)</code></div>
-<div class="code-line"><span class="ln">58</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">False</span>, f&quot;连不上 {base}（{type(reason).__name__}: {reason}）&quot;</code></div>
+<div class="code-line"><span class="ln">58</span><code>        <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span>, f&quot;连不上 {base}（{type(reason).__name__}: {reason}）&quot;</code></div>
 <div class="code-line"><span class="ln">59</span><code>    <span <span class="k">class</span>="k">except</span> Exception <span class="k">as</span> e:</code></div>
-<div class="code-line"><span class="ln">60</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">False</span>, f&quot;探测 {base} 失败（{type(e).__name__}: {e}）&quot;</code></div>
+<div class="code-line"><span class="ln">60</span><code>        <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span>, f&quot;探测 {base} 失败（{type(e).__name__}: {e}）&quot;</code></div>
 <div class="code-line"><span class="ln">61</span><code></code></div>
 <div class="code-line"><span class="ln">62</span><code></code></div>
 <div class="code-line star"><span class="ln">63</span><code><span class="k">def</span> probe_partitioned(base: str | <span class="k">None</span> = <span class="k">None</span>, timeout: float = 1.5) -&gt; tuple[bool | <span class="k">None</span>, str]:</code></div>
 <div class="code-note">⭐ <b>返回 (True/False/None, 理由)：True=可并发；False=明确不支持；None=没这个接口⇒视为未声明。</b></div>
 <div class="code-line"><span class="ln">64</span><code>    &quot;&quot;&quot;探测目标是否支持「按 worker 分区」。</code></div>
 <div class="code-line"><span class="ln">65</span><code></code></div>
-<div class="code-line"><span class="ln">66</span><code>    返回 (<span class="k">True</span>/<span class="k">False</span>/<span class="k">None</span>, 人类可读理由)：</code></div>
+<div class="code-line"><span class="ln">66</span><code>    返回 (<span class="k">True</span>/<span <span class="k">class</span>="k">False</span>/<span class="k">None</span>, 人类可读理由)：</code></div>
 <div class="code-line"><span class="ln">67</span><code>      <span class="k">True</span>  = 支持（可放心并发）</code></div>
-<div class="code-line"><span class="ln">68</span><code>      <span class="k">False</span> = 明确声明不支持（必须串行）</code></div>
+<div class="code-line"><span class="ln">68</span><code>      <span <span class="k">class</span>="k">False</span> = 明确声明不支持（必须串行）</code></div>
 <div class="code-line"><span class="ln">69</span><code>      <span class="k">None</span>  = 没有这个探针接口 ⇒ 未声明（保守按不支持处理）</code></div>
 <div class="code-line"><span class="ln">70</span><code>    &quot;&quot;&quot;</code></div>
 <div class="code-line"><span class="ln">71</span><code>    url = _base_url(base) + &quot;/api/health&quot;</code></div>
@@ -7830,7 +7830,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">82</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">None</span>, f&quot;{url} 响应里没有 partitioned 字段 ⇒ 视为『未声明可并发隔离』&quot;</code></div>
 <div class="code-line"><span class="ln">83</span><code>    <span class="k">if</span> body.get(&quot;partitioned&quot;):</code></div>
 <div class="code-line"><span class="ln">84</span><code>        <span <span class="k">class</span>="k">return</span> <span class="k">True</span>, f&quot;{url} 声明 partitioned=true（presets={body.get(&<span <span class="k">class</span>=<span <span class="k">class</span>="s">"c"</span>>#x27;presets&#x27;)}）&quot;</span></code></div>
-<div class="code-line"><span class="ln">85</span><code>    <span <span class="k">class</span>="k">return</span> <span class="k">False</span>, f&quot;{url} 明确声明 partitioned=false&quot;</code></div></div>
+<div class="code-line"><span class="ln">85</span><code>    <span <span class="k">class</span>="k">return</span> <span <span class="k">class</span>="k">False</span>, f&quot;{url} 明确声明 partitioned=false&quot;</code></div></div>
     </section>
 </section>
 

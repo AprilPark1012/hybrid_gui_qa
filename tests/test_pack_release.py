@@ -53,7 +53,7 @@ def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
     entries = {
         "pkg/README.md": "# x\n",
         "pkg/build_html.py": 'VERSION = "9.9"\n',
-        "pkg/training.html": "<html></html>",
+        "pkg/docs/training.html": "<html></html>",
         "pkg/framework/cli.py": "\n",
         "pkg/framework/text_io.py": "\n",
         "pkg/scripts/test_cases.py": tests_src + unmapped_extra,

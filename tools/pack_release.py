@@ -41,7 +41,7 @@ RELEASES_DIRNAME = "releases"
 RELEASE_NOTES_GLOB = "RELEASE_NOTES_*.md"
 EXCLUDE_SUFFIX = {".zip", ".tar.gz", ".pyc", ".pyo"}
 # 包里必须有的东西（少一个说明包不完整）
-REQUIRED = ("README.md", "build_html.py", "training.html", "framework/cli.py",
+REQUIRED = ("README.md", "build_html.py", "docs/training.html", "framework/cli.py",
             "framework/text_io.py", "scripts/test_cases.py", "scripts/conftest.py",
             "cases", "tests", "demo", "scenarios")
 # 生成物必须带的接线（与 tests/test_artifacts_health.py 同口径）

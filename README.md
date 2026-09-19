@@ -54,7 +54,7 @@
 
 ### 两种业务场景（本框架的两条链路）
 
-| # | 场景 | 入口 | 函数链路（细节见 `training.html` 第 4 节图 A/图 B） | 花 token |
+| # | 场景 | 入口 | 函数链路（细节见 `docs/training.html` 第 4 节图 A/图 B） | 花 token |
 |---|---|---|---|---|
 | ① | **自然语言用例 → AI 语义识别/编排 → 产出用例到 `cases/`** | `explore --ai --scenario "…"` / `--scenario-file scenarios/x.yml` / `--scenario-dir scenarios/` | `cli.cmd_explore` → `cli._explore_one` → `explorer.ai_explore` →（**同步**）`_collect_page_context`〔`probe.probe_page` ◀出场❶ + `_try_collect_modal_items` 弹窗二次探测 + `_collect_dom_context`〕→（**异步**）`_ai_explore_async`〔`_build_planner_prompt` → `ChatDeepSeek.ainvoke(output_format=_PlanModel)` → `_plan_to_steps`/`_match_item` → `_apply_semantic_calibration` → `_finalize_map`〕→ `case_builder.elementmap_to_cases_file` → `cases/ai_<scenario_id>_<HHMMSS>.json` → `cli._verify_cases`（立刻试跑，FAILED → exit 3） | ✅ 是 |
 | ② | **手搓 case.json → 生成 playwright 脚本 + 数据分离 → 执行** | `generate` / `run`（`all` 一条龙） | `cli.cmd_generate` → `generator.generate_scripts`〔loc_map 三档：`_load_loc_map_from_element_map` ◀出厂快照 → `_load_loc_map_from_probe_snapshot` → 现场 `probe.probe_page` ◀出场❷；`_semantic_to_locator_expr`；`_render_pytest_case`（未映射 → `pytest.fail`）；`_extract_data`〕→ `scripts/test_cases.py` + `scripts/datasets/*.json` → `cli.cmd_run` → `limits.safe_workers` → `pytest -n N` → 运行期 `conftest._act` → `locator_bridge.resolve_locator`（Tier1→Tier2→意图复验）→ `healer.try_heal` | ❌ 零 token |
@@ -342,10 +342,13 @@ hybrid_gui_qa/
 ├── output/                 运行时证据：element_maps/（element_map_*.json 档案 + probe_*.json 快照）
 │                           · heals/（自愈 diff）· traces/ · verify/（--verify 试跑日志）
 │                           （heals/ 与 traces/ 由写入方用到时自建，平时不存在）
-└── log/<run_id>/           本次运行的逐用例 .log + report.html + traces/（run-id 隔离）
+├── log/<run_id>/           本次运行的逐用例 .log + report.html + traces/（run-id 隔离）
+└── docs/                   ★ 培训文档目录（仓库里唯一的对外文档）
+    └── training.html       培训页（由 build_html.py 生成，改代码后重跑即同步）
 ```
 
-说明：`cases/` 是**你手写的源**；`scripts/` 是 **generate 生成的产物**（脚本+数据分离，可随时重建）；`output/`/`log/` 是运行时痕迹，可清理。
+说明：`cases/` 是**你手写的源**；`scripts/` 是 **generate 生成的产物**（脚本+数据分离，可随时重建）；`output/`/`log/` 是运行时痕迹，可清理；
+`docs/training.html` 是给新员工看的培训页，**改完代码跑 `python build_html.py` 重新生成**（文档与代码同源，以代码为基准）。
 
 ---
 

@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """构建培训 HTML：读取框架源码，注入模板，标注核心片段。运行: python build_html.py
-生成的 training.html 是自包含单文件（内嵌 CSS），给新员工看。
+生成的 docs/training.html 是自包含单文件（内嵌 CSS），给新员工看。
 """
 import html
 import re
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
-OUT = BASE / "training.html"
+OUT = BASE / "docs" / "training.html"
 
 # ---------------- 轻量语法高亮 ----------------
 KEYWORDS = {
@@ -1220,8 +1220,8 @@ def build() -> str:
 ├── <b>output/</b>                    ✅ 运行时证据(probe/plan/heal/trace,可清)
 ├── <b>log/&lt;run_id&gt;/</b>             本次运行 逐用例 .log + report.html + traces(可清)
 ├── README.md                       本框架文档
-├── build_html.py                    生成 training.html 培训页
-└── training.html                   ★ 这份培训文档</pre>
+├── build_html.py                    生成 docs/training.html 培训页
+└── docs/training.html              ★ 这份培训文档（docs/ 里唯一的对外文档）</pre>
   </div>
   <div style="margin-top:12px;">
     <div class="pt"><div class="ico">🧭</div><h4>新员工怎么用这份地图找东西</h4>
