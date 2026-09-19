@@ -240,6 +240,12 @@ def test_verify_cases_does_not_crash_under_gbk_locale(tmp_path):
 
     子进程（generate / pytest）输出中文 → 父进程必须按 UTF-8 解码；用不存在的用例名，
     断言「没有 UnicodeDecodeError」+「走完了校验流程」（失败/未执行都算走完，编码崩不算）。
+
+    ⚠️ 目标**钉成确定性不可达**（2026-09-19 修，别改回去）：本用例只关心「解码中文不崩」，
+    但 `_verify_cases` 会先 generate 一次 ⇒ **若本机恰好有 demo 在跑，它会去真 probe（起浏览器）**。
+    实测同一条用例：无 demo 1.16s / 有 demo **162.71s**（占全套 93%，整包 13s → 175s）
+    —— 跑的东西都不一样，等于「一类自测 = 秒级、不需要 demo」的契约被这条悄悄突破。
+    钉成不可达后 0.91s，且输出仍有中文（依旧真题解码路径，反而不再受环境影响）。
     """
     if _gbk_default_encoding() is None:
         pytest.skip(_GBK_SKIP_REASON)
@@ -252,13 +258,20 @@ def test_verify_cases_does_not_crash_under_gbk_locale(tmp_path):
         'from framework.cli import _verify_cases\n'
         'res = _verify_cases([("UTF-8复现", "nonexistent_case_for_encoding_test")])\n'
         'print("RESULT=", res)\n', encoding="utf-8")
-    env = _gbk_child_env()
+    # 确定性不可达的目标：只用失败路径（它同样会打中文诊断），别让它去 probe 真 demo
+    # （2026-09-19：本条测试只关心"解码中文不崩"，不该因本机恰好有 demo 就变成 162s 的端到端）
+    env = {**_gbk_child_env(),
+           "TARGET_URL": "http://127.0.0.1:1",
+           "HYBRID_BASE_URL": "http://127.0.0.1:1"}
     r = subprocess.run([sys.executable, str(probe)], cwd=str(REPO),
                        capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env=env, timeout=300)
     out = (r.stdout or "") + (r.stderr or "")
     assert "UnicodeDecodeError" not in out, f"编码问题仍在:\n{out[-2000:]}"
     assert "RESULT=" in out, f"校验流程没走完:\n{out[-2000:]}"
+    # 收紧判据（2026-09-19）：必须**真的解码到中文** —— 否则「没崩」可能只是「没东西可解码」
+    assert re.search(r"[\u4e00-\u9fff]", out), (
+        f"输出里没有中文 ⇒ 没走到「解码中文」这条路径，本用例等于空验:\n{out[-2000:]}")
 
 
 # ============ 三·补充、guard 自己必须跨平台（否则 Windows 上静默跳过三条） ============
