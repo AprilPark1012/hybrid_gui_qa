@@ -125,13 +125,24 @@ def _cleanup(written):
         p.unlink(missing_ok=True)
         (DATASETS / p.name).unlink(missing_ok=True)
     # 让 scripts/ 回到「只有正式用例」的状态
+    # ⚠️ 这里**不能**带 `--allow-unmapped`：收尾要的是干净产物（逃生口只服务负向段的生成）。
     subprocess.run([sys.executable, "-m", "framework.cli", "generate"],
                    cwd=BASE, capture_output=True, text=True, encoding="utf-8", errors="replace",
                    env=_U8)
 
 
-def _gen():
-    r = subprocess.run([sys.executable, "-m", "framework.cli", "generate"],
+def _gen(*, allow_unmapped: bool = False):
+    """跑 generate；负向段必须带 `--allow-unmapped`。
+
+    ⚠️ 为什么负向段必须带逃生口（2026-09-19 修，与 verify_cross_page.py 当年同一个缺陷类）：
+    负向用例里有一个**故意的**「根本不存在的控件名」（就是为了证明「元素名写错 ⇒ 用例 FAILED」），
+    而 V7.5.1 的**映射质量闸**会因此把整个 generate 拦成 exit 2 ⇒ 负向段一步都没跑就 return 2，
+    脚本自己变成「红」。逃生口只在这里用；`_cleanup()` 收尾不带它，保证 scripts/ 回到干净产物。
+    """
+    cmd = [sys.executable, "-m", "framework.cli", "generate"]
+    if allow_unmapped:
+        cmd.append("--allow-unmapped")
+    r = subprocess.run(cmd,
                        cwd=BASE, capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env=_U8)
     return r.returncode, (r.stdout or "") + (r.stderr or "")
@@ -169,9 +180,9 @@ def main() -> int:
     written = _write_neg_cases()
     bad = []
     try:
-        rc, out = _gen()
+        rc, out = _gen(allow_unmapped=True)
         if rc != 0:
-            print("  ❌ generate 失败：", out[-400:])
+            print("  ❌ generate 失败（负向段已带 --allow-unmapped，仍失败 ⇒ 另有真问题）：", out[-400:])
             return 2
         for kind, cid in ((k, f"{PREFIX}{k}") for k in NEGATIVE):
             code, line = _run_node(cid)
