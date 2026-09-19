@@ -108,7 +108,8 @@ def test_ensure_dirs_only_declares_used_dirs():
 
     repo = Path(config.__file__).resolve().parents[1]
     corpus = ""
-    files = list((repo / "framework").glob("*.py")) + list((repo / "tests").glob("*.py")) + [repo / "build_html.py"]
+    files = (list((repo / "framework").glob("*.py")) + list((repo / "tests").glob("*.py"))
+             + list((repo / "tools").glob("*.py")))
     for p in files:
         if p.name == "config.py":
             continue

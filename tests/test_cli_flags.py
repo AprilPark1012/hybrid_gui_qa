@@ -111,15 +111,50 @@ def test_subcommand_help(cmd):
 
 
 def test_version_matches_build_html_single_source():
-    """--version 必须和 build_html.py（版本单一来源）一致，不允许两处各写。"""
+    """--version 必须和 `tools/build_html.py`（版本单一来源）一致，不允许两处各写。"""
     import re
     from pathlib import Path
     r = _cli("--version")
     assert r.returncode == 0
-    src = (Path(__file__).resolve().parents[1] / "build_html.py").read_text(encoding="utf-8")
+    src = (Path(__file__).resolve().parents[1] / "tools" / "build_html.py").read_text(encoding="utf-8")
     v = re.search(r'^VERSION\s*=\s*"([^"]+)"', src, re.M).group(1)
     d = re.search(r'^VERSION_DATE\s*=\s*"([^"]+)"', src, re.M).group(1)
     assert f"v{v} ({d})" in r.stdout
+
+
+def test_version_single_source_is_one_path_for_all_readers():
+    """版本来源路径只在 framework/config.py 定义一次；三个读者必须读到同一个版本。
+
+    背景（2026-09-19 把 build_html.py 挪进 tools/）：读版本的地方有 **3 处**
+    （framework/cli.py / framework/llm_cassette.py / tools/pack_release.py）——
+    漏改任何一处，`--version` 或打包版本号就会**静默变成 unknown**（对外交付最怕这种静默退化）。
+    判据：① 路径文件存在且含 VERSION；② 三个读者读到同一个非 unknown 版本。
+    """
+    import importlib.util
+    from pathlib import Path as _P
+    from framework import config, llm_cassette
+    from framework.cli import _version
+
+    assert config.VERSION_SOURCE.exists(), f"版本来源不存在：{config.VERSION_SOURCE}"
+    v, d = config.read_version()
+    assert v != "unknown" and d, "版本读不出来 —— 路径写错就是这个症状"
+
+    spec = importlib.util.spec_from_file_location(
+        "pack_release_v", _P(config.BASE) / "tools" / "pack_release.py")
+    assert spec is not None and spec.loader is not None
+    pack_release = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pack_release)
+
+    assert f"v{v} ({d})" in _version(), "cli._version() 读的不是同一处（漏改路径）"
+    assert llm_cassette._framework_version() == v, "llm_cassette 读的不是同一处（漏改路径）"
+    assert pack_release._version()[0] == v, "pack_release 读的不是同一处（漏改路径）"
+
+
+def test_version_source_missing_is_loud_not_faked(monkeypatch, tmp_path):
+    """路径失效时必须如实 unknown，**绝不编一个版本号**（负向判据）。"""
+    from framework import config
+    monkeypatch.setattr(config, "VERSION_SOURCE", tmp_path / "nope.py")
+    assert config.read_version() == ("unknown", "")
 
 
 # ---------- 四、契约自检：不许留重复定义 ----------

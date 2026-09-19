@@ -833,10 +833,10 @@ def _print_help(cmd: str | None = None) -> None:
 
 
 def _version() -> str:
-    """版本号读 build_html.py（**版本单一来源**）；读不到就如实说 unknown，不编。"""
+    """版本号读 `tools/build_html.py`（**版本单一来源**）；读不到就如实说 unknown，不编。"""
     try:
         import re
-        src = (config.BASE / "build_html.py").read_text(encoding="utf-8")
+        src = config.VERSION_SOURCE.read_text(encoding="utf-8")
         v = re.search(r'^VERSION\s*=\s*"([^"]+)"', src, re.M)
         d = re.search(r'^VERSION_DATE\s*=\s*"([^"]+)"', src, re.M)
         if not v:

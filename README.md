@@ -1,6 +1,7 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V7.7**（2026-09-18）· 版本号单一来源：`build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> 当前版本 **V7.7**（2026-09-18）· 版本号单一来源：`tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> （路径只在 `framework/config.py::VERSION_SOURCE` 定义一次，cli / llm_cassette / 打包器共用）
 > （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V7.7.md`；
 > 上一版见 `releases/RELEASE_NOTES_V7.6.md`（跨 tab 端到端 · 行内定位 · 首行断言）。
 > 历次升级日志都在 `releases/RELEASE_NOTES_V*.md`，**每次交付包会一并带上**。
@@ -333,6 +334,9 @@ hybrid_gui_qa/
 │   ├── limits.py           并发安全闸：按可用内存自动降级 worker 数（防 OOM）
 │   ├── retention.py        归档保留：快照各留最近 N 个（cli prune；explore/probe 自动静默执行）
 │   └── cli.py              命令行入口（explore/probe/generate/run/all/prune，含资源预检与交付即验证）
+├── tools/                  ★ 框架自己的工具（不是被测应用的一部分）
+│   ├── pack_release.py          交付打包器：组装 zip + 用标准库自检包内产物（不达标不出包）
+│   └── build_html.py            培训页生成器：读源码 → docs/training.html（**版本号单一来源**）
 ├── scripts/                ★ generate 产物（生成，可重建）
 │   ├── test_cases.py       生成的 pytest 用例
 │   ├── conftest.py         浏览器工厂/数据注入/变量池/日志
@@ -342,11 +346,12 @@ hybrid_gui_qa/
 │                           （heals/ 与 traces/ 由写入方用到时自建，平时不存在）
 ├── log/<run_id>/           本次运行的逐用例 .log + report.html + traces/（run-id 隔离）
 └── docs/                   ★ 培训文档目录（仓库里唯一的对外文档）
-    └── training.html       培训页（由 build_html.py 生成，改代码后重跑即同步）
+    └── training.html       培训页（由 tools/build_html.py 生成，改代码后重跑即同步）
 ```
 
 说明：`cases/` 是**你手写的源**；`scripts/` 是 **generate 生成的产物**（脚本+数据分离，可随时重建）；`output/`/`log/` 是运行时痕迹，可清理；
-`docs/training.html` 是给新员工看的培训页，**改完代码跑 `python build_html.py` 重新生成**（文档与代码同源，以代码为基准）。
+`docs/training.html` 是给新员工看的培训页，**改完代码跑 `python tools/build_html.py` 重新生成**（文档与代码同源，以代码为基准）；
+判据（R8）：`python tests/verify_html_sync.py` —— 可复现 + 与代码逐字节一致 + 无畸形 span。
 
 ---
 
@@ -402,7 +407,7 @@ python -m framework.cli explore --ai --scenario-dir scenarios/ --tag smoke      
 python -m framework.cli prune --keep 20          # 归档保留：快照各留最近 N 个（--dry-run 预演，不删）
 python -m framework.cli --help                   # 总览帮助（子命令一览）
 python -m framework.cli run --help               # 单子命令帮助（直接取函数 docstring，与代码同源）
-python -m framework.cli --version                # 版本号（读 build_html.py = 版本单一来源）
+python -m framework.cli --version                # 版本号（读 tools/build_html.py = 版本单一来源）
 # 或直接用 pytest 跑生成的用例（未设 HYBRID_RUN_ID 时日志落 log/latest/）：
 pytest scripts/test_cases.py -v                  # 串行(无头)
 pytest scripts/test_cases.py -n 1 --html=log/latest/report.html

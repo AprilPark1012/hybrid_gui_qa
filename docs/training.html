@@ -222,7 +222,9 @@
 ├── <b>output/</b>                    ✅ 运行时证据(probe/plan/heal/trace,可清)
 ├── <b>log/&lt;run_id&gt;/</b>             本次运行 逐用例 .log + report.html + traces(可清)
 ├── README.md                       本框架文档
-├── build_html.py                    生成 docs/training.html 培训页
+├── <b>tools/</b>                    框架自己的工具(不是被测应用的一部分)
+│   ├── pack_release.py             交付打包器: 组装 zip + 标准库自检包内产物(不达标不出包)
+│   └── build_html.py               生成 docs/training.html 培训页(**版本号单一来源**)
 └── docs/training.html              ★ 这份培训文档（docs/ 里唯一的对外文档）</pre>
   </div>
   <div style="margin-top:12px;">
@@ -1503,83 +1505,103 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">21</span><code>              <span class="k">or</span> os.environ.get(<span class="s">&quot;HYBRID_BASE_URL&quot;</span>)</code></div>
 <div class="code-line"><span class="ln">22</span><code>              <span class="k">or</span> <span class="s">&quot;http://localhost:8000&quot;</span>)</code></div>
 <div class="code-line"><span class="ln">23</span><code></code></div>
-<div class="code-line"><span class="ln">24</span><code><span class="c"># ---- 输出产物目录 ----</span></code></div>
-<div class="code-line"><span class="ln">25</span><code>OUTPUT_DIR = BASE / <span class="s">&quot;output&quot;</span></code></div>
-<div class="code-line"><span class="ln">26</span><code>ELEMENT_MAP_DIR = OUTPUT_DIR / <span class="s">&quot;element_maps&quot;</span></code></div>
-<div class="code-line"><span class="ln">27</span><code>TRACE_DIR = OUTPUT_DIR / <span class="s">&quot;traces&quot;</span>            <span class="c"># 运行时证据：runner 用到时自建（不在 ensure_dirs 急切创建）</span></code></div>
-<div class="code-line"><span class="ln">28</span><code>HEALS_DIR = OUTPUT_DIR / <span class="s">&quot;heals&quot;</span>             <span class="c"># 自愈可审 diff：healer 用到时自建（同上）</span></code></div>
-<div class="code-line"><span class="ln">29</span><code><span class="c"># 2026-09-14 清理（用户反馈「仓库里有空目录残留」）：</span></code></div>
-<div class="code-line"><span class="ln">30</span><code><span class="c">#   PLAN_DIR(output/plans) / GENERATED_TESTS_DIR(generated_tests) /</span></code></div>
-<div class="code-line"><span class="ln">31</span><code><span class="c">#   TEST_SCENARIO_DIR(testScenario) / DATASETS_DIR(datasets)</span></code></div>
-<div class="code-line"><span class="ln">32</span><code><span class="c"># 四个旧概念常量**已无任何使用者**，唯一&quot;效果&quot;就是被 ensure_dirs() 每次启动建出来</span></code></div>
-<div class="code-line"><span class="ln">33</span><code><span class="c"># ⇒ 凭空多出空目录。已整体删除；防复发见 tests/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs。</span></code></div>
-<div class="code-line"><span class="ln">34</span><code></code></div>
-<div class="code-line"><span class="ln">35</span><code><span class="c"># ---- P5 数据驱动新增目录 ----</span></code></div>
-<div class="code-line"><span class="ln">36</span><code>LOG_DIR = BASE / <span class="s">&quot;log&quot;</span>                       <span class="c"># 用例执行日志</span></code></div>
-<div class="code-line"><span class="ln">37</span><code>SCENARIOS_DIR = BASE / <span class="s">&quot;scenarios&quot;</span>           <span class="c"># 用例编排表(index.json)</span></code></div>
-<div class="code-line"><span class="ln">38</span><code></code></div>
-<div class="code-line"><span class="ln">39</span><code><span class="c"># ---- 重构后的目录 ----</span></code></div>
-<div class="code-line"><span class="ln">40</span><code>CASES_DIR = BASE / <span class="s">&quot;cases&quot;</span>                   <span class="c"># ★ 手写的自然语言用例文件（写死数据）</span></code></div>
-<div class="code-line"><span class="ln">41</span><code>SCRIPTS_DIR = BASE / <span class="s">&quot;scripts&quot;</span>               <span class="c"># ★ generate 产物（playwright 脚本 + datasets 抽离）</span></code></div>
-<div class="code-line"><span class="ln">42</span><code></code></div>
-<div class="code-line"><span class="ln">43</span><code><span class="c"># ---- Browser Use 探索阶段需要 LLM ----</span></code></div>
-<div class="code-line"><span class="ln">44</span><code><span class="c"># 负责&quot;智能理解&quot;：读懂自然语言测试意图、规划步骤、挑元素、写 plan。</span></code></div>
-<div class="code-line"><span class="ln">45</span><code><span class="c"># 这是 AI 之力的成本来源（每步一次模型推理）。</span></code></div>
-<div class="code-line star"><span class="ln">46</span><code><span class="k">def</span> llm_from_env():</code></div>
+<div class="code-line"><span class="ln">24</span><code><span class="c"># ---- 版本号单一来源（2026-09-19 把 build_html.py 挪进 tools/ 时收敛）----</span></code></div>
+<div class="code-line"><span class="ln">25</span><code><span class="c"># 培训页生成器 `tools/build_html.py` 顶部的 VERSION / VERSION_DATE 是**唯一**版本来源。</span></code></div>
+<div class="code-line"><span class="ln">26</span><code><span class="c"># 路径只在这里定义一次；读版本一律走 read_version()（cli / llm_cassette / pack_release 共用）</span></code></div>
+<div class="code-line"><span class="ln">27</span><code><span class="c"># ⇒ 以后再挪位置只改这一行；漏改会被 tests/test_cli_flags.py 的判据当场抓住（--version 不许变 unknown）。</span></code></div>
+<div class="code-line"><span class="ln">28</span><code>VERSION_SOURCE = BASE / <span class="s">&quot;tools&quot;</span> / <span class="s">&quot;build_html.py&quot;</span></code></div>
+<div class="code-line"><span class="ln">29</span><code></code></div>
+<div class="code-line"><span class="ln">30</span><code></code></div>
+<div class="code-line"><span class="ln">31</span><code><span class="k">def</span> read_version() -&gt; tuple[str, str]:</code></div>
+<div class="code-line"><span class="ln">32</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;→ (VERSION, VERSION_DATE)；读不到就 (&quot;</span>unknown<span class="s">&quot;, &quot;</span><span class="s">&quot;)，**绝不编**。&quot;</span><span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">33</span><code>    <span class="k">try</span>:</code></div>
+<div class="code-line"><span class="ln">34</span><code>        <span class="k">import</span> re</code></div>
+<div class="code-line"><span class="ln">35</span><code>        src = VERSION_SOURCE.read_text(encoding=<span class="s">&quot;utf-8&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">36</span><code>        v = re.search(r<span class="s">&#x27;^VERSION\s*=\s*&quot;([^&quot;]+)&quot;&#x27;</span>, src, re.M)</code></div>
+<div class="code-line"><span class="ln">37</span><code>        d = re.search(r<span class="s">&#x27;^VERSION_DATE\s*=\s*&quot;([^&quot;]+)&quot;&#x27;</span>, src, re.M)</code></div>
+<div class="code-line"><span class="ln">38</span><code>        <span class="k">if</span> <span class="k">not</span> v:</code></div>
+<div class="code-line"><span class="ln">39</span><code>            <span class="k">return</span> <span class="s">&quot;unknown&quot;</span>, <span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">40</span><code>        <span class="k">return</span> v.group(1), (d.group(1) <span class="k">if</span> d <span class="k">else</span> <span class="s">&quot;&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">41</span><code>    <span class="k">except</span> Exception:</code></div>
+<div class="code-line"><span class="ln">42</span><code>        <span class="k">return</span> <span class="s">&quot;unknown&quot;</span>, <span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">43</span><code></code></div>
+<div class="code-line"><span class="ln">44</span><code><span class="c"># ---- 输出产物目录 ----</span></code></div>
+<div class="code-line"><span class="ln">45</span><code>OUTPUT_DIR = BASE / <span class="s">&quot;output&quot;</span></code></div>
+<div class="code-line"><span class="ln">46</span><code>ELEMENT_MAP_DIR = OUTPUT_DIR / <span class="s">&quot;element_maps&quot;</span></code></div>
+<div class="code-line"><span class="ln">47</span><code>TRACE_DIR = OUTPUT_DIR / <span class="s">&quot;traces&quot;</span>            <span class="c"># 运行时证据：runner 用到时自建（不在 ensure_dirs 急切创建）</span></code></div>
+<div class="code-line"><span class="ln">48</span><code>HEALS_DIR = OUTPUT_DIR / <span class="s">&quot;heals&quot;</span>             <span class="c"># 自愈可审 diff：healer 用到时自建（同上）</span></code></div>
+<div class="code-line"><span class="ln">49</span><code><span class="c"># 2026-09-14 清理（用户反馈「仓库里有空目录残留」）：</span></code></div>
+<div class="code-line"><span class="ln">50</span><code><span class="c">#   PLAN_DIR(output/plans) / GENERATED_TESTS_DIR(generated_tests) /</span></code></div>
+<div class="code-line"><span class="ln">51</span><code><span class="c">#   TEST_SCENARIO_DIR(testScenario) / DATASETS_DIR(datasets)</span></code></div>
+<div class="code-line"><span class="ln">52</span><code><span class="c"># 四个旧概念常量**已无任何使用者**，唯一&quot;效果&quot;就是被 ensure_dirs() 每次启动建出来</span></code></div>
+<div class="code-line"><span class="ln">53</span><code><span class="c"># ⇒ 凭空多出空目录。已整体删除；防复发见 tests/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs。</span></code></div>
+<div class="code-line"><span class="ln">54</span><code></code></div>
+<div class="code-line"><span class="ln">55</span><code><span class="c"># ---- P5 数据驱动新增目录 ----</span></code></div>
+<div class="code-line"><span class="ln">56</span><code>LOG_DIR = BASE / <span class="s">&quot;log&quot;</span>                       <span class="c"># 用例执行日志</span></code></div>
+<div class="code-line"><span class="ln">57</span><code>SCENARIOS_DIR = BASE / <span class="s">&quot;scenarios&quot;</span>           <span class="c"># 用例编排表(index.json)</span></code></div>
+<div class="code-line"><span class="ln">58</span><code></code></div>
+<div class="code-line"><span class="ln">59</span><code><span class="c"># ---- 重构后的目录 ----</span></code></div>
+<div class="code-line"><span class="ln">60</span><code>CASES_DIR = BASE / <span class="s">&quot;cases&quot;</span>                   <span class="c"># ★ 手写的自然语言用例文件（写死数据）</span></code></div>
+<div class="code-line"><span class="ln">61</span><code>SCRIPTS_DIR = BASE / <span class="s">&quot;scripts&quot;</span>               <span class="c"># ★ generate 产物（playwright 脚本 + datasets 抽离）</span></code></div>
+<div class="code-line"><span class="ln">62</span><code></code></div>
+<div class="code-line"><span class="ln">63</span><code><span class="c"># ---- Browser Use 探索阶段需要 LLM ----</span></code></div>
+<div class="code-line"><span class="ln">64</span><code><span class="c"># 负责&quot;智能理解&quot;：读懂自然语言测试意图、规划步骤、挑元素、写 plan。</span></code></div>
+<div class="code-line"><span class="ln">65</span><code><span class="c"># 这是 AI 之力的成本来源（每步一次模型推理）。</span></code></div>
+<div class="code-line star"><span class="ln">66</span><code><span class="k">def</span> llm_from_env():</code></div>
 <div class="code-note">⭐ <b>按 .env 里装的 key，自动挑一个 LLM。AI 阶段才花钱。</b></div>
-<div class="code-line"><span class="ln">47</span><code>    <span class="s">&quot;&quot;</span>&quot;按 .env 里配了哪个 key，构造对应的 Browser Use LLM 实例。</code></div>
-<div class="code-line"><span class="ln">48</span><code>    优先级: ChatBrowserUse &gt; OpenAI &gt; Anthropic &gt; Google &gt; DeepSeek(ChatDeepSeek 原生)。<span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">49</span><code>    <span class="k">try</span>:</code></div>
-<div class="code-line"><span class="ln">50</span><code>        <span class="k">from</span> browser_use.llm <span class="k">import</span> ChatBrowserUse, ChatOpenAI, ChatAnthropic, ChatGoogle</code></div>
-<div class="code-line"><span class="ln">51</span><code>    <span class="k">except</span> ImportError <span class="k">as</span> e:</code></div>
-<div class="code-line"><span class="ln">52</span><code>        <span class="k">raise</span> ImportError(</code></div>
-<div class="code-line"><span class="ln">53</span><code>            <span class="s">&quot;browser-use 未安装。pip install browser-use 后重试。&quot;</span></code></div>
-<div class="code-line"><span class="ln">54</span><code>        ) <span class="k">from</span> e</code></div>
-<div class="code-line"><span class="ln">55</span><code></code></div>
-<div class="code-line"><span class="ln">56</span><code>    <span class="c"># 1) Browser Use 自家优化模型</span></code></div>
-<div class="code-line"><span class="ln">57</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;BROWSER_USE_API_KEY&quot;</span>):</code></div>
-<div class="code-line"><span class="ln">58</span><code>        <span class="k">return</span> ChatBrowserUse()</code></div>
-<div class="code-line"><span class="ln">59</span><code>    <span class="c"># 2) 通用 provider</span></code></div>
-<div class="code-line"><span class="ln">60</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;OPENAI_API_KEY&quot;</span>):</code></div>
-<div class="code-line"><span class="ln">61</span><code>        <span class="k">return</span> ChatOpenAI(model=<span class="s">&quot;gpt-4.1-mini&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">62</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;ANTHROPIC_API_KEY&quot;</span>):</code></div>
-<div class="code-line"><span class="ln">63</span><code>        <span class="k">return</span> ChatAnthropic(model=<span class="s">&quot;claude-sonnet-4-0&quot;</span>, temperature=0.0)</code></div>
-<div class="code-line"><span class="ln">64</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;GOOGLE_API_KEY&quot;</span>):</code></div>
-<div class="code-line"><span class="ln">65</span><code>        <span class="k">return</span> ChatGoogle(model=<span class="s">&quot;gemini-flash-latest&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">66</span><code>    <span class="c"># 3) DeepSeek —— 用 browser-use 0.13.10 原生 ChatDeepSeek（OpenAI 兼容，走 function calling）</span></code></div>
-<div class="code-line"><span class="ln">67</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>):</code></div>
-<div class="code-line"><span class="ln">68</span><code>        <span class="k">from</span> browser_use.llm.deepseek.chat <span class="k">import</span> ChatDeepSeek</code></div>
-<div class="code-line"><span class="ln">69</span><code>        <span class="k">return</span> ChatDeepSeek(</code></div>
-<div class="code-line"><span class="ln">70</span><code>            api_key=os.environ[<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>],</code></div>
-<div class="code-line"><span class="ln">71</span><code>            base_url=os.environ.get(<span class="s">&quot;DEEPSEEK_BASE_URL&quot;</span>, <span class="s">&quot;https://api.deepseek.com/v1&quot;</span>),</code></div>
-<div class="code-line"><span class="ln">72</span><code>            model=os.environ.get(<span class="s">&quot;DEEPSEEK_MODEL&quot;</span>, <span class="s">&quot;deepseek-chat&quot;</span>),</code></div>
-<div class="code-line"><span class="ln">73</span><code>            temperature=0.0,</code></div>
-<div class="code-line"><span class="ln">74</span><code>        )</code></div>
-<div class="code-line"><span class="ln">75</span><code>    <span class="k">raise</span> RuntimeError(</code></div>
-<div class="code-line"><span class="ln">76</span><code>        <span class="s">&quot;未检测到 LLM 环境变量。请在 .env 配置 BROWSER_USE_API_KEY / &quot;</span></code></div>
-<div class="code-line"><span class="ln">77</span><code>        <span class="s">&quot;OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / DEEPSEEK_API_KEY 之一。&quot;</span></code></div>
-<div class="code-line"><span class="ln">78</span><code>    )</code></div>
-<div class="code-line"><span class="ln">79</span><code></code></div>
-<div class="code-line"><span class="ln">80</span><code></code></div>
-<div class="code-line"><span class="ln">81</span><code><span class="k">def</span> auto_detect_llm() -&gt; bool:</code></div>
-<div class="code-line"><span class="ln">82</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;是否检测到可用的 LLM key（Healer 的 Level-B 语义重猜才启用）。&quot;</span><span class="s">&quot;&quot;</span></code></div>
-<div class="code-line"><span class="ln">83</span><code>    <span class="k">return</span> bool(os.environ.get(<span class="s">&quot;BROWSER_USE_API_KEY&quot;</span>) <span class="k">or</span> os.environ.get(<span class="s">&quot;OPENAI_API_KEY&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">84</span><code>                <span class="k">or</span> os.environ.get(<span class="s">&quot;ANTHROPIC_API_KEY&quot;</span>) <span class="k">or</span> os.environ.get(<span class="s">&quot;GOOGLE_API_KEY&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">85</span><code>                <span class="k">or</span> os.environ.get(<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>))</code></div>
-<div class="code-line"><span class="ln">86</span><code></code></div>
-<div class="code-line"><span class="ln">87</span><code></code></div>
-<div class="code-line"><span class="ln">88</span><code><span class="k">def</span> ensure_dirs():</code></div>
-<div class="code-line"><span class="ln">89</span><code>    <span class="c"># 2026-09-13 冷启动排查补：原来不含 LOG_DIR / SCRIPTS_DIR / CASES_DIR ——</span></code></div>
-<div class="code-line"><span class="ln">90</span><code>    <span class="c"># 冷启动（目录被清掉）时它们只是&quot;碰巧&quot;被后续 parents=True 的 mkdir 建出来，</span></code></div>
-<div class="code-line"><span class="ln">91</span><code>    <span class="c"># 属于隐式依赖；这里显式建，任何入口都不会因为缺目录而诡异失败。</span></code></div>
-<div class="code-line"><span class="ln">92</span><code>    <span class="c"># 2026-09-14 收窄（用户反馈「空目录残留」）：</span></code></div>
-<div class="code-line"><span class="ln">93</span><code>    <span class="c">#   急切创建只保留「入口扫描/写入之前不会自建」的目录。</span></code></div>
-<div class="code-line"><span class="ln">94</span><code>    <span class="c">#   TRACE_DIR / HEALS_DIR 的写入方（runner.record_trace / healer.dump）**使用前显式 mkdir**</span></code></div>
-<div class="code-line"><span class="ln">95</span><code>    <span class="c">#   ⇒ 不是隐式依赖；在此急切创建只会让空目录常驻仓库。谁要写谁自建。</span></code></div>
-<div class="code-line"><span class="ln">96</span><code>    <span class="c">#   防复发：tests/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs</span></code></div>
-<div class="code-line"><span class="ln">97</span><code>    <span class="c">#   （此处声明的每个常量都必须在 config.py 之外有真实使用者，否则就是&quot;为了建空目录而建&quot;）。</span></code></div>
-<div class="code-line"><span class="ln">98</span><code>    <span class="k">for</span> d <span class="k">in</span> (OUTPUT_DIR, ELEMENT_MAP_DIR, LOG_DIR, SCRIPTS_DIR, CASES_DIR):</code></div>
-<div class="code-line"><span class="ln">99</span><code>        d.mkdir(parents=<span class="k">True</span>, exist_ok=<span class="k">True</span>)</code></div></div>
+<div class="code-line"><span class="ln">67</span><code>    <span class="s">&quot;&quot;</span>&quot;按 .env 里配了哪个 key，构造对应的 Browser Use LLM 实例。</code></div>
+<div class="code-line"><span class="ln">68</span><code>    优先级: ChatBrowserUse &gt; OpenAI &gt; Anthropic &gt; Google &gt; DeepSeek(ChatDeepSeek 原生)。<span class="s">&quot;&quot;</span>&quot;</code></div>
+<div class="code-line"><span class="ln">69</span><code>    <span class="k">try</span>:</code></div>
+<div class="code-line"><span class="ln">70</span><code>        <span class="k">from</span> browser_use.llm <span class="k">import</span> ChatBrowserUse, ChatOpenAI, ChatAnthropic, ChatGoogle</code></div>
+<div class="code-line"><span class="ln">71</span><code>    <span class="k">except</span> ImportError <span class="k">as</span> e:</code></div>
+<div class="code-line"><span class="ln">72</span><code>        <span class="k">raise</span> ImportError(</code></div>
+<div class="code-line"><span class="ln">73</span><code>            <span class="s">&quot;browser-use 未安装。pip install browser-use 后重试。&quot;</span></code></div>
+<div class="code-line"><span class="ln">74</span><code>        ) <span class="k">from</span> e</code></div>
+<div class="code-line"><span class="ln">75</span><code></code></div>
+<div class="code-line"><span class="ln">76</span><code>    <span class="c"># 1) Browser Use 自家优化模型</span></code></div>
+<div class="code-line"><span class="ln">77</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;BROWSER_USE_API_KEY&quot;</span>):</code></div>
+<div class="code-line"><span class="ln">78</span><code>        <span class="k">return</span> ChatBrowserUse()</code></div>
+<div class="code-line"><span class="ln">79</span><code>    <span class="c"># 2) 通用 provider</span></code></div>
+<div class="code-line"><span class="ln">80</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;OPENAI_API_KEY&quot;</span>):</code></div>
+<div class="code-line"><span class="ln">81</span><code>        <span class="k">return</span> ChatOpenAI(model=<span class="s">&quot;gpt-4.1-mini&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">82</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;ANTHROPIC_API_KEY&quot;</span>):</code></div>
+<div class="code-line"><span class="ln">83</span><code>        <span class="k">return</span> ChatAnthropic(model=<span class="s">&quot;claude-sonnet-4-0&quot;</span>, temperature=0.0)</code></div>
+<div class="code-line"><span class="ln">84</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;GOOGLE_API_KEY&quot;</span>):</code></div>
+<div class="code-line"><span class="ln">85</span><code>        <span class="k">return</span> ChatGoogle(model=<span class="s">&quot;gemini-flash-latest&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">86</span><code>    <span class="c"># 3) DeepSeek —— 用 browser-use 0.13.10 原生 ChatDeepSeek（OpenAI 兼容，走 function calling）</span></code></div>
+<div class="code-line"><span class="ln">87</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>):</code></div>
+<div class="code-line"><span class="ln">88</span><code>        <span class="k">from</span> browser_use.llm.deepseek.chat <span class="k">import</span> ChatDeepSeek</code></div>
+<div class="code-line"><span class="ln">89</span><code>        <span class="k">return</span> ChatDeepSeek(</code></div>
+<div class="code-line"><span class="ln">90</span><code>            api_key=os.environ[<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>],</code></div>
+<div class="code-line"><span class="ln">91</span><code>            base_url=os.environ.get(<span class="s">&quot;DEEPSEEK_BASE_URL&quot;</span>, <span class="s">&quot;https://api.deepseek.com/v1&quot;</span>),</code></div>
+<div class="code-line"><span class="ln">92</span><code>            model=os.environ.get(<span class="s">&quot;DEEPSEEK_MODEL&quot;</span>, <span class="s">&quot;deepseek-chat&quot;</span>),</code></div>
+<div class="code-line"><span class="ln">93</span><code>            temperature=0.0,</code></div>
+<div class="code-line"><span class="ln">94</span><code>        )</code></div>
+<div class="code-line"><span class="ln">95</span><code>    <span class="k">raise</span> RuntimeError(</code></div>
+<div class="code-line"><span class="ln">96</span><code>        <span class="s">&quot;未检测到 LLM 环境变量。请在 .env 配置 BROWSER_USE_API_KEY / &quot;</span></code></div>
+<div class="code-line"><span class="ln">97</span><code>        <span class="s">&quot;OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / DEEPSEEK_API_KEY 之一。&quot;</span></code></div>
+<div class="code-line"><span class="ln">98</span><code>    )</code></div>
+<div class="code-line"><span class="ln">99</span><code></code></div>
+<div class="code-line"><span class="ln">100</span><code></code></div>
+<div class="code-line"><span class="ln">101</span><code><span class="k">def</span> auto_detect_llm() -&gt; bool:</code></div>
+<div class="code-line"><span class="ln">102</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;是否检测到可用的 LLM key（Healer 的 Level-B 语义重猜才启用）。&quot;</span><span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">103</span><code>    <span class="k">return</span> bool(os.environ.get(<span class="s">&quot;BROWSER_USE_API_KEY&quot;</span>) <span class="k">or</span> os.environ.get(<span class="s">&quot;OPENAI_API_KEY&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">104</span><code>                <span class="k">or</span> os.environ.get(<span class="s">&quot;ANTHROPIC_API_KEY&quot;</span>) <span class="k">or</span> os.environ.get(<span class="s">&quot;GOOGLE_API_KEY&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">105</span><code>                <span class="k">or</span> os.environ.get(<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>))</code></div>
+<div class="code-line"><span class="ln">106</span><code></code></div>
+<div class="code-line"><span class="ln">107</span><code></code></div>
+<div class="code-line"><span class="ln">108</span><code><span class="k">def</span> ensure_dirs():</code></div>
+<div class="code-line"><span class="ln">109</span><code>    <span class="c"># 2026-09-13 冷启动排查补：原来不含 LOG_DIR / SCRIPTS_DIR / CASES_DIR ——</span></code></div>
+<div class="code-line"><span class="ln">110</span><code>    <span class="c"># 冷启动（目录被清掉）时它们只是&quot;碰巧&quot;被后续 parents=True 的 mkdir 建出来，</span></code></div>
+<div class="code-line"><span class="ln">111</span><code>    <span class="c"># 属于隐式依赖；这里显式建，任何入口都不会因为缺目录而诡异失败。</span></code></div>
+<div class="code-line"><span class="ln">112</span><code>    <span class="c"># 2026-09-14 收窄（用户反馈「空目录残留」）：</span></code></div>
+<div class="code-line"><span class="ln">113</span><code>    <span class="c">#   急切创建只保留「入口扫描/写入之前不会自建」的目录。</span></code></div>
+<div class="code-line"><span class="ln">114</span><code>    <span class="c">#   TRACE_DIR / HEALS_DIR 的写入方（runner.record_trace / healer.dump）**使用前显式 mkdir**</span></code></div>
+<div class="code-line"><span class="ln">115</span><code>    <span class="c">#   ⇒ 不是隐式依赖；在此急切创建只会让空目录常驻仓库。谁要写谁自建。</span></code></div>
+<div class="code-line"><span class="ln">116</span><code>    <span class="c">#   防复发：tests/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs</span></code></div>
+<div class="code-line"><span class="ln">117</span><code>    <span class="c">#   （此处声明的每个常量都必须在 config.py 之外有真实使用者，否则就是&quot;为了建空目录而建&quot;）。</span></code></div>
+<div class="code-line"><span class="ln">118</span><code>    <span class="k">for</span> d <span class="k">in</span> (OUTPUT_DIR, ELEMENT_MAP_DIR, LOG_DIR, SCRIPTS_DIR, CASES_DIR):</code></div>
+<div class="code-line"><span class="ln">119</span><code>        d.mkdir(parents=<span class="k">True</span>, exist_ok=<span class="k">True</span>)</code></div></div>
     </section>
 
     <section class="card file-card">
@@ -7668,10 +7690,10 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">833</span><code></code></div>
 <div class="code-line"><span class="ln">834</span><code></code></div>
 <div class="code-line"><span class="ln">835</span><code><span class="k">def</span> _version() -&gt; str:</code></div>
-<div class="code-line"><span class="ln">836</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;版本号读 build_html.py（**版本单一来源**）；读不到就如实说 unknown，不编。&quot;</span><span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">836</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;版本号读 `tools/build_html.py`（**版本单一来源**）；读不到就如实说 unknown，不编。&quot;</span><span class="s">&quot;&quot;</span></code></div>
 <div class="code-line"><span class="ln">837</span><code>    <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">838</span><code>        <span class="k">import</span> re</code></div>
-<div class="code-line"><span class="ln">839</span><code>        src = (config.BASE / <span class="s">&quot;build_html.py&quot;</span>).read_text(encoding=<span class="s">&quot;utf-8&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">839</span><code>        src = config.VERSION_SOURCE.read_text(encoding=<span class="s">&quot;utf-8&quot;</span>)</code></div>
 <div class="code-line"><span class="ln">840</span><code>        v = re.search(r<span class="s">&#x27;^VERSION\s*=\s*&quot;([^&quot;]+)&quot;&#x27;</span>, src, re.M)</code></div>
 <div class="code-line"><span class="ln">841</span><code>        d = re.search(r<span class="s">&#x27;^VERSION_DATE\s*=\s*&quot;([^&quot;]+)&quot;&#x27;</span>, src, re.M)</code></div>
 <div class="code-line"><span class="ln">842</span><code>        <span class="k">if</span> <span class="k">not</span> v:</code></div>
@@ -8163,7 +8185,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <p class="cl-sum">把「看不懂的参数」从静默忽略改成明确报错：过去 --workres（--workers 拼错）会照常跑完并 exit 0，未知子命令也只打文档就 exit 0 —— 脚本调用方会误判成功。现在参数错一律 exit 2 并给出「想写哪个」的建议，同时补上 --help / --version。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>--help / -h</b>：总览 + 子命令帮助（<b>直接取函数 docstring</b>，文档与代码同源，不会漂）</li>
-        <li><b>--version / -V</b>：版本号读 build_html.py（版本单一来源；读不到就如实说 unknown）</li>
+        <li><b>--version / -V</b>：版本号读 tools/build_html.py（版本单一来源；读不到就如实说 unknown）</li>
         <li><b>tests/test_cli_flags.py</b>：参数契约回归（约 3 秒，不需要 demo / 不需要 AI key）——合法参数不许误杀 + 非法参数必须 exit 2</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
@@ -8230,7 +8252,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V7.7</b>（2026-09-18）· 由 build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V7.7</b>（2026-09-18）· 由 tools/build_html.py 生成
 </footer>
 
 </div>

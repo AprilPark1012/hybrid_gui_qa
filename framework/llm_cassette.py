@@ -112,10 +112,10 @@ def _now_iso() -> str:
 
 
 def _framework_version() -> str:
-    """读 build_html.py 的 VERSION（版本单一来源）；读不到就如实说 unknown，不编。"""
+    """读 `tools/build_html.py` 的 VERSION（版本单一来源）；读不到就如实说 unknown，不编。"""
     try:
         import re
-        src = (config.BASE / "build_html.py").read_text(encoding="utf-8")
+        src = config.VERSION_SOURCE.read_text(encoding="utf-8")
         m = re.search(r'^VERSION\s*=\s*"([^"]+)"', src, re.M)
         return m.group(1) if m else "unknown"
     except Exception:

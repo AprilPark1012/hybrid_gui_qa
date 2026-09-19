@@ -28,6 +28,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from framework import config                               # noqa: E402
 from framework.text_io import force_stdio, run_capture      # noqa: E402
 
 # 不进包的东西（与 .gitignore 口径一致 + 交付无关产物）
@@ -41,22 +42,39 @@ RELEASES_DIRNAME = "releases"
 RELEASE_NOTES_GLOB = "RELEASE_NOTES_*.md"
 EXCLUDE_SUFFIX = {".zip", ".tar.gz", ".pyc", ".pyo"}
 # 包里必须有的东西（少一个说明包不完整）
-REQUIRED = ("README.md", "build_html.py", "docs/training.html", "framework/cli.py",
+REQUIRED = ("README.md", "tools/build_html.py", "docs/training.html", "framework/cli.py",
             "framework/text_io.py", "scripts/test_cases.py", "scripts/conftest.py",
             "cases", "tests", "demo", "scenarios")
+# 历史形态别名（2026-09-19）：**结构与文件位置变过，审计历史包不该因此误报**。
+# 先例：升级日志本来就「两种落点都认」（见下面 notes 那段）。这里收纳两次结构调整：
+#   build_html.py → tools/build_html.py  （2026-09-19 挪进工具目录）
+#   training.html → docs/training.html    （2026-09-19 归位 docs/）
+# ⚠️ 只影响**必需项审计**：新包一定按当前仓库布局打包 ⇒「两个位置都没有」时照样报缺项，
+#    别名绝不会放过真缺项（负向判据见 tests/test_pack_release.py）。
+LEGACY_ALIASES = {
+    "tools/build_html.py": ("build_html.py",),
+    "docs/training.html": ("training.html",),
+}
+
+
+def _required_hit(req: str, rel) -> tuple[bool, str | None]:
+    """→ (是否命中, 历史形态说明或 None)。"""
+    if any(k == req or k.startswith(req + "/") for k in rel):
+        return True, None
+    for alt in LEGACY_ALIASES.get(req, ()):
+        if any(k == alt or k.startswith(alt + "/") for k in rel):
+            return True, f"{req} 用历史形态 {alt} 命中（结构变更前的包，不拦）"
+    return False, None
+
+
 # 生成物必须带的接线（与 tests/test_artifacts_health.py 同口径）
 REQUIRED_CONFTEST = ("_act", "_goto", "_reset_target_data", "_assert_text", "_assert_value")
 
 
 def _version() -> tuple[str, str]:
-    """版本号从 build_html.py 读（**版本单一来源**）；读不到就如实说 unknown。"""
-    try:
-        src = (REPO / "build_html.py").read_text(encoding="utf-8")
-        v = re.search(r'^VERSION\s*=\s*"([^"]+)"', src, re.M)
-        d = re.search(r'^VERSION_DATE\s*=\s*"([^"]+)"', src, re.M)
-        return (v.group(1) if v else "unknown", d.group(1) if d else date.today().isoformat())
-    except Exception:
-        return "unknown", date.today().isoformat()
+    """版本号从 `tools/build_html.py` 读（**版本单一来源**，路径定义在 framework/config.py）；读不到就如实说 unknown。"""
+    v, d = config.read_version()
+    return (v, d or date.today().isoformat())
 
 
 def collect_files(exclude_test_artifacts: bool = False) -> list[Path]:
@@ -111,16 +129,24 @@ def repo_release_notes() -> list[str]:
 
 def check_zip(zip_path: Path, expect_cases: int | None = None,
               require_notes_for: str | None = None,
-              expect_notes: int | None = None) -> list[str]:
-    """审计一个包：返回问题清单（空 = 通过）。**只用标准库，不依赖 unzip。**"""
+              expect_notes: int | None = None,
+              legacy_notes: list[str] | None = None) -> list[str]:
+    """审计一个包：返回问题清单（空 = 通过）。**只用标准库，不依赖 unzip。**
+
+    `legacy_notes`：可选的出参列表 —— 历史形态命中（结构变更前的包）会写进来，
+    由调用方打印**不拦**。不传也照样审计，只是看不到那些提示。
+    """
     problems: list[str] = []
     with zipfile.ZipFile(zip_path) as z:
         names = z.namelist()
         rel = {n.split("/", 1)[1]: n for n in names if "/" in n}
 
         for req in REQUIRED:
-            if not any(k == req or k.startswith(req + "/") for k in rel):
+            ok, note = _required_hit(req, rel)
+            if not ok:
                 problems.append(f"包内缺必需项：{req}")
+            elif note and legacy_notes is not None:
+                legacy_notes.append(note)
 
         def read(key: str) -> str:
             n = rel.get(key)
@@ -186,7 +212,11 @@ def main() -> int:
         zp = Path(a.check)
         print(f"[pack] 审计 {zp}")
         # 审计历史包时**不**强制「升级日志份数一致」：老包的日志在包根、份数也不同（形态差异不是缺陷）
-        problems = check_zip(zp, expect_cases=repo_cases, require_notes_for=_version()[0])
+        legacy: list[str] = []
+        problems = check_zip(zp, expect_cases=repo_cases, require_notes_for=_version()[0],
+                             legacy_notes=legacy)
+        for n in legacy:
+            print(f"[pack] ◐ {n}")
         if problems:
             print(f"[pack] ❌ 发现 {len(problems)} 个问题：")
             for p in problems:
@@ -207,8 +237,11 @@ def main() -> int:
             z.write(p, arcname=f"{tag}/{p.relative_to(REPO).as_posix()}")
     print(f"[pack] 已写出 {out_zip}（{len(files)} 个文件，{out_zip.stat().st_size / 1024:.0f} KB）")
 
+    legacy: list[str] = []
     problems = check_zip(out_zip, expect_cases=repo_cases, require_notes_for=ver,
-                         expect_notes=len(repo_notes) or None)
+                         expect_notes=len(repo_notes) or None, legacy_notes=legacy)
+    for n in legacy:          # 新包不该出现（出现=打包收集漏了当前布局）⇒ 大声打出来
+        print(f"[pack] ⚠️ {n}")
     if a.allow_broken_artifacts:
         # 逃生口只降噪，不掩盖：问题照样打出来
         print("[pack] ⚠️⚠️ --allow-broken-artifacts 生效：问题只警告不拦（**永不允许用于交付**）")

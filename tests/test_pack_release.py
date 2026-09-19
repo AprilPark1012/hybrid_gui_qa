@@ -43,16 +43,21 @@ def _assert_value(page, element, expect): ...
 def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
               unmapped_extra: str = "", skip_case: bool = False,
               notes_path: str = "pkg/releases/RELEASE_NOTES_V9.9.md",
-              extra_notes: tuple[str, ...] = ()) -> Path:
+              extra_notes: tuple[str, ...] = (),
+              legacy_layout: bool = False,
+              drop: tuple[str, ...] = ()) -> Path:
     """造一个「结构完整」的最小交付包，只让被测判据不同。
 
     升级日志默认放 `pkg/releases/` 下（2026-09-18 起的落点）；`notes_path` 可改成包根（历史形态）。
+    `legacy_layout=True`：按 2026-09-19 结构调整**之前**的形态造包（`build_html.py` 在包根、
+    `training.html` 在包根）—— 用来证明「审计历史包不会误报」。
+    `drop`：故意去掉某些条目（造真缺项，验负向）。
     """
     tmp_path.mkdir(parents=True, exist_ok=True)
     zp = tmp_path / "pkg.zip"
     entries = {
         "pkg/README.md": "# x\n",
-        "pkg/build_html.py": 'VERSION = "9.9"\n',
+        "pkg/tools/build_html.py": 'VERSION = "9.9"\n',
         "pkg/docs/training.html": "<html></html>",
         "pkg/framework/cli.py": "\n",
         "pkg/framework/text_io.py": "\n",
@@ -64,6 +69,13 @@ def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
     }
     if not skip_case:
         entries["pkg/cases/x.json"] = '{"case_id": "x", "steps": []}'
+    if legacy_layout:
+        entries.pop("pkg/tools/build_html.py", None)
+        entries.pop("pkg/docs/training.html", None)
+        entries["pkg/build_html.py"] = 'VERSION = "9.9"\n'
+        entries["pkg/training.html"] = "<html></html>"
+    for k in drop:
+        entries.pop(k, None)
     if notes:
         entries[notes_path] = "# 9.9\n"
     for n in extra_notes:
@@ -94,6 +106,28 @@ def test_missing_release_notes_for_current_version_is_caught(tmp_path):
     assert any("RELEASE_NOTES" in p for p in problems), problems
 
 
+def test_legacy_layout_audited_without_false_alarm(tmp_path):
+    """结构变更前的历史包：用当前必需项清单审计**不许误报**，但要如实标出历史形态。
+
+    背景（2026-09-19）：`build_html.py` 挪进 tools/、`training.html` 归位 docs/ 之后，
+    用新代码审计老的 V7.7 包会报「缺 tools/build_html.py / docs/training.html」—— 那是**误报**，
+    历史包本来就按当时结构打的。误报会诱发人绕过工具，所以按「两种落点都认」的先例修掉。
+    """
+    zp = _make_zip(tmp_path, GOOD_TESTS, legacy_layout=True)
+    legacy: list[str] = []
+    problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9",
+                                      legacy_notes=legacy)
+    assert problems == [], f"历史形态包被误报：{problems}"
+    assert len(legacy) == 2, f"历史形态命中没被标出来（应 2 条）：{legacy}"
+
+
+def test_really_missing_required_is_still_caught(tmp_path):
+    """★ 负向：两个位置都没有（真缺项）⇒ 必须照样报 —— 别名不许放过真问题。"""
+    zp = _make_zip(tmp_path, GOOD_TESTS, legacy_layout=True, drop=("pkg/build_html.py",))
+    problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9")
+    assert any("tools/build_html.py" in p for p in problems), problems
+
+
 def test_release_notes_recognized_in_both_layouts(tmp_path):
     """升级日志在 releases/ 下（新落点）与在包根（历史包）都要认得出来。"""
     zp = _make_zip(tmp_path, GOOD_TESTS)                       # pkg/releases/RELEASE_NOTES_V9.9.md
@@ -122,7 +156,7 @@ def test_case_count_mismatch_is_caught(tmp_path):
 def test_collect_files_keeps_sources_and_drops_runtime_cruft():
     """打包收集：源代码/用例/生成物要进包，运行时证据与虚拟环境不得进包。"""
     rel = {p.relative_to(REPO).as_posix() for p in pack_release.collect_files()}
-    for must in ("README.md", "build_html.py", "framework/cli.py", "framework/text_io.py",
+    for must in ("README.md", "tools/build_html.py", "framework/cli.py", "framework/text_io.py",
                  "scripts/test_cases.py", "scripts/conftest.py", "demo/app.py",
                  "tests/test_artifacts_health.py", "cases", "scenarios"):
         assert any(r == must or r.startswith(must + "/") for r in rel), f"漏了 {must}"

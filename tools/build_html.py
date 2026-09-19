@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-"""构建培训 HTML：读取框架源码，注入模板，标注核心片段。运行: python build_html.py
+"""构建培训 HTML：读取框架源码，注入模板，标注核心片段。运行: python tools/build_html.py
 生成的 docs/training.html 是自包含单文件（内嵌 CSS），给新员工看。
+
+⚠️ 本脚本住在 `tools/`（框架工具目录，与 pack_release.py 同列）⇒ `BASE` 必须上溯一层。
 """
 import html
 import os
 import re
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent
+BASE = Path(__file__).resolve().parent.parent      # tools/ 的上一层 = 仓库根
 # 输出路径可用 BUILD_HTML_OUT 覆盖 —— 供「可复现性验证」在 /tmp 里生成、不污染仓库（tests/verify_html_sync.py）
 OUT = Path(os.environ.get("BUILD_HTML_OUT") or (BASE / "docs" / "training.html"))
 
@@ -700,7 +702,7 @@ CHANGELOG = [
                 "同时补上 --help / --version。",
         added=[
             "<b>--help / -h</b>：总览 + 子命令帮助（<b>直接取函数 docstring</b>，文档与代码同源，不会漂）",
-            "<b>--version / -V</b>：版本号读 build_html.py（版本单一来源；读不到就如实说 unknown）",
+            "<b>--version / -V</b>：版本号读 tools/build_html.py（版本单一来源；读不到就如实说 unknown）",
             "<b>tests/test_cli_flags.py</b>：参数契约回归（约 3 秒，不需要 demo / 不需要 AI key）——"
             "合法参数不许误杀 + 非法参数必须 exit 2",
         ],
@@ -1241,7 +1243,9 @@ def build() -> str:
 ├── <b>output/</b>                    ✅ 运行时证据(probe/plan/heal/trace,可清)
 ├── <b>log/&lt;run_id&gt;/</b>             本次运行 逐用例 .log + report.html + traces(可清)
 ├── README.md                       本框架文档
-├── build_html.py                    生成 docs/training.html 培训页
+├── <b>tools/</b>                    框架自己的工具(不是被测应用的一部分)
+│   ├── pack_release.py             交付打包器: 组装 zip + 标准库自检包内产物(不达标不出包)
+│   └── build_html.py               生成 docs/training.html 培训页(**版本号单一来源**)
 └── docs/training.html              ★ 这份培训文档（docs/ 里唯一的对外文档）</pre>
   </div>
   <div style="margin-top:12px;">
@@ -1748,7 +1752,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 {_changelog_section()}
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V{VERSION}</b>（{VERSION_DATE}）· 由 build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V{VERSION}</b>（{VERSION_DATE}）· 由 tools/build_html.py 生成
 </footer>
 
 </div>

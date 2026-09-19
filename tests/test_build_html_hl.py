@@ -22,7 +22,8 @@ import sys
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(BASE))
+TOOLS = BASE / "tools"          # build_html.py 住在框架工具目录（2026-09-19 从仓库根挪入）
+sys.path.insert(0, str(TOOLS))
 
 from build_html import hl          # noqa: E402
 
@@ -90,7 +91,7 @@ def test_html_in_line_is_escaped():
 def test_deterministic_across_processes():
     """换哈希种子重跑同一条 → 必须逐字节相同（老实现这里必挂：同长度词序由哈希决定）。"""
     code = (
-        "import sys; sys.path.insert(0, r'" + str(BASE) + "');"
+        "import sys; sys.path.insert(0, r'" + str(TOOLS) + "');"
         "from build_html import hl;"
         "print('\\n'.join(hl(l) for l in " + repr(TRICKY) + "))"
     )

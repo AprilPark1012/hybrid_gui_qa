@@ -21,6 +21,26 @@ TARGET_URL = (os.environ.get("TARGET_URL")
               or os.environ.get("HYBRID_BASE_URL")
               or "http://localhost:8000")
 
+# ---- 版本号单一来源（2026-09-19 把 build_html.py 挪进 tools/ 时收敛）----
+# 培训页生成器 `tools/build_html.py` 顶部的 VERSION / VERSION_DATE 是**唯一**版本来源。
+# 路径只在这里定义一次；读版本一律走 read_version()（cli / llm_cassette / pack_release 共用）
+# ⇒ 以后再挪位置只改这一行；漏改会被 tests/test_cli_flags.py 的判据当场抓住（--version 不许变 unknown）。
+VERSION_SOURCE = BASE / "tools" / "build_html.py"
+
+
+def read_version() -> tuple[str, str]:
+    """→ (VERSION, VERSION_DATE)；读不到就 ("unknown", "")，**绝不编**。"""
+    try:
+        import re
+        src = VERSION_SOURCE.read_text(encoding="utf-8")
+        v = re.search(r'^VERSION\s*=\s*"([^"]+)"', src, re.M)
+        d = re.search(r'^VERSION_DATE\s*=\s*"([^"]+)"', src, re.M)
+        if not v:
+            return "unknown", ""
+        return v.group(1), (d.group(1) if d else "")
+    except Exception:
+        return "unknown", ""
+
 # ---- 输出产物目录 ----
 OUTPUT_DIR = BASE / "output"
 ELEMENT_MAP_DIR = OUTPUT_DIR / "element_maps"
