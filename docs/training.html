@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V7.7）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V7.7.1）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup>★</sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V7.7 · 2026-09-18　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V7.7.1 · 2026-09-19　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -224,7 +224,8 @@
 ├── README.md                       本框架文档
 ├── <b>tools/</b>                    框架自己的工具(不是被测应用的一部分)
 │   ├── pack_release.py             交付打包器: 组装 zip + 标准库自检包内产物(不达标不出包)
-│   └── build_html.py               生成 docs/training.html 培训页(**版本号单一来源**)
+│   ├── build_html.py               生成 docs/training.html 培训页(**版本号单一来源**)
+│   └── offline_explore_chain.py    离线一条命令: 录像回放 → generate → 试跑(无外网机器用)
 └── docs/training.html              ★ 这份培训文档（docs/ 里唯一的对外文档）</pre>
   </div>
   <div style="margin-top:12px;">
@@ -7936,9 +7937,34 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V7.7</b>（2026-09-18）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V7.7.1</b>（2026-09-19）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V7.7</span><span class="cl-date">2026-09-18</span><span class="cl-tag">当前版本</span><span class="cl-theme">元素歧义闸门（批次 2）· 弹层两种选中方式 · 离线 AI 链路（LLM 录像回放）</span></div>
+      <div class="cl-head"><span class="cl-ver">V7.7.1</span><span class="cl-date">2026-09-19</span><span class="cl-tag">当前版本</span><span class="cl-theme">结构归一与修复批次 · tools/ 目录 · 版本来源收敛 · 文档可复现性</span></div>
+      <p class="cl-sum">本版<b>不加新能力</b>，只做三件事：把仓库结构按「框架代码 / 内部台账 / 门禁」三层分开；把散落在仓库根的工具收进 <code>tools/</code>，并把「版本号来源路径」收敛成<b>只定义一处</b>；修掉四处<b>静默退化</b>（培训页高亮器、打包审计、一条负向验证段、一条自测的环境依赖）—— 共同特征是「看着正常、其实没在干活」，正是本项目一直在打的假绿。</p>
+      <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
+        <li><b>特性验证统一入口</b> <code>tests/run_verifications.sh</code>：逐个跑 <code>verify_*.py</code>、内存不足<b>如实 SKIP</b>（不硬跑、不当通过）、跑完出汇总表；支持 <code>--only</code> / <code>--list</code> / <code>--no-demo</code></li>
+        <li><b>R8 判据</b> <code>tests/verify_html_sync.py</code>：培训页必须①可复现（换哈希种子 md5 相同）②与代码<b>逐字节一致</b>③零畸形嵌套 —— 把「文档与代码同步」变成可验证的</li>
+        <li>判据补强：仓库与敏感词门禁<b>解耦</b>（仓库零引用门禁路径/词表）· <b>版本单一来源</b>（三读者同源，含「路径失效必须如实 unknown」负向）· 打包<b>历史形态</b>（含真缺项仍拦负向）· 培训页高亮器 9 条（含跨进程可复现性）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
+        <li><b>仓库结构三层分离</b>：框架代码在仓库；项目台账与设计文档移出仓库（住 skill）；仓库 <code>docs/</code> 现在<b>只放唯一的对外文档</b> <code>training.html</code></li>
+        <li><b><code>tools/</code> = 框架自己的工具目录</b>：<code>build_html.py</code> 从仓库根挪入，与交付打包器 <code>pack_release.py</code> 同列；仓库根不再散放脚本</li>
+        <li><b>版本号来源路径收敛为一处</b>：<code>framework/config.py::VERSION_SOURCE</code> —— <code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 三个读者共用（原先三处各写一遍；漏改一处 <code>--version</code> 会静默变 unknown）</li>
+        <li>README / 培训页 / 目录树同步，并把「逐条列文件名与数字」改成<b>抗腐烂写法</b>（减少文档漂移面）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
+        <li><b>培训页生成器三处真 bug</b>（改单遍分词）：① 关键字趟在已注入的 HTML 上再跑 ⇒ 把 <code>&lt;span class="k"&gt;</code> 里的 <code>class</code> 又包一层，已发布页实测 <b>2381 处畸形嵌套</b>；② 关键字集合是 <code>set</code>，同长度词序由哈希决定 ⇒ <b>同一份代码重跑两次 md5 都不同</b>（差 140 行）⇒「html 与代码是否同步」根本没法用重跑比对判定；③ 先 <code>html.escape</code> 把引号变实体 ⇒ 字符串正则永远匹配不上，<b>字符串高亮一直是死的</b></li>
+        <li><b>打包器审计历史包误报</b>：用当前必需项清单去审结构变更前的包会报「缺 tools/build_html.py / docs/training.html」—— 历史包按当时结构打包本就正常。按「升级日志两种落点都认」的先例加<b>历史形态别名</b>（命中时如实标出 <code>◐</code>、不拦），真缺项仍照拦</li>
+        <li><b>一条负向验证段自 V7.5.1 起就没跑起来</b>：负向用例故意用「不存在的控件名」，而映射质量闸会把整个 generate 拦成 exit 2 ⇒ 负向段一步没跑、脚本自己变红。负向段改走 <code>--allow-unmapped</code> 并写明原因 ⇒ 修后<b>负向 15 条全部 FAILED</b>（预期）</li>
+        <li><b>一条自测的隐式环境依赖</b>：GBK 解码用例会先 generate ⇒ 本机恰好有 demo 时它就真去 probe（起浏览器），同一条用例 <b>1.16s → 162.71s</b>（占整套 93%，整包 13s → 175s）—— 等于二类（端到端）悄悄混进一类（秒级自测）。改为钉确定性不可达目标，并收紧判据（必须真解码到中文）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
+        <li>本版验证：一类框架自测 <b>217 passed</b>（有 demo / 无 demo 耗时一致）· 二类特性验证 <b>8/8</b>（0 跳过）· 敏感词门禁端到端 <b>28/28</b> · 推送闸门三层干净 + 对象对账 <b>330/330</b></li>
+        <li>敏感词门禁与词表住在 skill（<b>仓库内零痕迹</b>）：commit / push / 打包三层自动拦 + 自动修，钩子在 <code>.git/hooks/</code>（永不入库）</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V7.7</span><span class="cl-date">2026-09-18</span><span class="cl-tag">上一版本</span><span class="cl-theme">元素歧义闸门（批次 2）· 弹层两种选中方式 · 离线 AI 链路（LLM 录像回放）</span></div>
       <p class="cl-sum">本版两条主线。① 把「名字能对上就用」这条<b>静默点错控件</b>的路堵死 —— 事故形态是「同一个基础名落在两处、而探测是分轮做的」，复盘出四条路径（命名时机 / 合并去重 / 留痕缺失 / 运行期模糊兜底），逐条按根因修，且都留下可复算的证据；② 让<b>连不上外网 LLM 的机器</b>也能跑完整 AI 链路：有网机器录一次「prompt → 回答」，离线机器回放，配一条命令脚本把链路与前置体检串起来。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>LLM 录像（录制/回放）</b>：<code>--llm-record</code> / <code>--llm-cassette</code> / <code>--llm-cassette-strict</code>，模式<b>只由 CLI 参数决定</b>、不做任何自动降级。两个键：<b>严格键</b>（prompt 逐字一致）+ <b>结构键</b>（场景文案 + 页面 + 控件骨架，刻意排除业务数据值）⇒ 数据不同的机器也能命中，但会<b>大声告警</b>「步骤是录制当时针对那批数据做的判断，请核对再用」；未命中给「最接近那份从第几行起不同」与两条出路，<b>绝不静默改走实时调用或 mock</b></li>
@@ -8252,7 +8278,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V7.7</b>（2026-09-18）· 由 tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V7.7.1</b>（2026-09-19）· 由 tools/build_html.py 生成
 </footer>
 
 </div>

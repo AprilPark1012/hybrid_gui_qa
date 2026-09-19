@@ -1,6 +1,6 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V7.7**（2026-09-18）· 版本号单一来源：`tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> 当前版本 **V7.7.1**（2026-09-19）· 版本号单一来源：`tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
 > （路径只在 `framework/config.py::VERSION_SOURCE` 定义一次，cli / llm_cassette / 打包器共用）
 > （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V7.7.md`；
 > 上一版见 `releases/RELEASE_NOTES_V7.6.md`（跨 tab 端到端 · 行内定位 · 首行断言）。
@@ -106,6 +106,23 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 
 ---
 
+## 2026-09-19 变更要点 —— 结构归一与修复批次（V7.7.1）
+
+**不加新能力**，三件事：① 仓库结构按「框架代码 / 内部台账 / 门禁」三层分开；② 工具收进 `tools/`、
+**版本号来源路径收敛成只定义一处**；③ 修掉**四处静默退化**（培训页高亮器畸形嵌套 2381 处 + 生成不可复现 +
+字符串高亮一直是死的 · 打包审计历史包误报 · 一条负向验证段自 V7.5.1 起没跑过 · 一条自测隐式依赖环境）。
+本版还补齐了**离线链路的交付形态**：`tools/offline_explore_chain.py` 收进仓库、打包器支持
+`--with-cassettes`（交付 = **代码包 + 录像包「两件套」**，且有判据 `tests/verify_offline_delivery.py`）。
+完整说明见 `releases/RELEASE_NOTES_V7.7.1.md`。
+
+| 项 | 结果 |
+|---|---|
+| 结构 | `docs/` 只留 `training.html`；`tools/` = 框架自己的工具（打包器 / 培训页生成器 / 离线一键脚本） |
+| 版本来源 | `framework/config.py::VERSION_SOURCE` 一处定义，cli / llm_cassette / 打包器三读者共用 |
+| 新增入口 | `tests/run_verifications.sh`（特性验证统一入口，内存不足**如实 SKIP** 不当通过） |
+| 新增判据 | 培训页与代码同步 · 仓库与门禁解耦 · 版本单一来源（含负向）· 打包历史形态（含负向）· 交付两件套 |
+| 实测 | 一类 `pytest tests/ -q` **221 passed** · 二类 `run_verifications.sh` **9/9** · 离线链路端到端 **exit 0** |
+
 ## 2026-09-18（第二次）变更要点 —— 元素歧义闸门 + 离线 AI 链路（V7.7）
 
 | 项 | 内容 |
@@ -114,7 +131,7 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 | 元素歧义闸门 S2 | 缺失名若正是某个同名冲突组的 base 名，`generate` 报错**直接给候选**（不再是一句干巴巴的「元素未映射」） |
 | 元素歧义闸门 S3 | 生成物 `_item_for()` 模糊兜底收敛：候选唯一才接受并**写日志留痕**；候选 ≥2 **抛错并列候选**；`HYBRID_STRICT_LOCATE=1` 连唯一候选也不兜 |
 | LLM 录像（新能力） | `--llm-record` / `--llm-cassette` / `--llm-cassette-strict`：**严格键 + 结构键**双键回放；离线机器**不需要 key、不联网**；未命中给「最接近那份从第几行起不同」，绝不静默降级 |
-| 离线一条命令 | `offline_explore_chain.py`（随录像包发）：前置体检 → 回放识别 → `generate` → 试跑，全程把 LLM 端点指到黑洞以证「真没联网」 |
+| 离线一条命令 | **`tools/offline_explore_chain.py`**（随**代码包**发，2026-09-19 起入仓库）：前置体检 → 回放识别 → `generate` → 试跑，全程把 LLM 端点指到黑洞以证「真没联网」 |
 | 弹层两种选中 | 合同页搜索区 = 输入框 + 弹层按钮；**弹层选中 = 精确命中、手工输入 = 右模糊**（既有语义零破坏）；客户/销售员弹层内可「+ 新建」并回填当前字段 |
 | 新增测试 | `tests/test_element_ambiguity_gate.py`（15 条，含**模板 ⇄ 生成物互锁**）· `tests/verify_element_ambiguity.py`（浏览器级复现事故形态）· `tests/verify_order_pick_create.py` |
 | 实测 | `pytest tests/ -q` **202 passed** · `cli run --workers 1` **17 passed / exit 0**（模糊兜底 0 次触发）· `verify_element_ambiguity.py` **exit 0** |
@@ -128,12 +145,17 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 mkdir -p output && mv llm_cassettes output/      # 录像包解开后就是 output/llm_cassettes/
 python -m demo.app                                # 另开一个窗口常驻
 # 2) 一条命令跑通：前置体检 → 回放识别 → generate → 试跑
-python offline_explore_chain.py --repo . --run
+python tools/offline_explore_chain.py --repo . --run
 # 3) 等价的手动三步
 python -m framework.cli explore --ai --scenario-file scenarios/contracts/contracts_search_by_no.yml --llm-cassette
 python -m framework.cli generate
 python -m framework.cli run --workers 1
 ```
+
+> ⚠️ **交付形态 = 两件套**（2026-09-19 定）：**代码包**（含回放引擎 + 一键脚本）+ **录像包**
+> （含 `llm_cassettes/` 数据 + 用法说明）。只有代码包**跑不起来**（缺录像数据）；录像单独放进去也没用
+> （功能在代码里）。两件一起打：`python tools/pack_release.py --with-cassettes`。
+> 交付形态本身有判据：`python tests/verify_offline_delivery.py`（两件都能打出来 + 内容齐 + 清单与事实一致）。
 
 **三条铁律**：① 代码必须是含 `--llm-cassette` 的版本（V7.7 起）；
 ② demo 与 `scenarios/` 必须与录制时**同版本**（回放键含场景文案 / 页面地址 / 控件骨架）；
@@ -335,8 +357,10 @@ hybrid_gui_qa/
 │   ├── retention.py        归档保留：快照各留最近 N 个（cli prune；explore/probe 自动静默执行）
 │   └── cli.py              命令行入口（explore/probe/generate/run/all/prune，含资源预检与交付即验证）
 ├── tools/                  ★ 框架自己的工具（不是被测应用的一部分）
-│   ├── pack_release.py          交付打包器：组装 zip + 用标准库自检包内产物（不达标不出包）
-│   └── build_html.py            培训页生成器：读源码 → docs/training.html（**版本号单一来源**）
+│   ├── pack_release.py          交付打包器：组装 zip + 标准库自检包内产物（不达标不出包）
+│   │                            `--with-cassettes` 同时打**独立的录像包**（交付=代码包+录像包两件套）
+│   ├── build_html.py            培训页生成器：读源码 → docs/training.html（**版本号单一来源**）
+│   └── offline_explore_chain.py 离线一条命令：录像回放识别 → generate → 试跑（无外网机器用，随代码包发）
 ├── scripts/                ★ generate 产物（生成，可重建）
 │   ├── test_cases.py       生成的 pytest 用例
 │   ├── conftest.py         浏览器工厂/数据注入/变量池/日志

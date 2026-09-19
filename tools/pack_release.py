@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import sys
 import zipfile
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -195,6 +196,139 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
     return problems
 
 
+# ---------- LLM 录像包：交付「两件套」的第二件（给连不上外网 LLM 的机器）----------
+# 2026-09-19 收编：原先它住在 ~/deliver_scripts/pack_cassettes.py（一个仓库外的独立脚本），
+# 结果是「录像包」这条交付形态没有任何判据、路径也容易漂（旧脚本里就残留着 build_html.py 的老路径）。
+# 现在与代码包同一个打包器管：代码包**不含**录像（output/ 永不进包），录像单独一件。
+CASSETTE_SRC = REPO / "output" / "llm_cassettes"
+CASSETTE_HELPER = REPO / "tools" / "offline_explore_chain.py"
+
+CASSETTE_README = """# hybrid_gui_qa · LLM 录像包（在**连不上外网**的机器上跑 explore 用）
+
+生成时间：{ts} · 录像份数：{n} · 对应框架版本：V{ver}
+
+## 这是什么
+`explore --ai` 每次问 LLM 的「prompt → 回答」原件。带上它们，**没有外网**的机器（工作电脑）
+也能跑**完整**的 AI 链路：`explore` 语义识别 → `generate` 生成用例脚本 → `run` 实测，
+而且**不需要 API key、全程不联网**。
+
+## 交付形态 = 两件套（都用上才完整）
+1. **代码包** `hybrid_gui_qa_V<版本>_<日期>.zip` —— 含回放引擎 `framework/llm_cassette.py`
+   与一键脚本 `tools/offline_explore_chain.py`
+2. **本录像包** —— 含录像数据 `llm_cassettes/` + 一份用法说明
+
+## 最快上手（一条命令，含前置体检）
+1. 解开**代码包**，把本包里的 `llm_cassettes/` 整个目录放到仓库根的 `output/` 下
+   （`output/` 已在 .gitignore，不会被提交）
+2. 起被测 demo：`python -m demo.app`
+3. 跑：
+   ```
+   python tools/offline_explore_chain.py --repo . --run
+   ```
+   它依次做：① 前置体检（代码是否含回放 / 录像份数 / demo 是否可达 / 依赖是否齐）
+   ② `explore --ai --llm-cassette` 回放识别控件 ③ `generate`（要求未映射 0）
+   ④ （`--run`）实测跑一遍刚生成的用例。**全程把 LLM 端点指到黑洞 127.0.0.1:9**
+   ⇒「有没有偷偷联网」这件事是可证伪的。
+   只跑指定场景：`--scenario scenarios/contracts/contracts_search_by_no.yml`
+
+## 手动跑（不想用脚本时）
+```
+python -m framework.cli explore --ai --scenario-file scenarios/contracts/contracts_search_by_no.yml --llm-cassette
+python -m framework.cli generate
+python -m framework.cli run --workers 1
+```
+
+## 三条铁律（不满足会「跑不起来」，报错会告诉你差在哪）
+1. **代码必须是含回放功能的版本**（CLI 里有 `--llm-cassette`；V7.7 起）。老版本会 exit 2 ——
+   录像包单独放进去没用，它只是「LLM 的回答」，**功能在代码里**。
+2. **demo 与场景文件必须与录制时同版本**。回放键包含：场景文案 · 页面清单（页名 + url，含端口）·
+   每个控件的骨架（semantic_name / role / name / label / placeholder / test_id / opens_new_tab / page）。
+   ⇒ 改过 demo 页面、场景文案、端口，或升级了改动**命名逻辑**的框架版本，都会不命中。
+3. **数据值不同没关系，结构必须一致**。回放先试严格键、再用结构键兜底；命中结构键时**大声告警**
+   （步骤是录制当时针对那批数据做的判断，请核对再用）。只认逐字一致时加 `--llm-cassette-strict`。
+
+## 怎么确认「这次 AI 判断是回放来的」
+- CLI 会打印 `LLM 模式：离线回放（非实时 AI）`
+- 产出的用例 json 里带 `llm_source: cassette:<键>`
+
+## 重录（在有外网的机器上）
+```
+python -m framework.cli explore --ai --scenario-file <场景.yml> --llm-record --no-cases --no-verify
+python -m framework.cli explore --ai --scenario-dir scenarios/ --llm-record --no-cases --no-verify
+```
+改 demo 页面 / 场景文案 / 命名逻辑后**必须重录并重打本包**。
+
+## 包内清单
+- `tools/offline_explore_chain.py` · 一条命令跑通「回放 → generate → run」+ 前置体检
+- `llm_cassettes_README.md` · 本文件
+- 录像 {n} 份（场景 → 键 → 录制时间 → 大小）：
+{listing}
+"""
+
+
+def pack_cassettes(out_dir: Path, ver: str) -> Path | None:
+    """打**独立**录像包（代码包保持干净、不夹带运行时数据）→ 路径；无录像则 None。"""
+    files = sorted(CASSETTE_SRC.glob("*.json"))
+    if not files:
+        print(f"[pack] ❌ --with-cassettes：录像目录为空（{CASSETTE_SRC}）"
+              f" ⇒ 先在**有外网**的机器上 `--llm-record` 录一份")
+        return None
+    zp = out_dir / f"hybrid_gui_qa_llm_cassettes_{date.today().strftime('%Y%m%d')}.zip"
+    rows, total = [], 0
+    for f in files:
+        rec = {}
+        try:
+            rec = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        kinds = ",".join(sorted({r.get("kind", "?") for r in (rec.get("responses") or [])}))
+        size = f.stat().st_size
+        total += size
+        rows.append(f"- `{f.name}` · 录制于 {rec.get('created_at', '?')} · 模型 "
+                    f"{rec.get('model', '?')} · 回答 {kinds or '?'} · {size} B")
+    readme = (CASSETTE_README.replace("{ts}", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+              .replace("{n}", str(len(files))).replace("{listing}", "\n".join(rows))
+              .replace("{ver}", ver))
+    with zipfile.ZipFile(zp, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in files:
+            z.write(f, f"llm_cassettes/{f.name}")
+        z.writestr("llm_cassettes_README.md", readme)
+        if CASSETTE_HELPER.exists():
+            z.write(CASSETTE_HELPER, f"tools/{CASSETTE_HELPER.name}")
+    with zipfile.ZipFile(zp) as z:            # 自检：别把「打出来是坏的」发出去
+        broken = z.testzip()
+        n_json = sum(1 for n in z.namelist() if n.endswith(".json"))
+    if broken or n_json != len(files):
+        zp.unlink(missing_ok=True)
+        print(f"[pack] ❌ 录像包自检失败 ⇒ 已删除，不交付（坏条目={broken} · 录像数 {n_json}≠{len(files)}）")
+        return None
+    print(f"[pack] ✅ 录像包：{zp.name}（录像 {len(files)} 份 · 原始 {total} B · "
+          f"zip {zp.stat().st_size} B · 含一键脚本 {CASSETTE_HELPER.exists()}）")
+    print(f"[pack]    sha256 {hashlib.sha256(zp.read_bytes()).hexdigest()}")
+    return zp
+
+
+def refresh_sums(out_dir: Path) -> None:
+    """重写 SHA256SUMS.txt 的**有效行** = 本目录现存 *.zip（`#` 注释台账原样保留）。
+
+    为什么自动做：清单与包必须**永远一致**，手抄 sha256 是典型错误源（抄错 / 漏改 / 忘删）。
+    """
+    sums = out_dir / "SHA256SUMS.txt"
+    old = sums.read_text(encoding="utf-8").splitlines() if sums.exists() else []
+    keep = [l for l in old if l.startswith("#") or not l.strip()]
+    before = {l.split(None, 1)[1].strip() for l in old if l.strip() and not l.startswith("#")}
+    zips = sorted(out_dir.glob("*.zip"))
+    lines = [f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}" for p in zips]
+    after = {p.name for p in zips}
+    sums.write_text("\n".join(keep + lines) + "\n", encoding="utf-8")
+    note = []
+    if after - before:
+        note.append(f"新增 {sorted(after - before)}")
+    if before - after:
+        note.append(f"移除 {sorted(before - after)}（已不在目录里）")
+    print(f"[pack] SHA256SUMS.txt 已同步：现存 {len(zips)} 个包" + (" · " + " · ".join(note) if note else ""))
+
+
 def main() -> int:
     force_stdio()
     ap = argparse.ArgumentParser(description="交付打包 + 包内自检（只用标准库）")
@@ -203,6 +337,9 @@ def main() -> int:
     ap.add_argument("--check", default=None, help="只审计已有 zip，不打包")
     ap.add_argument("--allow-broken-artifacts", action="store_true",
                     help="调试逃生口：跳过「坏产物」判据（交付永不用）")
+    ap.add_argument("--with-cassettes", action="store_true",
+                    help="同时打**独立的 LLM 录像包**（给连不上外网 LLM 的机器；"
+                         "交付形态 = 代码包 + 录像包「两件套」）")
     a = ap.parse_args()
 
     repo_cases = len(list((REPO / "cases").glob("*.json")))
@@ -261,6 +398,11 @@ def main() -> int:
     print(f"[pack] ✅ 包内自检通过（cases={repo_cases} · 升级日志 {len(repo_notes)} 份 · "
           f"未映射=0 · _goto 接线在 · 无 output/log/.env）")
     print(f"[pack] sha256 {sha}")
+
+    if a.with_cassettes:
+        if pack_cassettes(out_dir, ver) is None:
+            return 2                       # 显式要了却打不出来 ⇒ 别当成功
+    refresh_sums(out_dir)
     return 0
 
 

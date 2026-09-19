@@ -211,11 +211,61 @@ def render_cards() -> str:
 # ---------------- HTML 模板 ----------------
 
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "7.7"
-VERSION_DATE = "2026-09-18"
+VERSION = "7.7.1"
+VERSION_DATE = "2026-09-19"
 CHANGELOG = [
     dict(
-        version="7.7", date="2026-09-18", tag="当前版本",
+        version="7.7.1", date="2026-09-19", tag="当前版本",
+        theme="结构归一与修复批次 · tools/ 目录 · 版本来源收敛 · 文档可复现性",
+        summary="本版<b>不加新能力</b>，只做三件事：把仓库结构按「框架代码 / 内部台账 / 门禁」三层分开；"
+                "把散落在仓库根的工具收进 <code>tools/</code>，并把「版本号来源路径」收敛成<b>只定义一处</b>；"
+                "修掉四处<b>静默退化</b>（培训页高亮器、打包审计、一条负向验证段、一条自测的环境依赖）—— "
+                "共同特征是「看着正常、其实没在干活」，正是本项目一直在打的假绿。",
+        fixed=[
+            "<b>培训页生成器三处真 bug</b>（改单遍分词）：① 关键字趟在已注入的 HTML 上再跑 ⇒ "
+            "把 <code>&lt;span class=\"k\"&gt;</code> 里的 <code>class</code> 又包一层，"
+            "已发布页实测 <b>2381 处畸形嵌套</b>；② 关键字集合是 <code>set</code>，同长度词序由哈希决定 ⇒ "
+            "<b>同一份代码重跑两次 md5 都不同</b>（差 140 行）⇒「html 与代码是否同步」根本没法用重跑比对判定；"
+            "③ 先 <code>html.escape</code> 把引号变实体 ⇒ 字符串正则永远匹配不上，<b>字符串高亮一直是死的</b>",
+            "<b>打包器审计历史包误报</b>：用当前必需项清单去审结构变更前的包会报「缺 tools/build_html.py / "
+            "docs/training.html」—— 历史包按当时结构打包本就正常。按「升级日志两种落点都认」的先例加"
+            "<b>历史形态别名</b>（命中时如实标出 <code>◐</code>、不拦），真缺项仍照拦",
+            "<b>一条负向验证段自 V7.5.1 起就没跑起来</b>：负向用例故意用「不存在的控件名」，而映射质量闸会把"
+            "整个 generate 拦成 exit 2 ⇒ 负向段一步没跑、脚本自己变红。负向段改走 <code>--allow-unmapped</code> "
+            "并写明原因 ⇒ 修后<b>负向 15 条全部 FAILED</b>（预期）",
+            "<b>一条自测的隐式环境依赖</b>：GBK 解码用例会先 generate ⇒ 本机恰好有 demo 时它就真去 probe"
+            "（起浏览器），同一条用例 <b>1.16s → 162.71s</b>（占整套 93%，整包 13s → 175s）—— 等于二类"
+            "（端到端）悄悄混进一类（秒级自测）。改为钉确定性不可达目标，并收紧判据（必须真解码到中文）",
+        ],
+        changed=[
+            "<b>仓库结构三层分离</b>：框架代码在仓库；项目台账与设计文档移出仓库（住 skill）；"
+            "仓库 <code>docs/</code> 现在<b>只放唯一的对外文档</b> <code>training.html</code>",
+            "<b><code>tools/</code> = 框架自己的工具目录</b>：<code>build_html.py</code> 从仓库根挪入，"
+            "与交付打包器 <code>pack_release.py</code> 同列；仓库根不再散放脚本",
+            "<b>版本号来源路径收敛为一处</b>：<code>framework/config.py::VERSION_SOURCE</code> —— "
+            "<code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 三个读者共用"
+            "（原先三处各写一遍；漏改一处 <code>--version</code> 会静默变 unknown）",
+            "README / 培训页 / 目录树同步，并把「逐条列文件名与数字」改成<b>抗腐烂写法</b>（减少文档漂移面）",
+        ],
+        added=[
+            "<b>特性验证统一入口</b> <code>tests/run_verifications.sh</code>：逐个跑 "
+            "<code>verify_*.py</code>、内存不足<b>如实 SKIP</b>（不硬跑、不当通过）、跑完出汇总表；"
+            "支持 <code>--only</code> / <code>--list</code> / <code>--no-demo</code>",
+            "<b>R8 判据</b> <code>tests/verify_html_sync.py</code>：培训页必须①可复现（换哈希种子 md5 相同）"
+            "②与代码<b>逐字节一致</b>③零畸形嵌套 —— 把「文档与代码同步」变成可验证的",
+            "判据补强：仓库与敏感词门禁<b>解耦</b>（仓库零引用门禁路径/词表）· <b>版本单一来源</b>"
+            "（三读者同源，含「路径失效必须如实 unknown」负向）· 打包<b>历史形态</b>（含真缺项仍拦负向）· "
+            "培训页高亮器 9 条（含跨进程可复现性）",
+        ],
+        notes=[
+            "本版验证：一类框架自测 <b>217 passed</b>（有 demo / 无 demo 耗时一致）· 二类特性验证 "
+            "<b>8/8</b>（0 跳过）· 敏感词门禁端到端 <b>28/28</b> · 推送闸门三层干净 + 对象对账 <b>330/330</b>",
+            "敏感词门禁与词表住在 skill（<b>仓库内零痕迹</b>）：commit / push / 打包三层自动拦 + 自动修，"
+            "钩子在 <code>.git/hooks/</code>（永不入库）",
+        ],
+    ),
+    dict(
+        version="7.7", date="2026-09-18", tag="上一版本",
         theme="元素歧义闸门（批次 2）· 弹层两种选中方式 · 离线 AI 链路（LLM 录像回放）",
         summary="本版两条主线。① 把「名字能对上就用」这条<b>静默点错控件</b>的路堵死 —— 事故形态是"
                 "「同一个基础名落在两处、而探测是分轮做的」，复盘出四条路径（命名时机 / 合并去重 / "
@@ -1245,7 +1295,8 @@ def build() -> str:
 ├── README.md                       本框架文档
 ├── <b>tools/</b>                    框架自己的工具(不是被测应用的一部分)
 │   ├── pack_release.py             交付打包器: 组装 zip + 标准库自检包内产物(不达标不出包)
-│   └── build_html.py               生成 docs/training.html 培训页(**版本号单一来源**)
+│   ├── build_html.py               生成 docs/training.html 培训页(**版本号单一来源**)
+│   └── offline_explore_chain.py    离线一条命令: 录像回放 → generate → 试跑(无外网机器用)
 └── docs/training.html              ★ 这份培训文档（docs/ 里唯一的对外文档）</pre>
   </div>
   <div style="margin-top:12px;">

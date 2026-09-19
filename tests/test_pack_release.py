@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import zipfile
 from pathlib import Path
@@ -151,6 +152,79 @@ def test_case_count_mismatch_is_caught(tmp_path):
     zp = _make_zip(tmp_path, GOOD_TESTS, skip_case=True)
     problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9")
     assert any("cases/*.json 数量" in p or "没有任何 cases" in p for p in problems), problems
+
+
+def test_cassette_pack_contains_recordings_readme_and_helper(tmp_path, monkeypatch):
+    """★ 交付「两件套」的第二件：录像包必须含 录像 + 用法说明 + 一键脚本。
+
+    背景（2026-09-19）：此前录像包由一个**仓库外的独立脚本**打（~/deliver_scripts/pack_cassettes.py），
+    没有任何判据、路径还漂了（里面残留 build_html.py 的老路径）⇒ 收进打包器并钉住内容。
+    """
+    src = tmp_path / "llm_cassettes"
+    src.mkdir()
+    (src / "abc123.json").write_text(json.dumps(
+        {"created_at": "2026-09-18T13:05:21+08:00", "model": "deepseek-chat",
+         "responses": [{"kind": "plan"}]}), encoding="utf-8")
+    helper = tmp_path / "offline_explore_chain.py"
+    helper.write_text("# helper\n", encoding="utf-8")
+    monkeypatch.setattr(pack_release, "CASSETTE_SRC", src)
+    monkeypatch.setattr(pack_release, "CASSETTE_HELPER", helper)
+    out = tmp_path / "out"
+    out.mkdir()
+
+    zp = pack_release.pack_cassettes(out, "9.9")
+    assert zp is not None and zp.exists()
+    with zipfile.ZipFile(zp) as z:
+        names = z.namelist()
+        readme = z.read("llm_cassettes_README.md").decode("utf-8")
+    assert "llm_cassettes/abc123.json" in names, names
+    assert "llm_cassettes_README.md" in names, names
+    assert "tools/offline_explore_chain.py" in names, names
+    assert "V9.9" in readme and "abc123.json" in readme, "用法说明里要有版本与录像清单"
+    assert "127.0.0.1:9" in readme, "必须写清「端点指黑洞」这条可证伪性"
+
+
+def test_cassette_pack_refuses_when_no_recordings(tmp_path, monkeypatch):
+    """★ 负向：没有录像时必须**打不出包**（返回 None），绝不产出一个空包糊过去。"""
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    monkeypatch.setattr(pack_release, "CASSETTE_SRC", empty)
+    out = tmp_path / "out"
+    out.mkdir()
+    assert pack_release.pack_cassettes(out, "9.9") is None
+    assert not list(out.glob("*.zip")), "不许留下空包"
+
+
+def test_refresh_sums_lists_existing_zips_and_keeps_ledger(tmp_path):
+    """SHA256SUMS.txt：有效行 = 现存 zip（自算 sha256）；`#` 台账注释原样保留。"""
+    import hashlib as _h
+    d = tmp_path
+    (d / "a.zip").write_bytes(b"AAA")
+    (d / "b.zip").write_bytes(b"BBB")
+    (d / "SHA256SUMS.txt").write_text(
+        "# 台账：历史删除记录\n#   old.zip  deadbeef\n0000  a.zip\n", encoding="utf-8")
+
+    pack_release.refresh_sums(d)
+    txt = (d / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    assert "# 台账：历史删除记录" in txt and "old.zip  deadbeef" in txt, "注释台账不许被冲掉"
+    lines = [l for l in txt.splitlines() if l.strip() and not l.startswith("#")]
+    assert len(lines) == 2, lines
+    assert f"{_h.sha256(b'AAA').hexdigest()}  a.zip" in lines
+    assert f"{_h.sha256(b'BBB').hexdigest()}  b.zip" in lines
+    assert "0000  a.zip" not in txt, "旧的有效行必须被真值取代（手抄的数不许留着）"
+
+
+def test_refresh_sums_drops_line_of_deleted_package(tmp_path):
+    """包删掉后，清单里那条有效行必须消失（注释里的留档照旧）。"""
+    import hashlib as _h
+    d = tmp_path
+    (d / "gone.zip").write_bytes(b"X")
+    pack_release.refresh_sums(d)
+    assert f"{_h.sha256(b'X').hexdigest()}  gone.zip" in (d / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    (d / "gone.zip").unlink()
+    pack_release.refresh_sums(d)
+    txt = (d / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    assert not [l for l in txt.splitlines() if l.strip() and not l.startswith("#")], txt
 
 
 def test_collect_files_keeps_sources_and_drops_runtime_cruft():
