@@ -10,6 +10,12 @@
 
 例外（已声明、按"历史日志不改"口径）：`releases/RELEASE_NOTES_*.md` —— 日志记录当时发生过什么，
 不是框架代码，允许出现历史描述。
+
+⚠️ 两个自己踩过的坑（都写清楚，别让下一个人再踩）：
+1. **必须豁免本文件自身**：本文件里必然写满那些禁词（它就是判据本身）。老版本漏了这条，
+   而当时文件**还没被 git 跟踪** ⇒ `git ls-files` 扫不到它 ⇒ **假绿**；提交后才暴露。
+   ⇒ 教训：**用 `git ls-files` 做扫描的判据，在文件入库前会漏扫自己 —— 新增判据要按「提交后」的状态验一次**。
+2. 扫描范围是「被跟踪文件」而非工作区：未跟踪的临时文件不在判据内（这是有意的，避免误伤）。
 """
 
 import subprocess
@@ -29,6 +35,9 @@ FORBIDDEN = (
 # 允许的历史日志（非代码）
 EXEMPT_PREFIXES = ("releases/RELEASE_NOTES_",)
 
+# 本文件自身：判据里必然含这些禁词 ⇒ 必须豁免（否则提交后必红，见文件头坑 1）
+SELF = "tests/test_no_gate_coupling.py"
+
 
 def _tracked_files() -> list[str]:
     out = subprocess.run(
@@ -39,7 +48,8 @@ def _tracked_files() -> list[str]:
 
 def test_repo_has_zero_gate_references():
     """仓库里不得出现门禁/skill 路径引用（R1 判据）。"""
-    files = [f for f in _tracked_files() if not f.startswith(EXEMPT_PREFIXES)]
+    files = [f for f in _tracked_files()
+             if not f.startswith(EXEMPT_PREFIXES) and f != SELF]
     assert files, "git ls-files 返回空 —— 测试前提不成立"
 
     violations = []

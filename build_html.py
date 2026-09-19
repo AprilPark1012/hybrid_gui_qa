@@ -3,28 +3,48 @@
 生成的 docs/training.html 是自包含单文件（内嵌 CSS），给新员工看。
 """
 import html
+import os
 import re
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
-OUT = BASE / "docs" / "training.html"
+# 输出路径可用 BUILD_HTML_OUT 覆盖 —— 供「可复现性验证」在 /tmp 里生成、不污染仓库（tests/verify_html_sync.py）
+OUT = Path(os.environ.get("BUILD_HTML_OUT") or (BASE / "docs" / "training.html"))
 
 # ---------------- 轻量语法高亮 ----------------
-KEYWORDS = {
+# ⚠️ 必须是**单遍分词**（2026-09-19 重写）。老实现是三趟 re.sub 串起来跑，有三个真 bug：
+#   ① 畸形嵌套：关键字那趟在**前一趟注入的 HTML 上**再跑，把 `<span class="k">` 里的 `class`
+#      又包一层 → `<span <span class="k">class</span>="k">raise</span>`（已发布页实测 1520 处）；
+#   ② 不可复现：KEYWORDS 是 set，`sorted(key=len)` 对**同长度**词按哈希序排，而哈希序每个进程
+#      都不同 ⇒ 同一次提交重跑两次，html 的 md5 都不一样（实测差 140 行）⇒
+#      「html 与代码是否同步」这条判据被废掉（重跑必出 diff，分不清同步还是没同步）；
+#   ③ 字符串高亮早就死了：先 html.escape 把引号变成 &quot;/&#x27;，字符串正则 `['"][^'"]*['"]`
+#      永远匹配不上（静默退化的功能）。
+# 单遍分词三个一起修掉：注入的标签不再被扫；排序与哈希无关；先分词后转义 ⇒ 字符串真能高亮。
+KEYWORDS = sorted({
     "def", "return", "if", "elif", "else", "for", "from", "import", "async",
     "await", "class", "with", "in", "not", "and", "or", "try", "except",
     "raise", "lambda", "pass", "yield", "None", "True", "False", "as", "global",
-}
+})
+_KW_ALT = "|".join(KEYWORDS)
+# 左起优先：`x = "a#b"` 走字符串（" 更靠左），`x = 1  # "q"` 走注释（# 更靠左）—— 正好都对
+_TOKEN_RE = re.compile(
+    r"(?P<comment>\#.*$)"
+    r"|(?P<string>'[^']*'|\"[^\"]*\")"
+    rf"|(?P<keyword>\b(?:{_KW_ALT})\b)"
+)
 
 
 def hl(line: str) -> str:
-    """一行代码 → 高亮后的 HTML（保守处理，不追求完美嵌套）。"""
-    e = html.escape(line)
-    c = re.sub(r'(#.*$)', r'<span class="c">\1</span>', e)
-    c = re.sub(r'([\'"][^\'"]*[\'"])', r'<span class="s">\1</span>', c)
-    for kw in sorted(KEYWORDS, key=len, reverse=True):
-        c = re.sub(rf"\b{kw}\b", f'<span class="k">{kw}</span>', c)
-    return c
+    """一行代码 → 高亮后的 HTML（单遍分词；注入的标签不会再被扫）。"""
+    out, pos = [], 0
+    for m in _TOKEN_RE.finditer(line):
+        out.append(html.escape(line[pos:m.start()]))
+        cls = {"comment": "c", "string": "s", "keyword": "k"}[m.lastgroup]
+        out.append(f'<span class="{cls}">{html.escape(m.group(0))}</span>')
+        pos = m.end()
+    out.append(html.escape(line[pos:]))
+    return "".join(out)
 
 
 # ---------------- 文件清单 ----------------
@@ -1215,8 +1235,9 @@ def build() -> str:
 │   ├── contracts.html               合同管理系统页(列表/客户右模糊筛选/新建+客户弹层)
 │   └── contract_detail.html         合同详情页(读同一条真实记录;查不到的编号如实报"未找到")
 ├── <b>tests/</b>                     框架自身的回归测试(不是被测应用用例)
-│   ├── test_cli_flags.py / test_utf8_io.py / test_cli_exit_codes.py / test_llm_retry.py / test_assert_kinds_render.py
-│   └── verify_*.py                  正/负向端到端验证(需 demo):断言11种 / 跨页4段 / 弹层picker
+│   ├── run_verifications.sh         二类验证统一入口(逐个跑 verify_*.py + 汇总表 + 内存闸)
+│   ├── test_*.py                    一类自测(秒级,不需 demo):CLI 契约 / UTF-8 / 断言翻译 / 质量闸 / 打包 / 门禁解耦
+│   └── verify_*.py                  二类验证(需 demo,含负向证伪):断言正负向 / 跨页 / 弹层 / 元素歧义 / 订单 / 慢目标 / 培训页同步
 ├── <b>output/</b>                    ✅ 运行时证据(probe/plan/heal/trace,可清)
 ├── <b>log/&lt;run_id&gt;/</b>             本次运行 逐用例 .log + report.html + traces(可清)
 ├── README.md                       本框架文档

@@ -303,15 +303,13 @@ hybrid_gui_qa/
 │   ├── assert_kinds_*.json      断言类型示例（search 全类型 / reset 验 value 清空 / modal 验 visible / todo 验 checked）
 │   ├── cross_page_detail.json   跨页流程（列表→详情→返回，含换页 url 断言 + 客户跨页一致断言）
 │   └── ai_*.json                🤖 explore --ai 产出的 AI 用例（前缀隔离，可批量清理；当前 4 条）
-├── tests/                  ★ 框架自身的回归测试（不是被测应用用例）
-│   ├── test_cli_flags.py        CLI 参数契约（未知参数必须 exit 2）
-│   ├── test_utf8_io.py          跨进程/落盘文本必须显式 UTF-8（含 GBK 精确复现 + AST 全仓扫描）
-│   ├── test_cli_exit_codes.py   CLI 退出码契约（pytest 退出码如实传递、缺 scripts/cases → exit 2）
-│   ├── test_llm_retry.py        LLM 抖动退避重试（含「asyncio 未导入」防复发）
-│   ├── test_assert_kinds_render.py  断言 kind→代码翻译契约（秒级，不需要浏览器）
-│   ├── verify_assert_kinds.py   断言正/负向端到端（需 demo；证明写错必 FAILED）
-│   ├── verify_cross_page.py     跨页四段：正向 / 质量闸 / 负向 / **新建→详情页读同一条记录**
-│   └── verify_picker_layer.py   弹层（picker）回归：6 个同名「选择」按钮按行命名收集 + 探完关窗
+├── tests/                  ★ 框架自身的回归测试（不是被测应用用例）· **两类验证**都在这里
+│   ├── run_verifications.sh     ★ 特性验证统一入口：逐个跑 verify_*.py、内存不足如实 SKIP、跑完出汇总表
+│   ├── test_*.py                ① 框架自测（秒级、不需要 demo/key）：CLI 参数与退出码契约 / 跨进程 UTF-8
+│   │                            （含 AST 全仓扫描）/ 断言翻译 / 生成质量闸 / 元素歧义 / 打包契约 /
+│   │                            LLM 重试与录像回放 / **门禁解耦** / **培训页高亮器** …
+│   └── verify_*.py              ② 端到端特性验证（需 demo，**含负向证伪**）：断言正/负向 / 跨页 /
+│                                弹层 picker / 元素歧义 / 订单页与弹层选值 / 慢目标 / **培训页与代码同步**
 ├── scenarios/              ★ AI 场景库（一个文件=一个场景，YAML；explore 的输入源）
 │   ├── README.md                字段契约 + 用法
 │   └── contracts/
@@ -409,11 +407,13 @@ python -m framework.cli --version                # 版本号（读 build_html.py
 pytest scripts/test_cases.py -v                  # 串行(无头)
 pytest scripts/test_cases.py -n 1 --html=log/latest/report.html
 pytest tests/test_cli_flags.py -q                # CLI 参数契约自测（不需要 demo/key，3 秒）
-# 框架自测 + 三个端到端验证脚本（后三个需要 demo 在跑；改了对应模块后顺手跑一次）
-python -m pytest tests/ -q                       # 框架自测 86 条（CLI 契约 / UTF-8 / 断言翻译 / 退出码 / LLM 重试）
-python tests/verify_slow_target.py               # 断言 11 种：正向 4 passed + 负向 15/15 FAILED（防假绿）
-python tests/verify_cross_page.py                 # 跨页四段（含「新建→详情页读同一条记录」）
-python tests/verify_picker_layer.py               # 弹层 picker 回归（6 个同名「选择」按行命名 + 探完关窗）
+# ① 一类：框架自测（秒级，不需要 demo/key）—— 条数以实跑输出为准，随批次增长
+python -m pytest tests/ -q                       # CLI 契约 / UTF-8 / 断言翻译 / 退出码 / 质量闸 / 打包 / 门禁解耦
+# ② 二类：端到端特性验证（需要 demo —— 统一入口会自己起停，跑完给汇总表）
+bash tests/run_verifications.sh                  # 全部 verify_*.py（内存 <550MB 会如实 SKIP，不硬跑）
+bash tests/run_verifications.sh --only slow_target     # 只跑某一个；--list 列出全部
+python tests/verify_slow_target.py               # 慢目标闸门：断言 11 种正向 + 负向 15/15 必须 FAILED（防假绿）
+python tests/verify_html_sync.py                 # R8 判据：培训页能由代码可复现生成 且 与代码逐字节一致
 ```
 
 > **CLI 参数契约（2026-09-13 起）：看不懂的参数一律报错 + exit 2，绝不静默忽略。**
