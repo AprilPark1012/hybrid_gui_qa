@@ -80,9 +80,18 @@ STALE = (
 )
 
 
-def iter_tracked_text_files(repo: Path = REPO):
-    """仓库里被 git 跟踪的文本文件（二进制按 NUL 字节粗判跳过）。"""
-    out = subprocess.run(["git", "ls-files"], cwd=str(repo), capture_output=True,
+def iter_repo_text_files(repo: Path = REPO):
+    """仓库里的文本文件：**已跟踪 + 未跟踪但不被忽略**（与打包脚本的收集口径一致）；二进制按 NUL 粗判跳过。
+
+    ⚠️ 为什么必须带「未跟踪」这一半（2026-09-21 实测踩到，属**假绿**，最坏的一种）：
+    本判据原先只走 `git ls-files`（仅已跟踪）⇒ **新写的文件在提交前根本不在扫描范围内** ——
+    提交前全绿、刚提交就红。人看到「刚才跑过一遍是绿的」就以为查过了，实际漏的就是**新增文件**
+    （而搬家/改名恰恰最爱在新文件里留下旧路径引用，比如新写的测试里照抄老命令）。
+    ⇒ 与 `tools`→`build_tools` 打包脚本的收集口径 `git ls-files --cached --others --exclude-standard`
+    对齐：文件一落到工作区（哪怕还没 add）就被查。
+    """
+    out = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+                         cwd=str(repo), capture_output=True,
                          text=True, encoding="utf-8", errors="replace", check=True).stdout
     for rel in out.splitlines():
         if any(rel.startswith(d) for d in EXEMPT_DIRS) or rel in EXEMPT_FILES:
@@ -122,7 +131,7 @@ def scan_text(rel: str, text: str):
 
 def scan_repo(repo: Path = REPO):
     hits = []
-    for rel, text in iter_tracked_text_files(repo):
+    for rel, text in iter_repo_text_files(repo):
         hits.extend(scan_text(rel, text))
     return hits
 
@@ -215,9 +224,35 @@ def test_exempt_dir_and_file_skipped(tmp_path):
     (tmp_path / "releases").mkdir()
     (tmp_path / "releases" / "RELEASE_NOTES_V1.md").write_text("python tools/pack_release.py\n", encoding="utf-8")
     (tmp_path / "note.md").write_text("python tools/pack_release.py\n", encoding="utf-8")
-    files = [rel for rel, _ in iter_tracked_text_files(tmp_path)] if _has_git(tmp_path) else []
+    files = [rel for rel, _ in iter_repo_text_files(tmp_path)] if _has_git(tmp_path) else []
     # 未初始化 git 的临时目录拿不到跟踪清单 ⇒ 直接验证豁免判定函数本身
     assert all(not rel.startswith(EXEMPT_DIRS) for rel in files)
+def test_negative_untracked_file_is_scanned(tmp_path):
+    """**未跟踪**（但未被忽略）的新文件必须在提交前就被扫到 —— 2026-09-21 实测的假绿盲点。
+
+    原先只扫 `git ls-files`（已跟踪）⇒ 新增文件在提交前不在扫描范围内：提交前全绿、一提交就红；
+    更坏的是「我刚才跑过一遍是绿的」会让人以为已经查过了。本判据已与打包口径对齐
+    （已跟踪 + 未跟踪但不被忽略）—— 本用例就是它的**负向自证**：造一个真 git 仓库，
+    把旧路径写进**未跟踪**的新文件，断言必须被抓到。
+    """
+    subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), check=True)
+    (tmp_path / "tracked.md").write_text("已跟踪、且干净\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.md"], cwd=str(tmp_path), check=True)
+    (tmp_path / "brand_new_test.py").write_text(
+        "python tools/pack_release.py --with-cassettes\n", encoding="utf-8")   # 尚未 git add
+    hits = scan_repo(tmp_path)
+    assert any(rel == "brand_new_test.py" for rel, *_ in hits), \
+        f"未跟踪文件里的旧路径**必须**被抓到（抓不到就是假绿，正是要堵的盲点），实际 {hits}"
+
+
+def test_negative_tracked_clean_file_still_passes(tmp_path):
+    """对照：同一次扫描里，干净文件不许被误伤（假红与假绿一样会摧毁闸门）。"""
+    subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), check=True)
+    (tmp_path / "ok.md").write_text("python build_tools/pack_release.py --with-cassettes\n", encoding="utf-8")
+    subprocess.run(["git", "add", "ok.md"], cwd=str(tmp_path), check=True)
+    assert scan_repo(tmp_path) == [], "新路径不许被判成命中"
+
+
 # r9-legacy-block:end
 
 

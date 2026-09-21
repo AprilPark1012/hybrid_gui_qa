@@ -1,6 +1,8 @@
 """离线一键脚本的「解释器选择」判据（一类 · 秒级 · 不需要真实依赖）。
 
 为什么要有它：2026-09-21 现场反馈 —— 在 Windows 上按文档敲
+r9-legacy-ok（下一行是**当时用户照文档敲的旧命令原文**，用来还原现场；
+V8.0 已把仓库根 tools/ 改名成 build_tools/ —— 这里刻意保留旧写法，请勿「顺手修」成新路径）
 `python tools/offline_explore_chain.py --repo . --run`，脚本报
 `[FAIL] 这个解释器缺依赖：No module named 'dotenv'`，而用户 `pip list` 里明明有 dotenv，
 手动三步（explore / generate / run）却都能跑通。
