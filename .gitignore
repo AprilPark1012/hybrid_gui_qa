@@ -31,10 +31,10 @@ build/
 *.egg-info/
 
 # ============ 发布包库（交付产物落地：仓库内 releases/）============
-# 发版时 tools/pack_release.py 直接输出到这里（--out 默认值）；每次发版一个 zip + 校验值。
+# 发版时 build_tools/pack_release.py 直接输出到这里（--out 默认值）；每次发版一个 zip + 校验值。
 # 口径（2026-09-18 调整）：**交付包 zip/tar.gz 不进仓库**（否则打包脚本「未跟踪但不被忽略」的
 # 收集口径会把它自己套进包里），但 **RELEASE_NOTES_*.md（升级日志）必须入库** ——
-# 它们是交付物的一部分：要能 diff、要能被 tools/pack_release.py 收进交付包。
+# 它们是交付物的一部分：要能 diff、要能被 build_tools/pack_release.py 收进交付包。
 # ⚠️ 规则必须写成 `/releases/*` 而不是 `/releases/`：目录整体被忽略时 git **不会进入该目录**，
 #    后面的 `!` 放行规则会静默失效（升级日志怎么都 add 不进去，且不报错）。
 /releases/*

@@ -4183,7 +4183,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <p class="file-desc">scenarios/*.yml 的解析/校验/发现：一个文件=一个场景，只有 scenario 必填；business_context 喂 AI、assert_guard 既是护栏也进质量闸；<code>data:</code> 从 V7.8 起<b>真展开</b>（一组数据=一条用例，形态写错就报错）。需 PyYAML。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span>&quot;scenario 文件（scenarios/**.yml）的解析、校验与发现。</code></div>
 <div class="code-line"><span class="ln">2</span><code></code></div>
-<div class="code-line"><span class="ln">3</span><code>设计（2026-09-11，详见 docs/P2-scenario文件设计.md）</code></div>
+<div class="code-line"><span class="ln">3</span><code>设计（2026-09-11，见内部设计文档「scenario 文件设计」）</code></div>
 <div class="code-line"><span class="ln">4</span><code>---------------------------------------------------</code></div>
 <div class="code-line"><span class="ln">5</span><code>一个文件 = 一个场景；字段按「谁读它」分五组：</code></div>
 <div class="code-line"><span class="ln">6</span><code>    人读   id / title / description / owner / updated / notes</code></div>
@@ -5816,7 +5816,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1066</span><code></code></div>
 <div class="code-line"><span class="ln">1067</span><code></code></div>
 <div class="code-line"><span class="ln">1068</span><code><span class="c"># ---- 分区（F6）+ 就绪契约（F1）+ 定位等待（F2）—— 2026-09-14 ----</span></code></div>
-<div class="code-line"><span class="ln">1069</span><code><span class="c"># 为什么会需要（团队演示实测，详见 docs/P4-慢目标与并发-修复方案.md）：</span></code></div>
+<div class="code-line"><span class="ln">1069</span><code><span class="c"># 为什么会需要（团队演示实测，见内部设计文档「慢目标与并发修复方案」）：</span></code></div>
 <div class="code-line"><span class="ln">1070</span><code><span class="c">#   ① 被测页面是异步取数（fetch 之后才 render），goto 之后立刻动作/断言，在慢机器/高并发下必假红；</span></code></div>
 <div class="code-line"><span class="ln">1071</span><code><span class="c">#   ② 多 worker 打同一个「有状态」被测服务，精确计数断言互相踩。</span></code></div>
 <div class="code-line"><span class="ln">1072</span><code><span class="c"># 约定：worker 分区号 = PYTEST_XDIST_WORKER（没有 xdist 时为空串 ⇒ 单跑行为与以前完全一致）；</span></code></div>

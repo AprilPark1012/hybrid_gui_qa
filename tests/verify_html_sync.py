@@ -96,7 +96,7 @@ def main() -> int:
     print("-" * 64)
     if bad:
         print(f"  ❌ 未通过：{' / '.join(bad)}")
-        print("     修法：python build_html.py && git add docs/training.html && 提交")
+        print("     修法：python build_tools/build_html.py && git add docs/training.html && 提交")
         return FAIL
     print("  ✅ 全部通过（可复现 + 与代码同步 + 无畸形嵌套）")
     return OK

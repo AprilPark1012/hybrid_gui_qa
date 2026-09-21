@@ -1,6 +1,6 @@
 """scenario 文件（scenarios/**.yml）的解析、校验与发现。
 
-设计（2026-09-11，详见 docs/P2-scenario文件设计.md）
+设计（2026-09-11，见内部设计文档「scenario 文件设计」）
 ---------------------------------------------------
 一个文件 = 一个场景；字段按「谁读它」分五组：
     人读   id / title / description / owner / updated / notes

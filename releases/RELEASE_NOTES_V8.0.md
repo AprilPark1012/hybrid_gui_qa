@@ -107,7 +107,7 @@ python build_tools/offline_explore_chain.py --repo . --run  # 离线一条命令
 
 | 验证 | 命令 | 结果 |
 |---|---|---|
-| 一类自测 | `pytest tests/ -q` | **242 passed**（238 → +4：新增 import 目标判据） |
+| 一类自测 | `pytest tests/ -q` | **267 passed**（242 → +25：新增 R9 搬家判据 + demo 新鲜度闸门；2026-09-21 傍晚修订后实测） |
 | 端到端（确定性链路） | `cli run`（19 个节点，**分批** 5 批跑） | **19 passed / 5 批全 exit 0**（共 29.2s） |
 | 二类特性验证 | `bash tests/run_verifications.sh` + 3 条补跑 | **10 条 ✅ / 0 ⏭️ SKIP（全绿）** ⇒ 见下方逐条真值（判据 2 达成） |
 | 培训页同步 | `python build_tools/build_html.py` + `tests/verify_html_sync.py` | **exit 0**（三条判据全绿） |

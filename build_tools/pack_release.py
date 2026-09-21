@@ -46,6 +46,7 @@ EXCLUDE_SUFFIX = {".zip", ".tar.gz", ".pyc", ".pyo"}
 REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "framework/cli.py",
             "framework/tools/common/text_io.py", "scripts/test_cases.py", "scripts/conftest.py",
             "cases", "tests", "demo", "scenarios")
+# r9-legacy-block:begin —— 历史形态别名：审计**旧包**时按当时的路径形态认（有意保留旧路径）
 # 历史形态别名（2026-09-19）：**结构与文件位置变过，审计历史包不该因此误报**。
 # 先例：升级日志本来就「两种落点都认」（见下面 notes 那段）。这里收纳两次结构调整：
 #   build_html.py → tools/build_html.py      （2026-09-19：从仓库根挪进开发工具目录）
@@ -60,6 +61,7 @@ LEGACY_ALIASES = {
     "framework/tools/common/text_io.py": ("framework/text_io.py",),
     "docs/training.html": ("training.html",),
 }
+# r9-legacy-block:end
 
 
 def _required_hit(req: str, rel) -> tuple[bool, str | None]:

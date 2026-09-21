@@ -44,6 +44,21 @@ if [ "$mem_mb" -lt "$MIN_MEM" ]; then
   exit 3
 fi
 
+# --- demo 新鲜度闸门（R7 前置）--------------------------------------------------
+# 为什么必须先过这道：demo 是**常驻进程**，下面的分支会「已在跑就复用」。
+# 若改过 demo/app.py 或 demo/*.html 却没重启 ⇒ 后面所有端到端验证都跑在**旧页面**上：
+# 用例白跑，而且给出的还是「看起来通过/失败」的结论（2026-09-21 反馈）。
+# 口径：不新鲜 ⇒ 自动重启并等到就绪；重启后仍不新鲜 ⇒ 直接停手（exit 2），绝不在旧版本上继续跑。
+if [ "$USE_DEMO" -eq 1 ] && [ "$LIST_ONLY" -eq 0 ]; then
+  echo "· demo 新鲜度闸门（改了 demo 就必须重启，否则验证白跑）…"
+  "$PY" tests/demo_freshness.py --ensure --start-if-missing
+  frc=$?
+  case "$frc" in
+    0) : ;;
+    *) echo "❌ demo 新鲜度闸门未过（exit $frc）⇒ 停手：不在旧版本 demo 上跑验证"; exit 2 ;;
+  esac
+fi
+
 # --- demo 就绪 ---
 DEMO_PID=""
 demo_up() { "$PY" - "$BASE" <<'PYEOF' 2>/dev/null
@@ -57,7 +72,7 @@ PYEOF
 }
 if [ "$USE_DEMO" -eq 1 ]; then
   if demo_up; then
-    echo "· demo 已在跑（复用，跑完不关）"
+    echo "· demo 已在跑（复用，跑完不关；新鲜度已由上面的闸门保证）"
   else
     echo "· 启动 demo（$BASE）…"
     ( "$PY" -m demo.app >/tmp/run_verifications_demo.log 2>&1 & echo $! > /tmp/run_verifications_demo.pid )

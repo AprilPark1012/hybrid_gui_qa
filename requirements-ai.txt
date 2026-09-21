@@ -2,5 +2,5 @@
 # 无此依赖时，mock 模式照样能跑通整条链路（确定性执行不受影响）
 -r requirements.txt
 browser-use>=0.6.0
-# 场景文件 scenarios/*.yml 需要（framework/scenario.py 用 yaml.safe_load）
+# 场景文件 scenarios/*.yml 需要（framework/tools/generate/scenario.py 用 yaml.safe_load）
 PyYAML>=6.0

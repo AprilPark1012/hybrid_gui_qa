@@ -114,6 +114,6 @@ def test_committed_html_has_no_malformed_nesting():
         return
     t = f.read_text(encoding="utf-8")
     assert "<span <span" not in t, (
-        "docs/training.html 里有畸形 span（共 %d 处）⇒ 用修好的生成器重跑：python build_html.py"
+        "docs/training.html 里有畸形 span（共 %d 处）⇒ 用修好的生成器重跑：python build_tools/build_html.py"
         % t.count("<span <span")
     )

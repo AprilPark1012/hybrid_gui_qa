@@ -140,6 +140,7 @@ def test_collect_broken_imports_flags_bogus_import(tmp_path):
         (d / "__init__.py").write_text("", encoding="utf-8")
     (good / "probe.py").write_text("def probe_page():\n    return None\n", encoding="utf-8")
     bad = tmp_path / "fake.py"
+    # r9-legacy-ok（负向自证：故意写坏的 import 作被测样例，必须保留旧路径形态）
     bad.write_text("from framework.probe import probe_page\n"
                    "from framework.tools.probe.probe import probe_page\n", encoding="utf-8")
     broken = collect_broken_imports(tmp_path)

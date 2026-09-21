@@ -127,6 +127,8 @@ framework/
     └── run/      runner · healer                                                  ④ 执行与自愈
 ```
 
+<!-- r9-legacy-block:begin —— V8.0 破坏性变更对照（左旧右新，**有意保留旧写法**：读者要照它改） -->
+
 | 项 | 内容 |
 |---|---|
 | 破坏性（唯一） | **import 路径变了**：`from framework.probe import …` → `from framework.tools.probe.probe import …`（17 个模块同构映射）；旧路径**不留兼容 shim** |
@@ -134,7 +136,8 @@ framework/
 | 依赖方向 | `common ← probe ← explore ← generate`、`common ← run`，**全部单向、无环**（AST 实测 + import 目标存在性校验） |
 | 版本来源 | 仍是**一处定义**：`framework/tools/common/config.py::VERSION_SOURCE`（cli / llm_cassette / 打包器共用） |
 | 顺带修掉 | `config.py::BASE` 原按 `parent.parent` 推目录，模块挪深后会**静默指错** ⇒ 改成「向上找 `pyproject.toml`」的标记法 |
-| 实测 | 一类 `pytest tests/ -q` **238 passed**（与重构前逐条一致）· 端到端 `cli run` 19 个节点**分批**跑 **19 passed / exit 0** · 二类验证 10 个脚本（详见 `releases/RELEASE_NOTES_V8.0.md`） |
+| 实测 | 一类 `pytest tests/ -q` **242 passed**（V8.0 终值：238 + 新增 import 目标判据 4 条）· 端到端 `cli run` 19 个节点**分批**跑 **19 passed / exit 0** · 二类验证 10 个脚本（详见 `releases/RELEASE_NOTES_V8.0.md`） |
+<!-- r9-legacy-block:end -->
 
 **升级须知（v7.x → v8.0）**：① `cases/` / `scenarios/` / demo **一个字都不用改**；
 ② 只有你自己写的调试脚本若 `import framework.xxx`，按发行说明的映射表改一行路径；
@@ -168,8 +171,8 @@ framework/
 
 | 项 | 结果 |
 |---|---|
-| 结构 | `docs/` 只留 `training.html`；`tools/` = 框架自己的工具（打包器 / 培训页生成器 / 离线一键脚本）（**V8.0 起改名 `build_tools/`**） |
-| 版本来源 | `framework/config.py::VERSION_SOURCE` 一处定义，cli / llm_cassette / 打包器三读者共用（**V8.0 起该文件在 `framework/tools/common/config.py`**） |
+| 结构 | `docs/` 只留 `training.html`；`build_tools/` = 框架自己的工具（打包器 / 培训页生成器 / 离线一键脚本）（**V8.0 起；原名 `tools/`**） |
+| 版本来源 | `framework/tools/common/config.py::VERSION_SOURCE` 一处定义，cli / llm_cassette / 打包器三读者共用（**V8.0 起；旧位置在仓库根同名模块**） |
 | 新增入口 | `tests/run_verifications.sh`（特性验证统一入口，内存不足**如实 SKIP** 不当通过） |
 | 新增判据 | 培训页与代码同步 · 仓库与门禁解耦 · 版本单一来源（含负向）· 打包历史形态（含负向）· 交付两件套 |
 | 实测 | 一类 `pytest tests/ -q` **221 passed** · 二类 `run_verifications.sh` **9/9** · 离线链路端到端 **exit 0** |
@@ -430,7 +433,7 @@ hybrid_gui_qa/
 │                           （heals/ 与 traces/ 由写入方用到时自建，平时不存在）
 ├── log/<run_id>/           本次运行的逐用例 .log + report.html + traces/（run-id 隔离）
 └── docs/                   ★ 培训文档目录（仓库里唯一的对外文档）
-    └── training.html       培训页（由 tools/build_html.py 生成，改代码后重跑即同步）
+    └── training.html       培训页（由 build_tools/build_html.py 生成，改代码后重跑即同步）
 ```
 
 说明：`cases/` 是**你手写的源**；`scripts/` 是 **generate 生成的产物**（脚本+数据分离，可随时重建）；`output/`/`log/` 是运行时痕迹，可清理；
