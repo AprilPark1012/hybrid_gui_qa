@@ -26,7 +26,7 @@ BASE = Path(__file__).resolve().parents[1]
 # 统一 UTF-8：本脚本要跨进程收子进程输出（generate / pytest），口径必须与子进程一致 ——
 # 否则 Windows cp936 下会 `UnicodeDecodeError: 'gbk' codec ...`（与 cli.py 同一个坑）。
 sys.path.insert(0, str(BASE))
-from framework.text_io import UTF8_ENV, force_stdio  # noqa: E402
+from framework.tools.common.text_io import UTF8_ENV, force_stdio  # noqa: E402
 
 force_stdio()
 _U8 = {**os.environ, **UTF8_ENV}      # 给子进程注入 UTF-8 口径

@@ -25,8 +25,8 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .config import CASES_DIR
-from .element_map import ElementMap
+from framework.tools.common.config import CASES_DIR
+from framework.tools.probe.element_map import ElementMap
 
 # action → cases 的 op（同名直映射；不在表内的动作不产出步骤，不静默造假）
 _OP_MAP = {

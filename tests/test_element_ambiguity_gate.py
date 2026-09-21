@@ -17,9 +17,9 @@ import textwrap
 
 import pytest
 
-from framework.probe import assign_semantic_names
-from framework.explorer import _merge_items
-from framework.generator import _record_conflict_bases, UnmappedElementsError
+from framework.tools.probe.probe import assign_semantic_names
+from framework.tools.explore.explorer import _merge_items
+from framework.tools.generate.generator import _record_conflict_bases, UnmappedElementsError
 
 
 def _item(name, ctx="", tid=None, base=None, **kw):
@@ -126,7 +126,7 @@ def test_unmapped_error_keeps_only_conflicting_missing_names():
 
 
 def test_record_conflict_bases_only_records_real_groups():
-    import framework.generator as g
+    import framework.tools.generate.generator as g
     g._CONFLICT_BASES.clear()
     try:
         items = [_item("选择客户", ctx="搜索区", tid="a"), _item("选择客户", ctx="新建合同", tid="b")]
@@ -150,7 +150,7 @@ def test_record_conflict_bases_only_records_real_groups():
 def _materialize_conftest(tmp_path):
     """把 conftest 模板渲染成真文件并加载 —— 得到「生成物里那份」`_item_for`。"""
     import importlib.util
-    import framework.generator as g
+    import framework.tools.generate.generator as g
     path = tmp_path / "conftest_generated.py"
     path.write_text(g._render_conftest(), encoding="utf-8")
     spec = importlib.util.spec_from_file_location("conftest_generated", str(path))
@@ -165,7 +165,7 @@ def _materialize_conftest(tmp_path):
 def _gen_with_index(tmp_path, monkeypatch, index, strict=None):
     if strict is not None:
         monkeypatch.setenv("HYBRID_STRICT_LOCATE", strict)
-    monkeypatch.setattr("framework.probe.probe_page", lambda page: [])   # 不启浏览器
+    monkeypatch.setattr("framework.tools.probe.probe.probe_page", lambda page: [])   # 不启浏览器
     mod = _materialize_conftest(tmp_path)
     mod._INDEX.update(index)
     return mod
@@ -216,7 +216,7 @@ def test_s3_wiring_is_locked_between_template_and_artifact():
     """互锁判据：模板与仓库里的生成物**必须同时**具备 S3 接线，且旧的一行式静默挑法绝迹。"""
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
-    template_src = (root / "framework" / "generator.py").read_text(encoding="utf-8")
+    template_src = (root / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
     artifact_src = (root / "scripts" / "conftest.py").read_text(encoding="utf-8")
     old_silent = "if k and (hint in k or k in hint):"
     for label, src in (("模板(generator.py)", template_src), ("生成物(scripts/conftest.py)", artifact_src)):

@@ -19,7 +19,9 @@ from pathlib import Path
 
 import pytest
 
-from framework import cli, config, generator
+from framework import cli
+from framework.tools.common import config
+from framework.tools.generate import generator
 
 
 def test_run_without_generated_scripts_exits_2(monkeypatch, tmp_path):
@@ -106,10 +108,10 @@ def test_ensure_dirs_only_declares_used_dirs():
     names = [n.strip() for n in m.group(1).replace("\n", " ").split(",") if n.strip()]
     assert names, "ensure_dirs() 一个目录都没声明？"
 
-    repo = Path(config.__file__).resolve().parents[1]
+    repo = config.BASE          # 仓库根（单一来源；config 挪过位置，别再用 parents[N] 推）
     corpus = ""
-    files = (list((repo / "framework").glob("*.py")) + list((repo / "tests").glob("*.py"))
-             + list((repo / "tools").glob("*.py")))
+    files = (list((repo / "framework").rglob("*.py")) + list((repo / "tests").glob("*.py"))
+             + list((repo / "build_tools").glob("*.py")))
     for p in files:
         if p.name == "config.py":
             continue

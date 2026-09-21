@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .config import ELEMENT_MAP_DIR
+from framework.tools.common.config import ELEMENT_MAP_DIR
 
 DEFAULT_KEEP = int(os.environ.get("HYBRID_KEEP_SNAPSHOTS", "20"))
 

@@ -18,7 +18,7 @@
 
 用法
 ----
-    from framework.browser import launch_opts
+    from framework.tools.common.browser import launch_opts
     browser = p.chromium.launch(**launch_opts(headless=True))
 
 生成物（scripts/conftest.py）不 import 本模块 —— generator.py 会把

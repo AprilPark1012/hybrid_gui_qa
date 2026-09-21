@@ -29,8 +29,8 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from framework import cli                                    # noqa: E402
-from framework.target_probe import probe_partitioned, reachability   # noqa: E402
+from framework import cli
+from framework.tools.common.target_probe import probe_partitioned, reachability   # noqa: E402
 
 
 def _free_port() -> int:

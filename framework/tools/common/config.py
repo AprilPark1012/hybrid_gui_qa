@@ -5,7 +5,20 @@ from pathlib import Path
 
 from dotenv import load_dotenv  # type: ignore
 
-BASE = Path(__file__).resolve().parent.parent
+def _repo_root(start: Path) -> Path:
+    """向上找含 pyproject.toml 的目录 = 仓库根。
+
+    为什么不写死 parents[N]：V8.0 结构重构把本文件从 framework/ 挪到 framework/tools/common/，
+    层级一变 parents[N] 就**悄悄**指错（症状是「scripts/test_cases.py 不存在」这类莫名其妙报错）。
+    按标记文件找，以后再挪位置也不会破。
+    """
+    for p in (start, *start.parents):
+        if (p / "pyproject.toml").exists():
+            return p
+    return start
+
+
+BASE = _repo_root(Path(__file__).resolve().parent)
 # 先加载项目 .env（若有，可覆盖），再加载 Hermes 主 .env（复用 DEEPSEEK_API_KEY）
 load_dotenv(BASE / ".env")
 _hermes_env = Path.home() / ".hermes" / ".env"
@@ -22,10 +35,10 @@ TARGET_URL = (os.environ.get("TARGET_URL")
               or "http://localhost:8000")
 
 # ---- 版本号单一来源（2026-09-19 把 build_html.py 挪进 tools/ 时收敛）----
-# 培训页生成器 `tools/build_html.py` 顶部的 VERSION / VERSION_DATE 是**唯一**版本来源。
+# 培训页生成器 `build_tools/build_html.py` 顶部的 VERSION / VERSION_DATE 是**唯一**版本来源。
 # 路径只在这里定义一次；读版本一律走 read_version()（cli / llm_cassette / pack_release 共用）
 # ⇒ 以后再挪位置只改这一行；漏改会被 tests/test_cli_flags.py 的判据当场抓住（--version 不许变 unknown）。
-VERSION_SOURCE = BASE / "tools" / "build_html.py"
+VERSION_SOURCE = BASE / "build_tools" / "build_html.py"
 
 
 def read_version() -> tuple[str, str]:

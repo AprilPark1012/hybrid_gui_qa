@@ -33,7 +33,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from framework.text_io import UTF8_ENV, force_stdio, run_capture, utf8_env  # noqa: E402
+from framework.tools.common.text_io import UTF8_ENV, force_stdio, run_capture, utf8_env  # noqa: E402
 
 SKIP_DIRS = {".venv", "__pycache__", ".pytest_cache", "log", "output",
              "node_modules"}
@@ -141,7 +141,7 @@ def _middle_locale_from(out: str) -> str | None:
 _PROBE = r'''
 import locale, os, subprocess, sys, tempfile
 sys.path.insert(0, r"{repo}")
-from framework.text_io import force_stdio, run_capture
+from framework.tools.common.text_io import force_stdio, run_capture
 # ⚠️ 顺序要紧：**先读默认编码，再 force_stdio()** —— force_stdio 会把 PYTHONUTF8 写进 os.environ，
 #    而 UTF-8 模式下 `locale.getpreferredencoding()` 会返回 utf-8 ⇒ 那读到的就不是「默认编码」了。
 print("MIDDLE_LOCALE=", locale.getpreferredencoding(False))
@@ -208,7 +208,7 @@ def test_cli_output_is_utf8_even_under_gbk_locale():
 
 def test_fs_encoding_warning_only_fires_off_utf8():
     """文件名按「文件系统编码」落地 ⇒ 非 UTF-8（中文 Windows/GBK locale）必须大声提醒，UTF-8 时闭嘴。"""
-    from framework.text_io import fs_encoding_warning
+    from framework.tools.common.text_io import fs_encoding_warning
     assert fs_encoding_warning("utf-8") is None
     assert fs_encoding_warning("UTF-8") is None
     assert fs_encoding_warning("utf8") is None
@@ -253,7 +253,7 @@ def test_verify_cases_does_not_crash_under_gbk_locale(tmp_path):
     probe.write_text(
         'import sys\n'
         f'sys.path.insert(0, r"{REPO}")\n'
-        'from framework.text_io import force_stdio\n'
+        'from framework.tools.common.text_io import force_stdio\n'
         'force_stdio()\n'
         'from framework.cli import _verify_cases\n'
         'res = _verify_cases([("UTF-8复现", "nonexistent_case_for_encoding_test")])\n'
@@ -383,7 +383,7 @@ def test_no_locale_dependent_text_io_in_source():
                     and isinstance(fn.value, ast.Name) and fn.value.id == "subprocess"):
                 if (_kw(node, "text") or _kw(node, "universal_newlines")) and not _kw(node, "encoding"):
                     bad.append(f"{rel} subprocess.{fn.attr}(text=True) 缺 encoding= "
-                               f"（改用 framework.text_io.run_capture）")
+                               f"（改用 framework.tools.common.text_io.run_capture）")
             if isinstance(fn, ast.Attribute) and fn.attr in ("read_text", "write_text"):
                 if not _kw(node, "encoding"):
                     bad.append(f"{rel} .{fn.attr}() 缺 encoding=\"utf-8\"")
@@ -411,6 +411,6 @@ def test_cli_main_calls_force_stdio_first():
 
 def test_generated_conftest_template_carries_utf8_bootstrap():
     """生成的 scripts/conftest.py 必须自带 UTF-8 自举（裸跑 pytest 也不炸）。"""
-    from framework.generator import _CONFTEST_TEMPLATE
+    from framework.tools.generate.generator import _CONFTEST_TEMPLATE
     assert 'reconfigure(encoding="utf-8"' in _CONFTEST_TEMPLATE
     assert "SetConsoleOutputCP(65001)" in _CONFTEST_TEMPLATE

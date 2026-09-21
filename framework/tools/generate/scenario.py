@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-from .config import SCENARIOS_DIR
+from framework.tools.common.config import SCENARIOS_DIR
 
 _ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _EXTS = (".yml", ".yaml")

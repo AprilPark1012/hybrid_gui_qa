@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 # 统一 UTF-8：本脚本会把子进程（pytest）输出打回控制台 —— 不拉齐口径时，中文 Windows
 # （cp936 控制台）上那些 UTF-8 字节会显示成 `Ԫ��δӳ��` 这类乱码（2026-09-15 实测）。
-from framework.text_io import force_stdio                     # noqa: E402
+from framework.tools.common.text_io import force_stdio                     # noqa: E402
 
 force_stdio()
 

@@ -10,10 +10,10 @@
   ⇒ 铁律：**自检只用标准库（zipfile / hashlib），绝不依赖外部解压命令**；判据不过就非 0 退出、不留半成品包。
 
 用法：
-  python tools/pack_release.py                     # 打包（自检不过不出包）
-  python tools/pack_release.py --out /tmp/pkg
-  python tools/pack_release.py --check <zip>       # 只审计已有包，不打包（可审计历史包）
-  python tools/pack_release.py --allow-broken-artifacts   # 调试用逃生口（会大声警告）
+  python build_tools/pack_release.py                     # 打包（自检不过不出包）
+  python build_tools/pack_release.py --out /tmp/pkg
+  python build_tools/pack_release.py --check <zip>       # 只审计已有包，不打包（可审计历史包）
+  python build_tools/pack_release.py --allow-broken-artifacts   # 调试用逃生口（会大声警告）
 """
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from framework import config                               # noqa: E402
-from framework.text_io import force_stdio, run_capture      # noqa: E402
+from framework.tools.common import config
+from framework.tools.common.text_io import force_stdio, run_capture      # noqa: E402
 
 # 不进包的东西（与 .gitignore 口径一致 + 交付无关产物）
 EXCLUDE_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache", "log", "output",
@@ -43,17 +43,21 @@ RELEASES_DIRNAME = "releases"
 RELEASE_NOTES_GLOB = "RELEASE_NOTES_*.md"
 EXCLUDE_SUFFIX = {".zip", ".tar.gz", ".pyc", ".pyo"}
 # 包里必须有的东西（少一个说明包不完整）
-REQUIRED = ("README.md", "tools/build_html.py", "docs/training.html", "framework/cli.py",
-            "framework/text_io.py", "scripts/test_cases.py", "scripts/conftest.py",
+REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "framework/cli.py",
+            "framework/tools/common/text_io.py", "scripts/test_cases.py", "scripts/conftest.py",
             "cases", "tests", "demo", "scenarios")
 # 历史形态别名（2026-09-19）：**结构与文件位置变过，审计历史包不该因此误报**。
 # 先例：升级日志本来就「两种落点都认」（见下面 notes 那段）。这里收纳两次结构调整：
-#   build_html.py → tools/build_html.py  （2026-09-19 挪进工具目录）
+#   build_html.py → tools/build_html.py      （2026-09-19：从仓库根挪进开发工具目录）
+#                    → build_tools/build_html.py （V8.0 结构重构：开发期工具统一进 build_tools/）
+#   framework/<模块>.py → framework/tools/<层>/<模块>.py （V8.0 业务流程分层重构）
 #   training.html → docs/training.html    （2026-09-19 归位 docs/）
 # ⚠️ 只影响**必需项审计**：新包一定按当前仓库布局打包 ⇒「两个位置都没有」时照样报缺项，
 #    别名绝不会放过真缺项（负向判据见 tests/test_pack_release.py）。
 LEGACY_ALIASES = {
-    "tools/build_html.py": ("build_html.py",),
+    # 键 = 当前 REQUIRED 路径；值 = 历史形态候选（结构变更前的包里可能是这些）
+    "build_tools/build_html.py": ("tools/build_html.py", "build_html.py"),
+    "framework/tools/common/text_io.py": ("framework/text_io.py",),
     "docs/training.html": ("training.html",),
 }
 
@@ -73,7 +77,7 @@ REQUIRED_CONFTEST = ("_act", "_goto", "_reset_target_data", "_assert_text", "_as
 
 
 def _version() -> tuple[str, str]:
-    """版本号从 `tools/build_html.py` 读（**版本单一来源**，路径定义在 framework/config.py）；读不到就如实说 unknown。"""
+    """版本号从 `build_tools/build_html.py` 读（**版本单一来源**，路径定义在 framework/tools/common/config.py）；读不到就如实说 unknown。"""
     v, d = config.read_version()
     return (v, d or date.today().isoformat())
 
@@ -201,7 +205,7 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
 # 结果是「录像包」这条交付形态没有任何判据、路径也容易漂（旧脚本里就残留着 build_html.py 的老路径）。
 # 现在与代码包同一个打包器管：代码包**不含**录像（output/ 永不进包），录像单独一件。
 CASSETTE_SRC = REPO / "output" / "llm_cassettes"
-CASSETTE_HELPER = REPO / "tools" / "offline_explore_chain.py"
+CASSETTE_HELPER = REPO / "build_tools" / "offline_explore_chain.py"
 
 CASSETTE_README = """# hybrid_gui_qa · LLM 录像包（在**连不上外网**的机器上跑 explore 用）
 
@@ -213,8 +217,8 @@ CASSETTE_README = """# hybrid_gui_qa · LLM 录像包（在**连不上外网**�
 而且**不需要 API key、全程不联网**。
 
 ## 交付形态 = 两件套（都用上才完整）
-1. **代码包** `hybrid_gui_qa_V<版本>_<日期>.zip` —— 含回放引擎 `framework/llm_cassette.py`
-   与一键脚本 `tools/offline_explore_chain.py`
+1. **代码包** `hybrid_gui_qa_V<版本>_<日期>.zip` —— 含回放引擎 `framework/tools/explore/llm_cassette.py`
+   与一键脚本 `build_tools/offline_explore_chain.py`
 2. **本录像包** —— 含录像数据 `llm_cassettes/` + 一份用法说明
 
 ## 最快上手（一条命令，含前置体检）
@@ -223,7 +227,7 @@ CASSETTE_README = """# hybrid_gui_qa · LLM 录像包（在**连不上外网**�
 2. 起被测 demo：`python -m demo.app`
 3. 跑：
    ```
-   python tools/offline_explore_chain.py --repo . --run
+   python build_tools/offline_explore_chain.py --repo . --run
    ```
    它依次做：① 前置体检（代码是否含回放 / 录像份数 / demo 是否可达 / 依赖是否齐）
    ② `explore --ai --llm-cassette` 回放识别控件 ③ `generate`（要求未映射 0）
@@ -259,7 +263,7 @@ python -m framework.cli explore --ai --scenario-dir scenarios/ --llm-record --no
 改 demo 页面 / 场景文案 / 命名逻辑后**必须重录并重打本包**。
 
 ## 包内清单
-- `tools/offline_explore_chain.py` · 一条命令跑通「回放 → generate → run」+ 前置体检
+- `build_tools/offline_explore_chain.py` · 一条命令跑通「回放 → generate → run」+ 前置体检
 - `llm_cassettes_README.md` · 本文件
 - 录像 {n} 份（场景 → 键 → 录制时间 → 大小）：
 {listing}
@@ -294,7 +298,7 @@ def pack_cassettes(out_dir: Path, ver: str) -> Path | None:
             z.write(f, f"llm_cassettes/{f.name}")
         z.writestr("llm_cassettes_README.md", readme)
         if CASSETTE_HELPER.exists():
-            z.write(CASSETTE_HELPER, f"tools/{CASSETTE_HELPER.name}")
+            z.write(CASSETTE_HELPER, f"build_tools/{CASSETTE_HELPER.name}")
     with zipfile.ZipFile(zp) as z:            # 自检：别把「打出来是坏的」发出去
         broken = z.testzip()
         n_json = sum(1 for n in z.namelist() if n.endswith(".json"))

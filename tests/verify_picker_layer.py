@@ -26,13 +26,13 @@ sys.path.insert(0, str(BASE))
 
 # 统一 UTF-8：本脚本会打印子进程/页面的中文 —— 不拉齐口径时中文 Windows（cp936 控制台）
 # 会把 UTF-8 字节显示成乱码（2026-09-15 实测：verify_slow_target 的失败文案 `Ԫ��δӳ��`）。
-from framework.text_io import force_stdio                   # noqa: E402
+from framework.tools.common.text_io import force_stdio                   # noqa: E402
 
 force_stdio()
 
-from framework.browser import launch_opts                  # noqa: E402
-from framework.probe import probe_page                     # noqa: E402
-from framework.explorer import (                           # noqa: E402
+from framework.tools.common.browser import launch_opts                  # noqa: E402
+from framework.tools.probe.probe import probe_page                     # noqa: E402
+from framework.tools.explore.explorer import (                           # noqa: E402
     _try_collect_modal_items, _LAYER_RENDER_WAIT_S, _LAYER_POLL_MS, _wait_fresh_items,
 )
 from playwright.sync_api import sync_playwright            # noqa: E402
@@ -55,7 +55,7 @@ def check(ok: bool, desc: str, detail: str = "") -> None:
 def main() -> int:
     # —— 一、静态判据：等待必须是有界的（回归「固定 sleep(300)」）——
     print("===== 一、等待策略必须是有界轮询（防复发：曾经的固定 sleep(300)）=====")
-    src = (BASE / "framework" / "explorer.py").read_text(encoding="utf-8")
+    src = (BASE / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
     check("_LAYER_RENDER_WAIT_S" in src and "_LAYER_POLL_MS" in src,
           "存在有界等待常量", f"({_LAYER_RENDER_WAIT_S}s / 每 {_LAYER_POLL_MS}ms 一轮)")
     check("_wait_fresh_items" in src, "点开一层走 _wait_fresh_items（轮询）")
@@ -66,7 +66,7 @@ def main() -> int:
     # 记 probe 调用次数：判定「有界轮询」靠的是**探测轮数**（确定性），
     # 而不是墙上时间 —— probe 本身要读几十个元素的属性，单次就要几秒，
     # 拿秒数当判据只会写出一条忽红忽绿的脆弱断言。
-    import framework.probe as probe_mod
+    import framework.tools.probe.probe as probe_mod
     _real_probe = probe_mod.probe_page
     calls: list[float] = []
 

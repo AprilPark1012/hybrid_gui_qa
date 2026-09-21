@@ -16,8 +16,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from framework import explorer  # noqa: E402
-from framework.llm_cassette import (MODE_RECORD, MODE_REPLAY, Cassette, CassetteError,  # noqa: E402
+from framework.tools.explore import explorer
+from framework.tools.explore.llm_cassette import (MODE_RECORD, MODE_REPLAY, Cassette, CassetteError,  # noqa: E402
                                     cassette_key, render_miss_help, struct_key)
 
 ITEMS = [
@@ -63,7 +63,7 @@ def _no_llm(monkeypatch):
     """把 LLM 工厂换成「一被调用就炸」——用来证明某条路径根本没碰它。"""
     def _boom():
         raise AssertionError("这条路径不该构造 LLM 对象（回放必须完全不联网）")
-    monkeypatch.setattr("framework.config.llm_from_env", _boom)
+    monkeypatch.setattr("framework.tools.common.config.llm_from_env", _boom)
 
 
 # ---------------------------------------------------------------- 键
@@ -187,7 +187,7 @@ def test_replay_bad_recording_fails_loud(tmp_path, monkeypatch):
 def test_record_then_replay_same_steps(tmp_path, monkeypatch):
     """录一次 → 用录像回放 ⇒ 结果与录制那次一致（这是「离线可跑」的硬证据）。"""
     fake = _FakeLLM()
-    monkeypatch.setattr("framework.config.llm_from_env", lambda: fake)
+    monkeypatch.setattr("framework.tools.common.config.llm_from_env", lambda: fake)
     rec_cass = Cassette(MODE_RECORD, tmp_path)
     live = _run_explore(rec_cass)
     assert fake.calls == 1 and rec_cass.saves == 1
@@ -205,7 +205,7 @@ def test_record_store_failure_does_not_break_explore(tmp_path, monkeypatch):
     这里的口径：store 抛错 → 由上层显现（本用例只钉住「store 的异常不会被悄悄吞掉」）。
     """
     fake = _FakeLLM()
-    monkeypatch.setattr("framework.config.llm_from_env", lambda: fake)
+    monkeypatch.setattr("framework.tools.common.config.llm_from_env", lambda: fake)
     cass = Cassette(MODE_RECORD, tmp_path)
     def _boom(*a, **k):
         raise OSError("磁盘满")
@@ -217,7 +217,7 @@ def test_record_store_failure_does_not_break_explore(tmp_path, monkeypatch):
 def test_no_cassette_means_live_only(tmp_path, monkeypatch):
     """不带 cassette → 行为与加本功能之前一致（只调 LLM，不落任何录像）。"""
     fake = _FakeLLM()
-    monkeypatch.setattr("framework.config.llm_from_env", lambda: fake)
+    monkeypatch.setattr("framework.tools.common.config.llm_from_env", lambda: fake)
     emap = asyncio.run(explorer._ai_explore_async(SCENARIO, ITEMS, URL))
     assert [s.element.semantic_name for s in emap.steps if s.element] == ["搜索按钮"]
     assert list(tmp_path.glob("*.json")) == []
@@ -241,7 +241,7 @@ def test_error_message_keeps_real_cause(tmp_path, monkeypatch):
         async def ainvoke(self, msgs, output_format=None):
             raise RuntimeError("Connection error.")
 
-    monkeypatch.setattr("framework.config.llm_from_env", lambda: _Boom())
+    monkeypatch.setattr("framework.tools.common.config.llm_from_env", lambda: _Boom())
     monkeypatch.setenv("HYBRID_LLM_ATTEMPTS", "1")
     with pytest.raises(explorer.AiExploreError) as ei:
         asyncio.run(explorer._ai_explore_async(SCENARIO, ITEMS, URL))
@@ -264,7 +264,7 @@ def test_cli_flags_registered_for_explore_only():
 
 def test_cli_rejects_conflicting_and_wrong_command():
     import subprocess
-    from framework.text_io import run_capture
+    from framework.tools.common.text_io import run_capture
 
     def _cli(*args):
         return run_capture([sys.executable, "-m", "framework.cli", *args],
@@ -293,7 +293,7 @@ def test_ai_explore_accepts_cassette(tmp_path, monkeypatch):
     monkeypatch.setattr(explorer, "_collect_page_context",
                         lambda items, url, pages=None: (ITEMS, [], "", [], []))
     fake = _FakeLLM()
-    monkeypatch.setattr("framework.config.llm_from_env", lambda: fake)
+    monkeypatch.setattr("framework.tools.common.config.llm_from_env", lambda: fake)
     emap = explorer.ai_explore(SCENARIO, [], URL, llm_cassette=Cassette(MODE_RECORD, tmp_path))
     assert emap.steps and fake.calls == 1
     assert len(list(tmp_path.glob("*.json"))) == 1
@@ -361,7 +361,7 @@ def test_struct_key_survives_probe_order_change(tmp_path):
 
 def test_replay_uses_struct_key_when_data_changes(tmp_path, monkeypatch):
     """换一批数据（同结构）⇒ 仍能回放成功（这条就是「工作电脑能不能用」的核心断言）。"""
-    monkeypatch.setattr("framework.config.llm_from_env", lambda: _FakeLLM())
+    monkeypatch.setattr("framework.tools.common.config.llm_from_env", lambda: _FakeLLM())
     _run_explore(Cassette(MODE_RECORD, tmp_path))                       # 录：数据 A
     _no_llm(monkeypatch)                                                # 放：不碰 LLM
     emap = _run_explore(Cassette(MODE_REPLAY, tmp_path), items=_items_with_other_data())
@@ -370,7 +370,7 @@ def test_replay_uses_struct_key_when_data_changes(tmp_path, monkeypatch):
 
 def test_strict_replay_fails_when_data_changes(tmp_path, monkeypatch):
     """--llm-cassette-strict：数据变了就不许命中（宁可不跑，也不拿旧数据下的判断充数）。"""
-    monkeypatch.setattr("framework.config.llm_from_env", lambda: _FakeLLM())
+    monkeypatch.setattr("framework.tools.common.config.llm_from_env", lambda: _FakeLLM())
     _run_explore(Cassette(MODE_RECORD, tmp_path))
     _no_llm(monkeypatch)
     with pytest.raises(explorer.AiExploreError) as ei:

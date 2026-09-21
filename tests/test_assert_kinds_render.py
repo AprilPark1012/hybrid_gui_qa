@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-import framework.generator as gen
-from framework.generator import (_ASSERT_KINDS, _add_payload_refs, _dup_raw_names_for_case,
+import framework.tools.generate.generator as gen
+from framework.tools.generate.generator import (_ASSERT_KINDS, _add_payload_refs, _dup_raw_names_for_case,
                                  _extract_data, _render_assert, _render_pytest_case)
 
 LOC = {"搜索": 'get_by_test_id("btn-search")'}

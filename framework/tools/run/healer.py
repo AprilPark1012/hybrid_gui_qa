@@ -22,9 +22,9 @@ import json
 import datetime as _dt
 from dataclasses import dataclass
 from playwright.sync_api import Page
-from .element_map import ElementRef, TestStep
-from .locator_bridge import resolve_locator, TIER2_THRESHOLD, TIER2_MINGAP
-from .config import HEALS_DIR
+from framework.tools.probe.element_map import ElementRef, TestStep
+from framework.tools.probe.locator_bridge import resolve_locator, TIER2_THRESHOLD, TIER2_MINGAP
+from framework.tools.common.config import HEALS_DIR
 
 
 @dataclass
@@ -92,7 +92,7 @@ class Healer:
         if r["ok"]:
             return r
         # Level-B：可选 LLM 语义重猜（无 key 自动跳过）
-        from .config import auto_detect_llm
+        from framework.tools.common.config import auto_detect_llm
         if auto_detect_llm():
             r = self._llm_renegotiate(page, el)
             return r
@@ -101,9 +101,9 @@ class Healer:
     def _llm_renegotiate(self, page: Page, el: ElementRef) -> dict:
         """LLM 语义重猜：抓 DOM 语义快照 → LLM 挑最接近元素 → 唯一性校验。"""
         import json as _json
-        from .probe import probe_page
+        from framework.tools.probe.probe import probe_page
         candidates = probe_page(page)
-        from .config import llm_from_env
+        from framework.tools.common.config import llm_from_env
         from browser_use.llm import ChatOpenAI, ChatAnthropic, ChatGoogle  # noqa
         try:
             llm = llm_from_env()

@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-GEN = ROOT / "framework" / "generator.py"
+GEN = ROOT / "framework" / "tools" / "generate" / "generator.py"
 CONFTEST = ROOT / "scripts" / "conftest.py"
 TESTS_PY = ROOT / "scripts" / "test_cases.py"
 CLI = ROOT / "framework" / "cli.py"
@@ -152,7 +152,7 @@ def test_cli_downgrade_or_explicit_declaration(extra, expect):
 
 
 def test_target_probe_returns_none_for_unknown_target():
-    from framework.target_probe import probe_partitioned, _base_url
+    from framework.tools.common.target_probe import probe_partitioned, _base_url
     ok, why = probe_partitioned("http://127.0.0.1:9")
     assert ok is None and "未声明" in why
     assert _base_url("http://x:1/") == "http://x:1"

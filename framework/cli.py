@@ -25,13 +25,13 @@ from __future__ import annotations
 import sys
 from typing import NoReturn
 
-from . import config
-from .config import ensure_dirs, TARGET_URL, LOG_DIR
-from .probe import probe_page
-from .browser import launch_opts
-from .limits import safe_workers
-from .retention import DEFAULT_KEEP as KEEP_SNAPSHOTS, prune_snapshots
-from .text_io import force_stdio, fs_encoding_warning, run_capture, utf8_env
+from framework.tools.common import config
+from framework.tools.common.config import ensure_dirs, TARGET_URL, LOG_DIR
+from framework.tools.probe.probe import probe_page
+from framework.tools.common.browser import launch_opts
+from framework.tools.common.limits import safe_workers
+from framework.tools.common.retention import DEFAULT_KEEP as KEEP_SNAPSHOTS, prune_snapshots
+from framework.tools.common.text_io import force_stdio, fs_encoding_warning, run_capture, utf8_env
 
 
 def _now() -> str:
@@ -125,7 +125,7 @@ def cmd_probe():
     # ---- 目标可达性预检（V7.5.1）：先回答「活没活」，别让 Playwright 甩一屏 traceback ----
     # 2026-09-15 实测：demo 没起时 `pg.goto()` 抛 `net::ERR_CONNECTION_REFUSED` + exit 1，
     # 现象像「框架坏了」，其实是一句「demo 没启动」。环境问题要给动作，不是给栈。
-    from .target_probe import reachability
+    from framework.tools.common.target_probe import reachability
     ok, why = reachability(TARGET_URL)
     if not ok:
         print(f"\n[probe] ❌ 探测没跑：{why}")
@@ -134,7 +134,7 @@ def cmd_probe():
         raise SystemExit(2)
     from playwright.sync_api import sync_playwright
     import json
-    from .explorer import _try_collect_modal_items, _merge_items
+    from framework.tools.explore.explorer import _try_collect_modal_items, _merge_items
     with sync_playwright() as p:
         b = p.chromium.launch(**launch_opts(headless=True))
         pg = b.new_page()
@@ -164,7 +164,7 @@ def _report_unmapped(e) -> NoReturn:
         print(f"[generate]    现场 probe 失败：{e.probe_error}")
         # 先把「活没活」查清楚再给结论（旧版本这里只会猜「多半是目标没起」）
         try:
-            from .target_probe import reachability
+            from framework.tools.common.target_probe import reachability
             ok, why = reachability(TARGET_URL)
         except Exception as _e:                       # 预检本身失败不该盖住原始错误
             ok, why = True, f"(可达性预检失败: {_e})"
@@ -234,8 +234,8 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
     """
     ensure_dirs()
     from pathlib import Path as _P
-    from .case_builder import CaseQualityError
-    from .generator import DataSetsError, UnmappedElementsError, generate_scripts
+    from framework.tools.generate.case_builder import CaseQualityError
+    from framework.tools.generate.generator import DataSetsError, UnmappedElementsError, generate_scripts
     rest = rest or []
     map_path = None
     if "--element-map" in rest:
@@ -301,7 +301,7 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
     pages（P3 跨页）：[{"name","url","page"}, ...]；给了 ≥2 页就按跨页模式探测与规划，
     `url` 此时应为第一页地址（explore 的 goto 起点）。
     """
-    from .explorer import ai_explore
+    from framework.tools.explore.explorer import ai_explore
     prefix = f"【{label}】" if label else ""
     # 刻意不在外面探测：ai_explore 内部会探测（且会打开弹窗补表单控件）。
     # 2026-09-11 修复：旧写法先探一次再交给 ai_explore ⇒ 连开两个 Chromium，内存吃紧时
@@ -330,8 +330,8 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
         # 复核的人不用回忆当时敲了什么命令（回放 ≠ 实时 AI，必须看得见）。
         extra = {**(extra or {}), "llm_source": cassette.source_tag()}
     if to_cases and not mock_fallback:
-        from .case_builder import CaseQualityError as _CaseQE
-        from .case_builder import elementmap_to_cases_file
+        from framework.tools.generate.case_builder import CaseQualityError as _CaseQE
+        from framework.tools.generate.case_builder import elementmap_to_cases_file
         try:
             cpath, warns = elementmap_to_cases_file(emap, case_id=case_id, extra=extra, guard=guard_spec)
         except _CaseQE as e:
@@ -351,7 +351,7 @@ def cmd_explore(rest: list[str] = None):
 
     三种入口（**互斥**，只给一个；都不给用内置默认场景）：
       --scenario "…"                     内联自然语言（原样保留）
-      --scenario-file scenarios/x.yml    单个场景文件（见 framework/scenario.py）
+      --scenario-file scenarios/x.yml    单个场景文件（见 framework/tools/generate/scenario.py）
       --scenario-dir scenarios/          目录批量（可配 --tag / --limit）
 
     开关：
@@ -384,7 +384,7 @@ def cmd_explore(rest: list[str] = None):
 
     # ---------- LLM 录像：录制 / 回放（2026-09-18）----------
     # **只在显式给参数时启用** —— 默认一个字节都不变（实时调用），绝不自动切换模式。
-    from .llm_cassette import MODE_RECORD, MODE_REPLAY, Cassette, CassetteError
+    from framework.tools.explore.llm_cassette import MODE_RECORD, MODE_REPLAY, Cassette, CassetteError
     has_rec = "--llm-record" in rest or any(a.startswith("--llm-record=") for a in rest)
     has_rep = "--llm-cassette" in rest or any(a.startswith("--llm-cassette=") for a in rest)
     if has_rec and has_rep:
@@ -422,7 +422,7 @@ def cmd_explore(rest: list[str] = None):
         print(f"[explore] ❌ 参数互斥：{'、'.join(g[0] for g in given)} 只能给一个（不猜你的意图）")
         raise SystemExit(2)
 
-    from .case_builder import make_case_id_from_scenario_id
+    from framework.tools.generate.case_builder import make_case_id_from_scenario_id
 
     def _job_from_scenario(sc, scenario_text: str) -> dict:
         pgs = [p.to_dict() for p in sc.all_pages()]
@@ -438,7 +438,7 @@ def cmd_explore(rest: list[str] = None):
     jobs: list[dict] = []
     if sdir:
         from pathlib import Path
-        from .scenario import ScenarioError, discover_scenarios
+        from framework.tools.generate.scenario import ScenarioError, discover_scenarios
         tags = _arg_values(rest, "--tag")
         lim = _arg_value(rest, "--limit")
         try:
@@ -454,7 +454,7 @@ def cmd_explore(rest: list[str] = None):
             jobs.append(_job_from_scenario(sc, sc.scenario))
     elif sfile:
         from pathlib import Path
-        from .scenario import ScenarioError, load_scenario_file
+        from framework.tools.generate.scenario import ScenarioError, load_scenario_file
         try:
             sc = load_scenario_file(Path(sfile))
         except ScenarioError as e:
@@ -473,7 +473,7 @@ def cmd_explore(rest: list[str] = None):
         ))
 
     # ---------- 逐条跑 ----------
-    from .explorer import AiExploreError
+    from framework.tools.explore.explorer import AiExploreError
     done: list[tuple[str, str]] = []
     last_emap = None
     for idx, job in enumerate(jobs, 1):
@@ -518,7 +518,7 @@ def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
     entries: [(label, case_name)] —— label 用于批量时标明是哪条场景。
     返回 True=全部实测通过 / False=有失败 / None=校验没能执行（环境问题，不判死刑）。
     """
-    from .config import SCRIPTS_DIR
+    from framework.tools.common.config import SCRIPTS_DIR
 
     if not entries:
         return None
@@ -609,7 +609,7 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
     ensure_dirs()
     import os
     import subprocess
-    from .config import SCRIPTS_DIR
+    from framework.tools.common.config import SCRIPTS_DIR
     tests = SCRIPTS_DIR / "test_cases.py"
     if not tests.exists():
         print("[run] ❌ scripts/test_cases.py 不存在 → 没有可跑的东西（先跑 generate）")
@@ -639,7 +639,7 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
             print(f"[run] 并发隔离：已显式声明（--isolated-target / HYBRID_ISOLATED_TARGET=1）"
                   f" → 保持 {n} worker")
         else:
-            from .target_probe import probe_partitioned
+            from framework.tools.common.target_probe import probe_partitioned
             capable, why_p = probe_partitioned()
             if capable:
                 print(f"[run] 并发隔离：{why_p} → 保持 {n} worker（框架会给每个 worker 注入独立数据分区）")
@@ -846,7 +846,7 @@ def _print_help(cmd: str | None = None) -> None:
 
 
 def _version() -> str:
-    """版本号读 `tools/build_html.py`（**版本单一来源**）；读不到就如实说 unknown，不编。"""
+    """版本号读 `build_tools/build_html.py`（**版本单一来源**）；读不到就如实说 unknown，不编。"""
     try:
         import re
         src = config.VERSION_SOURCE.read_text(encoding="utf-8")

@@ -27,7 +27,7 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE))
-from framework.text_io import force_stdio  # noqa: E402
+from framework.tools.common.text_io import force_stdio  # noqa: E402
 
 force_stdio()
 DEMO = "http://localhost:8000"
@@ -130,7 +130,7 @@ def run() -> None:
           "服务端声明能力：弹层内可临时新建客户/销售员", f"cust_create={h.get('cust_create')}")
 
     from playwright.sync_api import sync_playwright
-    from framework.browser import launch_opts
+    from framework.tools.common.browser import launch_opts
 
     with sync_playwright() as p:
         b = p.chromium.launch(**launch_opts())

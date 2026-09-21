@@ -9,7 +9,7 @@
 
 判据（每条都在 /tmp 里做，仓库零副作用）：
 1. 代码包能打出且包内自检通过，并且**不含录像**（`output/` 永不进包 —— 运行时数据不进交付物）
-2. 录像包能打出，且含：录像 `llm_cassettes/*.json` + 用法说明 + 一键脚本 `tools/offline_explore_chain.py`
+2. 录像包能打出，且含：录像 `llm_cassettes/*.json` + 用法说明 + 一键脚本 `build_tools/offline_explore_chain.py`
 3. 录像包的用法说明里必须写清「端点指黑洞 127.0.0.1:9」（可证伪性：证明真的没联网）
 4. `SHA256SUMS.txt` 与目录里**现存包**逐个 sha256 一致（清单不许与事实脱节）
 
@@ -46,8 +46,8 @@ def main() -> int:
     print("  交付形态判据 · 离线链路「两件套」（代码包 + 录像包）")
     print(f"  仓库: {BASE}")
     print("=" * 64)
-    if not (BASE / "tools" / "pack_release.py").exists():
-        print("  ⏭️ 跳过：找不到 tools/pack_release.py")
+    if not (BASE / "build_tools" / "pack_release.py").exists():
+        print("  ⏭️ 跳过：找不到 build_tools/pack_release.py")
         return SKIP
 
     cass = sorted((BASE / "output" / "llm_cassettes").glob("*.json"))
@@ -59,7 +59,7 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="verify_offline_delivery_"))
     bad: list[str] = []
     try:
-        r = subprocess.run([PY, "tools/pack_release.py", "--out", str(tmp), "--with-cassettes"],
+        r = subprocess.run([PY, "build_tools/pack_release.py", "--out", str(tmp), "--with-cassettes"],
                            cwd=str(BASE), capture_output=True, text=True,
                            encoding="utf-8", errors="replace")
         out = (r.stdout or "") + (r.stderr or "")
@@ -79,11 +79,11 @@ def main() -> int:
                 names = z.namelist()
                 broken = z.testzip()
             leaks = [n for n in names if "llm_cassettes/" in n]
-            has_engine = any(n.endswith("framework/llm_cassette.py") for n in names)
-            has_helper = any(n.endswith("tools/offline_explore_chain.py") for n in names)
+            has_engine = any(n.endswith("framework/tools/explore/llm_cassette.py") for n in names)
+            has_helper = any(n.endswith("build_tools/offline_explore_chain.py") for n in names)
             print(f"  {'✅' if not broken else '❌'} ② 代码包 zip 完整（testzip = {broken}）")
-            print(f"  {'✅' if has_engine else '❌'} ② 代码包含回放引擎 framework/llm_cassette.py")
-            print(f"  {'✅' if has_helper else '❌'} ② 代码包含一键脚本 tools/offline_explore_chain.py")
+            print(f"  {'✅' if has_engine else '❌'} ② 代码包含回放引擎 framework/tools/explore/llm_cassette.py")
+            print(f"  {'✅' if has_helper else '❌'} ② 代码包含一键脚本 build_tools/offline_explore_chain.py")
             print(f"  {'✅' if not leaks else '❌'} ③ 代码包**不含录像**（不夹带运行时数据）：命中 {len(leaks)} 条")
             if broken or not has_engine or not has_helper or leaks:
                 bad.append("代码包内容不符")

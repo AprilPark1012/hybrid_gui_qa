@@ -12,7 +12,7 @@
 
 跑法： python tests/verify_html_sync.py            （推荐）
        python -m pytest tests/verify_html_sync.py -q
-退出码：0 通过 / 1 不同步（需 `python tools/build_html.py` 后提交）/ 2 用法 / 3 跳过（缺文件）
+退出码：0 通过 / 1 不同步（需 `python build_tools/build_html.py` 后提交）/ 2 用法 / 3 跳过（缺文件）
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def force_stdio():
 def _build(dst: Path, seed: str):
     """在 /tmp 生成一份（BUILD_HTML_OUT + 指定哈希种子），返回 (ok, 输出)。"""
     env = {**os.environ, "BUILD_HTML_OUT": str(dst), "PYTHONHASHSEED": seed}
-    r = subprocess.run([PY, "tools/build_html.py"], cwd=str(BASE), env=env,
+    r = subprocess.run([PY, "build_tools/build_html.py"], cwd=str(BASE), env=env,
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     return r.returncode == 0, (r.stdout or "") + (r.stderr or "")
 
@@ -54,8 +54,8 @@ def main() -> int:
     print("  R8 判据 · 培训页 html 与代码的同步性 / 可复现性")
     print(f"  仓库: {BASE}")
     print("=" * 64)
-    if not (BASE / "tools" / "build_html.py").exists():
-        print("  ⏭️ 跳过：找不到 tools/build_html.py")
+    if not (BASE / "build_tools" / "build_html.py").exists():
+        print("  ⏭️ 跳过：找不到 build_tools/build_html.py")
         return SKIP
 
     import tempfile
@@ -82,7 +82,7 @@ def main() -> int:
     else:
         synced = a.read_bytes() == OUT.read_bytes()
         print(f"  {'✅' if synced else '❌'} ② 同步：生成结果与 docs/training.html "
-              f"{'逐字节一致' if synced else '不一致 ⇒ 需 python tools/build_html.py 后提交'}")
+              f"{'逐字节一致' if synced else '不一致 ⇒ 需 python build_tools/build_html.py 后提交'}")
         if not synced:
             bad.append("html 与代码不同步")
 

@@ -27,7 +27,7 @@ BASE = Path(__file__).resolve().parents[1]
 # 统一 UTF-8（同 cli.py 口径）：本脚本跨进程收 generate / pytest 输出，父进程绝不能按
 # 系统默认编码（Windows cp936/gbk）解码子进程的 UTF-8 中文输出。
 sys.path.insert(0, str(BASE))
-from framework.text_io import UTF8_ENV, force_stdio  # noqa: E402
+from framework.tools.common.text_io import UTF8_ENV, force_stdio  # noqa: E402
 
 force_stdio()
 _U8 = {**os.environ, **UTF8_ENV}
@@ -162,7 +162,7 @@ def _check_new_then_detail():
     """
     import time as _t
     from playwright.sync_api import sync_playwright
-    from framework.browser import launch_opts
+    from framework.tools.common.browser import launch_opts
 
     out = []
     print("      （先复位数据）count =", _reset_demo())
@@ -231,7 +231,7 @@ def main() -> int:
 
     print("\n===== 二、质量闸：跨页用例缺 url 断言必须告警；弱换页证据必须红线 =====\n")
     sys.path.insert(0, str(BASE))
-    from framework.case_builder import case_errors, case_warnings   # noqa: E402
+    from framework.tools.generate.case_builder import case_errors, case_warnings   # noqa: E402
     warn = case_warnings({
         "pages": PAGES,
         "steps": [GOTO_LIST, FILL, SEARCH, CLICK_NO],

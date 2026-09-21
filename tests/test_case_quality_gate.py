@@ -28,14 +28,14 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from framework.case_builder import (                                   # noqa: E402
+from framework.tools.generate.case_builder import (                                   # noqa: E402
     CaseQualityError,
     case_errors,
     case_warnings,
     elementmap_to_cases_file,
 )
-from framework.element_map import ElementMap, TestStep as _TestStep          # noqa: E402
-from framework.generator import _gate_false_green                      # noqa: E402
+from framework.tools.probe.element_map import ElementMap, TestStep as _TestStep          # noqa: E402
+from framework.tools.generate.generator import _gate_false_green                      # noqa: E402
 
 CASES = REPO / "cases"
 
@@ -193,6 +193,6 @@ def test_prompt_no_longer_teaches_weak_evidence():
 
     只修闸门不修提示词 = 每次 AI 跑都撞红线（用户反复重跑）——那就是把 bug 从假绿换成假红。
     """
-    src = (REPO / "framework" / "explorer.py").read_text(encoding="utf-8")
+    src = (REPO / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
     assert "列表页写 localhost" not in src, "提示词还在教 AI 产弱换页证据"
     assert "每个页面都含" in src, "提示词缺少「禁止 host 片段」的说明"

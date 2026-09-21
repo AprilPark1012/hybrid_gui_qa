@@ -8,11 +8,11 @@
 **随代码包一起交付**，不需要额外安装（纯标准库）。
 
 用法（Windows / macOS / Linux 通用）：
-    python tools/offline_explore_chain.py --repo .
-    python tools/offline_explore_chain.py --repo . --scenario scenarios/contracts/contracts_search_by_no.yml
-    python tools/offline_explore_chain.py --repo . --scenario scenarios/contracts/contracts_search_by_no.yml --run
-    python tools/offline_explore_chain.py --repo . --scenario-dir scenarios            # 把所有场景都回放一遍
-    python tools/offline_explore_chain.py --repo . --scenario <f> --cassette D:\\cassettes   # 录像不在默认位置
+    python build_tools/offline_explore_chain.py --repo .
+    python build_tools/offline_explore_chain.py --repo . --scenario scenarios/contracts/contracts_search_by_no.yml
+    python build_tools/offline_explore_chain.py --repo . --scenario scenarios/contracts/contracts_search_by_no.yml --run
+    python build_tools/offline_explore_chain.py --repo . --scenario-dir scenarios            # 把所有场景都回放一遍
+    python build_tools/offline_explore_chain.py --repo . --scenario <f> --cassette D:\\cassettes   # 录像不在默认位置
 
 退出码：0 = 全通 · 2 = 前置不满足（录像缺 / demo 没起 / 代码版本不含回放）· 1 = 链路某步失败。
 """
@@ -126,7 +126,7 @@ def main():
     # ---------- 一、前置检查（任一条不满足就别往下跑）----------
     head("一、前置检查")
     cli_py = repo / "framework" / "cli.py"
-    exp_py = repo / "framework" / "explorer.py"
+    exp_py = repo / "framework" / "tools" / "explore" / "explorer.py"
     if not cli_py.exists():
         bad("找不到 framework/cli.py —— --repo 指错目录了？")
         return 2

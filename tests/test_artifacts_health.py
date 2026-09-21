@@ -122,7 +122,7 @@ def test_generated_artifacts_are_syntactically_valid():
     ⇒ 两道哨兵：① 模板**渲染结果**（不依赖磁盘、改完模板立刻能炸）；② 磁盘产物本身。
     """
     import ast
-    from framework import generator as G
+    from framework.tools.generate import generator as G
     ast.parse(G._render_conftest(), filename="<渲染出的 conftest>")
     for name in ("conftest.py", "test_cases.py"):
         p = SCRIPTS / name

@@ -25,7 +25,7 @@ Playwright locator。采用业界验证过的四层思路，这里实现前两�
 from __future__ import annotations
 from difflib import SequenceMatcher
 from playwright.sync_api import Page
-from .element_map import ElementRef
+from framework.tools.probe.element_map import ElementRef
 
 # ---------------- Tier1：语义精确（按稳定性从高到低） ----------------
 # data-testid 是 component contract，不随视觉改版变，业界公认最稳 → 置顶。
@@ -223,7 +223,7 @@ def _tier2_fingerprint(page: Page, el: ElementRef,
     """Tier2：指纹相似度匹配。返回 locator 结果 dict 或 None（无把握放弃）。
 
     threshold/mingap 可放宽（供 Healer 自愈再协商用），默认取严格值。"""
-    from .probe import probe_page
+    from framework.tools.probe.probe import probe_page
     candidates = probe_page(page)
     scored = [(_fingerprint_score(el, c), c) for c in candidates]
     scored.sort(key=lambda x: -x[0])

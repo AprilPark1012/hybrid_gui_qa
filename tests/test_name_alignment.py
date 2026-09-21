@@ -18,7 +18,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from framework.explorer import (_build_planner_prompt, _field_identity, _match_item,      # noqa: E402
+from framework.tools.explore.explorer import (_build_planner_prompt, _field_identity, _match_item,      # noqa: E402
                                 _same_field_pairs, _shadowed_names)
 
 

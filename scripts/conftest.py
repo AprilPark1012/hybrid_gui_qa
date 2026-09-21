@@ -6,7 +6,7 @@
 但省掉「每条用例重启浏览器」的 ≈0.6s/条（实测 9 用例 setup 由 5.4s → 若干毫秒）。
 case.vars 变量池（运行过程数据）+ 动态占位符 {datetime} 解析（一次解析固化，填表名==断言名，重跑不重名）。
 """
-# ---- 统一 UTF-8（生成物自带，裸跑 pytest 也不炸；与 framework/text_io.py 同口径）----
+# ---- 统一 UTF-8（生成物自带，裸跑 pytest 也不炸；与 framework/tools/common/text_io.py 同口径）----
 # 为什么：Windows 控制台是 cp936 时，本文件里的 ✓/⚠️ 会 UnicodeEncodeError（跑到一半崩）；
 # 而 pytest 的 fd 捕获把输出写回真实 fd 时**硬编码 UTF-8**（_pytest/capture.py），
 # 只要外层按 locale 解码就 UnicodeDecodeError。这里把本进程 stdio 拉齐到 UTF-8，
@@ -45,7 +45,7 @@ import os
 RUN_ID = os.environ.get("HYBRID_RUN_ID", "latest")
 RUN_LOG_DIR = LOG_DIR / RUN_ID
 
-# ---- Chromium 启动参数（内联自 framework/browser.py:CHROMIUM_ARGS；生成物自包含）----
+# ---- Chromium 启动参数（内联自 framework/tools/common/browser.py:CHROMIUM_ARGS；生成物自包含）----
 CHROMIUM_ARGS = [
     '--disable-dev-shm-usage',
     '--disable-gpu',
@@ -75,8 +75,8 @@ def _launch_opts(headless):
 
 import sys
 sys.path.insert(0, str(BASE))
-from framework.data_driven import resolve_dynamic_inputs, format_template  # noqa
-from framework.healer import Healer  # noqa: E402
+from framework.tools.generate.data_driven import resolve_dynamic_inputs, format_template  # noqa
+from framework.tools.run.healer import Healer  # noqa: E402
 
 # ---- 自愈开关（Q1 决策：默认开，可用 HYBRID_SELF_HEAL=0 关）----
 # 0 → 确定性 locator 失效即报错，不做语义兜底/自愈（CI 里常要"失败即报"）
@@ -525,7 +525,7 @@ class _BrowserPool:
             if self.browser is not None:
                 self.restarts += 1
                 print(f"[browser] ⚠️ 会话级浏览器已断开（第 {self.restarts} 次）→ 重启。"
-                      f"若 dmesg 有 OOM 记录，说明内存不够（见 framework/limits.py 的并发降级）",
+                      f"若 dmesg 有 OOM 记录，说明内存不够（见 framework/tools/common/limits.py 的并发降级）",
                       flush=True)
             self.browser = self._p.chromium.launch(**self._opts)
         return self.browser
@@ -637,7 +637,7 @@ def _item_for(hint, page):
     改造前每个动作都全页 probe（并发下页面时序不稳会超时）；现在只在首次/未命中时探。
     ⚠️ 2026-09-18 批次 2 S3：逐字名不存在时不再「随便挑一个」—— 见 `_fuzzy_lookup`。
     """
-    from framework.probe import probe_page
+    from framework.tools.probe.probe import probe_page
     it = _INDEX.get(hint)
     if it is None:
         for x in probe_page(page):
@@ -686,7 +686,7 @@ def _fuzzy_lookup(hint):
 
 
 def _to_ref(it):
-    from framework.element_map import ElementRef
+    from framework.tools.probe.element_map import ElementRef
     return ElementRef(
         semantic_name=it["semantic_name"],
         test_id=it.get("test_id"),
@@ -704,8 +704,8 @@ def _loc(hint, page):
 
     HYBRID_SELF_HEAL=0 → 关闭自愈（CI 语义：失败即报，不做任何猜测性定位）。
     """
-    from framework.locator_bridge import resolve_locator
-    from framework.element_map import TestStep
+    from framework.tools.probe.locator_bridge import resolve_locator
+    from framework.tools.probe.element_map import TestStep
     it = _item_for(hint, page)
     if it is None:
         raise RuntimeError(

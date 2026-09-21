@@ -13,7 +13,7 @@ import json
 import re
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent.parent
+from framework.tools.common.config import BASE   # 仓库根：单一来源，不自己推层级
 
 # ---------------- dataset / scenarios 加载 ----------------
 def load_dataset(path: str | Path) -> dict:

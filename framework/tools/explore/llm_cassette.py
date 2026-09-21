@@ -38,7 +38,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from . import config
+from framework.tools.common import config
 
 __all__ = ["Cassette", "CassetteError", "MODE_LIVE", "MODE_RECORD", "MODE_REPLAY",
            "cassette_key", "struct_key", "default_dir", "render_miss_help"]
@@ -112,7 +112,7 @@ def _now_iso() -> str:
 
 
 def _framework_version() -> str:
-    """读 `tools/build_html.py` 的 VERSION（版本单一来源）；读不到就如实说 unknown，不编。"""
+    """读 `build_tools/build_html.py` 的 VERSION（版本单一来源）；读不到就如实说 unknown，不编。"""
     try:
         import re
         src = config.VERSION_SOURCE.read_text(encoding="utf-8")

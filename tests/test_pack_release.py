@@ -1,6 +1,6 @@
 """交付打包自检的「测试的测试」（V7.5.1）。
 
-`tools/pack_release.py` 的 `check_zip()` 是**唯一**会在打包时看包内产物的闸门；
+`build_tools/pack_release.py` 的 `check_zip()` 是**唯一**会在打包时看包内产物的闸门；
 它自己必须被证明「坏包能抓、好包不误伤」——否则又是一次假绿（2026-09-15 那次
 `unzip` 缺失导致 `grep -c` 数到空输入、误判「包是干净的」就是反例）。
 
@@ -19,7 +19,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-_spec = importlib.util.spec_from_file_location("pack_release", REPO / "tools" / "pack_release.py")
+_spec = importlib.util.spec_from_file_location("pack_release", REPO / "build_tools" / "pack_release.py")
 assert _spec is not None and _spec.loader is not None
 pack_release = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(pack_release)
@@ -58,10 +58,10 @@ def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
     zp = tmp_path / "pkg.zip"
     entries = {
         "pkg/README.md": "# x\n",
-        "pkg/tools/build_html.py": 'VERSION = "9.9"\n',
+        "pkg/build_tools/build_html.py": 'VERSION = "9.9"\n',
         "pkg/docs/training.html": "<html></html>",
         "pkg/framework/cli.py": "\n",
-        "pkg/framework/text_io.py": "\n",
+        "pkg/framework/tools/common/text_io.py": "\n",
         "pkg/scripts/test_cases.py": tests_src + unmapped_extra,
         "pkg/scripts/conftest.py": GOOD_CONFTEST,
         "pkg/tests/test_x.py": "\n",
@@ -71,10 +71,12 @@ def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
     if not skip_case:
         entries["pkg/cases/x.json"] = '{"case_id": "x", "steps": []}'
     if legacy_layout:
-        entries.pop("pkg/tools/build_html.py", None)
+        entries.pop("pkg/build_tools/build_html.py", None)
         entries.pop("pkg/docs/training.html", None)
+        entries.pop("pkg/framework/tools/common/text_io.py", None)
         entries["pkg/build_html.py"] = 'VERSION = "9.9"\n'
         entries["pkg/training.html"] = "<html></html>"
+        entries["pkg/framework/text_io.py"] = "\n"
     for k in drop:
         entries.pop(k, None)
     if notes:
@@ -111,7 +113,7 @@ def test_legacy_layout_audited_without_false_alarm(tmp_path):
     """结构变更前的历史包：用当前必需项清单审计**不许误报**，但要如实标出历史形态。
 
     背景（2026-09-19）：`build_html.py` 挪进 tools/、`training.html` 归位 docs/ 之后，
-    用新代码审计老的 V7.7 包会报「缺 tools/build_html.py / docs/training.html」—— 那是**误报**，
+    用新代码审计老的 V7.7 包会报「缺 build_tools/build_html.py / docs/training.html」—— 那是**误报**，
     历史包本来就按当时结构打的。误报会诱发人绕过工具，所以按「两种落点都认」的先例修掉。
     """
     zp = _make_zip(tmp_path, GOOD_TESTS, legacy_layout=True)
@@ -119,14 +121,14 @@ def test_legacy_layout_audited_without_false_alarm(tmp_path):
     problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9",
                                       legacy_notes=legacy)
     assert problems == [], f"历史形态包被误报：{problems}"
-    assert len(legacy) == 2, f"历史形态命中没被标出来（应 2 条）：{legacy}"
+    assert len(legacy) == 3, f"历史形态命中没被标出来（应 3 条：build_html / training.html / text_io）：{legacy}"
 
 
 def test_really_missing_required_is_still_caught(tmp_path):
     """★ 负向：两个位置都没有（真缺项）⇒ 必须照样报 —— 别名不许放过真问题。"""
     zp = _make_zip(tmp_path, GOOD_TESTS, legacy_layout=True, drop=("pkg/build_html.py",))
     problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9")
-    assert any("tools/build_html.py" in p for p in problems), problems
+    assert any("build_tools/build_html.py" in p for p in problems), problems
 
 
 def test_release_notes_recognized_in_both_layouts(tmp_path):
@@ -179,7 +181,7 @@ def test_cassette_pack_contains_recordings_readme_and_helper(tmp_path, monkeypat
         readme = z.read("llm_cassettes_README.md").decode("utf-8")
     assert "llm_cassettes/abc123.json" in names, names
     assert "llm_cassettes_README.md" in names, names
-    assert "tools/offline_explore_chain.py" in names, names
+    assert "build_tools/offline_explore_chain.py" in names, names
     assert "V9.9" in readme and "abc123.json" in readme, "用法说明里要有版本与录像清单"
     assert "127.0.0.1:9" in readme, "必须写清「端点指黑洞」这条可证伪性"
 
@@ -230,7 +232,7 @@ def test_refresh_sums_drops_line_of_deleted_package(tmp_path):
 def test_collect_files_keeps_sources_and_drops_runtime_cruft():
     """打包收集：源代码/用例/生成物要进包，运行时证据与虚拟环境不得进包。"""
     rel = {p.relative_to(REPO).as_posix() for p in pack_release.collect_files()}
-    for must in ("README.md", "tools/build_html.py", "framework/cli.py", "framework/text_io.py",
+    for must in ("README.md", "build_tools/build_html.py", "framework/cli.py", "framework/tools/common/text_io.py",
                  "scripts/test_cases.py", "scripts/conftest.py", "demo/app.py",
                  "tests/test_artifacts_health.py", "cases", "scenarios"):
         assert any(r == must or r.startswith(must + "/") for r in rel), f"漏了 {must}"

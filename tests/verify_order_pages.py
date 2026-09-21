@@ -27,7 +27,7 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE))
-from framework.text_io import force_stdio  # noqa: E402
+from framework.tools.common.text_io import force_stdio  # noqa: E402
 
 force_stdio()
 DEMO = "http://localhost:8000"
@@ -91,7 +91,7 @@ def run() -> None:
           f"order_presets={h.get('order_presets')} orders_per_page={h.get('orders_per_page')}")
 
     from playwright.sync_api import sync_playwright
-    from framework.browser import launch_opts
+    from framework.tools.common.browser import launch_opts
 
     _reset()
     with sync_playwright() as p:

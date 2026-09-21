@@ -14,11 +14,11 @@
 """
 from __future__ import annotations
 from playwright.sync_api import sync_playwright, expect
-from .element_map import ElementMap, TestStep
-from .locator_bridge import resolve_locator
-from .healer import Healer
-from .config import TRACE_DIR
-from .browser import launch_opts
+from framework.tools.probe.element_map import ElementMap, TestStep
+from framework.tools.probe.locator_bridge import resolve_locator
+from framework.tools.run.healer import Healer
+from framework.tools.common.config import TRACE_DIR
+from framework.tools.common.browser import launch_opts
 
 
 def _run_step(page, t: TestStep, log, healer: Healer):
@@ -125,7 +125,7 @@ def run_scenario(m: ElementMap, headless: bool = True, save_trace: bool = True) 
 
 
 if __name__ == "__main__":
-    from .probe import probe_page
+    from framework.tools.probe.probe import probe_page
     with sync_playwright() as p_:
         b = p_.chromium.launch(**launch_opts(headless=True))
         pg = b.new_page()

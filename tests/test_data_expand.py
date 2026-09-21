@@ -24,11 +24,11 @@ BASE = Path(__file__).resolve().parents[1]
 if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
-from framework.generator import (                     # noqa: E402
+from framework.tools.generate.generator import (                     # noqa: E402
     DataSetsError, _add_payload_refs, _brace_safe, _render_pytest_case,
     _validate_data_sets, placeholder_names_ordered,
 )
-from framework.scenario import ScenarioError, load_scenario_file   # noqa: E402
+from framework.tools.generate.scenario import ScenarioError, load_scenario_file   # noqa: E402
 
 
 def _mini_case(**kw) -> dict:
@@ -181,7 +181,7 @@ def test_generated_conftest_strips_param_suffix():
     按源码文本去查会假红（2026-09-21 实测踩到）；
     **功能层面的证明**在二类 `tests/verify_data_expand.py`（真按参数名跑单组）。
     """
-    from framework import generator as G
+    from framework.tools.generate import generator as G
     text = G._render_conftest()
     bad = text.count('re.search(r"test_(.+)"') + text.count('_re.search(r"test_(.+)"')
     assert bad == 0, f"还有 {bad} 处用 re.search(\'test_(.+)\') ⇒ 参数化后会把 [组名] 当 case_id 的一部分"

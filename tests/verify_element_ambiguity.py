@@ -25,13 +25,13 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE))
 
-from framework.text_io import force_stdio                   # noqa: E402
+from framework.tools.common.text_io import force_stdio                   # noqa: E402
 
 force_stdio()
 
-from framework.browser import launch_opts                  # noqa: E402
-from framework.probe import probe_page, assign_semantic_names   # noqa: E402
-from framework.explorer import _try_collect_modal_items, _merge_items   # noqa: E402
+from framework.tools.common.browser import launch_opts                  # noqa: E402
+from framework.tools.probe.probe import probe_page, assign_semantic_names   # noqa: E402
+from framework.tools.explore.explorer import _try_collect_modal_items, _merge_items   # noqa: E402
 
 FIXTURE = BASE / "tests" / "fixtures" / "ambiguous_page.html"
 MIN_MEM_MB = 550          # 一个 headless Chromium ≈515MB；不够就 SKIP，不硬跑（本机 OOM 会连杀网关）
@@ -70,7 +70,7 @@ def main() -> int:
               if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
     check("assign_semantic_names" in called,
           "_merge_items 在合并后调 assign_semantic_names（合并后统一重命名）")
-    probe_src = (BASE / "framework" / "probe.py").read_text(encoding="utf-8")
+    probe_src = (BASE / "framework" / "tools" / "probe" / "probe.py").read_text(encoding="utf-8")
     for key in ("base_name", "ctx_token", "name_source", "base_conflict"):
         check(key in probe_src, f"probe 命名留痕字段存在：{key}")
 
@@ -134,8 +134,8 @@ def main() -> int:
 
     # —— 三、报错体检：缺失名要给候选 ——
     print("\n===== 三、报错体检（同名歧义 ≠ 拼写错误）=====")
-    import framework.generator as g
-    from framework.generator import _record_conflict_bases, UnmappedElementsError
+    import framework.tools.generate.generator as g
+    from framework.tools.generate.generator import _record_conflict_bases, UnmappedElementsError
     g._CONFLICT_BASES.clear()
     items = [it for it in merged if it.get("test_id") in ("btn-pick-c-search", "btn-pick-c-modal")]
     if not items:                                   # 内存跳过时兜底（正常路径不会到这）

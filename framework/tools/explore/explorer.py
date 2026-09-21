@@ -23,8 +23,8 @@ import json
 import re               # 2026-09-18：_field_identity 归一化字段名（去「*」/去结尾「（全模糊）」）
 import time             # 2026-09-14：弹层/弹窗探测改成「有界轮询等新控件出现」，需要单调时钟
 from pydantic import BaseModel, Field
-from .element_map import ElementMap, TestStep, ElementRef
-from .browser import launch_opts
+from framework.tools.probe.element_map import ElementMap, TestStep, ElementRef
+from framework.tools.common.browser import launch_opts
 
 
 # 交给 ChatDeepSeek(ainvoke output_format) 的结构化步骤 schema
@@ -349,7 +349,7 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
         return _collect_pages_context(pages, items)
 
     from playwright.sync_api import sync_playwright
-    from .probe import probe_page, probe_row_fields
+    from framework.tools.probe.probe import probe_page, probe_row_fields
     try:
         with sync_playwright() as p:
             b = p.chromium.launch(**launch_opts(headless=True))
@@ -380,7 +380,7 @@ def _collect_pages_context(pages: list[dict], items: list[dict]):
     返回 (merged_items, dom_ctx, err_for_ai, collisions)。
     """
     from playwright.sync_api import sync_playwright
-    from .probe import probe_page, probe_row_fields, uniquify_across_pages
+    from framework.tools.probe.probe import probe_page, probe_row_fields, uniquify_across_pages
     try:
         per_page: list[tuple[str, list[dict]]] = []
         dom_ctx: list[dict] = []
@@ -435,7 +435,7 @@ def ai_explore(
     LLM 完全不可用时：默认 raise AiExploreError（拒绝产出假 AI 用例）；
     allow_mock_fallback=True（CLI 的 --mock-fallback）才显式降级为确定性 mock。
 
-    llm_cassette（2026-09-18，见 framework/llm_cassette.py）：录制 / 回放。
+    llm_cassette（2026-09-18，见 framework/tools/explore/llm_cassette.py）：录制 / 回放。
     回放模式**完全不联网、也不需要 key**（连 llm_from_env 都不调）——
     连不上外网的机器（如受管网络里的工作电脑）也能跑完这条 AI 链路。
     """
@@ -551,7 +551,7 @@ def _replay_from_cassette(cassette, prompt: str, items: list[dict], first_url: s
     rec = cassette.lookup(prompt, _PLANNER_SYSTEM,
                           struct_key_value=struct_key_value, strict_only=strict_only)
     if rec is None:
-        from .llm_cassette import render_miss_help
+        from framework.tools.explore.llm_cassette import render_miss_help
         tail = "；已按 --llm-cassette-strict 禁用结构键兜底" if strict_only else "，结构键也没找到"
         raise AiExploreError(
             "离线回放（--llm-cassette）：录像目录里**没有这一份**（严格键不匹配" + tail + "）。\n"
@@ -622,7 +622,7 @@ async def _ai_explore_async(
     （页面探测已在 _collect_page_context 里同步完成；这里绝不能碰 Playwright Sync API。）
     """
     import os
-    from .config import llm_from_env
+    from framework.tools.common.config import llm_from_env
 
     prompt = _build_planner_prompt(scenario, page_items, url, dom_ctx, page_bg=page_bg, guard=guard,
                                    pages=pages, collisions=collisions, row_fields=row_fields)
@@ -631,7 +631,7 @@ async def _ai_explore_async(
     # ① 离线回放（--llm-cassette）：命中即用 —— **刻意放在 llm_from_env() 之前**，
     #    因为离线机器常常连 .env 都没配（回放不需要 key，也不联网）。
     if llm_cassette is not None and llm_cassette.is_replay:
-        from .llm_cassette import struct_key
+        from framework.tools.explore.llm_cassette import struct_key
         return _replay_from_cassette(
             llm_cassette, prompt, page_items, first_url, scenario, pages=pages,
             struct_key_value=struct_key(scenario, page_items, pages, _PLANNER_SYSTEM),
@@ -708,7 +708,7 @@ async def _ai_explore_async(
                 if attempt > 1:
                     print(f"      [explore] 第 {attempt}/{n_attempts} 次重试成功（上游抖动，重试即恢复）")
                 if llm_cassette is not None and llm_cassette.is_record:
-                    from .llm_cassette import struct_key
+                    from framework.tools.explore.llm_cassette import struct_key
                     _save_to_cassette(llm_cassette, prompt, model_name, raw_plan, raw_text,
                                       key_struct=struct_key(scenario, page_items, pages,
                                                             _PLANNER_SYSTEM))
@@ -864,7 +864,7 @@ def _try_collect_modal_items(pg, base_items: list[dict]) -> list[dict]:
     有界（≤2 层、每层 ≤2 次点击）+ 排除提交/删除/取消类关键词 —— 绝不在陌生页面上乱点。
     失败只影响"少一份控件清单"，不打断探测，但**不静默**：打印原因。
     """
-    from .probe import probe_page
+    from framework.tools.probe.probe import probe_page
     collected: list[dict] = []
     seen_names = {it.get("semantic_name") for it in base_items}
     seen_ids = {_item_identity(it) for it in base_items}
@@ -974,7 +974,7 @@ def _wait_fresh_items(pg, absorb, timeout_s: float = _LAYER_RENDER_WAIT_S) -> li
     取代原来的固定 pg.wait_for_timeout(300)（理由见 _LAYER_RENDER_WAIT_S 注释）。
     一轮都探不到时不会立刻放弃：最多轮询到 timeout_s，探到就立刻返回。
     """
-    from .probe import probe_page
+    from framework.tools.probe.probe import probe_page
     deadline = time.monotonic() + timeout_s
     while True:
         fresh = absorb(probe_page(pg))
@@ -1011,7 +1011,7 @@ def _open_layer_and_collect(pg, cand: dict, absorb) -> bool:
     ⚠️ 失败必须**打印原因**：以前这里静默 return False，导致「层没探到」和「层里啥也没有」
     在日志上长得一模一样（2026-09-14 实测踩到：客户列表层没被收集，日志里一点线索都没有）。
     """
-    from .probe import probe_page
+    from framework.tools.probe.probe import probe_page
     role, name, test_id = cand.get("role"), cand.get("name") or "", cand.get("test_id") or ""
     shown = _one_line(name)
     try:
@@ -1096,7 +1096,7 @@ def _merge_items(base: list[dict], extra: list[dict]) -> list[dict]:
     上重算一次命名 ⇒ 同名控件**必然全部带上下文**，不可能再有谁独占裸名；
     留痕字段（`base_name` / `name_source` / `base_conflict`）随产物一起给下游判歧义用。
     """
-    from .probe import assign_semantic_names
+    from framework.tools.probe.probe import assign_semantic_names
     out = list(base)
     seen_tid = {it.get("test_id") for it in base if it.get("test_id")}
     for it in extra:
@@ -1164,7 +1164,7 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                          row_fields: list[dict] | None = None) -> str:
     """构造给 LLM 的规划提示：自然语言场景 + probe 语义清单 + 富 DOM 上下文，要求产出轻量步骤 JSON。
 
-    page_bg / guard：来自 scenario 文件（见 framework/scenario.py）——
+    page_bg / guard：来自 scenario 文件（见 framework/tools/generate/scenario.py）——
       page_bg 是【页面背景】（页面说明+前置条件+领域上下文），guard 是【本场景断言护栏】。
     两者都拼进提示，把"断言必须操作前可确定"从通用规则升级为每场景专属硬约束。
 

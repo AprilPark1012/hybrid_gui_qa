@@ -22,8 +22,8 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from framework import cli                                                    # noqa: E402
-from framework.generator import UnmappedElementsError, generate_scripts      # noqa: E402
+from framework import cli
+from framework.tools.generate.generator import UnmappedElementsError, generate_scripts      # noqa: E402
 
 CASES = REPO / "cases"
 
@@ -37,7 +37,7 @@ def probe_down(monkeypatch):
         raise RuntimeError("模拟：目标连不上 / 探测不可用（ERR_CONNECTION_REFUSED）")
 
     setattr(fake, "sync_playwright", _boom)
-    setattr(fake, "Page", type("Page", (), {}))     # framework.probe 模块级 `from ... import Page`
+    setattr(fake, "Page", type("Page", (), {}))     # framework.tools.probe.probe 模块级 `from ... import Page`
     setattr(fake, "expect", lambda *a, **k: None)
     setattr(fake, "__getattr__", lambda name: type(name, (), {}))   # 其余名字给哑类
     pkg = types.ModuleType("playwright")
@@ -76,7 +76,7 @@ def test_normal_run_reports_zero_unmapped(probe_down, tmp_path, monkeypatch):
 
     目的：证明闸门只在**真有缺口**时才拦 —— 别把正常生成也误杀。
     """
-    from framework import generator
+    from framework.tools.generate import generator
 
     real_needed = {st.get("element") for c in _load_cases() for st in c.get("steps", [])}
     real_needed |= {a.get("element") for c in _load_cases() for a in c.get("asserts", [])}
@@ -100,8 +100,8 @@ def test_cli_generate_exits_2_with_actionable_message(probe_down, tmp_path, monk
     ⚠️ 这里把「可达性预检」也钉成「不可达」：否则本机 demo 正在跑时，消息会走「目标可达」分支，
     断言就失真了（测试要点是**目标没起**时的那段话）。
     """
-    monkeypatch.setattr("framework.generator.SCRIPTS_DIR", tmp_path / "scripts")
-    monkeypatch.setattr("framework.target_probe.reachability",
+    monkeypatch.setattr("framework.tools.generate.generator.SCRIPTS_DIR", tmp_path / "scripts")
+    monkeypatch.setattr("framework.tools.common.target_probe.reachability",
                         lambda url=None, timeout=1.5: (False,
                                                        "连不上 http://localhost:8000（ConnectionRefused）"
                                                        "⇒ 被测目标没起：另开一个窗口跑 `python -m demo.app`"))
