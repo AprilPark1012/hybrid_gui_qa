@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-"""构建培训 HTML：读取框架源码，注入模板，标注核心片段。运行: python tools/build_html.py
+"""构建培训 HTML：读取框架源码，注入模板，标注核心片段。运行: python build_tools/build_html.py
 生成的 docs/training.html 是自包含单文件（内嵌 CSS），给新员工看。
 
-⚠️ 本脚本住在 `tools/`（框架工具目录，与 pack_release.py 同列）⇒ `BASE` 必须上溯一层。
+⚠️ 本脚本住在 `build_tools/`（开发期工具目录，与 pack_release.py 同列）⇒ `BASE` 必须上溯一层。
 """
 import html
 import os
 import re
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent.parent      # tools/ 的上一层 = 仓库根
+BASE = Path(__file__).resolve().parent.parent      # build_tools/ 的上一层 = 仓库根
 # 输出路径可用 BUILD_HTML_OUT 覆盖 —— 供「可复现性验证」在 /tmp 里生成、不污染仓库（tests/verify_html_sync.py）
 OUT = Path(os.environ.get("BUILD_HTML_OUT") or (BASE / "docs" / "training.html"))
 
@@ -60,32 +60,32 @@ FILES = [
                  ("def reset_data", "把数据复位成预置 20 条 —— 用例间隔离（conftest 每用例前调它）靠这里。")],
     ),
     dict(
-        path="framework/text_io.py", badge="⚙️ 基建", color="gray",
+        path="framework/tools/common/text_io.py", badge="⚙️ 基建", color="gray",
         desc="跨平台文本口径的唯一入口：凡「跨进程 / 落盘」的文本一律显式 UTF-8 —— 中文 Windows（cp936/gbk）下不崩、不乱码。",
         anchors=[("def utf8_env", "给子进程注入 PYTHONUTF8/PYTHONIOENCODING：子进程按 UTF-8 说，父进程按 UTF-8 听。"),
                  ("def force_stdio", "本进程 stdio 转 UTF-8 + Windows 控制台代码页切 65001（否则中文显示乱码）。"),
                  ("def run_capture", "收子进程输出：显式 encoding=utf-8（gbk 解码事故的根治点，别再裸用 text=True）。")],
     ),
     dict(
-        path="framework/config.py", badge="⚙️ 配置", color="gray",
+        path="framework/tools/common/config.py", badge="⚙️ 配置", color="gray",
         desc="配置文件：目标 URL + 怎么选 LLM（Browser Use 探索阶段要用）。",
         anchors=[("def llm_from_env", "按 .env 里装的 key，自动挑一个 LLM。AI 阶段才花钱。")],
     ),
     dict(
-        path="framework/element_map.py", badge="📄 数据契约", color="dodgerblue",
+        path="framework/tools/probe/element_map.py", badge="📄 数据契约", color="dodgerblue",
         desc="AI 和 Playwright 之间的『翻译件』：步骤 + 元素语义，两阶段无缝衔接。",
         anchors=[("class ElementRef", "元素语义：role/name/label... 都是人能看的，不是 CSS。"),
                  ("class ElementMap", "一次探索的完整产物：URL + 场景 + 步骤列表。")],
     ),
     dict(
-        path="framework/probe.py", badge="✅ Playwright", color="seagreen",
+        path="framework/tools/probe/probe.py", badge="✅ Playwright", color="seagreen",
         desc="第一步·探测：用代码扫页面，把可交互元素『翻译』成语义清单。不经过 LLM。",
         anchors=[("def _role_of", "用代码推断 ARIA 角色——定位的第一手信息，全靠确定性代码。"),
                  ("semantic_name", "给每个元素起个稳定小名，AI 后面只认这个小名。"),
                  ("def probe_page", "核心：遍历交互元素，抓 role/name/placeholder/label/test_id。")],
     ),
     dict(
-        path="framework/explorer.py", badge="🤖 AI 层", color="royalblue",
+        path="framework/tools/explore/explorer.py", badge="🤖 AI 层", color="royalblue",
         desc="第二步·探索：AI 听懂意图→规划步骤→从探测清单里挑元素。只引用语义，绝不写 CSS。（默认把 AI 用例落到 cases/ai_*.json，`--no-cases` 可关；`--to-cases` 是历史方案里的叫法，代码里没有这个开关）",
         anchors=[("def mock_explore", "无 key 也能跑的演示版：用固定规则拼出测试步骤（只有显式 --mock-fallback 才用，且不写 cases/）。"),
                  ("async def _ai_explore_async", "方案C：DeepSeek 读自然语言场景+probe清单 → 产轻量步骤 JSON。"),
@@ -97,7 +97,7 @@ FILES = [
                  ("def ai_explore", "真·AI 探索入口：读场景+清单，智能规划（需 DeepSeek key）。LLM 不可用时【报错退出】而非静默用 mock 顶替。")],
     ),
     dict(
-        path="framework/case_builder.py", badge="🤖 转换层", color="royalblue",
+        path="framework/tools/generate/case_builder.py", badge="🤖 转换层", color="royalblue",
         desc="场景①第三段·落盘：ElementMap → cases/ai_*.json（expect_text 转 asserts[]；element 原样带走语义名）+ 落盘前质量校验（防假绿）。",
         anchors=[("def elementmap_to_cases_file", "一站式：ElementMap → cases 文件，返回 (路径, 警告列表)。"),
                  ("_OP_MAP = ", "action → cases.op 的映射表（不在表内的动作不产出步骤，不静默造假）。"),
@@ -105,35 +105,35 @@ FILES = [
                  ("def make_case_id_from_scenario_id", "用例命名 ai_<scenario_id>_<HHMMSS>（可 grep 同场景历史产物）。")],
     ),
     dict(
-        path="framework/scenario.py", badge="🗂 场景库", color="gray",
+        path="framework/tools/generate/scenario.py", badge="🗂 场景库", color="gray",
         desc="scenarios/*.yml 的解析/校验/发现：一个文件=一个场景，只有 scenario 必填；business_context 喂 AI、assert_guard 既是护栏也进质量闸；<code>data:</code> 从 V7.8 起<b>真展开</b>（一组数据=一条用例，形态写错就报错）。需 PyYAML。",
         anchors=[("def load_scenario_file", "读+严格校验单个场景文件（缺 scenario/类型错/YAML 错 → 报错带路径；data 组：非列表/非映射/重复 id 都拦）。"),
                  ("def discover_scenarios", "递归扫目录 + --tag 过滤 + priority 排序，任一文件不合法即中止。"),
                  ("def page_bg", "给 AI 的【页面背景】：页面说明 + 前置条件 + 领域上下文。")],
     ),
     dict(
-        path="framework/locator_bridge.py", badge="✅ Playwright", color="seagreen",
+        path="framework/tools/probe/locator_bridge.py", badge="✅ Playwright", color="seagreen",
         desc="技术核心·桥梁：把语义转成『唯一、稳定』的 Playwright locator。",
         anchors=[("def resolve_locator", "核心：按优先级依次尝试，返回第一个『唯一命中』的 locator。"),
                  ("if cnt == 1", "唯一命中才算数(cnt==1)——宁可报错，绝不用可能点错元素的 locator。"),
                  ("def _try_role", "第一首选：get_by_role + name，最贴近用户语义、最难被 UI 改版打破。")],
     ),
     dict(
-        path="framework/generator.py", badge="✅ Playwright", color="seagreen",
+        path="framework/tools/generate/generator.py", badge="✅ Playwright", color="seagreen",
         desc="主链路第二步·生成：读 cases/*.json（含 AI 用例）→ 优先用 element_map 快照映射确定性 locator（缺项才现场 probe）+ 按操作类型翻译 + 抽离数据到 scripts/datasets。元素映射不到时显式 pytest.fail，绝不静默跳过。V7.8 起还负责<b>数据参数化</b>：场景 <code>data:</code> 的每组数据展开成一条独立用例。",
         anchors=[("def _semantic_to_locator_expr", "从语义名推导出确定性 locator 源码字符串(test_id/role)。"),
                  ("def generate_scripts", "核心：读 cases → 生成 scripts/test_cases.py + 抽离 datasets。"),
                  ("def _validate_data_sets", "数据参数化(V7.8)：组值必须**恰好**覆盖用例用到的占位符 —— 少了会把 {xxx} 字面填进页面、多了等于写了不生效，两者都 exit 2 + 人话点名。")],
     ),
     dict(
-        path="framework/runner.py", badge="✅ Playwright", color="seagreen",
+        path="framework/tools/run/runner.py", badge="✅ Playwright", color="seagreen",
         desc="ElementMap 场景执行引擎（run_scenario）：按步骤跑唯一性校验 + web-first 断言 + 集成 Healer。★注意：cases→pytest 并发执行是由 cli.cmd_run 以 subprocess 拉起的（不是 runner.py）。",
         anchors=[("resolved = resolve_locator", "执行前先唯一性校验，拒绝歧义(防点错)。"),
                  ('loc = resolved["locator_obj"]', "用真实 Playwright Locator 对象执行——不是字符串！"),
                  ("def _run_step", "核心：goto/click/fill/select/check + 断言，一步步确定性地跑。")],
     ),
     dict(
-        path="framework/healer.py", badge="🩹 自愈层", color="dodgerblue",
+        path="framework/tools/run/healer.py", badge="🩹 自愈层", color="dodgerblue",
         desc="Phase 3·自愈闭环：定位失败不中断，再协商 locator + 业务断言兜底 + 可审 diff。",
         anchors=[("def try_heal", "自愈入口：定位失败时再协商 + 业务后置断言 + 记录可审 diff。"),
                  ("result = \"recovered\"", "业务断言通过 → 才算自愈成功。"),
@@ -141,7 +141,7 @@ FILES = [
                  ("def dump", "把自愈记录落盘成 json + markdown，供人工 review（绝不静默改写）。")],
     ),
     dict(
-        path="framework/data_driven.py", badge="🧩 数据驱动", color="dodgerblue",
+        path="framework/tools/generate/data_driven.py", badge="🧩 数据驱动", color="dodgerblue",
         desc="数据驱动核心：占位符替换 + 动态占位符{datetime} + 用例级变量池，支撑脚本数据分离并发用例。",
         anchors=[("def resolve_dynamic_inputs", "动态占位符({datetime}/{date})一次解析固化——填表名==断言名，重跑不重名。"),
                  ("def format_template", "占位符替换：脚本里写 {contractName}，运行时从数据文件取实际值——改动数据不改脚本。"),
@@ -161,7 +161,7 @@ FILES = [
                  ("def cmd_run", "V7.5 追加：并发安全闸（目标未声明 partitioned ⇒ 降为 1）+ --isolated-target。")],
     ),
     dict(
-        path="framework/target_probe.py", badge="🧯 并发安全闸", color="gray",
+        path="framework/tools/common/target_probe.py", badge="🧯 并发安全闸", color="gray",
         desc="被测目标能力探针（V7.5）：回答『这个目标能不能并发跑』——探测 /api/health 的 partitioned 声明。"
              "未声明就保守降级为 1 并发（多 worker 共享一份状态会让精确计数断言互相踩，且失败原因指向错的地方）。",
         anchors=[("def probe_partitioned", "返回 (True/False/None, 理由)：True=可并发；False=明确不支持；None=没这个接口⇒视为未声明。"),
@@ -212,11 +212,56 @@ def render_cards() -> str:
 # ---------------- HTML 模板 ----------------
 
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "7.8"
+VERSION = "8.0"
 VERSION_DATE = "2026-09-21"
 CHANGELOG = [
     dict(
-        version="7.8", date="2026-09-21", tag="当前版本",
+        version="8.0", date="2026-09-21", tag="当前版本",
+        theme="结构重构：framework/ 按业务流程分层（破坏性变更）· 开发期工具进 build_tools/",
+        summary="本版<b>不加新能力</b>，只把 <code>framework/</code> 从「平铺 17 个模块」改成"
+                "<b>按业务流程分层</b>，让目录结构自己讲清链路顺序（探测 → AI 识别 → 生成 → 执行）。"
+                "CLI 参数 / 断言体系 / 报告形态 / 用例格式<b>零变化</b>。⚠️ <b>破坏性变更</b>："
+                "模块 import 路径变了，且<b>不留兼容 shim</b>（升级请读下文「升级须知」）。",
+        changed=[
+            "<b>分层结构</b>：<code>framework/tools/{common,probe,explore,generate,run}/</code> —— "
+            "<code>common</code>（config/text_io/limits/retention/browser/target_probe）· "
+            "<code>probe</code>（probe/element_map/locator_bridge）· <code>explore</code>（explorer/llm_cassette）· "
+            "<code>generate</code>（generator/case_builder/scenario/data_driven）· <code>run</code>（runner/healer）；"
+            "<code>framework/</code> 只留 <code>cli.py</code> + <code>tools/</code>",
+            "<b>导入路径变更（唯一破坏点）</b>：<code>from framework.probe import …</code> ⇒ "
+            "<code>from framework.tools.probe.probe import …</code>（17 个模块同构映射）；"
+            "<code>scripts/</code> 生成物已重建为新路径",
+            "<b>开发期工具进 <code>build_tools/</code></b>（原仓库根 <code>tools/</code>）："
+            "打包器 / 培训页生成器 / 离线一键脚本 —— 避免与运行期的 <code>framework/tools/</code> 混淆",
+            "<b>依赖方向实测无环</b>：<code>common ← probe ← explore ← generate</code>、<code>common ← run</code>、"
+            "<code>cli → 全部</code>（AST 扫描 + import 目标存在性校验，一次抓出所有漏改）",
+            "版本号单一来源位置随之变为 <code>framework/tools/common/config.py::VERSION_SOURCE</code>"
+            "（仍是<b>一处定义</b>，<code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 共用）",
+        ],
+        fixed=[
+            "<b>__file__ 层级推导随结构漂移</b>：<code>config.py::BASE</code> 原按 <code>parent.parent</code> "
+            "推目录，模块挪深两层后会<b>静默指错</b>（不报错、只指到错地方）⇒ 改为「向上找 "
+            "<code>pyproject.toml</code>」的标记法",
+            "<b>体检脚本的版本探针漂移</b>（仓库外 <code>kickoff_check.sh</code>）："
+            "<code>from framework.config import VERSION_SOURCE</code> 导入失败后<b>静默退回硬编码旧路径</b> ⇒ "
+            "改为「取不到就如实报未验」并指向新模块路径",
+            "<b>打包器审计历史包的误报</b>按「升级日志两种落点都认」的先例加<b>历史形态别名</b>"
+            "（命中如实标 <code>◐</code>、不拦；真缺项仍照拦）",
+        ],
+        notes=[
+            "判据：一类 <code>pytest tests/ -q</code> <b>238 passed</b>（与重构前逐条一致）· "
+            "端到端 <code>cli run</code> 19 个节点<b>分批</b>跑 <b>19 passed / exit 0</b> · "
+            "二类 <code>bash tests/run_verifications.sh</code> 10 个脚本 · "
+            "<code>build_tools/pack_release.py --with-cassettes</code> 打包自检通过",
+            "⚠️ 本机内存红线（1.87G / 无 swap）：全量一次跑会触发 OOM（实测 Playwright 驱动崩溃 + 用例挂死），"
+            "改用「每批 ≤5 条、独立进程、批间释放浏览器」；<b>SKIP 不等于通过</b>，内存不足要腾出来重跑",
+            "<b>升级须知（v7.x → v8.0）</b>：① <code>cases/</code> / <code>scenarios/</code> / demo 一个字都不用改；"
+            "② 自写的调试脚本若 <code>import framework.xxx</code>，按映射表改一行路径；"
+            "③ 重跑 <code>python -m framework.cli generate</code> 重建 <code>scripts/</code>",
+        ],
+    ),
+    dict(
+        version="7.8", date="2026-09-21", tag="上一版本",
         theme="数据参数化「真展开」 · 一组数据 = 一条用例（L1）",
         summary="本版把<b>数据参数化</b>真正落地：场景 <code>data:</code> 里的一组数据会<b>展开成一条独立用例</b>"
                 "（报告独立一行、失败能定位到具体数据集），不再是「只解析不展开」。写法沿用既有的占位符机制 —— "
@@ -275,7 +320,7 @@ CHANGELOG = [
             "已发布页实测 <b>2381 处畸形嵌套</b>；② 关键字集合是 <code>set</code>，同长度词序由哈希决定 ⇒ "
             "<b>同一份代码重跑两次 md5 都不同</b>（差 140 行）⇒「html 与代码是否同步」根本没法用重跑比对判定；"
             "③ 先 <code>html.escape</code> 把引号变实体 ⇒ 字符串正则永远匹配不上，<b>字符串高亮一直是死的</b>",
-            "<b>打包器审计历史包误报</b>：用当前必需项清单去审结构变更前的包会报「缺 tools/build_html.py / "
+            "<b>打包器审计历史包误报</b>：用当前必需项清单去审结构变更前的包会报「缺 build_tools/build_html.py / "
             "docs/training.html」—— 历史包按当时结构打包本就正常。按「升级日志两种落点都认」的先例加"
             "<b>历史形态别名</b>（命中时如实标出 <code>◐</code>、不拦），真缺项仍照拦",
             "<b>一条负向验证段自 V7.5.1 起就没跑起来</b>：负向用例故意用「不存在的控件名」，而映射质量闸会把"
@@ -290,7 +335,7 @@ CHANGELOG = [
             "仓库 <code>docs/</code> 现在<b>只放唯一的对外文档</b> <code>training.html</code>",
             "<b><code>tools/</code> = 框架自己的工具目录</b>：<code>build_html.py</code> 从仓库根挪入，"
             "与交付打包器 <code>pack_release.py</code> 同列；仓库根不再散放脚本",
-            "<b>版本号来源路径收敛为一处</b>：<code>framework/config.py::VERSION_SOURCE</code> —— "
+            "<b>版本号来源路径收敛为一处</b>：<code>framework/tools/common/config.py::VERSION_SOURCE</code> —— "
             "<code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 三个读者共用"
             "（原先三处各写一遍；漏改一处 <code>--version</code> 会静默变 unknown）",
             "README / 培训页 / 目录树同步，并把「逐条列文件名与数字」改成<b>抗腐烂写法</b>（减少文档漂移面）",
@@ -490,7 +535,7 @@ CHANGELOG = [
                 "把交付包从 <code>/tmp</code> 搬进仓库内 <code>releases/</code>（并挡住它不进包）、"
                 "把 pre-push 敏感信息闸门的环境依赖修好（原先在 <code>python3 = 3.6</code> 的机器上会误拦）。",
         added=[
-            "<b>交付包落库到仓库内 <code>releases/</code></b>：<code>tools/pack_release.py</code> 的 "
+            "<b>交付包落库到仓库内 <code>releases/</code></b>：<code>build_tools/pack_release.py</code> 的 "
             "<code>--out</code> 默认从 <code>/tmp/pkg</code> 改为 <code>&lt;仓库&gt;/releases</code> —— "
             "此前交付包是<b>唯一副本却躺在 <code>/tmp</code></b>（重启即可能丢），本版按根因修",
             "<code>.gitignore</code> 加 <code>/releases/</code>、<code>pack_release.py</code> 的 "
@@ -536,7 +581,7 @@ CHANGELOG = [
             "（旧行为：<code>net::ERR_CONNECTION_REFUSED</code> 长栈 + exit 1，看着像框架坏了）",
             "<b>交付前自检</b>：① <code>tests/test_artifacts_health.py</code>（未映射=0 · 无裸 "
             "<code>page.goto</code> · conftest 接线齐 · cases↔datasets 一一对应 · scripts/ 无杂物）；"
-            "② <code>tools/pack_release.py</code> 打包并用 <b>标准库 zipfile</b> 复扫包内产物，不达标就删包 + exit 2"
+            "② <code>build_tools/pack_release.py</code> 打包并用 <b>标准库 zipfile</b> 复扫包内产物，不达标就删包 + exit 2"
             "（它也用来审计历史包：拿它验 V7.5 那个包，当场抓出 100 处未映射）",
             "<code>tests/test_generate_quality_gate.py</code> · <code>tests/test_target_reachability.py</code> · "
             "<code>tests/test_pack_release.py</code>：三个「测试的测试」（不启浏览器、秒级）",
@@ -698,7 +743,7 @@ CHANGELOG = [
             "—— <b>2026-09-17 已修掉</b>：提示词禁止 host 片段 + 质量闸红线（拒绝落盘/生成）+ 用例改「目标页独有证据」；"
             "跨页流程 D1~D4（pages 声明 / 原地断言 <code>after_step</code> / 跨页重名消解 / 换页证据闸）已全部落地；"
             "场景 <code>data</code> 参数化仍只解析不展开",
-            "文档口径修正：生成物 <code>scripts/conftest.py</code> 会 <code>import framework.data_driven / framework.healer</code> ⇒ "
+            "文档口径修正：生成物 <code>scripts/conftest.py</code> 会 <code>import framework.tools.generate.data_driven / framework.tools.run.healer</code> ⇒ "
             "<b>要在项目内运行</b>，不是「拷到哪儿都能独立跑」",
         ],
     ),
@@ -713,7 +758,7 @@ CHANGELOG = [
                 "并且本机 <b>用 zh_CN.gbk locale 把原始报错复现到「同一个字节、同一个位置」</b>后再修，"
                 "修完同一条命令实测通过。",
         added=[
-            "<b>framework/text_io.py</b>：跨平台文本口径的唯一入口 —— `utf8_env()`（给子进程注入 "
+            "<b>framework/tools/common/text_io.py</b>：跨平台文本口径的唯一入口 —— `utf8_env()`（给子进程注入 "
             "PYTHONUTF8/PYTHONIOENCODING）、`force_stdio()`（本进程 stdio 转 UTF-8 + Windows "
             "控制台代码页切 65001）、`run_capture()`（收子进程输出，显式 UTF-8 解码 + errors=replace）",
             "<b>tests/test_utf8_io.py</b>（10 条）：含<b>用 zh_CN.gbk locale 精确复现AprilPark1012那条报错</b>"
@@ -800,7 +845,7 @@ CHANGELOG = [
                 "同时补上 --help / --version。",
         added=[
             "<b>--help / -h</b>：总览 + 子命令帮助（<b>直接取函数 docstring</b>，文档与代码同源，不会漂）",
-            "<b>--version / -V</b>：版本号读 tools/build_html.py（版本单一来源；读不到就如实说 unknown）",
+            "<b>--version / -V</b>：版本号读 build_tools/build_html.py（版本单一来源；读不到就如实说 unknown）",
             "<b>tests/test_cli_flags.py</b>：参数契约回归（约 3 秒，不需要 demo / 不需要 AI key）——"
             "合法参数不许误杀 + 非法参数必须 exit 2",
         ],
@@ -830,7 +875,7 @@ CHANGELOG = [
             "<b>--scenario-file</b>/<b>--scenario-dir --tag --limit</b>（三者互斥，参数错 exit 2）",
             "<b>explore --ai 默认落 cases/ai_&lt;id&gt;_&lt;ts&gt;.json</b>（--no-cases 可关）；<b>--verify</b> 交付即验证："
             "落盘后立刻 generate + pytest 单跑，FAILED → exit 3（日志 output/verify/）",
-            "<b>cli prune</b> 归档保留策略（framework/retention.py，HYBRID_KEEP_SNAPSHOTS 默认 20；explore/probe 结束自动静默执行）",
+            "<b>cli prune</b> 归档保留策略（framework/tools/common/retention.py，HYBRID_KEEP_SNAPSHOTS 默认 20；explore/probe 结束自动静默执行）",
             "<b>调试开关 --debug</b>（别名 --headed）：开了就「看得见」——有屏幕弹 Chromium 一步步跑；"
             "无屏幕自动录视频(webm) + <b>逐步截图</b> + trace 回放。配套 --case（只跑一条）/ --slowmo（放慢）",
             "<b>资源安全 P0</b>：limits.safe_workers() 按 MemAvailable 自动降并发 + browser.py 收敛启动参数 + 日志 run-id 隔离",
@@ -1314,22 +1359,31 @@ def build() -> str:
 │   ├── test_cases.py                生成的 pytest 用例(按操作类型翻译)
 │   ├── conftest.py                  会话级浏览器池/数据注入/变量池/断言辅助/日志
 │   └── datasets/                    ▲ 抽离出的数据(脚本⇄数据分离)
-├── <b>framework/</b>                核心框架
+├── <b>framework/</b>                核心框架(V8.0: 只留入口 + 按业务流程分层的 tools/)
 │   ├── cli.py                       ⚙️ 命令行入口(explore/probe/generate/run/all/prune)
-│   ├── probe.py                     ✅ [Playwright] 探测元素
-│   ├── explorer.py                  🤖 [AI] 语义识别(读场景→规划；失败即报错,不静默降级)
-│   ├── case_builder.py              🤖 ElementMap→cases/ai_*.json 转换 + 用例质量校验(防假绿)
-│   ├── locator_bridge.py            ✅ [Playwright] 语义→唯一locator(核心!)
-│   ├── generator.py                 ✅ 按操作类型翻译+抽离数据→scripts/
-│   ├── runner.py                    ✅ ElementMap 场景执行引擎(集成自愈)
-│   ├── healer.py                    🩹 自愈闭环(再协商+业务断言兜底+可审 diff)
-│   ├── element_map.py               数据契约(ElementRef/TestStep/ElementMap)
-│   ├── data_driven.py               🧩 占位符替换+变量池+动态占位符
-│   ├── browser.py                   ⚙️ Chromium 启动参数唯一来源(不降 RSS,保稳定)
-│   ├── limits.py                    🧯 并发安全闸(按可用内存自动降级,防 OOM)
-│   ├── retention.py                 🗄 归档保留:快照各留最近 N 个(cli prune)
-│   ├── scenario.py                  🗂 scenarios/*.yml 解析/校验/发现(需 PyYAML)
-│   └── config.py                    配置+目录常量+LLM选择
+│   └── tools/                       ★ 运行期模块(区别于开发期的 build_tools/)
+│       ├── common/                   基建(零业务语义)
+│       │   ├── config.py             配置+目录常量+LLM选择(含 VERSION_SOURCE)
+│       │   ├── text_io.py            跨平台文本口径唯一入口(显式 UTF-8)
+│       │   ├── browser.py            ⚙️ Chromium 启动参数唯一来源(不降 RSS,保稳定)
+│       │   ├── limits.py             🧯 并发安全闸(按可用内存自动降级,防 OOM)
+│       │   ├── retention.py          🗄 归档保留:快照各留最近 N 个(cli prune)
+│       │   └── target_probe.py       目标可达性/并发安全预检
+│       ├── probe/                    ① 探测与定位
+│       │   ├── probe.py              ✅ [Playwright] 探测元素
+│       │   ├── element_map.py        数据契约(ElementRef/TestStep/ElementMap)
+│       │   └── locator_bridge.py     ✅ [Playwright] 语义→唯一locator(核心!)
+│       ├── explore/                  ② AI 语义识别
+│       │   ├── explorer.py           🤖 [AI] 语义识别(读场景→规划；失败即报错,不静默降级)
+│       │   └── llm_cassette.py       LLM 录像/回放(离线机器:不联网、不需 key)
+│       ├── generate/                 ③ 用例与脚本生成
+│       │   ├── generator.py          ✅ 按操作类型翻译+抽离数据→scripts/
+│       │   ├── case_builder.py       🤖 ElementMap→cases/ai_*.json 转换 + 用例质量校验(防假绿)
+│       │   ├── scenario.py           🗂 scenarios/*.yml 解析/校验/发现(需 PyYAML)
+│       │   └── data_driven.py        🧩 占位符替换+变量池+数据真展开
+│       └── run/                      ④ 执行与自愈
+│           ├── runner.py             ✅ ElementMap 场景执行引擎(集成自愈)
+│           └── healer.py             🩹 自愈闭环(再协商+业务断言兜底+可审 diff)
 ├── <b>demo/</b>                      被测应用(靶子,8000端口)
 │   ├── app.py                       静态页面 + 内存数据 API(客户/合同/复位;/api/*)
 │   ├── contracts.html               合同管理系统页(列表/客户右模糊筛选/新建+客户弹层)
@@ -1341,7 +1395,7 @@ def build() -> str:
 ├── <b>output/</b>                    ✅ 运行时证据(probe/plan/heal/trace,可清)
 ├── <b>log/&lt;run_id&gt;/</b>             本次运行 逐用例 .log + report.html + traces(可清)
 ├── README.md                       本框架文档
-├── <b>tools/</b>                    框架自己的工具(不是被测应用的一部分)
+├── <b>build_tools/</b>               ★ 开发期工具(不属于被测应用,也不进运行链)
 │   ├── pack_release.py             交付打包器: 组装 zip + 标准库自检包内产物(不达标不出包)
 │   ├── build_html.py               生成 docs/training.html 培训页(**版本号单一来源**)
 │   └── offline_explore_chain.py    离线一条命令: 录像回放 → generate → 试跑(无外网机器用)
@@ -1476,7 +1530,7 @@ def build() -> str:
       ├─ prompt = explorer.<b>_build_planner_prompt()</b>
       │      目标URL →「场景原话」→【页面背景 page/preconditions/business_context】
       │      →【断言护栏 assert_guard】→ 控件清单 items[:60] → DOM 上下文[:80] → 规则 1~8
-      ├─ obj = framework/config.<b>llm_from_env()</b> → browser_use.llm.<b>ChatDeepSeek</b>
+      ├─ obj = framework/tools/common/config.<b>llm_from_env()</b> → browser_use.llm.<b>ChatDeepSeek</b>
       ├─ 重试≤3: r = await obj.<b>ainvoke(msgs, output_format=_PlanModel)</b>   ◀ function calling 结构化步骤
       │      └─ explorer.<b>_plan_to_steps(plan, items)</b> → <b>_match_item()</b>
       │             ①精确 ②规范化唯一模糊对齐 ③都不中→打印告警+可用清单名（不静默丢元素）
@@ -1753,10 +1807,10 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <p><b>为什么必须有</b>：实测 1 个 headless Chromium 实例 ≈ <b>515MB</b>；在 1.87GB / 无 swap 的机器上
          强跑 2 并发 ⇒ 内核 <b>global OOM</b> ⇒ 渲染进程被杀（<code>Target crashed</code>），
          <b>连 Hermes 网关进程也被连带杀掉</b>。单 worker 则稳定 5/5 通过。</p>
-      <p><b>参数集中</b>：<span class="code-inline">framework/browser.py</span> 是 Chromium 启动参数唯一来源
+      <p><b>参数集中</b>：<span class="code-inline">framework/tools/common/browser.py</span> 是 Chromium 启动参数唯一来源
          （原先 8 处裸 launch 各写各的）；生成物 <span class="code-inline">scripts/conftest.py</span> 用<b>内联</b>方式带上参数，
          免得再依赖框架常量。<br>⚠️ 口径澄清：生成物<b>不是「拷到哪儿都能独立跑」</b> —— conftest 会
-         <span class="code-inline">import framework.data_driven / framework.healer</span>，
+         <span class="code-inline">import framework.tools.generate.data_driven / framework.tools.run.healer</span>，
          所以<b>要在项目内（或把 framework/ 一起带上）运行</b>。
          <b>诚实提示</b>：这组参数实测<b>不降 RSS</b>，解决的是稳定性/一致性；<b>真正保命的是并发降级</b>。</p>
       <p><b>日志 run-id 隔离</b>：每次运行的 <span class="code-inline">.log</span> / <span class="code-inline">report.html</span> / <span class="code-inline">traces/</span>
@@ -1800,7 +1854,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
          <code>subprocess.run(..., capture_output=True, text=True)</code> 却<b>没指定 encoding</b>，
          于是父进程按系统默认编码（cp936/gbk）去解码子进程的 <b>UTF-8 中文输出</b>。<br>
          <b>规矩</b>：跨进程 / 落盘文本一律显式 UTF-8——
-         收子进程输出用 <code>framework.text_io.run_capture()</code>，
+         收子进程输出用 <code>framework.tools.common.text_io.run_capture()</code>，
          给子进程注入口径用 <code>utf8_env()</code>，本进程 stdio 用 <code>force_stdio()</code>
          （<code>cli.main()</code> 已经默认调了）。<code>tests/test_utf8_io.py</code> 会做 AST 全仓扫描，
          再写出「靠默认编码」的写法直接测试失败。</p></div>
@@ -1851,7 +1905,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 {_changelog_section()}
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V{VERSION}</b>（{VERSION_DATE}）· 由 tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V{VERSION}</b>（{VERSION_DATE}）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>

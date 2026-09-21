@@ -1,9 +1,10 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V7.8**（2026-09-21）· 版本号单一来源：`tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
-> （路径只在 `framework/config.py::VERSION_SOURCE` 定义一次，cli / llm_cassette / 打包器共用）
-> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V7.7.md`；
-> 上一版见 `releases/RELEASE_NOTES_V7.6.md`（跨 tab 端到端 · 行内定位 · 首行断言）。
+> 当前版本 **V8.0**（2026-09-21）· 版本号单一来源：`build_tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> （路径只在 `framework/tools/common/config.py::VERSION_SOURCE` 定义一次，cli / llm_cassette / 打包器共用）
+> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V8.0.md`；
+> ⚠️ **V8.0 是破坏性结构变更**（`framework/tools/{common,probe,explore,generate,run}/` 业务流程分层），
+> 升级前请读发行说明的「升级须知」；上一版见 `releases/RELEASE_NOTES_V7.7.1.md`（结构归一 + 离线两件套）。
 > 历次升级日志都在 `releases/RELEASE_NOTES_V*.md`，**每次交付包会一并带上**。
 
 > 一个 Python 骨架，示范如何把 **Browser Use（AI 智能探索）** 和 **Playwright（确定性执行）**
@@ -50,6 +51,10 @@
 │  产物: ElementMap + cases/ai_*.json（供 generate 消费）           │
 └────────────────────────────────────────────────────────────────┘
 ```
+
+> 📁 **V8.0 起模块按业务流程分层**：`framework/tools/{common,probe,explore,generate,run}/`
+> （图中 `probe.py` = `framework/tools/probe/probe.py`，`generator.py` = `framework/tools/generate/generator.py`，
+> `explorer.py` = `framework/tools/explore/explorer.py`；`framework/` 下只剩 `cli.py` + `tools/`）。
 
 关键点：**AI 只理解和决策（挑语义名 + 规划步骤），Playwright 精确定位执行**；`explore --ai` 的产物会落成 `cases/ai_*.json`（`ai_` 前缀隔离，绝不误删手写用例），与手写用例一起被 `generate` 消费（优先用 element_map 快照映射 locator，缺项才现场 probe）；执行端零 token、带 Healer 自愈，可进 CI。
 
@@ -106,6 +111,35 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 
 ---
 
+## 2026-09-21 变更要点 —— 结构重构：业务流程分层（V8.0 · **破坏性变更**）
+
+**不加新能力**，只把 `framework/` 从「平铺 17 个模块」改成**按业务流程分层**，让目录结构自己讲清链路顺序
+（探测 → AI 识别 → 生成 → 执行）；**CLI 参数 / 断言体系 / 报告形态 / 用例格式零变化**。
+
+```
+framework/
+├── cli.py                      唯一入口（原样，未动）
+└── tools/
+    ├── common/   config · text_io · limits · retention · browser · target_probe   基建（零业务语义）
+    ├── probe/    probe · element_map · locator_bridge                             ① 探测与定位契约
+    ├── explore/  explorer · llm_cassette                                          ② AI 语义识别（含录制/回放）
+    ├── generate/ generator · case_builder · scenario · data_driven                ③ 用例与脚本生成
+    └── run/      runner · healer                                                  ④ 执行与自愈
+```
+
+| 项 | 内容 |
+|---|---|
+| 破坏性（唯一） | **import 路径变了**：`from framework.probe import …` → `from framework.tools.probe.probe import …`（17 个模块同构映射）；旧路径**不留兼容 shim** |
+| 工具目录改名 | 开发期工具（打包器 / 培训页生成器 / 离线一键脚本）从仓库根 `tools/` 挪到 **`build_tools/`** —— 避免与运行期的 `framework/tools/` 混淆 |
+| 依赖方向 | `common ← probe ← explore ← generate`、`common ← run`，**全部单向、无环**（AST 实测 + import 目标存在性校验） |
+| 版本来源 | 仍是**一处定义**：`framework/tools/common/config.py::VERSION_SOURCE`（cli / llm_cassette / 打包器共用） |
+| 顺带修掉 | `config.py::BASE` 原按 `parent.parent` 推目录，模块挪深后会**静默指错** ⇒ 改成「向上找 `pyproject.toml`」的标记法 |
+| 实测 | 一类 `pytest tests/ -q` **238 passed**（与重构前逐条一致）· 端到端 `cli run` 19 个节点**分批**跑 **19 passed / exit 0** · 二类验证 10 个脚本（详见 `releases/RELEASE_NOTES_V8.0.md`） |
+
+**升级须知（v7.x → v8.0）**：① `cases/` / `scenarios/` / demo **一个字都不用改**；
+② 只有你自己写的调试脚本若 `import framework.xxx`，按发行说明的映射表改一行路径；
+③ 重跑 `python -m framework.cli generate` 重建 `scripts/`（生成物里的 import 同样是新路径）。
+
 ## 2026-09-21 变更要点 —— 数据参数化「真展开」（V7.8）
 
 **一组数据 = 一条用例**。以前场景的 `data:` 只解析不展开（一个场景只能跑一组数据，还会打警告）；
@@ -125,17 +159,17 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 
 ## 2026-09-19 变更要点 —— 结构归一与修复批次（V7.7.1）
 
-**不加新能力**，三件事：① 仓库结构按「框架代码 / 内部台账 / 门禁」三层分开；② 工具收进 `tools/`、
+**不加新能力**，三件事：① 仓库结构按「框架代码 / 内部台账 / 门禁」三层分开；② 工具收进 `tools/`（**V8.0 起改名 `build_tools/`**）、
 **版本号来源路径收敛成只定义一处**；③ 修掉**四处静默退化**（培训页高亮器畸形嵌套 2381 处 + 生成不可复现 +
 字符串高亮一直是死的 · 打包审计历史包误报 · 一条负向验证段自 V7.5.1 起没跑过 · 一条自测隐式依赖环境）。
-本版还补齐了**离线链路的交付形态**：`tools/offline_explore_chain.py` 收进仓库、打包器支持
+本版还补齐了**离线链路的交付形态**：`build_tools/offline_explore_chain.py` 收进仓库、打包器支持
 `--with-cassettes`（交付 = **代码包 + 录像包「两件套」**，且有判据 `tests/verify_offline_delivery.py`）。
 完整说明见 `releases/RELEASE_NOTES_V7.7.1.md`。
 
 | 项 | 结果 |
 |---|---|
-| 结构 | `docs/` 只留 `training.html`；`tools/` = 框架自己的工具（打包器 / 培训页生成器 / 离线一键脚本） |
-| 版本来源 | `framework/config.py::VERSION_SOURCE` 一处定义，cli / llm_cassette / 打包器三读者共用 |
+| 结构 | `docs/` 只留 `training.html`；`tools/` = 框架自己的工具（打包器 / 培训页生成器 / 离线一键脚本）（**V8.0 起改名 `build_tools/`**） |
+| 版本来源 | `framework/config.py::VERSION_SOURCE` 一处定义，cli / llm_cassette / 打包器三读者共用（**V8.0 起该文件在 `framework/tools/common/config.py`**） |
 | 新增入口 | `tests/run_verifications.sh`（特性验证统一入口，内存不足**如实 SKIP** 不当通过） |
 | 新增判据 | 培训页与代码同步 · 仓库与门禁解耦 · 版本单一来源（含负向）· 打包历史形态（含负向）· 交付两件套 |
 | 实测 | 一类 `pytest tests/ -q` **221 passed** · 二类 `run_verifications.sh` **9/9** · 离线链路端到端 **exit 0** |
@@ -148,7 +182,7 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 | 元素歧义闸门 S2 | 缺失名若正是某个同名冲突组的 base 名，`generate` 报错**直接给候选**（不再是一句干巴巴的「元素未映射」） |
 | 元素歧义闸门 S3 | 生成物 `_item_for()` 模糊兜底收敛：候选唯一才接受并**写日志留痕**；候选 ≥2 **抛错并列候选**；`HYBRID_STRICT_LOCATE=1` 连唯一候选也不兜 |
 | LLM 录像（新能力） | `--llm-record` / `--llm-cassette` / `--llm-cassette-strict`：**严格键 + 结构键**双键回放；离线机器**不需要 key、不联网**；未命中给「最接近那份从第几行起不同」，绝不静默降级 |
-| 离线一条命令 | **`tools/offline_explore_chain.py`**（随**代码包**发，2026-09-19 起入仓库）：前置体检 → 回放识别 → `generate` → 试跑，全程把 LLM 端点指到黑洞以证「真没联网」 |
+| 离线一条命令 | **`build_tools/offline_explore_chain.py`**（随**代码包**发，2026-09-19 起入仓库）：前置体检 → 回放识别 → `generate` → 试跑，全程把 LLM 端点指到黑洞以证「真没联网」 |
 | 弹层两种选中 | 合同页搜索区 = 输入框 + 弹层按钮；**弹层选中 = 精确命中、手工输入 = 右模糊**（既有语义零破坏）；客户/销售员弹层内可「+ 新建」并回填当前字段 |
 | 新增测试 | `tests/test_element_ambiguity_gate.py`（15 条，含**模板 ⇄ 生成物互锁**）· `tests/verify_element_ambiguity.py`（浏览器级复现事故形态）· `tests/verify_order_pick_create.py` |
 | 实测 | `pytest tests/ -q` **202 passed** · `cli run --workers 1` **17 passed / exit 0**（模糊兜底 0 次触发）· `verify_element_ambiguity.py` **exit 0** |
@@ -162,7 +196,7 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 mkdir -p output && mv llm_cassettes output/      # 录像包解开后就是 output/llm_cassettes/
 python -m demo.app                                # 另开一个窗口常驻
 # 2) 一条命令跑通：前置体检 → 回放识别 → generate → 试跑
-python tools/offline_explore_chain.py --repo . --run
+python build_tools/offline_explore_chain.py --repo . --run
 # 3) 等价的手动三步
 python -m framework.cli explore --ai --scenario-file scenarios/contracts/contracts_search_by_no.yml --llm-cassette
 python -m framework.cli generate
@@ -171,7 +205,7 @@ python -m framework.cli run --workers 1
 
 > ⚠️ **交付形态 = 两件套**（2026-09-19 定）：**代码包**（含回放引擎 + 一键脚本）+ **录像包**
 > （含 `llm_cassettes/` 数据 + 用法说明）。只有代码包**跑不起来**（缺录像数据）；录像单独放进去也没用
-> （功能在代码里）。两件一起打：`python tools/pack_release.py --with-cassettes`。
+> （功能在代码里）。两件一起打：`python build_tools/pack_release.py --with-cassettes`。
 > 交付形态本身有判据：`python tests/verify_offline_delivery.py`（两件都能打出来 + 内容齐 + 清单与事实一致）。
 
 **三条铁律**：① 代码必须是含 `--llm-cassette` 的版本（V7.7 起）；
@@ -212,7 +246,7 @@ python -m framework.cli run --workers 1
 
 | 项 | 内容 |
 |---|---|
-| 交付包落库 | `tools/pack_release.py --out` 默认改为**仓库内 `releases/`**（原默认 `/tmp/pkg` —— 交付包曾是唯一副本却躺在 /tmp，重启即可能丢，本版按根因修） |
+| 交付包落库 | `build_tools/pack_release.py --out` 默认改为**仓库内 `releases/`**（原默认 `/tmp/pkg` —— 交付包曾是唯一副本却躺在 /tmp，重启即可能丢，本版按根因修） |
 | 挡住不入包 | `.gitignore` 加 `/releases/` + `pack_release.py` 的 `EXCLUDE_DIRS` 加 `releases`：打包按「已跟踪 + 未跟踪但不被忽略」收文件，漏挡会把**发布包套进发布包** |
 | 命名 / 校验 | `releases/hybrid_gui_qa_V<版本>_<YYYYMMDD>.zip` + `SHA256SUMS.txt`；交付邮件就从这里取包 |
 | 脱敏收敛 | 文档里最后一处内部组织缩写已清（复扫 HEAD tree = 0 命中）；`.git/hooks/pre-push` 解释器探测 ≥3.7，不再把环境问题误报成「有残留」 |
@@ -318,7 +352,7 @@ Playwright 驱动**内部崩溃**时（实测 `coreBundle.js:463 Assertion error
 - **环境事故不伪装成业务结论**：`_page_alive()` —— 页面/渲染进程没了就明说「环境事故，不是页面没有弹层」。
 
 ### 6) 统一 UTF-8（V7.3 起的铁律）
-凡**跨进程 / 落盘**的文本一律显式 UTF-8，绝不依赖系统默认编码：`framework/text_io.py` 是唯一入口
+凡**跨进程 / 落盘**的文本一律显式 UTF-8，绝不依赖系统默认编码：`framework/tools/common/text_io.py` 是唯一入口
 （`utf8_env()` / `force_stdio()` / `run_capture()`）；`cli.main()` 入口第一件事就是 `force_stdio()`；
 生成物 `scripts/conftest.py` 自带 UTF-8 自举。回归：`tests/test_utf8_io.py`（含用 `zh_CN.gbk` locale
 **精确复现** `'gbk' codec can't decode byte 0xbb in position 13` + AST 全仓扫描禁止「靠默认编码」的写法）。
@@ -357,23 +391,32 @@ hybrid_gui_qa/
 │       ├── contracts_create_bu_a.yml                新建合同（客户走弹层选择）
 │       ├── contracts_create_and_filter_by_customer.yml  新建（弹层选客户）→ 客户右模糊筛选
 │       └── contracts_cross_page.yml                跨页流程（列表↔详情，含「同一条记录」领域规则）
-├── framework/
-│   ├── config.py           配置 + LLM 选择 + 目录常量
-│   ├── element_map.py      ElementRef / TestStep / ElementMap 数据模型
-│   ├── data_driven.py      数据驱动核心：占位符替换/变量池/动态占位符
-│   ├── probe.py            ✅ [Playwright] 确定性元素探测
-│   ├── explorer.py         🤖 [AI] 语义识别（读场景+probe清单→步骤；失败即报错，不静默降级）
-│   ├── case_builder.py     🤖 ElementMap→cases/ai_*.json 转换 + 用例质量校验（防假绿）
-│   ├── locator_bridge.py   ✅ [Playwright] 语义→唯一 locator（核心）
-│   ├── generator.py        ✅ [Playwright] 按操作类型生成脚本 + 抽离数据
-│   ├── runner.py           ✅ [Playwright] ElementMap 场景执行引擎（run_scenario；集成 healer）
-│   ├── healer.py           🩹 [自愈] locator 失败再协商 + 业务断言兜底 + 可审 diff
-│   ├── scenario.py         🗂 scenarios/*.yml 解析/校验/发现（explore 的输入源，需 PyYAML）
-│   ├── browser.py          Chromium 启动参数唯一来源（稳定/一致；实测不降 RSS）
-│   ├── limits.py           并发安全闸：按可用内存自动降级 worker 数（防 OOM）
-│   ├── retention.py        归档保留：快照各留最近 N 个（cli prune；explore/probe 自动静默执行）
-│   └── cli.py              命令行入口（explore/probe/generate/run/all/prune，含资源预检与交付即验证）
-├── tools/                  ★ 框架自己的工具（不是被测应用的一部分）
+├── framework/                      核心框架（V8.0 起只留入口 + 按业务流程分层的 tools/）
+│   ├── cli.py                      命令行入口（explore/probe/generate/run/all/prune，含资源预检与交付即验证）
+│   └── tools/                      ★ 运行期模块（区别于开发期工具目录 build_tools/）
+│       ├── common/                 基建（零业务语义）
+│       │   ├── config.py           配置 + LLM 选择 + 目录常量（含 VERSION_SOURCE）
+│       │   ├── text_io.py          跨平台文本口径唯一入口（显式 UTF-8）
+│       │   ├── browser.py          Chromium 启动参数唯一来源（稳定/一致；实测不降 RSS）
+│       │   ├── limits.py           并发安全闸：按可用内存自动降级 worker 数（防 OOM）
+│       │   ├── retention.py        归档保留：快照各留最近 N 个（cli prune；explore/probe 自动静默执行）
+│       │   └── target_probe.py     目标可达性 / 并发安全预检
+│       ├── probe/                  ① 探测与定位
+│       │   ├── probe.py            ✅ [Playwright] 确定性元素探测
+│       │   ├── element_map.py      ElementRef / TestStep / ElementMap 数据模型
+│       │   └── locator_bridge.py   ✅ [Playwright] 语义→唯一 locator（核心）
+│       ├── explore/                ② AI 语义识别
+│       │   ├── explorer.py         🤖 [AI] 语义识别（读场景+probe清单→步骤；失败即报错，不静默降级）
+│       │   └── llm_cassette.py     LLM 录像/回放（离线机器：不联网、不需要 key）
+│       ├── generate/               ③ 用例与脚本生成
+│       │   ├── generator.py        ✅ [Playwright] 按操作类型生成脚本 + 抽离数据
+│       │   ├── case_builder.py     🤖 ElementMap→cases/ai_*.json 转换 + 用例质量校验（防假绿）
+│       │   ├── scenario.py         🗂 scenarios/*.yml 解析/校验/发现（explore 的输入源，需 PyYAML）
+│       │   └── data_driven.py      数据驱动核心：占位符替换/变量池/数据真展开
+│       └── run/                    ④ 执行与自愈
+│           ├── runner.py           ✅ [Playwright] ElementMap 场景执行引擎（run_scenario；集成 healer）
+│           └── healer.py           🩹 [自愈] locator 失败再协商 + 业务断言兜底 + 可审 diff
+├── build_tools/            ★ 开发期工具（不属于被测应用，也不进运行链）
 │   ├── pack_release.py          交付打包器：组装 zip + 标准库自检包内产物（不达标不出包）
 │   │                            `--with-cassettes` 同时打**独立的录像包**（交付=代码包+录像包两件套）
 │   ├── build_html.py            培训页生成器：读源码 → docs/training.html（**版本号单一来源**）
@@ -391,7 +434,7 @@ hybrid_gui_qa/
 ```
 
 说明：`cases/` 是**你手写的源**；`scripts/` 是 **generate 生成的产物**（脚本+数据分离，可随时重建）；`output/`/`log/` 是运行时痕迹，可清理；
-`docs/training.html` 是给新员工看的培训页，**改完代码跑 `python tools/build_html.py` 重新生成**（文档与代码同源，以代码为基准）；
+`docs/training.html` 是给新员工看的培训页，**改完代码跑 `python build_tools/build_html.py` 重新生成**（文档与代码同源，以代码为基准）；
 判据（R8）：`python tests/verify_html_sync.py` —— 可复现 + 与代码逐字节一致 + 无畸形 span。
 
 ---
@@ -448,7 +491,7 @@ python -m framework.cli explore --ai --scenario-dir scenarios/ --tag smoke      
 python -m framework.cli prune --keep 20          # 归档保留：快照各留最近 N 个（--dry-run 预演，不删）
 python -m framework.cli --help                   # 总览帮助（子命令一览）
 python -m framework.cli run --help               # 单子命令帮助（直接取函数 docstring，与代码同源）
-python -m framework.cli --version                # 版本号（读 tools/build_html.py = 版本单一来源）
+python -m framework.cli --version                # 版本号（读 build_tools/build_html.py = 版本单一来源）
 # 或直接用 pytest 跑生成的用例（未设 HYBRID_RUN_ID 时日志落 log/latest/）：
 pytest scripts/test_cases.py -v                  # 串行(无头)
 pytest scripts/test_cases.py -n 1 --html=log/latest/report.html
@@ -525,7 +568,7 @@ python tests/verify_html_sync.py                 # R8 判据：培训页能由�
 | `HYBRID_PARTITION` | worker 名 | 手动指定数据分区（默认取 `PYTEST_XDIST_WORKER`；同一分区内数据共享） |
 | `HYBRID_ISOLATED_TARGET` | `0` | `1` = 显式声明「目标已按 worker 隔离」，放行并发（等价 `--isolated-target`） |
 
-> ⚠️ 诚实说明：Chromium 启动参数（`framework/browser.py`）实测**并不降低 RSS**
+> ⚠️ 诚实说明：Chromium 启动参数（`framework/tools/common/browser.py`）实测**并不降低 RSS**
 > （裸参与全参数版本同为 513~516MB，在噪声内）；它解决的是稳定性与一致性。
 > **真正保命的是并发降级**。预算是启发式，确有把握时可用 `--force-workers` 覆盖。
 
@@ -550,13 +593,13 @@ DEEPSEEK_API_KEY=sk-你的deepseek密钥
 DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 DEEPSEEK_MODEL=deepseek-chat
 ```
-> `config.py` 会自动读这些变量。也可以把 `.env.example` 复制成 `.env` 再改。
-> 注意：`config.py` 用 **browser-use 0.13.10 原生 `ChatDeepSeek`**（OpenAI 兼容、走 function calling），
+> `framework/tools/common/config.py` 会自动读这些变量。也可以把 `.env.example` 复制成 `.env` 再改。
+> 注意：`framework/tools/common/config.py` 用 **browser-use 0.13.10 原生 `ChatDeepSeek`**（OpenAI 兼容、走 function calling），
 > `base_url` 需带 `/v1`（DeepSeek 官方接口路径）。
 
 **③ 验证 key 通了没（可选、快速）**
 ```bash
-python -c "from framework.config import llm_from_env, auto_detect_llm; print('LLM可用:', auto_detect_llm())"
+python -c "from framework.tools.common.config import llm_from_env, auto_detect_llm; print('LLM可用:', auto_detect_llm())"
 ```
 打印 `LLM可用: True` 即配置成功。
 
@@ -607,7 +650,7 @@ python -m framework.cli explore --ai --scenario-dir scenarios/ --tag smoke --lim
 
 > ⚠️ **Windows 注意**：
 > - `.env` 文件里 `DEEPSEEK_API_KEY` 的值不要有空格/引号，直接 `key=sk-xxx`。
-> - `config.py` 已用 **browser-use 0.13.10 原生 `ChatDeepSeek`**（走 function calling 拿结构化输出，
+> - `config.py`（现 `framework/tools/common/config.py`）已用 **browser-use 0.13.10 原生 `ChatDeepSeek`**（走 function calling 拿结构化输出，
 >   兼容 DeepSeek），无需再手动 `dont_force_structured_output`。
 > - DeepSeek 不支持视觉(vision)，`ai_explore` 已自动 `use_vision=False`。
 

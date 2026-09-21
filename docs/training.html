@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V7.8）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.0）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup>★</sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V7.8 · 2026-09-21　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.0 · 2026-09-21　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -195,22 +195,31 @@
 │   ├── test_cases.py                生成的 pytest 用例(按操作类型翻译)
 │   ├── conftest.py                  会话级浏览器池/数据注入/变量池/断言辅助/日志
 │   └── datasets/                    ▲ 抽离出的数据(脚本⇄数据分离)
-├── <b>framework/</b>                核心框架
+├── <b>framework/</b>                核心框架(V8.0: 只留入口 + 按业务流程分层的 tools/)
 │   ├── cli.py                       ⚙️ 命令行入口(explore/probe/generate/run/all/prune)
-│   ├── probe.py                     ✅ [Playwright] 探测元素
-│   ├── explorer.py                  🤖 [AI] 语义识别(读场景→规划；失败即报错,不静默降级)
-│   ├── case_builder.py              🤖 ElementMap→cases/ai_*.json 转换 + 用例质量校验(防假绿)
-│   ├── locator_bridge.py            ✅ [Playwright] 语义→唯一locator(核心!)
-│   ├── generator.py                 ✅ 按操作类型翻译+抽离数据→scripts/
-│   ├── runner.py                    ✅ ElementMap 场景执行引擎(集成自愈)
-│   ├── healer.py                    🩹 自愈闭环(再协商+业务断言兜底+可审 diff)
-│   ├── element_map.py               数据契约(ElementRef/TestStep/ElementMap)
-│   ├── data_driven.py               🧩 占位符替换+变量池+动态占位符
-│   ├── browser.py                   ⚙️ Chromium 启动参数唯一来源(不降 RSS,保稳定)
-│   ├── limits.py                    🧯 并发安全闸(按可用内存自动降级,防 OOM)
-│   ├── retention.py                 🗄 归档保留:快照各留最近 N 个(cli prune)
-│   ├── scenario.py                  🗂 scenarios/*.yml 解析/校验/发现(需 PyYAML)
-│   └── config.py                    配置+目录常量+LLM选择
+│   └── tools/                       ★ 运行期模块(区别于开发期的 build_tools/)
+│       ├── common/                   基建(零业务语义)
+│       │   ├── config.py             配置+目录常量+LLM选择(含 VERSION_SOURCE)
+│       │   ├── text_io.py            跨平台文本口径唯一入口(显式 UTF-8)
+│       │   ├── browser.py            ⚙️ Chromium 启动参数唯一来源(不降 RSS,保稳定)
+│       │   ├── limits.py             🧯 并发安全闸(按可用内存自动降级,防 OOM)
+│       │   ├── retention.py          🗄 归档保留:快照各留最近 N 个(cli prune)
+│       │   └── target_probe.py       目标可达性/并发安全预检
+│       ├── probe/                    ① 探测与定位
+│       │   ├── probe.py              ✅ [Playwright] 探测元素
+│       │   ├── element_map.py        数据契约(ElementRef/TestStep/ElementMap)
+│       │   └── locator_bridge.py     ✅ [Playwright] 语义→唯一locator(核心!)
+│       ├── explore/                  ② AI 语义识别
+│       │   ├── explorer.py           🤖 [AI] 语义识别(读场景→规划；失败即报错,不静默降级)
+│       │   └── llm_cassette.py       LLM 录像/回放(离线机器:不联网、不需 key)
+│       ├── generate/                 ③ 用例与脚本生成
+│       │   ├── generator.py          ✅ 按操作类型翻译+抽离数据→scripts/
+│       │   ├── case_builder.py       🤖 ElementMap→cases/ai_*.json 转换 + 用例质量校验(防假绿)
+│       │   ├── scenario.py           🗂 scenarios/*.yml 解析/校验/发现(需 PyYAML)
+│       │   └── data_driven.py        🧩 占位符替换+变量池+数据真展开
+│       └── run/                      ④ 执行与自愈
+│           ├── runner.py             ✅ ElementMap 场景执行引擎(集成自愈)
+│           └── healer.py             🩹 自愈闭环(再协商+业务断言兜底+可审 diff)
 ├── <b>demo/</b>                      被测应用(靶子,8000端口)
 │   ├── app.py                       静态页面 + 内存数据 API(客户/合同/复位;/api/*)
 │   ├── contracts.html               合同管理系统页(列表/客户右模糊筛选/新建+客户弹层)
@@ -222,7 +231,7 @@
 ├── <b>output/</b>                    ✅ 运行时证据(probe/plan/heal/trace,可清)
 ├── <b>log/&lt;run_id&gt;/</b>             本次运行 逐用例 .log + report.html + traces(可清)
 ├── README.md                       本框架文档
-├── <b>tools/</b>                    框架自己的工具(不是被测应用的一部分)
+├── <b>build_tools/</b>               ★ 开发期工具(不属于被测应用,也不进运行链)
 │   ├── pack_release.py             交付打包器: 组装 zip + 标准库自检包内产物(不达标不出包)
 │   ├── build_html.py               生成 docs/training.html 培训页(**版本号单一来源**)
 │   └── offline_explore_chain.py    离线一条命令: 录像回放 → generate → 试跑(无外网机器用)
@@ -527,7 +536,7 @@
       ├─ prompt = explorer.<b>_build_planner_prompt()</b>
       │      目标URL →「场景原话」→【页面背景 page/preconditions/business_context】
       │      →【断言护栏 assert_guard】→ 控件清单 items[:60] → DOM 上下文[:80] → 规则 1~8
-      ├─ obj = framework/config.<b>llm_from_env()</b> → browser_use.llm.<b>ChatDeepSeek</b>
+      ├─ obj = framework/tools/common/config.<b>llm_from_env()</b> → browser_use.llm.<b>ChatDeepSeek</b>
       ├─ 重试≤3: r = await obj.<b>ainvoke(msgs, output_format=_PlanModel)</b>   ◀ function calling 结构化步骤
       │      └─ explorer.<b>_plan_to_steps(plan, items)</b> → <b>_match_item()</b>
       │             ①精确 ②规范化唯一模糊对齐 ③都不中→打印告警+可用清单名（不静默丢元素）
@@ -804,10 +813,10 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <p><b>为什么必须有</b>：实测 1 个 headless Chromium 实例 ≈ <b>515MB</b>；在 1.87GB / 无 swap 的机器上
          强跑 2 并发 ⇒ 内核 <b>global OOM</b> ⇒ 渲染进程被杀（<code>Target crashed</code>），
          <b>连 Hermes 网关进程也被连带杀掉</b>。单 worker 则稳定 5/5 通过。</p>
-      <p><b>参数集中</b>：<span class="code-inline">framework/browser.py</span> 是 Chromium 启动参数唯一来源
+      <p><b>参数集中</b>：<span class="code-inline">framework/tools/common/browser.py</span> 是 Chromium 启动参数唯一来源
          （原先 8 处裸 launch 各写各的）；生成物 <span class="code-inline">scripts/conftest.py</span> 用<b>内联</b>方式带上参数，
          免得再依赖框架常量。<br>⚠️ 口径澄清：生成物<b>不是「拷到哪儿都能独立跑」</b> —— conftest 会
-         <span class="code-inline">import framework.data_driven / framework.healer</span>，
+         <span class="code-inline">import framework.tools.generate.data_driven / framework.tools.run.healer</span>，
          所以<b>要在项目内（或把 framework/ 一起带上）运行</b>。
          <b>诚实提示</b>：这组参数实测<b>不降 RSS</b>，解决的是稳定性/一致性；<b>真正保命的是并发降级</b>。</p>
       <p><b>日志 run-id 隔离</b>：每次运行的 <span class="code-inline">.log</span> / <span class="code-inline">report.html</span> / <span class="code-inline">traces/</span>
@@ -1346,7 +1355,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#6b7280">⚙️ 基建</span>
-        <code class="file-path">framework/text_io.py</code>
+        <code class="file-path">framework/tools/common/text_io.py</code>
       </div>
       <p class="file-desc">跨平台文本口径的唯一入口：凡「跨进程 / 落盘」的文本一律显式 UTF-8 —— 中文 Windows（cp936/gbk）下不崩、不乱码。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span>&quot;统一 UTF-8 —— 本项目所有「跨进程 / 落盘」文本 IO 的唯一口径。</code></div>
@@ -1480,7 +1489,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#6b7280">⚙️ 配置</span>
-        <code class="file-path">framework/config.py</code>
+        <code class="file-path">framework/tools/common/config.py</code>
       </div>
       <p class="file-desc">配置文件：目标 URL + 怎么选 LLM（Browser Use 探索阶段要用）。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span><span class="s">&quot;配置：目标 URL、LLM provider、输出目录。&quot;</span><span class="s">&quot;&quot;</span></code></div>
@@ -1490,125 +1499,138 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">5</span><code></code></div>
 <div class="code-line"><span class="ln">6</span><code><span class="k">from</span> dotenv <span class="k">import</span> load_dotenv  <span class="c"># type: ignore</span></code></div>
 <div class="code-line"><span class="ln">7</span><code></code></div>
-<div class="code-line"><span class="ln">8</span><code>BASE = Path(__file__).resolve().parent.parent</code></div>
-<div class="code-line"><span class="ln">9</span><code><span class="c"># 先加载项目 .env（若有，可覆盖），再加载 Hermes 主 .env（复用 DEEPSEEK_API_KEY）</span></code></div>
-<div class="code-line"><span class="ln">10</span><code>load_dotenv(BASE / <span class="s">&quot;.env&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">11</span><code>_hermes_env = Path.home() / <span class="s">&quot;.hermes&quot;</span> / <span class="s">&quot;.env&quot;</span></code></div>
-<div class="code-line"><span class="ln">12</span><code><span class="k">if</span> _hermes_env.exists():</code></div>
-<div class="code-line"><span class="ln">13</span><code>    load_dotenv(_hermes_env, override=<span class="k">False</span>)   <span class="c"># 项目 .env 优先，Hermes 兜底</span></code></div>
-<div class="code-line"><span class="ln">14</span><code></code></div>
-<div class="code-line"><span class="ln">15</span><code><span class="c"># ---- 被测应用 ----</span></code></div>
-<div class="code-line"><span class="ln">16</span><code><span class="c"># 目标地址：TARGET_URL（本项目老名字）&gt; HYBRID_BASE_URL（生成脚本/target_probe 用的名字）&gt; 默认。</span></code></div>
-<div class="code-line"><span class="ln">17</span><code><span class="c"># 2026-09-15 统一：以前只有 probe/generate 认 TARGET_URL、而生成脚本与 /api/health 探测认</span></code></div>
-<div class="code-line"><span class="ln">18</span><code><span class="c"># HYBRID_BASE_URL ⇒ 只设 HYBRID_BASE_URL 的人会发现「probe 还在打 localhost:8000」，</span></code></div>
-<div class="code-line"><span class="ln">19</span><code><span class="c"># 属于「参数名不新手秒懂」。现在两个名字等效（TARGET_URL 优先，保持向后兼容）。</span></code></div>
-<div class="code-line"><span class="ln">20</span><code>TARGET_URL = (os.environ.get(<span class="s">&quot;TARGET_URL&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">21</span><code>              <span class="k">or</span> os.environ.get(<span class="s">&quot;HYBRID_BASE_URL&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">22</span><code>              <span class="k">or</span> <span class="s">&quot;http://localhost:8000&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">23</span><code></code></div>
-<div class="code-line"><span class="ln">24</span><code><span class="c"># ---- 版本号单一来源（2026-09-19 把 build_html.py 挪进 tools/ 时收敛）----</span></code></div>
-<div class="code-line"><span class="ln">25</span><code><span class="c"># 培训页生成器 `tools/build_html.py` 顶部的 VERSION / VERSION_DATE 是**唯一**版本来源。</span></code></div>
-<div class="code-line"><span class="ln">26</span><code><span class="c"># 路径只在这里定义一次；读版本一律走 read_version()（cli / llm_cassette / pack_release 共用）</span></code></div>
-<div class="code-line"><span class="ln">27</span><code><span class="c"># ⇒ 以后再挪位置只改这一行；漏改会被 tests/test_cli_flags.py 的判据当场抓住（--version 不许变 unknown）。</span></code></div>
-<div class="code-line"><span class="ln">28</span><code>VERSION_SOURCE = BASE / <span class="s">&quot;tools&quot;</span> / <span class="s">&quot;build_html.py&quot;</span></code></div>
-<div class="code-line"><span class="ln">29</span><code></code></div>
-<div class="code-line"><span class="ln">30</span><code></code></div>
-<div class="code-line"><span class="ln">31</span><code><span class="k">def</span> read_version() -&gt; tuple[str, str]:</code></div>
-<div class="code-line"><span class="ln">32</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;→ (VERSION, VERSION_DATE)；读不到就 (&quot;</span>unknown<span class="s">&quot;, &quot;</span><span class="s">&quot;)，**绝不编**。&quot;</span><span class="s">&quot;&quot;</span></code></div>
-<div class="code-line"><span class="ln">33</span><code>    <span class="k">try</span>:</code></div>
-<div class="code-line"><span class="ln">34</span><code>        <span class="k">import</span> re</code></div>
-<div class="code-line"><span class="ln">35</span><code>        src = VERSION_SOURCE.read_text(encoding=<span class="s">&quot;utf-8&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">36</span><code>        v = re.search(r<span class="s">&#x27;^VERSION\s*=\s*&quot;([^&quot;]+)&quot;&#x27;</span>, src, re.M)</code></div>
-<div class="code-line"><span class="ln">37</span><code>        d = re.search(r<span class="s">&#x27;^VERSION_DATE\s*=\s*&quot;([^&quot;]+)&quot;&#x27;</span>, src, re.M)</code></div>
-<div class="code-line"><span class="ln">38</span><code>        <span class="k">if</span> <span class="k">not</span> v:</code></div>
-<div class="code-line"><span class="ln">39</span><code>            <span class="k">return</span> <span class="s">&quot;unknown&quot;</span>, <span class="s">&quot;&quot;</span></code></div>
-<div class="code-line"><span class="ln">40</span><code>        <span class="k">return</span> v.group(1), (d.group(1) <span class="k">if</span> d <span class="k">else</span> <span class="s">&quot;&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">41</span><code>    <span class="k">except</span> Exception:</code></div>
-<div class="code-line"><span class="ln">42</span><code>        <span class="k">return</span> <span class="s">&quot;unknown&quot;</span>, <span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">8</span><code><span class="k">def</span> _repo_root(start: Path) -&gt; Path:</code></div>
+<div class="code-line"><span class="ln">9</span><code>    <span class="s">&quot;&quot;</span>&quot;向上找含 pyproject.toml 的目录 = 仓库根。</code></div>
+<div class="code-line"><span class="ln">10</span><code></code></div>
+<div class="code-line"><span class="ln">11</span><code>    为什么不写死 parents[N]：V8.0 结构重构把本文件从 framework/ 挪到 framework/tools/common/，</code></div>
+<div class="code-line"><span class="ln">12</span><code>    层级一变 parents[N] 就**悄悄**指错（症状是「scripts/test_cases.py 不存在」这类莫名其妙报错）。</code></div>
+<div class="code-line"><span class="ln">13</span><code>    按标记文件找，以后再挪位置也不会破。</code></div>
+<div class="code-line"><span class="ln">14</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
+<div class="code-line"><span class="ln">15</span><code>    <span class="k">for</span> p <span class="k">in</span> (start, *start.parents):</code></div>
+<div class="code-line"><span class="ln">16</span><code>        <span class="k">if</span> (p / <span class="s">&quot;pyproject.toml&quot;</span>).exists():</code></div>
+<div class="code-line"><span class="ln">17</span><code>            <span class="k">return</span> p</code></div>
+<div class="code-line"><span class="ln">18</span><code>    <span class="k">return</span> start</code></div>
+<div class="code-line"><span class="ln">19</span><code></code></div>
+<div class="code-line"><span class="ln">20</span><code></code></div>
+<div class="code-line"><span class="ln">21</span><code>BASE = _repo_root(Path(__file__).resolve().parent)</code></div>
+<div class="code-line"><span class="ln">22</span><code><span class="c"># 先加载项目 .env（若有，可覆盖），再加载 Hermes 主 .env（复用 DEEPSEEK_API_KEY）</span></code></div>
+<div class="code-line"><span class="ln">23</span><code>load_dotenv(BASE / <span class="s">&quot;.env&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">24</span><code>_hermes_env = Path.home() / <span class="s">&quot;.hermes&quot;</span> / <span class="s">&quot;.env&quot;</span></code></div>
+<div class="code-line"><span class="ln">25</span><code><span class="k">if</span> _hermes_env.exists():</code></div>
+<div class="code-line"><span class="ln">26</span><code>    load_dotenv(_hermes_env, override=<span class="k">False</span>)   <span class="c"># 项目 .env 优先，Hermes 兜底</span></code></div>
+<div class="code-line"><span class="ln">27</span><code></code></div>
+<div class="code-line"><span class="ln">28</span><code><span class="c"># ---- 被测应用 ----</span></code></div>
+<div class="code-line"><span class="ln">29</span><code><span class="c"># 目标地址：TARGET_URL（本项目老名字）&gt; HYBRID_BASE_URL（生成脚本/target_probe 用的名字）&gt; 默认。</span></code></div>
+<div class="code-line"><span class="ln">30</span><code><span class="c"># 2026-09-15 统一：以前只有 probe/generate 认 TARGET_URL、而生成脚本与 /api/health 探测认</span></code></div>
+<div class="code-line"><span class="ln">31</span><code><span class="c"># HYBRID_BASE_URL ⇒ 只设 HYBRID_BASE_URL 的人会发现「probe 还在打 localhost:8000」，</span></code></div>
+<div class="code-line"><span class="ln">32</span><code><span class="c"># 属于「参数名不新手秒懂」。现在两个名字等效（TARGET_URL 优先，保持向后兼容）。</span></code></div>
+<div class="code-line"><span class="ln">33</span><code>TARGET_URL = (os.environ.get(<span class="s">&quot;TARGET_URL&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">34</span><code>              <span class="k">or</span> os.environ.get(<span class="s">&quot;HYBRID_BASE_URL&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">35</span><code>              <span class="k">or</span> <span class="s">&quot;http://localhost:8000&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">36</span><code></code></div>
+<div class="code-line"><span class="ln">37</span><code><span class="c"># ---- 版本号单一来源（2026-09-19 把 build_html.py 挪进 tools/ 时收敛）----</span></code></div>
+<div class="code-line"><span class="ln">38</span><code><span class="c"># 培训页生成器 `build_tools/build_html.py` 顶部的 VERSION / VERSION_DATE 是**唯一**版本来源。</span></code></div>
+<div class="code-line"><span class="ln">39</span><code><span class="c"># 路径只在这里定义一次；读版本一律走 read_version()（cli / llm_cassette / pack_release 共用）</span></code></div>
+<div class="code-line"><span class="ln">40</span><code><span class="c"># ⇒ 以后再挪位置只改这一行；漏改会被 tests/test_cli_flags.py 的判据当场抓住（--version 不许变 unknown）。</span></code></div>
+<div class="code-line"><span class="ln">41</span><code>VERSION_SOURCE = BASE / <span class="s">&quot;build_tools&quot;</span> / <span class="s">&quot;build_html.py&quot;</span></code></div>
+<div class="code-line"><span class="ln">42</span><code></code></div>
 <div class="code-line"><span class="ln">43</span><code></code></div>
-<div class="code-line"><span class="ln">44</span><code><span class="c"># ---- 输出产物目录 ----</span></code></div>
-<div class="code-line"><span class="ln">45</span><code>OUTPUT_DIR = BASE / <span class="s">&quot;output&quot;</span></code></div>
-<div class="code-line"><span class="ln">46</span><code>ELEMENT_MAP_DIR = OUTPUT_DIR / <span class="s">&quot;element_maps&quot;</span></code></div>
-<div class="code-line"><span class="ln">47</span><code>TRACE_DIR = OUTPUT_DIR / <span class="s">&quot;traces&quot;</span>            <span class="c"># 运行时证据：runner 用到时自建（不在 ensure_dirs 急切创建）</span></code></div>
-<div class="code-line"><span class="ln">48</span><code>HEALS_DIR = OUTPUT_DIR / <span class="s">&quot;heals&quot;</span>             <span class="c"># 自愈可审 diff：healer 用到时自建（同上）</span></code></div>
-<div class="code-line"><span class="ln">49</span><code><span class="c"># 2026-09-14 清理（用户反馈「仓库里有空目录残留」）：</span></code></div>
-<div class="code-line"><span class="ln">50</span><code><span class="c">#   PLAN_DIR(output/plans) / GENERATED_TESTS_DIR(generated_tests) /</span></code></div>
-<div class="code-line"><span class="ln">51</span><code><span class="c">#   TEST_SCENARIO_DIR(testScenario) / DATASETS_DIR(datasets)</span></code></div>
-<div class="code-line"><span class="ln">52</span><code><span class="c"># 四个旧概念常量**已无任何使用者**，唯一&quot;效果&quot;就是被 ensure_dirs() 每次启动建出来</span></code></div>
-<div class="code-line"><span class="ln">53</span><code><span class="c"># ⇒ 凭空多出空目录。已整体删除；防复发见 tests/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs。</span></code></div>
-<div class="code-line"><span class="ln">54</span><code></code></div>
-<div class="code-line"><span class="ln">55</span><code><span class="c"># ---- P5 数据驱动新增目录 ----</span></code></div>
-<div class="code-line"><span class="ln">56</span><code>LOG_DIR = BASE / <span class="s">&quot;log&quot;</span>                       <span class="c"># 用例执行日志</span></code></div>
-<div class="code-line"><span class="ln">57</span><code>SCENARIOS_DIR = BASE / <span class="s">&quot;scenarios&quot;</span>           <span class="c"># 用例编排表(index.json)</span></code></div>
-<div class="code-line"><span class="ln">58</span><code></code></div>
-<div class="code-line"><span class="ln">59</span><code><span class="c"># ---- 重构后的目录 ----</span></code></div>
-<div class="code-line"><span class="ln">60</span><code>CASES_DIR = BASE / <span class="s">&quot;cases&quot;</span>                   <span class="c"># ★ 手写的自然语言用例文件（写死数据）</span></code></div>
-<div class="code-line"><span class="ln">61</span><code>SCRIPTS_DIR = BASE / <span class="s">&quot;scripts&quot;</span>               <span class="c"># ★ generate 产物（playwright 脚本 + datasets 抽离）</span></code></div>
-<div class="code-line"><span class="ln">62</span><code></code></div>
-<div class="code-line"><span class="ln">63</span><code><span class="c"># ---- Browser Use 探索阶段需要 LLM ----</span></code></div>
-<div class="code-line"><span class="ln">64</span><code><span class="c"># 负责&quot;智能理解&quot;：读懂自然语言测试意图、规划步骤、挑元素、写 plan。</span></code></div>
-<div class="code-line"><span class="ln">65</span><code><span class="c"># 这是 AI 之力的成本来源（每步一次模型推理）。</span></code></div>
-<div class="code-line star"><span class="ln">66</span><code><span class="k">def</span> llm_from_env():</code></div>
-<div class="code-note">⭐ <b>按 .env 里装的 key，自动挑一个 LLM。AI 阶段才花钱。</b></div>
-<div class="code-line"><span class="ln">67</span><code>    <span class="s">&quot;&quot;</span>&quot;按 .env 里配了哪个 key，构造对应的 Browser Use LLM 实例。</code></div>
-<div class="code-line"><span class="ln">68</span><code>    优先级: ChatBrowserUse &gt; OpenAI &gt; Anthropic &gt; Google &gt; DeepSeek(ChatDeepSeek 原生)。<span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">69</span><code>    <span class="k">try</span>:</code></div>
-<div class="code-line"><span class="ln">70</span><code>        <span class="k">from</span> browser_use.llm <span class="k">import</span> ChatBrowserUse, ChatOpenAI, ChatAnthropic, ChatGoogle</code></div>
-<div class="code-line"><span class="ln">71</span><code>    <span class="k">except</span> ImportError <span class="k">as</span> e:</code></div>
-<div class="code-line"><span class="ln">72</span><code>        <span class="k">raise</span> ImportError(</code></div>
-<div class="code-line"><span class="ln">73</span><code>            <span class="s">&quot;browser-use 未安装。pip install browser-use 后重试。&quot;</span></code></div>
-<div class="code-line"><span class="ln">74</span><code>        ) <span class="k">from</span> e</code></div>
+<div class="code-line"><span class="ln">44</span><code><span class="k">def</span> read_version() -&gt; tuple[str, str]:</code></div>
+<div class="code-line"><span class="ln">45</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;→ (VERSION, VERSION_DATE)；读不到就 (&quot;</span>unknown<span class="s">&quot;, &quot;</span><span class="s">&quot;)，**绝不编**。&quot;</span><span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">46</span><code>    <span class="k">try</span>:</code></div>
+<div class="code-line"><span class="ln">47</span><code>        <span class="k">import</span> re</code></div>
+<div class="code-line"><span class="ln">48</span><code>        src = VERSION_SOURCE.read_text(encoding=<span class="s">&quot;utf-8&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">49</span><code>        v = re.search(r<span class="s">&#x27;^VERSION\s*=\s*&quot;([^&quot;]+)&quot;&#x27;</span>, src, re.M)</code></div>
+<div class="code-line"><span class="ln">50</span><code>        d = re.search(r<span class="s">&#x27;^VERSION_DATE\s*=\s*&quot;([^&quot;]+)&quot;&#x27;</span>, src, re.M)</code></div>
+<div class="code-line"><span class="ln">51</span><code>        <span class="k">if</span> <span class="k">not</span> v:</code></div>
+<div class="code-line"><span class="ln">52</span><code>            <span class="k">return</span> <span class="s">&quot;unknown&quot;</span>, <span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">53</span><code>        <span class="k">return</span> v.group(1), (d.group(1) <span class="k">if</span> d <span class="k">else</span> <span class="s">&quot;&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">54</span><code>    <span class="k">except</span> Exception:</code></div>
+<div class="code-line"><span class="ln">55</span><code>        <span class="k">return</span> <span class="s">&quot;unknown&quot;</span>, <span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">56</span><code></code></div>
+<div class="code-line"><span class="ln">57</span><code><span class="c"># ---- 输出产物目录 ----</span></code></div>
+<div class="code-line"><span class="ln">58</span><code>OUTPUT_DIR = BASE / <span class="s">&quot;output&quot;</span></code></div>
+<div class="code-line"><span class="ln">59</span><code>ELEMENT_MAP_DIR = OUTPUT_DIR / <span class="s">&quot;element_maps&quot;</span></code></div>
+<div class="code-line"><span class="ln">60</span><code>TRACE_DIR = OUTPUT_DIR / <span class="s">&quot;traces&quot;</span>            <span class="c"># 运行时证据：runner 用到时自建（不在 ensure_dirs 急切创建）</span></code></div>
+<div class="code-line"><span class="ln">61</span><code>HEALS_DIR = OUTPUT_DIR / <span class="s">&quot;heals&quot;</span>             <span class="c"># 自愈可审 diff：healer 用到时自建（同上）</span></code></div>
+<div class="code-line"><span class="ln">62</span><code><span class="c"># 2026-09-14 清理（用户反馈「仓库里有空目录残留」）：</span></code></div>
+<div class="code-line"><span class="ln">63</span><code><span class="c">#   PLAN_DIR(output/plans) / GENERATED_TESTS_DIR(generated_tests) /</span></code></div>
+<div class="code-line"><span class="ln">64</span><code><span class="c">#   TEST_SCENARIO_DIR(testScenario) / DATASETS_DIR(datasets)</span></code></div>
+<div class="code-line"><span class="ln">65</span><code><span class="c"># 四个旧概念常量**已无任何使用者**，唯一&quot;效果&quot;就是被 ensure_dirs() 每次启动建出来</span></code></div>
+<div class="code-line"><span class="ln">66</span><code><span class="c"># ⇒ 凭空多出空目录。已整体删除；防复发见 tests/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs。</span></code></div>
+<div class="code-line"><span class="ln">67</span><code></code></div>
+<div class="code-line"><span class="ln">68</span><code><span class="c"># ---- P5 数据驱动新增目录 ----</span></code></div>
+<div class="code-line"><span class="ln">69</span><code>LOG_DIR = BASE / <span class="s">&quot;log&quot;</span>                       <span class="c"># 用例执行日志</span></code></div>
+<div class="code-line"><span class="ln">70</span><code>SCENARIOS_DIR = BASE / <span class="s">&quot;scenarios&quot;</span>           <span class="c"># 用例编排表(index.json)</span></code></div>
+<div class="code-line"><span class="ln">71</span><code></code></div>
+<div class="code-line"><span class="ln">72</span><code><span class="c"># ---- 重构后的目录 ----</span></code></div>
+<div class="code-line"><span class="ln">73</span><code>CASES_DIR = BASE / <span class="s">&quot;cases&quot;</span>                   <span class="c"># ★ 手写的自然语言用例文件（写死数据）</span></code></div>
+<div class="code-line"><span class="ln">74</span><code>SCRIPTS_DIR = BASE / <span class="s">&quot;scripts&quot;</span>               <span class="c"># ★ generate 产物（playwright 脚本 + datasets 抽离）</span></code></div>
 <div class="code-line"><span class="ln">75</span><code></code></div>
-<div class="code-line"><span class="ln">76</span><code>    <span class="c"># 1) Browser Use 自家优化模型</span></code></div>
-<div class="code-line"><span class="ln">77</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;BROWSER_USE_API_KEY&quot;</span>):</code></div>
-<div class="code-line"><span class="ln">78</span><code>        <span class="k">return</span> ChatBrowserUse()</code></div>
-<div class="code-line"><span class="ln">79</span><code>    <span class="c"># 2) 通用 provider</span></code></div>
-<div class="code-line"><span class="ln">80</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;OPENAI_API_KEY&quot;</span>):</code></div>
-<div class="code-line"><span class="ln">81</span><code>        <span class="k">return</span> ChatOpenAI(model=<span class="s">&quot;gpt-4.1-mini&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">82</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;ANTHROPIC_API_KEY&quot;</span>):</code></div>
-<div class="code-line"><span class="ln">83</span><code>        <span class="k">return</span> ChatAnthropic(model=<span class="s">&quot;claude-sonnet-4-0&quot;</span>, temperature=0.0)</code></div>
-<div class="code-line"><span class="ln">84</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;GOOGLE_API_KEY&quot;</span>):</code></div>
-<div class="code-line"><span class="ln">85</span><code>        <span class="k">return</span> ChatGoogle(model=<span class="s">&quot;gemini-flash-latest&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">86</span><code>    <span class="c"># 3) DeepSeek —— 用 browser-use 0.13.10 原生 ChatDeepSeek（OpenAI 兼容，走 function calling）</span></code></div>
-<div class="code-line"><span class="ln">87</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>):</code></div>
-<div class="code-line"><span class="ln">88</span><code>        <span class="k">from</span> browser_use.llm.deepseek.chat <span class="k">import</span> ChatDeepSeek</code></div>
-<div class="code-line"><span class="ln">89</span><code>        <span class="k">return</span> ChatDeepSeek(</code></div>
-<div class="code-line"><span class="ln">90</span><code>            api_key=os.environ[<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>],</code></div>
-<div class="code-line"><span class="ln">91</span><code>            base_url=os.environ.get(<span class="s">&quot;DEEPSEEK_BASE_URL&quot;</span>, <span class="s">&quot;https://api.deepseek.com/v1&quot;</span>),</code></div>
-<div class="code-line"><span class="ln">92</span><code>            model=os.environ.get(<span class="s">&quot;DEEPSEEK_MODEL&quot;</span>, <span class="s">&quot;deepseek-chat&quot;</span>),</code></div>
-<div class="code-line"><span class="ln">93</span><code>            temperature=0.0,</code></div>
-<div class="code-line"><span class="ln">94</span><code>        )</code></div>
-<div class="code-line"><span class="ln">95</span><code>    <span class="k">raise</span> RuntimeError(</code></div>
-<div class="code-line"><span class="ln">96</span><code>        <span class="s">&quot;未检测到 LLM 环境变量。请在 .env 配置 BROWSER_USE_API_KEY / &quot;</span></code></div>
-<div class="code-line"><span class="ln">97</span><code>        <span class="s">&quot;OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / DEEPSEEK_API_KEY 之一。&quot;</span></code></div>
-<div class="code-line"><span class="ln">98</span><code>    )</code></div>
-<div class="code-line"><span class="ln">99</span><code></code></div>
-<div class="code-line"><span class="ln">100</span><code></code></div>
-<div class="code-line"><span class="ln">101</span><code><span class="k">def</span> auto_detect_llm() -&gt; bool:</code></div>
-<div class="code-line"><span class="ln">102</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;是否检测到可用的 LLM key（Healer 的 Level-B 语义重猜才启用）。&quot;</span><span class="s">&quot;&quot;</span></code></div>
-<div class="code-line"><span class="ln">103</span><code>    <span class="k">return</span> bool(os.environ.get(<span class="s">&quot;BROWSER_USE_API_KEY&quot;</span>) <span class="k">or</span> os.environ.get(<span class="s">&quot;OPENAI_API_KEY&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">104</span><code>                <span class="k">or</span> os.environ.get(<span class="s">&quot;ANTHROPIC_API_KEY&quot;</span>) <span class="k">or</span> os.environ.get(<span class="s">&quot;GOOGLE_API_KEY&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">105</span><code>                <span class="k">or</span> os.environ.get(<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>))</code></div>
-<div class="code-line"><span class="ln">106</span><code></code></div>
-<div class="code-line"><span class="ln">107</span><code></code></div>
-<div class="code-line"><span class="ln">108</span><code><span class="k">def</span> ensure_dirs():</code></div>
-<div class="code-line"><span class="ln">109</span><code>    <span class="c"># 2026-09-13 冷启动排查补：原来不含 LOG_DIR / SCRIPTS_DIR / CASES_DIR ——</span></code></div>
-<div class="code-line"><span class="ln">110</span><code>    <span class="c"># 冷启动（目录被清掉）时它们只是&quot;碰巧&quot;被后续 parents=True 的 mkdir 建出来，</span></code></div>
-<div class="code-line"><span class="ln">111</span><code>    <span class="c"># 属于隐式依赖；这里显式建，任何入口都不会因为缺目录而诡异失败。</span></code></div>
-<div class="code-line"><span class="ln">112</span><code>    <span class="c"># 2026-09-14 收窄（用户反馈「空目录残留」）：</span></code></div>
-<div class="code-line"><span class="ln">113</span><code>    <span class="c">#   急切创建只保留「入口扫描/写入之前不会自建」的目录。</span></code></div>
-<div class="code-line"><span class="ln">114</span><code>    <span class="c">#   TRACE_DIR / HEALS_DIR 的写入方（runner.record_trace / healer.dump）**使用前显式 mkdir**</span></code></div>
-<div class="code-line"><span class="ln">115</span><code>    <span class="c">#   ⇒ 不是隐式依赖；在此急切创建只会让空目录常驻仓库。谁要写谁自建。</span></code></div>
-<div class="code-line"><span class="ln">116</span><code>    <span class="c">#   防复发：tests/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs</span></code></div>
-<div class="code-line"><span class="ln">117</span><code>    <span class="c">#   （此处声明的每个常量都必须在 config.py 之外有真实使用者，否则就是&quot;为了建空目录而建&quot;）。</span></code></div>
-<div class="code-line"><span class="ln">118</span><code>    <span class="k">for</span> d <span class="k">in</span> (OUTPUT_DIR, ELEMENT_MAP_DIR, LOG_DIR, SCRIPTS_DIR, CASES_DIR):</code></div>
-<div class="code-line"><span class="ln">119</span><code>        d.mkdir(parents=<span class="k">True</span>, exist_ok=<span class="k">True</span>)</code></div></div>
+<div class="code-line"><span class="ln">76</span><code><span class="c"># ---- Browser Use 探索阶段需要 LLM ----</span></code></div>
+<div class="code-line"><span class="ln">77</span><code><span class="c"># 负责&quot;智能理解&quot;：读懂自然语言测试意图、规划步骤、挑元素、写 plan。</span></code></div>
+<div class="code-line"><span class="ln">78</span><code><span class="c"># 这是 AI 之力的成本来源（每步一次模型推理）。</span></code></div>
+<div class="code-line star"><span class="ln">79</span><code><span class="k">def</span> llm_from_env():</code></div>
+<div class="code-note">⭐ <b>按 .env 里装的 key，自动挑一个 LLM。AI 阶段才花钱。</b></div>
+<div class="code-line"><span class="ln">80</span><code>    <span class="s">&quot;&quot;</span>&quot;按 .env 里配了哪个 key，构造对应的 Browser Use LLM 实例。</code></div>
+<div class="code-line"><span class="ln">81</span><code>    优先级: ChatBrowserUse &gt; OpenAI &gt; Anthropic &gt; Google &gt; DeepSeek(ChatDeepSeek 原生)。<span class="s">&quot;&quot;</span>&quot;</code></div>
+<div class="code-line"><span class="ln">82</span><code>    <span class="k">try</span>:</code></div>
+<div class="code-line"><span class="ln">83</span><code>        <span class="k">from</span> browser_use.llm <span class="k">import</span> ChatBrowserUse, ChatOpenAI, ChatAnthropic, ChatGoogle</code></div>
+<div class="code-line"><span class="ln">84</span><code>    <span class="k">except</span> ImportError <span class="k">as</span> e:</code></div>
+<div class="code-line"><span class="ln">85</span><code>        <span class="k">raise</span> ImportError(</code></div>
+<div class="code-line"><span class="ln">86</span><code>            <span class="s">&quot;browser-use 未安装。pip install browser-use 后重试。&quot;</span></code></div>
+<div class="code-line"><span class="ln">87</span><code>        ) <span class="k">from</span> e</code></div>
+<div class="code-line"><span class="ln">88</span><code></code></div>
+<div class="code-line"><span class="ln">89</span><code>    <span class="c"># 1) Browser Use 自家优化模型</span></code></div>
+<div class="code-line"><span class="ln">90</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;BROWSER_USE_API_KEY&quot;</span>):</code></div>
+<div class="code-line"><span class="ln">91</span><code>        <span class="k">return</span> ChatBrowserUse()</code></div>
+<div class="code-line"><span class="ln">92</span><code>    <span class="c"># 2) 通用 provider</span></code></div>
+<div class="code-line"><span class="ln">93</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;OPENAI_API_KEY&quot;</span>):</code></div>
+<div class="code-line"><span class="ln">94</span><code>        <span class="k">return</span> ChatOpenAI(model=<span class="s">&quot;gpt-4.1-mini&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">95</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;ANTHROPIC_API_KEY&quot;</span>):</code></div>
+<div class="code-line"><span class="ln">96</span><code>        <span class="k">return</span> ChatAnthropic(model=<span class="s">&quot;claude-sonnet-4-0&quot;</span>, temperature=0.0)</code></div>
+<div class="code-line"><span class="ln">97</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;GOOGLE_API_KEY&quot;</span>):</code></div>
+<div class="code-line"><span class="ln">98</span><code>        <span class="k">return</span> ChatGoogle(model=<span class="s">&quot;gemini-flash-latest&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">99</span><code>    <span class="c"># 3) DeepSeek —— 用 browser-use 0.13.10 原生 ChatDeepSeek（OpenAI 兼容，走 function calling）</span></code></div>
+<div class="code-line"><span class="ln">100</span><code>    <span class="k">if</span> os.environ.get(<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>):</code></div>
+<div class="code-line"><span class="ln">101</span><code>        <span class="k">from</span> browser_use.llm.deepseek.chat <span class="k">import</span> ChatDeepSeek</code></div>
+<div class="code-line"><span class="ln">102</span><code>        <span class="k">return</span> ChatDeepSeek(</code></div>
+<div class="code-line"><span class="ln">103</span><code>            api_key=os.environ[<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>],</code></div>
+<div class="code-line"><span class="ln">104</span><code>            base_url=os.environ.get(<span class="s">&quot;DEEPSEEK_BASE_URL&quot;</span>, <span class="s">&quot;https://api.deepseek.com/v1&quot;</span>),</code></div>
+<div class="code-line"><span class="ln">105</span><code>            model=os.environ.get(<span class="s">&quot;DEEPSEEK_MODEL&quot;</span>, <span class="s">&quot;deepseek-chat&quot;</span>),</code></div>
+<div class="code-line"><span class="ln">106</span><code>            temperature=0.0,</code></div>
+<div class="code-line"><span class="ln">107</span><code>        )</code></div>
+<div class="code-line"><span class="ln">108</span><code>    <span class="k">raise</span> RuntimeError(</code></div>
+<div class="code-line"><span class="ln">109</span><code>        <span class="s">&quot;未检测到 LLM 环境变量。请在 .env 配置 BROWSER_USE_API_KEY / &quot;</span></code></div>
+<div class="code-line"><span class="ln">110</span><code>        <span class="s">&quot;OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / DEEPSEEK_API_KEY 之一。&quot;</span></code></div>
+<div class="code-line"><span class="ln">111</span><code>    )</code></div>
+<div class="code-line"><span class="ln">112</span><code></code></div>
+<div class="code-line"><span class="ln">113</span><code></code></div>
+<div class="code-line"><span class="ln">114</span><code><span class="k">def</span> auto_detect_llm() -&gt; bool:</code></div>
+<div class="code-line"><span class="ln">115</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;是否检测到可用的 LLM key（Healer 的 Level-B 语义重猜才启用）。&quot;</span><span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">116</span><code>    <span class="k">return</span> bool(os.environ.get(<span class="s">&quot;BROWSER_USE_API_KEY&quot;</span>) <span class="k">or</span> os.environ.get(<span class="s">&quot;OPENAI_API_KEY&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">117</span><code>                <span class="k">or</span> os.environ.get(<span class="s">&quot;ANTHROPIC_API_KEY&quot;</span>) <span class="k">or</span> os.environ.get(<span class="s">&quot;GOOGLE_API_KEY&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">118</span><code>                <span class="k">or</span> os.environ.get(<span class="s">&quot;DEEPSEEK_API_KEY&quot;</span>))</code></div>
+<div class="code-line"><span class="ln">119</span><code></code></div>
+<div class="code-line"><span class="ln">120</span><code></code></div>
+<div class="code-line"><span class="ln">121</span><code><span class="k">def</span> ensure_dirs():</code></div>
+<div class="code-line"><span class="ln">122</span><code>    <span class="c"># 2026-09-13 冷启动排查补：原来不含 LOG_DIR / SCRIPTS_DIR / CASES_DIR ——</span></code></div>
+<div class="code-line"><span class="ln">123</span><code>    <span class="c"># 冷启动（目录被清掉）时它们只是&quot;碰巧&quot;被后续 parents=True 的 mkdir 建出来，</span></code></div>
+<div class="code-line"><span class="ln">124</span><code>    <span class="c"># 属于隐式依赖；这里显式建，任何入口都不会因为缺目录而诡异失败。</span></code></div>
+<div class="code-line"><span class="ln">125</span><code>    <span class="c"># 2026-09-14 收窄（用户反馈「空目录残留」）：</span></code></div>
+<div class="code-line"><span class="ln">126</span><code>    <span class="c">#   急切创建只保留「入口扫描/写入之前不会自建」的目录。</span></code></div>
+<div class="code-line"><span class="ln">127</span><code>    <span class="c">#   TRACE_DIR / HEALS_DIR 的写入方（runner.record_trace / healer.dump）**使用前显式 mkdir**</span></code></div>
+<div class="code-line"><span class="ln">128</span><code>    <span class="c">#   ⇒ 不是隐式依赖；在此急切创建只会让空目录常驻仓库。谁要写谁自建。</span></code></div>
+<div class="code-line"><span class="ln">129</span><code>    <span class="c">#   防复发：tests/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs</span></code></div>
+<div class="code-line"><span class="ln">130</span><code>    <span class="c">#   （此处声明的每个常量都必须在 config.py 之外有真实使用者，否则就是&quot;为了建空目录而建&quot;）。</span></code></div>
+<div class="code-line"><span class="ln">131</span><code>    <span class="k">for</span> d <span class="k">in</span> (OUTPUT_DIR, ELEMENT_MAP_DIR, LOG_DIR, SCRIPTS_DIR, CASES_DIR):</code></div>
+<div class="code-line"><span class="ln">132</span><code>        d.mkdir(parents=<span class="k">True</span>, exist_ok=<span class="k">True</span>)</code></div></div>
     </section>
 
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#2f7fd1">📄 数据契约</span>
-        <code class="file-path">framework/element_map.py</code>
+        <code class="file-path">framework/tools/probe/element_map.py</code>
       </div>
       <p class="file-desc">AI 和 Playwright 之间的『翻译件』：步骤 + 元素语义，两阶段无缝衔接。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span><span class="s">&quot;元素数据模型：AI 探索产出的&quot;</span>语义&quot;，经 bridge 转成 Playwright locator。</code></div>
@@ -1712,7 +1734,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#0f8f6a">✅ Playwright</span>
-        <code class="file-path">framework/probe.py</code>
+        <code class="file-path">framework/tools/probe/probe.py</code>
       </div>
       <p class="file-desc">第一步·探测：用代码扫页面，把可交互元素『翻译』成语义清单。不经过 LLM。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span>&quot;【Playwright】确定性元素探测 (probe)</code></div>
@@ -2189,7 +2211,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#3b6fdd">🤖 AI 层</span>
-        <code class="file-path">framework/explorer.py</code>
+        <code class="file-path">framework/tools/explore/explorer.py</code>
       </div>
       <p class="file-desc">第二步·探索：AI 听懂意图→规划步骤→从探测清单里挑元素。只引用语义，绝不写 CSS。（默认把 AI 用例落到 cases/ai_*.json，`--no-cases` 可关；`--to-cases` 是历史方案里的叫法，代码里没有这个开关）</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span>&quot;【Browser Use】AI 探索与规划</code></div>
@@ -2217,8 +2239,8 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">23</span><code><span class="k">import</span> re               <span class="c"># 2026-09-18：_field_identity 归一化字段名（去「*」/去结尾「（全模糊）」）</span></code></div>
 <div class="code-line"><span class="ln">24</span><code><span class="k">import</span> time             <span class="c"># 2026-09-14：弹层/弹窗探测改成「有界轮询等新控件出现」，需要单调时钟</span></code></div>
 <div class="code-line"><span class="ln">25</span><code><span class="k">from</span> pydantic <span class="k">import</span> BaseModel, Field</code></div>
-<div class="code-line"><span class="ln">26</span><code><span class="k">from</span> .element_map <span class="k">import</span> ElementMap, TestStep, ElementRef</code></div>
-<div class="code-line"><span class="ln">27</span><code><span class="k">from</span> .browser <span class="k">import</span> launch_opts</code></div>
+<div class="code-line"><span class="ln">26</span><code><span class="k">from</span> framework.tools.probe.element_map <span class="k">import</span> ElementMap, TestStep, ElementRef</code></div>
+<div class="code-line"><span class="ln">27</span><code><span class="k">from</span> framework.tools.common.browser <span class="k">import</span> launch_opts</code></div>
 <div class="code-line"><span class="ln">28</span><code></code></div>
 <div class="code-line"><span class="ln">29</span><code></code></div>
 <div class="code-line"><span class="ln">30</span><code><span class="c"># 交给 ChatDeepSeek(ainvoke output_format) 的结构化步骤 schema</span></code></div>
@@ -2545,7 +2567,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">349</span><code>        <span class="k">return</span> _collect_pages_context(pages, items)</code></div>
 <div class="code-line"><span class="ln">350</span><code></code></div>
 <div class="code-line"><span class="ln">351</span><code>    <span class="k">from</span> playwright.sync_api <span class="k">import</span> sync_playwright</code></div>
-<div class="code-line"><span class="ln">352</span><code>    <span class="k">from</span> .probe <span class="k">import</span> probe_page, probe_row_fields</code></div>
+<div class="code-line"><span class="ln">352</span><code>    <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page, probe_row_fields</code></div>
 <div class="code-line"><span class="ln">353</span><code>    <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">354</span><code>        <span class="k">with</span> sync_playwright() <span class="k">as</span> p:</code></div>
 <div class="code-line"><span class="ln">355</span><code>            b = p.chromium.launch(**launch_opts(headless=<span class="k">True</span>))</code></div>
@@ -2576,7 +2598,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">380</span><code>    返回 (merged_items, dom_ctx, err_for_ai, collisions)。</code></div>
 <div class="code-line"><span class="ln">381</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
 <div class="code-line"><span class="ln">382</span><code>    <span class="k">from</span> playwright.sync_api <span class="k">import</span> sync_playwright</code></div>
-<div class="code-line"><span class="ln">383</span><code>    <span class="k">from</span> .probe <span class="k">import</span> probe_page, probe_row_fields, uniquify_across_pages</code></div>
+<div class="code-line"><span class="ln">383</span><code>    <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page, probe_row_fields, uniquify_across_pages</code></div>
 <div class="code-line"><span class="ln">384</span><code>    <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">385</span><code>        per_page: list[tuple[str, list[dict]]] = []</code></div>
 <div class="code-line"><span class="ln">386</span><code>        dom_ctx: list[dict] = []</code></div>
@@ -2632,7 +2654,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">435</span><code>    LLM 完全不可用时：默认 <span class="k">raise</span> AiExploreError（拒绝产出假 AI 用例）；</code></div>
 <div class="code-line"><span class="ln">436</span><code>    allow_mock_fallback=<span class="k">True</span>（CLI 的 --mock-fallback）才显式降级为确定性 mock。</code></div>
 <div class="code-line"><span class="ln">437</span><code></code></div>
-<div class="code-line"><span class="ln">438</span><code>    llm_cassette（2026-09-18，见 framework/llm_cassette.py）：录制 / 回放。</code></div>
+<div class="code-line"><span class="ln">438</span><code>    llm_cassette（2026-09-18，见 framework/tools/explore/llm_cassette.py）：录制 / 回放。</code></div>
 <div class="code-line"><span class="ln">439</span><code>    回放模式**完全不联网、也不需要 key**（连 llm_from_env 都不调）——</code></div>
 <div class="code-line"><span class="ln">440</span><code>    连不上外网的机器（如受管网络里的工作电脑）也能跑完这条 AI 链路。</code></div>
 <div class="code-line"><span class="ln">441</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
@@ -2748,7 +2770,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">551</span><code>    rec = cassette.lookup(prompt, _PLANNER_SYSTEM,</code></div>
 <div class="code-line"><span class="ln">552</span><code>                          struct_key_value=struct_key_value, strict_only=strict_only)</code></div>
 <div class="code-line"><span class="ln">553</span><code>    <span class="k">if</span> rec is <span class="k">None</span>:</code></div>
-<div class="code-line"><span class="ln">554</span><code>        <span class="k">from</span> .llm_cassette <span class="k">import</span> render_miss_help</code></div>
+<div class="code-line"><span class="ln">554</span><code>        <span class="k">from</span> framework.tools.explore.llm_cassette <span class="k">import</span> render_miss_help</code></div>
 <div class="code-line"><span class="ln">555</span><code>        tail = <span class="s">&quot;；已按 --llm-cassette-strict 禁用结构键兜底&quot;</span> <span class="k">if</span> strict_only <span class="k">else</span> <span class="s">&quot;，结构键也没找到&quot;</span></code></div>
 <div class="code-line"><span class="ln">556</span><code>        <span class="k">raise</span> AiExploreError(</code></div>
 <div class="code-line"><span class="ln">557</span><code>            <span class="s">&quot;离线回放（--llm-cassette）：录像目录里**没有这一份**（严格键不匹配&quot;</span> + tail + <span class="s">&quot;）。\n&quot;</span></code></div>
@@ -2820,7 +2842,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">622</span><code>    （页面探测已在 _collect_page_context 里同步完成；这里绝不能碰 Playwright Sync API。）</code></div>
 <div class="code-line"><span class="ln">623</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
 <div class="code-line"><span class="ln">624</span><code>    <span class="k">import</span> os</code></div>
-<div class="code-line"><span class="ln">625</span><code>    <span class="k">from</span> .config <span class="k">import</span> llm_from_env</code></div>
+<div class="code-line"><span class="ln">625</span><code>    <span class="k">from</span> framework.tools.common.config <span class="k">import</span> llm_from_env</code></div>
 <div class="code-line"><span class="ln">626</span><code></code></div>
 <div class="code-line"><span class="ln">627</span><code>    prompt = _build_planner_prompt(scenario, page_items, url, dom_ctx, page_bg=page_bg, guard=guard,</code></div>
 <div class="code-line"><span class="ln">628</span><code>                                   pages=pages, collisions=collisions, row_fields=row_fields)</code></div>
@@ -2829,7 +2851,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">631</span><code>    <span class="c"># ① 离线回放（--llm-cassette）：命中即用 —— **刻意放在 llm_from_env() 之前**，</span></code></div>
 <div class="code-line"><span class="ln">632</span><code>    <span class="c">#    因为离线机器常常连 .env 都没配（回放不需要 key，也不联网）。</span></code></div>
 <div class="code-line"><span class="ln">633</span><code>    <span class="k">if</span> llm_cassette is <span class="k">not</span> <span class="k">None</span> <span class="k">and</span> llm_cassette.is_replay:</code></div>
-<div class="code-line"><span class="ln">634</span><code>        <span class="k">from</span> .llm_cassette <span class="k">import</span> struct_key</code></div>
+<div class="code-line"><span class="ln">634</span><code>        <span class="k">from</span> framework.tools.explore.llm_cassette <span class="k">import</span> struct_key</code></div>
 <div class="code-line"><span class="ln">635</span><code>        <span class="k">return</span> _replay_from_cassette(</code></div>
 <div class="code-line"><span class="ln">636</span><code>            llm_cassette, prompt, page_items, first_url, scenario, pages=pages,</code></div>
 <div class="code-line"><span class="ln">637</span><code>            struct_key_value=struct_key(scenario, page_items, pages, _PLANNER_SYSTEM),</code></div>
@@ -2906,7 +2928,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">708</span><code>                <span class="k">if</span> attempt &gt; 1:</code></div>
 <div class="code-line"><span class="ln">709</span><code>                    print(f<span class="s">&quot;      [explore] 第 {attempt}/{n_attempts} 次重试成功（上游抖动，重试即恢复）&quot;</span>)</code></div>
 <div class="code-line"><span class="ln">710</span><code>                <span class="k">if</span> llm_cassette is <span class="k">not</span> <span class="k">None</span> <span class="k">and</span> llm_cassette.is_record:</code></div>
-<div class="code-line"><span class="ln">711</span><code>                    <span class="k">from</span> .llm_cassette <span class="k">import</span> struct_key</code></div>
+<div class="code-line"><span class="ln">711</span><code>                    <span class="k">from</span> framework.tools.explore.llm_cassette <span class="k">import</span> struct_key</code></div>
 <div class="code-line"><span class="ln">712</span><code>                    _save_to_cassette(llm_cassette, prompt, model_name, raw_plan, raw_text,</code></div>
 <div class="code-line"><span class="ln">713</span><code>                                      key_struct=struct_key(scenario, page_items, pages,</code></div>
 <div class="code-line"><span class="ln">714</span><code>                                                            _PLANNER_SYSTEM))</code></div>
@@ -3063,7 +3085,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">864</span><code>    有界（≤2 层、每层 ≤2 次点击）+ 排除提交/删除/取消类关键词 —— 绝不在陌生页面上乱点。</code></div>
 <div class="code-line"><span class="ln">865</span><code>    失败只影响<span class="s">&quot;少一份控件清单&quot;</span>，不打断探测，但**不静默**：打印原因。</code></div>
 <div class="code-line"><span class="ln">866</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">867</span><code>    <span class="k">from</span> .probe <span class="k">import</span> probe_page</code></div>
+<div class="code-line"><span class="ln">867</span><code>    <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page</code></div>
 <div class="code-line"><span class="ln">868</span><code>    collected: list[dict] = []</code></div>
 <div class="code-line"><span class="ln">869</span><code>    seen_names = {it.get(<span class="s">&quot;semantic_name&quot;</span>) <span class="k">for</span> it <span class="k">in</span> base_items}</code></div>
 <div class="code-line"><span class="ln">870</span><code>    seen_ids = {_item_identity(it) <span class="k">for</span> it <span class="k">in</span> base_items}</code></div>
@@ -3173,7 +3195,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">974</span><code>    取代原来的固定 pg.wait_for_timeout(300)（理由见 _LAYER_RENDER_WAIT_S 注释）。</code></div>
 <div class="code-line"><span class="ln">975</span><code>    一轮都探不到时不会立刻放弃：最多轮询到 timeout_s，探到就立刻返回。</code></div>
 <div class="code-line"><span class="ln">976</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">977</span><code>    <span class="k">from</span> .probe <span class="k">import</span> probe_page</code></div>
+<div class="code-line"><span class="ln">977</span><code>    <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page</code></div>
 <div class="code-line"><span class="ln">978</span><code>    deadline = time.monotonic() + timeout_s</code></div>
 <div class="code-line"><span class="ln">979</span><code>    while <span class="k">True</span>:</code></div>
 <div class="code-line"><span class="ln">980</span><code>        fresh = absorb(probe_page(pg))</code></div>
@@ -3210,7 +3232,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1011</span><code>    ⚠️ 失败必须**打印原因**：以前这里静默 <span class="k">return</span> <span class="k">False</span>，导致「层没探到」和「层里啥也没有」</code></div>
 <div class="code-line"><span class="ln">1012</span><code>    在日志上长得一模一样（2026-09-14 实测踩到：客户列表层没被收集，日志里一点线索都没有）。</code></div>
 <div class="code-line"><span class="ln">1013</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">1014</span><code>    <span class="k">from</span> .probe <span class="k">import</span> probe_page</code></div>
+<div class="code-line"><span class="ln">1014</span><code>    <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page</code></div>
 <div class="code-line"><span class="ln">1015</span><code>    role, name, test_id = cand.get(<span class="s">&quot;role&quot;</span>), cand.get(<span class="s">&quot;name&quot;</span>) <span class="k">or</span> <span class="s">&quot;&quot;</span>, cand.get(<span class="s">&quot;test_id&quot;</span>) <span class="k">or</span> <span class="s">&quot;&quot;</span></code></div>
 <div class="code-line"><span class="ln">1016</span><code>    shown = _one_line(name)</code></div>
 <div class="code-line"><span class="ln">1017</span><code>    <span class="k">try</span>:</code></div>
@@ -3295,7 +3317,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1096</span><code>    上重算一次命名 ⇒ 同名控件**必然全部带上下文**，不可能再有谁独占裸名；</code></div>
 <div class="code-line"><span class="ln">1097</span><code>    留痕字段（`base_name` / `name_source` / `base_conflict`）随产物一起给下游判歧义用。</code></div>
 <div class="code-line"><span class="ln">1098</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">1099</span><code>    <span class="k">from</span> .probe <span class="k">import</span> assign_semantic_names</code></div>
+<div class="code-line"><span class="ln">1099</span><code>    <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> assign_semantic_names</code></div>
 <div class="code-line"><span class="ln">1100</span><code>    out = list(base)</code></div>
 <div class="code-line"><span class="ln">1101</span><code>    seen_tid = {it.get(<span class="s">&quot;test_id&quot;</span>) <span class="k">for</span> it <span class="k">in</span> base <span class="k">if</span> it.get(<span class="s">&quot;test_id&quot;</span>)}</code></div>
 <div class="code-line"><span class="ln">1102</span><code>    <span class="k">for</span> it <span class="k">in</span> extra:</code></div>
@@ -3364,7 +3386,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1164</span><code>                         row_fields: list[dict] | <span class="k">None</span> = <span class="k">None</span>) -&gt; str:</code></div>
 <div class="code-line"><span class="ln">1165</span><code>    <span class="s">&quot;&quot;</span>&quot;构造给 LLM 的规划提示：自然语言场景 + probe 语义清单 + 富 DOM 上下文，要求产出轻量步骤 JSON。</code></div>
 <div class="code-line"><span class="ln">1166</span><code></code></div>
-<div class="code-line"><span class="ln">1167</span><code>    page_bg / guard：来自 scenario 文件（见 framework/scenario.py）——</code></div>
+<div class="code-line"><span class="ln">1167</span><code>    page_bg / guard：来自 scenario 文件（见 framework/tools/generate/scenario.py）——</code></div>
 <div class="code-line"><span class="ln">1168</span><code>      page_bg 是【页面背景】（页面说明+前置条件+领域上下文），guard 是【本场景断言护栏】。</code></div>
 <div class="code-line"><span class="ln">1169</span><code>    两者都拼进提示，把<span class="s">&quot;断言必须操作前可确定&quot;</span>从通用规则升级为每场景专属硬约束。</code></div>
 <div class="code-line"><span class="ln">1170</span><code></code></div>
@@ -3674,7 +3696,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#3b6fdd">🤖 转换层</span>
-        <code class="file-path">framework/case_builder.py</code>
+        <code class="file-path">framework/tools/generate/case_builder.py</code>
       </div>
       <p class="file-desc">场景①第三段·落盘：ElementMap → cases/ai_*.json（expect_text 转 asserts[]；element 原样带走语义名）+ 落盘前质量校验（防假绿）。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span>&quot;ElementMap → cases/*.json 转换器 + 用例质量校验。</code></div>
@@ -3704,8 +3726,8 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">25</span><code><span class="k">from</span> pathlib <span class="k">import</span> Path</code></div>
 <div class="code-line"><span class="ln">26</span><code><span class="k">from</span> urllib.parse <span class="k">import</span> urlsplit</code></div>
 <div class="code-line"><span class="ln">27</span><code></code></div>
-<div class="code-line"><span class="ln">28</span><code><span class="k">from</span> .config <span class="k">import</span> CASES_DIR</code></div>
-<div class="code-line"><span class="ln">29</span><code><span class="k">from</span> .element_map <span class="k">import</span> ElementMap</code></div>
+<div class="code-line"><span class="ln">28</span><code><span class="k">from</span> framework.tools.common.config <span class="k">import</span> CASES_DIR</code></div>
+<div class="code-line"><span class="ln">29</span><code><span class="k">from</span> framework.tools.probe.element_map <span class="k">import</span> ElementMap</code></div>
 <div class="code-line"><span class="ln">30</span><code></code></div>
 <div class="code-line"><span class="ln">31</span><code><span class="c"># action → cases 的 op（同名直映射；不在表内的动作不产出步骤，不静默造假）</span></code></div>
 <div class="code-line star"><span class="ln">32</span><code>_OP_MAP = {</code></div>
@@ -4156,7 +4178,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#6b7280">🗂 场景库</span>
-        <code class="file-path">framework/scenario.py</code>
+        <code class="file-path">framework/tools/generate/scenario.py</code>
       </div>
       <p class="file-desc">scenarios/*.yml 的解析/校验/发现：一个文件=一个场景，只有 scenario 必填；business_context 喂 AI、assert_guard 既是护栏也进质量闸；<code>data:</code> 从 V7.8 起<b>真展开</b>（一组数据=一条用例，形态写错就报错）。需 PyYAML。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span>&quot;scenario 文件（scenarios/**.yml）的解析、校验与发现。</code></div>
@@ -4181,7 +4203,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">20</span><code></code></div>
 <div class="code-line"><span class="ln">21</span><code><span class="k">import</span> yaml</code></div>
 <div class="code-line"><span class="ln">22</span><code></code></div>
-<div class="code-line"><span class="ln">23</span><code><span class="k">from</span> .config <span class="k">import</span> SCENARIOS_DIR</code></div>
+<div class="code-line"><span class="ln">23</span><code><span class="k">from</span> framework.tools.common.config <span class="k">import</span> SCENARIOS_DIR</code></div>
 <div class="code-line"><span class="ln">24</span><code></code></div>
 <div class="code-line"><span class="ln">25</span><code>_ID_RE = re.compile(r<span class="s">&quot;^[a-z][a-z0-9_]*$&quot;</span>)</code></div>
 <div class="code-line"><span class="ln">26</span><code>_EXTS = (<span class="s">&quot;.yml&quot;</span>, <span class="s">&quot;.yaml&quot;</span>)</code></div>
@@ -4428,7 +4450,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#0f8f6a">✅ Playwright</span>
-        <code class="file-path">framework/locator_bridge.py</code>
+        <code class="file-path">framework/tools/probe/locator_bridge.py</code>
       </div>
       <p class="file-desc">技术核心·桥梁：把语义转成『唯一、稳定』的 Playwright locator。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span>&quot;【Playwright】分层 locator 栈 —— 本框架的技术核心（Phase 2 升级版）。</code></div>
@@ -4458,7 +4480,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">25</span><code><span class="k">from</span> __future__ <span class="k">import</span> annotations</code></div>
 <div class="code-line"><span class="ln">26</span><code><span class="k">from</span> difflib <span class="k">import</span> SequenceMatcher</code></div>
 <div class="code-line"><span class="ln">27</span><code><span class="k">from</span> playwright.sync_api <span class="k">import</span> Page</code></div>
-<div class="code-line"><span class="ln">28</span><code><span class="k">from</span> .element_map <span class="k">import</span> ElementRef</code></div>
+<div class="code-line"><span class="ln">28</span><code><span class="k">from</span> framework.tools.probe.element_map <span class="k">import</span> ElementRef</code></div>
 <div class="code-line"><span class="ln">29</span><code></code></div>
 <div class="code-line"><span class="ln">30</span><code><span class="c"># ---------------- Tier1：语义精确（按稳定性从高到低） ----------------</span></code></div>
 <div class="code-line"><span class="ln">31</span><code><span class="c"># data-testid 是 component contract，不随视觉改版变，业界公认最稳 → 置顶。</span></code></div>
@@ -4657,7 +4679,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">223</span><code>    <span class="s">&quot;&quot;</span>&quot;Tier2：指纹相似度匹配。返回 locator 结果 dict 或 <span class="k">None</span>（无把握放弃）。</code></div>
 <div class="code-line"><span class="ln">224</span><code></code></div>
 <div class="code-line"><span class="ln">225</span><code>    threshold/mingap 可放宽（供 Healer 自愈再协商用），默认取严格值。<span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">226</span><code>    <span class="k">from</span> .probe <span class="k">import</span> probe_page</code></div>
+<div class="code-line"><span class="ln">226</span><code>    <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page</code></div>
 <div class="code-line"><span class="ln">227</span><code>    candidates = probe_page(page)</code></div>
 <div class="code-line"><span class="ln">228</span><code>    scored = [(_fingerprint_score(el, c), c) <span class="k">for</span> c <span class="k">in</span> candidates]</code></div>
 <div class="code-line"><span class="ln">229</span><code>    scored.sort(key=<span class="k">lambda</span> x: -x[0])</code></div>
@@ -4720,7 +4742,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#0f8f6a">✅ Playwright</span>
-        <code class="file-path">framework/generator.py</code>
+        <code class="file-path">framework/tools/generate/generator.py</code>
       </div>
       <p class="file-desc">主链路第二步·生成：读 cases/*.json（含 AI 用例）→ 优先用 element_map 快照映射确定性 locator（缺项才现场 probe）+ 按操作类型翻译 + 抽离数据到 scripts/datasets。元素映射不到时显式 pytest.fail，绝不静默跳过。V7.8 起还负责<b>数据参数化</b>：场景 <code>data:</code> 的每组数据展开成一条独立用例。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span>&quot;【Playwright】测试代码生成器 —— 按操作类型翻译 + 数据抽离版。</code></div>
@@ -4740,9 +4762,9 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">15</span><code><span class="k">import</span> re</code></div>
 <div class="code-line"><span class="ln">16</span><code><span class="k">from</span> pathlib <span class="k">import</span> Path</code></div>
 <div class="code-line"><span class="ln">17</span><code></code></div>
-<div class="code-line"><span class="ln">18</span><code><span class="k">from</span> .config <span class="k">import</span> BASE, CASES_DIR, SCRIPTS_DIR</code></div>
-<div class="code-line"><span class="ln">19</span><code><span class="k">from</span> .browser <span class="k">import</span> CHROMIUM_ARGS</code></div>
-<div class="code-line"><span class="ln">20</span><code><span class="k">from</span> .case_builder <span class="k">import</span> CaseQualityError, case_errors</code></div>
+<div class="code-line"><span class="ln">18</span><code><span class="k">from</span> framework.tools.common.config <span class="k">import</span> BASE, CASES_DIR, SCRIPTS_DIR</code></div>
+<div class="code-line"><span class="ln">19</span><code><span class="k">from</span> framework.tools.common.browser <span class="k">import</span> CHROMIUM_ARGS</code></div>
+<div class="code-line"><span class="ln">20</span><code><span class="k">from</span> framework.tools.generate.case_builder <span class="k">import</span> CaseQualityError, case_errors</code></div>
 <div class="code-line"><span class="ln">21</span><code></code></div>
 <div class="code-line"><span class="ln">22</span><code></code></div>
 <div class="code-line"><span class="ln">23</span><code><span class="k">def</span> _gate_false_green(cases: list[dict]) -&gt; <span class="k">None</span>:</code></div>
@@ -5189,8 +5211,8 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">463</span><code>      （说明探测/命名逻辑被改坏了）就记下来，生成时**显式失败**而不是静默挑一个。</code></div>
 <div class="code-line"><span class="ln">464</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
 <div class="code-line"><span class="ln">465</span><code>    <span class="k">from</span> playwright.sync_api <span class="k">import</span> sync_playwright</code></div>
-<div class="code-line"><span class="ln">466</span><code>    <span class="k">from</span> .probe <span class="k">import</span> probe_page, uniquify_across_pages</code></div>
-<div class="code-line"><span class="ln">467</span><code>    <span class="k">from</span> .browser <span class="k">import</span> launch_opts</code></div>
+<div class="code-line"><span class="ln">466</span><code>    <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page, uniquify_across_pages</code></div>
+<div class="code-line"><span class="ln">467</span><code>    <span class="k">from</span> framework.tools.common.browser <span class="k">import</span> launch_opts</code></div>
 <div class="code-line"><span class="ln">468</span><code></code></div>
 <div class="code-line"><span class="ln">469</span><code>    <span class="k">if</span> len(pages) &gt; 3:</code></div>
 <div class="code-line"><span class="ln">470</span><code>        print(f<span class="s">&quot;[generate] ⚠️ 现场探测 {len(pages)} 个页面（&gt;3）——耗时与内存都会涨，&quot;</span></code></div>
@@ -5211,7 +5233,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">485</span><code>            <span class="c">#   ② 弹窗不关，下一页的探测是在&quot;弹窗盖着&quot;的状态下做的，结果不可信。</span></code></div>
 <div class="code-line"><span class="ln">486</span><code>            <span class="c"># 2026-09-18 批次 2（S1）：合并改走 `_merge_items`（合并后统一重命名），</span></code></div>
 <div class="code-line"><span class="ln">487</span><code>            <span class="c"># 与单页路径、explore 路径**同源** —— 否则同一页在两条路径上会产出两套名字。</span></code></div>
-<div class="code-line"><span class="ln">488</span><code>            <span class="k">from</span> .explorer <span class="k">import</span> _try_collect_modal_items, _merge_items</code></div>
+<div class="code-line"><span class="ln">488</span><code>            <span class="k">from</span> framework.tools.explore.explorer <span class="k">import</span> _try_collect_modal_items, _merge_items</code></div>
 <div class="code-line"><span class="ln">489</span><code>            layer = _try_collect_modal_items(pg, items)</code></div>
 <div class="code-line"><span class="ln">490</span><code>            <span class="k">for</span> it <span class="k">in</span> layer:</code></div>
 <div class="code-line"><span class="ln">491</span><code>                it[<span class="s">&quot;page&quot;</span>] = pname <span class="k">or</span> <span class="s">&quot;&quot;</span></code></div>
@@ -5285,7 +5307,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">559</span><code>        <span class="k">return</span> cache[sid]</code></div>
 <div class="code-line"><span class="ln">560</span><code>    sets: list[dict] = []</code></div>
 <div class="code-line"><span class="ln">561</span><code>    <span class="k">try</span>:</code></div>
-<div class="code-line"><span class="ln">562</span><code>        <span class="k">from</span> .scenario <span class="k">import</span> discover_scenarios</code></div>
+<div class="code-line"><span class="ln">562</span><code>        <span class="k">from</span> framework.tools.generate.scenario <span class="k">import</span> discover_scenarios</code></div>
 <div class="code-line"><span class="ln">563</span><code>        <span class="k">for</span> sc <span class="k">in</span> discover_scenarios():</code></div>
 <div class="code-line"><span class="ln">564</span><code>            <span class="k">if</span> sc.id == sid:</code></div>
 <div class="code-line"><span class="ln">565</span><code>                sets = [dict(x) <span class="k">for</span> x <span class="k">in</span> (sc.data <span class="k">or</span> [])]</code></div>
@@ -5356,9 +5378,9 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">628</span><code>    返回 dict：{scripts_dir, tests, datasets, count, locator_sources, unmapped, probe_error}</code></div>
 <div class="code-line"><span class="ln">629</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
 <div class="code-line"><span class="ln">630</span><code>    <span class="k">from</span> playwright.sync_api <span class="k">import</span> sync_playwright</code></div>
-<div class="code-line"><span class="ln">631</span><code>    <span class="k">from</span> .probe <span class="k">import</span> probe_page</code></div>
-<div class="code-line"><span class="ln">632</span><code>    <span class="k">from</span> .config <span class="k">import</span> TARGET_URL, ELEMENT_MAP_DIR</code></div>
-<div class="code-line"><span class="ln">633</span><code>    <span class="k">from</span> .browser <span class="k">import</span> launch_opts</code></div>
+<div class="code-line"><span class="ln">631</span><code>    <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page</code></div>
+<div class="code-line"><span class="ln">632</span><code>    <span class="k">from</span> framework.tools.common.config <span class="k">import</span> TARGET_URL, ELEMENT_MAP_DIR</code></div>
+<div class="code-line"><span class="ln">633</span><code>    <span class="k">from</span> framework.tools.common.browser <span class="k">import</span> launch_opts</code></div>
 <div class="code-line"><span class="ln">634</span><code></code></div>
 <div class="code-line"><span class="ln">635</span><code>    cases_dir = cases_dir <span class="k">or</span> CASES_DIR</code></div>
 <div class="code-line"><span class="ln">636</span><code>    scripts_dir = scripts_dir <span class="k">or</span> SCRIPTS_DIR</code></div>
@@ -5428,7 +5450,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">700</span><code>                <span class="c"># ⚠️ 2026-09-18 批次 2（S1）：合并必须走 `_merge_items`（**合并后统一重命名**）——</span></code></div>
 <div class="code-line"><span class="ln">701</span><code>                <span class="c"># 旧写法「基础页一轮命名 + 弹层一轮命名，再按名字 setdefault 合并」会让</span></code></div>
 <div class="code-line"><span class="ln">702</span><code>                <span class="c"># 「某一轮里恰好唯一」的控件独占裸名 ⇒ 用例引用裸名就落到**另一个**控件上（静默点错）。</span></code></div>
-<div class="code-line"><span class="ln">703</span><code>                <span class="k">from</span> .explorer <span class="k">import</span> _try_collect_modal_items, _merge_items</code></div>
+<div class="code-line"><span class="ln">703</span><code>                <span class="k">from</span> framework.tools.explore.explorer <span class="k">import</span> _try_collect_modal_items, _merge_items</code></div>
 <div class="code-line"><span class="ln">704</span><code>                merged_items = _merge_items(base_items, _try_collect_modal_items(pg, base_items))</code></div>
 <div class="code-line"><span class="ln">705</span><code>                _record_conflict_bases(merged_items)</code></div>
 <div class="code-line"><span class="ln">706</span><code>                <span class="k">for</span> it <span class="k">in</span> merged_items:</code></div>
@@ -5566,7 +5588,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">838</span><code>但省掉「每条用例重启浏览器」的 ≈0.6s/条（实测 9 用例 setup 由 5.4s → 若干毫秒）。</code></div>
 <div class="code-line"><span class="ln">839</span><code>case.vars 变量池（运行过程数据）+ 动态占位符 {datetime} 解析（一次解析固化，填表名==断言名，重跑不重名）。</code></div>
 <div class="code-line"><span class="ln">840</span><code><span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">841</span><code><span class="c"># ---- 统一 UTF-8（生成物自带，裸跑 pytest 也不炸；与 framework/text_io.py 同口径）----</span></code></div>
+<div class="code-line"><span class="ln">841</span><code><span class="c"># ---- 统一 UTF-8（生成物自带，裸跑 pytest 也不炸；与 framework/tools/common/text_io.py 同口径）----</span></code></div>
 <div class="code-line"><span class="ln">842</span><code><span class="c"># 为什么：Windows 控制台是 cp936 时，本文件里的 ✓/⚠️ 会 UnicodeEncodeError（跑到一半崩）；</span></code></div>
 <div class="code-line"><span class="ln">843</span><code><span class="c"># 而 pytest 的 fd 捕获把输出写回真实 fd 时**硬编码 UTF-8**（_pytest/capture.py），</span></code></div>
 <div class="code-line"><span class="ln">844</span><code><span class="c"># 只要外层按 locale 解码就 UnicodeDecodeError。这里把本进程 stdio 拉齐到 UTF-8，</span></code></div>
@@ -5605,7 +5627,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">877</span><code>RUN_ID = os.environ.get(<span class="s">&quot;HYBRID_RUN_ID&quot;</span>, <span class="s">&quot;latest&quot;</span>)</code></div>
 <div class="code-line"><span class="ln">878</span><code>RUN_LOG_DIR = LOG_DIR / RUN_ID</code></div>
 <div class="code-line"><span class="ln">879</span><code></code></div>
-<div class="code-line"><span class="ln">880</span><code><span class="c"># ---- Chromium 启动参数（内联自 framework/browser.py:CHROMIUM_ARGS；生成物自包含）----</span></code></div>
+<div class="code-line"><span class="ln">880</span><code><span class="c"># ---- Chromium 启动参数（内联自 framework/tools/common/browser.py:CHROMIUM_ARGS；生成物自包含）----</span></code></div>
 <div class="code-line"><span class="ln">881</span><code>CHROMIUM_ARGS = __CHROMIUM_ARGS__</code></div>
 <div class="code-line"><span class="ln">882</span><code></code></div>
 <div class="code-line"><span class="ln">883</span><code></code></div>
@@ -5625,8 +5647,8 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">897</span><code></code></div>
 <div class="code-line"><span class="ln">898</span><code><span class="k">import</span> sys</code></div>
 <div class="code-line"><span class="ln">899</span><code>sys.path.insert(0, str(BASE))</code></div>
-<div class="code-line"><span class="ln">900</span><code><span class="k">from</span> framework.data_driven <span class="k">import</span> resolve_dynamic_inputs, format_template  <span class="c"># noqa</span></code></div>
-<div class="code-line"><span class="ln">901</span><code><span class="k">from</span> framework.healer <span class="k">import</span> Healer  <span class="c"># noqa: E402</span></code></div>
+<div class="code-line"><span class="ln">900</span><code><span class="k">from</span> framework.tools.generate.data_driven <span class="k">import</span> resolve_dynamic_inputs, format_template  <span class="c"># noqa</span></code></div>
+<div class="code-line"><span class="ln">901</span><code><span class="k">from</span> framework.tools.run.healer <span class="k">import</span> Healer  <span class="c"># noqa: E402</span></code></div>
 <div class="code-line"><span class="ln">902</span><code></code></div>
 <div class="code-line"><span class="ln">903</span><code><span class="c"># ---- 自愈开关（Q1 决策：默认开，可用 HYBRID_SELF_HEAL=0 关）----</span></code></div>
 <div class="code-line"><span class="ln">904</span><code><span class="c"># 0 → 确定性 locator 失效即报错，不做语义兜底/自愈（CI 里常要&quot;失败即报&quot;）</span></code></div>
@@ -6075,7 +6097,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1347</span><code>            <span class="k">if</span> self.browser is <span class="k">not</span> <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">1348</span><code>                self.restarts += 1</code></div>
 <div class="code-line"><span class="ln">1349</span><code>                print(f<span class="s">&quot;[browser] ⚠️ 会话级浏览器已断开（第 {self.restarts} 次）→ 重启。&quot;</span></code></div>
-<div class="code-line"><span class="ln">1350</span><code>                      f<span class="s">&quot;若 dmesg 有 OOM 记录，说明内存不够（见 framework/limits.py 的并发降级）&quot;</span>,</code></div>
+<div class="code-line"><span class="ln">1350</span><code>                      f<span class="s">&quot;若 dmesg 有 OOM 记录，说明内存不够（见 framework/tools/common/limits.py 的并发降级）&quot;</span>,</code></div>
 <div class="code-line"><span class="ln">1351</span><code>                      flush=<span class="k">True</span>)</code></div>
 <div class="code-line"><span class="ln">1352</span><code>            self.browser = self._p.chromium.launch(**self._opts)</code></div>
 <div class="code-line"><span class="ln">1353</span><code>        <span class="k">return</span> self.browser</code></div>
@@ -6187,7 +6209,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1459</span><code>    改造前每个动作都全页 probe（并发下页面时序不稳会超时）；现在只在首次/未命中时探。</code></div>
 <div class="code-line"><span class="ln">1460</span><code>    ⚠️ 2026-09-18 批次 2 S3：逐字名不存在时不再「随便挑一个」—— 见 `_fuzzy_lookup`。</code></div>
 <div class="code-line"><span class="ln">1461</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">1462</span><code>    <span class="k">from</span> framework.probe <span class="k">import</span> probe_page</code></div>
+<div class="code-line"><span class="ln">1462</span><code>    <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page</code></div>
 <div class="code-line"><span class="ln">1463</span><code>    it = _INDEX.get(hint)</code></div>
 <div class="code-line"><span class="ln">1464</span><code>    <span class="k">if</span> it is <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">1465</span><code>        <span class="k">for</span> x <span class="k">in</span> probe_page(page):</code></div>
@@ -6236,7 +6258,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1508</span><code></code></div>
 <div class="code-line"><span class="ln">1509</span><code></code></div>
 <div class="code-line"><span class="ln">1510</span><code><span class="k">def</span> _to_ref(it):</code></div>
-<div class="code-line"><span class="ln">1511</span><code>    <span class="k">from</span> framework.element_map <span class="k">import</span> ElementRef</code></div>
+<div class="code-line"><span class="ln">1511</span><code>    <span class="k">from</span> framework.tools.probe.element_map <span class="k">import</span> ElementRef</code></div>
 <div class="code-line"><span class="ln">1512</span><code>    <span class="k">return</span> ElementRef(</code></div>
 <div class="code-line"><span class="ln">1513</span><code>        semantic_name=it[<span class="s">&quot;semantic_name&quot;</span>],</code></div>
 <div class="code-line"><span class="ln">1514</span><code>        test_id=it.get(<span class="s">&quot;test_id&quot;</span>),</code></div>
@@ -6254,8 +6276,8 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">1526</span><code></code></div>
 <div class="code-line"><span class="ln">1527</span><code>    HYBRID_SELF_HEAL=0 → 关闭自愈（CI 语义：失败即报，不做任何猜测性定位）。</code></div>
 <div class="code-line"><span class="ln">1528</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">1529</span><code>    <span class="k">from</span> framework.locator_bridge <span class="k">import</span> resolve_locator</code></div>
-<div class="code-line"><span class="ln">1530</span><code>    <span class="k">from</span> framework.element_map <span class="k">import</span> TestStep</code></div>
+<div class="code-line"><span class="ln">1529</span><code>    <span class="k">from</span> framework.tools.probe.locator_bridge <span class="k">import</span> resolve_locator</code></div>
+<div class="code-line"><span class="ln">1530</span><code>    <span class="k">from</span> framework.tools.probe.element_map <span class="k">import</span> TestStep</code></div>
 <div class="code-line"><span class="ln">1531</span><code>    it = _item_for(hint, page)</code></div>
 <div class="code-line"><span class="ln">1532</span><code>    <span class="k">if</span> it is <span class="k">None</span>:</code></div>
 <div class="code-line"><span class="ln">1533</span><code>        <span class="k">raise</span> RuntimeError(</code></div>
@@ -6501,7 +6523,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#0f8f6a">✅ Playwright</span>
-        <code class="file-path">framework/runner.py</code>
+        <code class="file-path">framework/tools/run/runner.py</code>
       </div>
       <p class="file-desc">ElementMap 场景执行引擎（run_scenario）：按步骤跑唯一性校验 + web-first 断言 + 集成 Healer。★注意：cases→pytest 并发执行是由 cli.cmd_run 以 subprocess 拉起的（不是 runner.py）。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span>&quot;【Playwright】确定性回归执行引擎（Phase 3 自愈闭环版）</code></div>
@@ -6520,11 +6542,11 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">14</span><code><span class="s">&quot;&quot;</span>&quot;</code></div>
 <div class="code-line"><span class="ln">15</span><code><span class="k">from</span> __future__ <span class="k">import</span> annotations</code></div>
 <div class="code-line"><span class="ln">16</span><code><span class="k">from</span> playwright.sync_api <span class="k">import</span> sync_playwright, expect</code></div>
-<div class="code-line"><span class="ln">17</span><code><span class="k">from</span> .element_map <span class="k">import</span> ElementMap, TestStep</code></div>
-<div class="code-line"><span class="ln">18</span><code><span class="k">from</span> .locator_bridge <span class="k">import</span> resolve_locator</code></div>
-<div class="code-line"><span class="ln">19</span><code><span class="k">from</span> .healer <span class="k">import</span> Healer</code></div>
-<div class="code-line"><span class="ln">20</span><code><span class="k">from</span> .config <span class="k">import</span> TRACE_DIR</code></div>
-<div class="code-line"><span class="ln">21</span><code><span class="k">from</span> .browser <span class="k">import</span> launch_opts</code></div>
+<div class="code-line"><span class="ln">17</span><code><span class="k">from</span> framework.tools.probe.element_map <span class="k">import</span> ElementMap, TestStep</code></div>
+<div class="code-line"><span class="ln">18</span><code><span class="k">from</span> framework.tools.probe.locator_bridge <span class="k">import</span> resolve_locator</code></div>
+<div class="code-line"><span class="ln">19</span><code><span class="k">from</span> framework.tools.run.healer <span class="k">import</span> Healer</code></div>
+<div class="code-line"><span class="ln">20</span><code><span class="k">from</span> framework.tools.common.config <span class="k">import</span> TRACE_DIR</code></div>
+<div class="code-line"><span class="ln">21</span><code><span class="k">from</span> framework.tools.common.browser <span class="k">import</span> launch_opts</code></div>
 <div class="code-line"><span class="ln">22</span><code></code></div>
 <div class="code-line"><span class="ln">23</span><code></code></div>
 <div class="code-line star"><span class="ln">24</span><code><span class="k">def</span> _run_step(page, t: TestStep, log, healer: Healer):</code></div>
@@ -6634,7 +6656,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">125</span><code></code></div>
 <div class="code-line"><span class="ln">126</span><code></code></div>
 <div class="code-line"><span class="ln">127</span><code><span class="k">if</span> __name__ == <span class="s">&quot;__main__&quot;</span>:</code></div>
-<div class="code-line"><span class="ln">128</span><code>    <span class="k">from</span> .probe <span class="k">import</span> probe_page</code></div>
+<div class="code-line"><span class="ln">128</span><code>    <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page</code></div>
 <div class="code-line"><span class="ln">129</span><code>    <span class="k">with</span> sync_playwright() <span class="k">as</span> p_:</code></div>
 <div class="code-line"><span class="ln">130</span><code>        b = p_.chromium.launch(**launch_opts(headless=<span class="k">True</span>))</code></div>
 <div class="code-line"><span class="ln">131</span><code>        pg = b.new_page()</code></div>
@@ -6647,7 +6669,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#2f7fd1">🩹 自愈层</span>
-        <code class="file-path">framework/healer.py</code>
+        <code class="file-path">framework/tools/run/healer.py</code>
       </div>
       <p class="file-desc">Phase 3·自愈闭环：定位失败不中断，再协商 locator + 业务断言兜底 + 可审 diff。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span><span class="s">&quot;【Healer】自愈闭环 —— Phase 3 核心，把&quot;</span>降人力&quot;推到极致。</code></div>
@@ -6674,9 +6696,9 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">22</span><code><span class="k">import</span> datetime <span class="k">as</span> _dt</code></div>
 <div class="code-line"><span class="ln">23</span><code><span class="k">from</span> dataclasses <span class="k">import</span> dataclass</code></div>
 <div class="code-line"><span class="ln">24</span><code><span class="k">from</span> playwright.sync_api <span class="k">import</span> Page</code></div>
-<div class="code-line"><span class="ln">25</span><code><span class="k">from</span> .element_map <span class="k">import</span> ElementRef, TestStep</code></div>
-<div class="code-line"><span class="ln">26</span><code><span class="k">from</span> .locator_bridge <span class="k">import</span> resolve_locator, TIER2_THRESHOLD, TIER2_MINGAP</code></div>
-<div class="code-line"><span class="ln">27</span><code><span class="k">from</span> .config <span class="k">import</span> HEALS_DIR</code></div>
+<div class="code-line"><span class="ln">25</span><code><span class="k">from</span> framework.tools.probe.element_map <span class="k">import</span> ElementRef, TestStep</code></div>
+<div class="code-line"><span class="ln">26</span><code><span class="k">from</span> framework.tools.probe.locator_bridge <span class="k">import</span> resolve_locator, TIER2_THRESHOLD, TIER2_MINGAP</code></div>
+<div class="code-line"><span class="ln">27</span><code><span class="k">from</span> framework.tools.common.config <span class="k">import</span> HEALS_DIR</code></div>
 <div class="code-line"><span class="ln">28</span><code></code></div>
 <div class="code-line"><span class="ln">29</span><code></code></div>
 <div class="code-line"><span class="ln">30</span><code>@dataclass</code></div>
@@ -6746,7 +6768,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">92</span><code>        <span class="k">if</span> r[<span class="s">&quot;ok&quot;</span>]:</code></div>
 <div class="code-line"><span class="ln">93</span><code>            <span class="k">return</span> r</code></div>
 <div class="code-line"><span class="ln">94</span><code>        <span class="c"># Level-B：可选 LLM 语义重猜（无 key 自动跳过）</span></code></div>
-<div class="code-line"><span class="ln">95</span><code>        <span class="k">from</span> .config <span class="k">import</span> auto_detect_llm</code></div>
+<div class="code-line"><span class="ln">95</span><code>        <span class="k">from</span> framework.tools.common.config <span class="k">import</span> auto_detect_llm</code></div>
 <div class="code-line"><span class="ln">96</span><code>        <span class="k">if</span> auto_detect_llm():</code></div>
 <div class="code-line"><span class="ln">97</span><code>            r = self._llm_renegotiate(page, el)</code></div>
 <div class="code-line"><span class="ln">98</span><code>            <span class="k">return</span> r</code></div>
@@ -6755,9 +6777,9 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">101</span><code>    <span class="k">def</span> _llm_renegotiate(self, page: Page, el: ElementRef) -&gt; dict:</code></div>
 <div class="code-line"><span class="ln">102</span><code>        <span class="s">&quot;&quot;</span><span class="s">&quot;LLM 语义重猜：抓 DOM 语义快照 → LLM 挑最接近元素 → 唯一性校验。&quot;</span><span class="s">&quot;&quot;</span></code></div>
 <div class="code-line"><span class="ln">103</span><code>        <span class="k">import</span> json <span class="k">as</span> _json</code></div>
-<div class="code-line"><span class="ln">104</span><code>        <span class="k">from</span> .probe <span class="k">import</span> probe_page</code></div>
+<div class="code-line"><span class="ln">104</span><code>        <span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page</code></div>
 <div class="code-line"><span class="ln">105</span><code>        candidates = probe_page(page)</code></div>
-<div class="code-line"><span class="ln">106</span><code>        <span class="k">from</span> .config <span class="k">import</span> llm_from_env</code></div>
+<div class="code-line"><span class="ln">106</span><code>        <span class="k">from</span> framework.tools.common.config <span class="k">import</span> llm_from_env</code></div>
 <div class="code-line"><span class="ln">107</span><code>        <span class="k">from</span> browser_use.llm <span class="k">import</span> ChatOpenAI, ChatAnthropic, ChatGoogle  <span class="c"># noqa</span></code></div>
 <div class="code-line"><span class="ln">108</span><code>        <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">109</span><code>            llm = llm_from_env()</code></div>
@@ -6829,7 +6851,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#2f7fd1">🧩 数据驱动</span>
-        <code class="file-path">framework/data_driven.py</code>
+        <code class="file-path">framework/tools/generate/data_driven.py</code>
       </div>
       <p class="file-desc">数据驱动核心：占位符替换 + 动态占位符{datetime} + 用例级变量池，支撑脚本数据分离并发用例。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span>&quot;数据驱动核心：dataset 加载 + 模板占位符替换 + 用例上下文(case_ctx)隔离。</code></div>
@@ -6847,7 +6869,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">13</span><code><span class="k">import</span> re</code></div>
 <div class="code-line"><span class="ln">14</span><code><span class="k">from</span> pathlib <span class="k">import</span> Path</code></div>
 <div class="code-line"><span class="ln">15</span><code></code></div>
-<div class="code-line"><span class="ln">16</span><code>BASE = Path(__file__).resolve().parent.parent</code></div>
+<div class="code-line"><span class="ln">16</span><code><span class="k">from</span> framework.tools.common.config <span class="k">import</span> BASE   <span class="c"># 仓库根：单一来源，不自己推层级</span></code></div>
 <div class="code-line"><span class="ln">17</span><code></code></div>
 <div class="code-line"><span class="ln">18</span><code><span class="c"># ---------------- dataset / scenarios 加载 ----------------</span></code></div>
 <div class="code-line"><span class="ln">19</span><code><span class="k">def</span> load_dataset(path: str | Path) -&gt; dict:</code></div>
@@ -7070,13 +7092,13 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">25</span><code><span class="k">import</span> sys</code></div>
 <div class="code-line"><span class="ln">26</span><code><span class="k">from</span> typing <span class="k">import</span> NoReturn</code></div>
 <div class="code-line"><span class="ln">27</span><code></code></div>
-<div class="code-line"><span class="ln">28</span><code><span class="k">from</span> . <span class="k">import</span> config</code></div>
-<div class="code-line"><span class="ln">29</span><code><span class="k">from</span> .config <span class="k">import</span> ensure_dirs, TARGET_URL, LOG_DIR</code></div>
-<div class="code-line"><span class="ln">30</span><code><span class="k">from</span> .probe <span class="k">import</span> probe_page</code></div>
-<div class="code-line"><span class="ln">31</span><code><span class="k">from</span> .browser <span class="k">import</span> launch_opts</code></div>
-<div class="code-line"><span class="ln">32</span><code><span class="k">from</span> .limits <span class="k">import</span> safe_workers</code></div>
-<div class="code-line"><span class="ln">33</span><code><span class="k">from</span> .retention <span class="k">import</span> DEFAULT_KEEP <span class="k">as</span> KEEP_SNAPSHOTS, prune_snapshots</code></div>
-<div class="code-line"><span class="ln">34</span><code><span class="k">from</span> .text_io <span class="k">import</span> force_stdio, fs_encoding_warning, run_capture, utf8_env</code></div>
+<div class="code-line"><span class="ln">28</span><code><span class="k">from</span> framework.tools.common <span class="k">import</span> config</code></div>
+<div class="code-line"><span class="ln">29</span><code><span class="k">from</span> framework.tools.common.config <span class="k">import</span> ensure_dirs, TARGET_URL, LOG_DIR</code></div>
+<div class="code-line"><span class="ln">30</span><code><span class="k">from</span> framework.tools.probe.probe <span class="k">import</span> probe_page</code></div>
+<div class="code-line"><span class="ln">31</span><code><span class="k">from</span> framework.tools.common.browser <span class="k">import</span> launch_opts</code></div>
+<div class="code-line"><span class="ln">32</span><code><span class="k">from</span> framework.tools.common.limits <span class="k">import</span> safe_workers</code></div>
+<div class="code-line"><span class="ln">33</span><code><span class="k">from</span> framework.tools.common.retention <span class="k">import</span> DEFAULT_KEEP <span class="k">as</span> KEEP_SNAPSHOTS, prune_snapshots</code></div>
+<div class="code-line"><span class="ln">34</span><code><span class="k">from</span> framework.tools.common.text_io <span class="k">import</span> force_stdio, fs_encoding_warning, run_capture, utf8_env</code></div>
 <div class="code-line"><span class="ln">35</span><code></code></div>
 <div class="code-line"><span class="ln">36</span><code></code></div>
 <div class="code-line"><span class="ln">37</span><code><span class="k">def</span> _now() -&gt; str:</code></div>
@@ -7170,7 +7192,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">125</span><code>    <span class="c"># ---- 目标可达性预检（V7.5.1）：先回答「活没活」，别让 Playwright 甩一屏 traceback ----</span></code></div>
 <div class="code-line"><span class="ln">126</span><code>    <span class="c"># 2026-09-15 实测：demo 没起时 `pg.goto()` 抛 `net::ERR_CONNECTION_REFUSED` + exit 1，</span></code></div>
 <div class="code-line"><span class="ln">127</span><code>    <span class="c"># 现象像「框架坏了」，其实是一句「demo 没启动」。环境问题要给动作，不是给栈。</span></code></div>
-<div class="code-line"><span class="ln">128</span><code>    <span class="k">from</span> .target_probe <span class="k">import</span> reachability</code></div>
+<div class="code-line"><span class="ln">128</span><code>    <span class="k">from</span> framework.tools.common.target_probe <span class="k">import</span> reachability</code></div>
 <div class="code-line"><span class="ln">129</span><code>    ok, why = reachability(TARGET_URL)</code></div>
 <div class="code-line"><span class="ln">130</span><code>    <span class="k">if</span> <span class="k">not</span> ok:</code></div>
 <div class="code-line"><span class="ln">131</span><code>        print(f<span class="s">&quot;\n[probe] ❌ 探测没跑：{why}&quot;</span>)</code></div>
@@ -7179,7 +7201,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">134</span><code>        <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">135</span><code>    <span class="k">from</span> playwright.sync_api <span class="k">import</span> sync_playwright</code></div>
 <div class="code-line"><span class="ln">136</span><code>    <span class="k">import</span> json</code></div>
-<div class="code-line"><span class="ln">137</span><code>    <span class="k">from</span> .explorer <span class="k">import</span> _try_collect_modal_items, _merge_items</code></div>
+<div class="code-line"><span class="ln">137</span><code>    <span class="k">from</span> framework.tools.explore.explorer <span class="k">import</span> _try_collect_modal_items, _merge_items</code></div>
 <div class="code-line"><span class="ln">138</span><code>    <span class="k">with</span> sync_playwright() <span class="k">as</span> p:</code></div>
 <div class="code-line"><span class="ln">139</span><code>        b = p.chromium.launch(**launch_opts(headless=<span class="k">True</span>))</code></div>
 <div class="code-line"><span class="ln">140</span><code>        pg = b.new_page()</code></div>
@@ -7209,7 +7231,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">164</span><code>        print(f<span class="s">&quot;[generate]    现场 probe 失败：{e.probe_error}&quot;</span>)</code></div>
 <div class="code-line"><span class="ln">165</span><code>        <span class="c"># 先把「活没活」查清楚再给结论（旧版本这里只会猜「多半是目标没起」）</span></code></div>
 <div class="code-line"><span class="ln">166</span><code>        <span class="k">try</span>:</code></div>
-<div class="code-line"><span class="ln">167</span><code>            <span class="k">from</span> .target_probe <span class="k">import</span> reachability</code></div>
+<div class="code-line"><span class="ln">167</span><code>            <span class="k">from</span> framework.tools.common.target_probe <span class="k">import</span> reachability</code></div>
 <div class="code-line"><span class="ln">168</span><code>            ok, why = reachability(TARGET_URL)</code></div>
 <div class="code-line"><span class="ln">169</span><code>        <span class="k">except</span> Exception <span class="k">as</span> _e:                       <span class="c"># 预检本身失败不该盖住原始错误</span></code></div>
 <div class="code-line"><span class="ln">170</span><code>            ok, why = <span class="k">True</span>, f<span class="s">&quot;(可达性预检失败: {_e})&quot;</span></code></div>
@@ -7280,8 +7302,8 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">234</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
 <div class="code-line"><span class="ln">235</span><code>    ensure_dirs()</code></div>
 <div class="code-line"><span class="ln">236</span><code>    <span class="k">from</span> pathlib <span class="k">import</span> Path <span class="k">as</span> _P</code></div>
-<div class="code-line"><span class="ln">237</span><code>    <span class="k">from</span> .case_builder <span class="k">import</span> CaseQualityError</code></div>
-<div class="code-line"><span class="ln">238</span><code>    <span class="k">from</span> .generator <span class="k">import</span> DataSetsError, UnmappedElementsError, generate_scripts</code></div>
+<div class="code-line"><span class="ln">237</span><code>    <span class="k">from</span> framework.tools.generate.case_builder <span class="k">import</span> CaseQualityError</code></div>
+<div class="code-line"><span class="ln">238</span><code>    <span class="k">from</span> framework.tools.generate.generator <span class="k">import</span> DataSetsError, UnmappedElementsError, generate_scripts</code></div>
 <div class="code-line"><span class="ln">239</span><code>    rest = rest <span class="k">or</span> []</code></div>
 <div class="code-line"><span class="ln">240</span><code>    map_path = <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">241</span><code>    <span class="k">if</span> <span class="s">&quot;--element-map&quot;</span> <span class="k">in</span> rest:</code></div>
@@ -7348,7 +7370,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">301</span><code>    pages（P3 跨页）：[{<span class="s">&quot;name&quot;</span>,<span class="s">&quot;url&quot;</span>,<span class="s">&quot;page&quot;</span>}, ...]；给了 ≥2 页就按跨页模式探测与规划，</code></div>
 <div class="code-line"><span class="ln">302</span><code>    `url` 此时应为第一页地址（explore 的 goto 起点）。</code></div>
 <div class="code-line"><span class="ln">303</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">304</span><code>    <span class="k">from</span> .explorer <span class="k">import</span> ai_explore</code></div>
+<div class="code-line"><span class="ln">304</span><code>    <span class="k">from</span> framework.tools.explore.explorer <span class="k">import</span> ai_explore</code></div>
 <div class="code-line"><span class="ln">305</span><code>    prefix = f<span class="s">&quot;【{label}】&quot;</span> <span class="k">if</span> label <span class="k">else</span> <span class="s">&quot;&quot;</span></code></div>
 <div class="code-line"><span class="ln">306</span><code>    <span class="c"># 刻意不在外面探测：ai_explore 内部会探测（且会打开弹窗补表单控件）。</span></code></div>
 <div class="code-line"><span class="ln">307</span><code>    <span class="c"># 2026-09-11 修复：旧写法先探一次再交给 ai_explore ⇒ 连开两个 Chromium，内存吃紧时</span></code></div>
@@ -7377,8 +7399,8 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">330</span><code>        <span class="c"># 复核的人不用回忆当时敲了什么命令（回放 ≠ 实时 AI，必须看得见）。</span></code></div>
 <div class="code-line"><span class="ln">331</span><code>        extra = {**(extra <span class="k">or</span> {}), <span class="s">&quot;llm_source&quot;</span>: cassette.source_tag()}</code></div>
 <div class="code-line"><span class="ln">332</span><code>    <span class="k">if</span> to_cases <span class="k">and</span> <span class="k">not</span> mock_fallback:</code></div>
-<div class="code-line"><span class="ln">333</span><code>        <span class="k">from</span> .case_builder <span class="k">import</span> CaseQualityError <span class="k">as</span> _CaseQE</code></div>
-<div class="code-line"><span class="ln">334</span><code>        <span class="k">from</span> .case_builder <span class="k">import</span> elementmap_to_cases_file</code></div>
+<div class="code-line"><span class="ln">333</span><code>        <span class="k">from</span> framework.tools.generate.case_builder <span class="k">import</span> CaseQualityError <span class="k">as</span> _CaseQE</code></div>
+<div class="code-line"><span class="ln">334</span><code>        <span class="k">from</span> framework.tools.generate.case_builder <span class="k">import</span> elementmap_to_cases_file</code></div>
 <div class="code-line"><span class="ln">335</span><code>        <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">336</span><code>            cpath, warns = elementmap_to_cases_file(emap, case_id=case_id, extra=extra, guard=guard_spec)</code></div>
 <div class="code-line"><span class="ln">337</span><code>        <span class="k">except</span> _CaseQE <span class="k">as</span> e:</code></div>
@@ -7399,7 +7421,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">351</span><code></code></div>
 <div class="code-line"><span class="ln">352</span><code>    三种入口（**互斥**，只给一个；都不给用内置默认场景）：</code></div>
 <div class="code-line"><span class="ln">353</span><code>      --scenario <span class="s">&quot;…&quot;</span>                     内联自然语言（原样保留）</code></div>
-<div class="code-line"><span class="ln">354</span><code>      --scenario-file scenarios/x.yml    单个场景文件（见 framework/scenario.py）</code></div>
+<div class="code-line"><span class="ln">354</span><code>      --scenario-file scenarios/x.yml    单个场景文件（见 framework/tools/generate/scenario.py）</code></div>
 <div class="code-line"><span class="ln">355</span><code>      --scenario-dir scenarios/          目录批量（可配 --tag / --limit）</code></div>
 <div class="code-line"><span class="ln">356</span><code></code></div>
 <div class="code-line"><span class="ln">357</span><code>    开关：</code></div>
@@ -7432,7 +7454,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">384</span><code></code></div>
 <div class="code-line"><span class="ln">385</span><code>    <span class="c"># ---------- LLM 录像：录制 / 回放（2026-09-18）----------</span></code></div>
 <div class="code-line"><span class="ln">386</span><code>    <span class="c"># **只在显式给参数时启用** —— 默认一个字节都不变（实时调用），绝不自动切换模式。</span></code></div>
-<div class="code-line"><span class="ln">387</span><code>    <span class="k">from</span> .llm_cassette <span class="k">import</span> MODE_RECORD, MODE_REPLAY, Cassette, CassetteError</code></div>
+<div class="code-line"><span class="ln">387</span><code>    <span class="k">from</span> framework.tools.explore.llm_cassette <span class="k">import</span> MODE_RECORD, MODE_REPLAY, Cassette, CassetteError</code></div>
 <div class="code-line"><span class="ln">388</span><code>    has_rec = <span class="s">&quot;--llm-record&quot;</span> <span class="k">in</span> rest <span class="k">or</span> any(a.startswith(<span class="s">&quot;--llm-record=&quot;</span>) <span class="k">for</span> a <span class="k">in</span> rest)</code></div>
 <div class="code-line"><span class="ln">389</span><code>    has_rep = <span class="s">&quot;--llm-cassette&quot;</span> <span class="k">in</span> rest <span class="k">or</span> any(a.startswith(<span class="s">&quot;--llm-cassette=&quot;</span>) <span class="k">for</span> a <span class="k">in</span> rest)</code></div>
 <div class="code-line"><span class="ln">390</span><code>    <span class="k">if</span> has_rec <span class="k">and</span> has_rep:</code></div>
@@ -7470,7 +7492,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">422</span><code>        print(f<span class="s">&quot;[explore] ❌ 参数互斥：{&#x27;、&#x27;.join(g[0] for g in given)} 只能给一个（不猜你的意图）&quot;</span>)</code></div>
 <div class="code-line"><span class="ln">423</span><code>        <span class="k">raise</span> SystemExit(2)</code></div>
 <div class="code-line"><span class="ln">424</span><code></code></div>
-<div class="code-line"><span class="ln">425</span><code>    <span class="k">from</span> .case_builder <span class="k">import</span> make_case_id_from_scenario_id</code></div>
+<div class="code-line"><span class="ln">425</span><code>    <span class="k">from</span> framework.tools.generate.case_builder <span class="k">import</span> make_case_id_from_scenario_id</code></div>
 <div class="code-line"><span class="ln">426</span><code></code></div>
 <div class="code-line"><span class="ln">427</span><code>    <span class="k">def</span> _job_from_scenario(sc, scenario_text: str) -&gt; dict:</code></div>
 <div class="code-line"><span class="ln">428</span><code>        pgs = [p.to_dict() <span class="k">for</span> p <span class="k">in</span> sc.all_pages()]</code></div>
@@ -7486,7 +7508,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">438</span><code>    jobs: list[dict] = []</code></div>
 <div class="code-line"><span class="ln">439</span><code>    <span class="k">if</span> sdir:</code></div>
 <div class="code-line"><span class="ln">440</span><code>        <span class="k">from</span> pathlib <span class="k">import</span> Path</code></div>
-<div class="code-line"><span class="ln">441</span><code>        <span class="k">from</span> .scenario <span class="k">import</span> ScenarioError, discover_scenarios</code></div>
+<div class="code-line"><span class="ln">441</span><code>        <span class="k">from</span> framework.tools.generate.scenario <span class="k">import</span> ScenarioError, discover_scenarios</code></div>
 <div class="code-line"><span class="ln">442</span><code>        tags = _arg_values(rest, <span class="s">&quot;--tag&quot;</span>)</code></div>
 <div class="code-line"><span class="ln">443</span><code>        lim = _arg_value(rest, <span class="s">&quot;--limit&quot;</span>)</code></div>
 <div class="code-line"><span class="ln">444</span><code>        <span class="k">try</span>:</code></div>
@@ -7502,7 +7524,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">454</span><code>            jobs.append(_job_from_scenario(sc, sc.scenario))</code></div>
 <div class="code-line"><span class="ln">455</span><code>    <span class="k">elif</span> sfile:</code></div>
 <div class="code-line"><span class="ln">456</span><code>        <span class="k">from</span> pathlib <span class="k">import</span> Path</code></div>
-<div class="code-line"><span class="ln">457</span><code>        <span class="k">from</span> .scenario <span class="k">import</span> ScenarioError, load_scenario_file</code></div>
+<div class="code-line"><span class="ln">457</span><code>        <span class="k">from</span> framework.tools.generate.scenario <span class="k">import</span> ScenarioError, load_scenario_file</code></div>
 <div class="code-line"><span class="ln">458</span><code>        <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">459</span><code>            sc = load_scenario_file(Path(sfile))</code></div>
 <div class="code-line"><span class="ln">460</span><code>        <span class="k">except</span> ScenarioError <span class="k">as</span> e:</code></div>
@@ -7521,7 +7543,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">473</span><code>        ))</code></div>
 <div class="code-line"><span class="ln">474</span><code></code></div>
 <div class="code-line"><span class="ln">475</span><code>    <span class="c"># ---------- 逐条跑 ----------</span></code></div>
-<div class="code-line"><span class="ln">476</span><code>    <span class="k">from</span> .explorer <span class="k">import</span> AiExploreError</code></div>
+<div class="code-line"><span class="ln">476</span><code>    <span class="k">from</span> framework.tools.explore.explorer <span class="k">import</span> AiExploreError</code></div>
 <div class="code-line"><span class="ln">477</span><code>    done: list[tuple[str, str]] = []</code></div>
 <div class="code-line"><span class="ln">478</span><code>    last_emap = <span class="k">None</span></code></div>
 <div class="code-line"><span class="ln">479</span><code>    <span class="k">for</span> idx, job <span class="k">in</span> enumerate(jobs, 1):</code></div>
@@ -7567,7 +7589,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">518</span><code>    entries: [(label, case_name)] —— label 用于批量时标明是哪条场景。</code></div>
 <div class="code-line"><span class="ln">519</span><code>    返回 <span class="k">True</span>=全部实测通过 / <span class="k">False</span>=有失败 / <span class="k">None</span>=校验没能执行（环境问题，不判死刑）。</code></div>
 <div class="code-line"><span class="ln">520</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">521</span><code>    <span class="k">from</span> .config <span class="k">import</span> SCRIPTS_DIR</code></div>
+<div class="code-line"><span class="ln">521</span><code>    <span class="k">from</span> framework.tools.common.config <span class="k">import</span> SCRIPTS_DIR</code></div>
 <div class="code-line"><span class="ln">522</span><code></code></div>
 <div class="code-line"><span class="ln">523</span><code>    <span class="k">if</span> <span class="k">not</span> entries:</code></div>
 <div class="code-line"><span class="ln">524</span><code>        <span class="k">return</span> <span class="k">None</span></code></div>
@@ -7660,7 +7682,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">609</span><code>    ensure_dirs()</code></div>
 <div class="code-line"><span class="ln">610</span><code>    <span class="k">import</span> os</code></div>
 <div class="code-line"><span class="ln">611</span><code>    <span class="k">import</span> subprocess</code></div>
-<div class="code-line"><span class="ln">612</span><code>    <span class="k">from</span> .config <span class="k">import</span> SCRIPTS_DIR</code></div>
+<div class="code-line"><span class="ln">612</span><code>    <span class="k">from</span> framework.tools.common.config <span class="k">import</span> SCRIPTS_DIR</code></div>
 <div class="code-line"><span class="ln">613</span><code>    tests = SCRIPTS_DIR / <span class="s">&quot;test_cases.py&quot;</span></code></div>
 <div class="code-line"><span class="ln">614</span><code>    <span class="k">if</span> <span class="k">not</span> tests.exists():</code></div>
 <div class="code-line"><span class="ln">615</span><code>        print(<span class="s">&quot;[run] ❌ scripts/test_cases.py 不存在 → 没有可跑的东西（先跑 generate）&quot;</span>)</code></div>
@@ -7690,7 +7712,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">639</span><code>            print(f<span class="s">&quot;[run] 并发隔离：已显式声明（--isolated-target / HYBRID_ISOLATED_TARGET=1）&quot;</span></code></div>
 <div class="code-line"><span class="ln">640</span><code>                  f<span class="s">&quot; → 保持 {n} worker&quot;</span>)</code></div>
 <div class="code-line"><span class="ln">641</span><code>        <span class="k">else</span>:</code></div>
-<div class="code-line"><span class="ln">642</span><code>            <span class="k">from</span> .target_probe <span class="k">import</span> probe_partitioned</code></div>
+<div class="code-line"><span class="ln">642</span><code>            <span class="k">from</span> framework.tools.common.target_probe <span class="k">import</span> probe_partitioned</code></div>
 <div class="code-line"><span class="ln">643</span><code>            capable, why_p = probe_partitioned()</code></div>
 <div class="code-line"><span class="ln">644</span><code>            <span class="k">if</span> capable:</code></div>
 <div class="code-line"><span class="ln">645</span><code>                print(f<span class="s">&quot;[run] 并发隔离：{why_p} → 保持 {n} worker（框架会给每个 worker 注入独立数据分区）&quot;</span>)</code></div>
@@ -7897,7 +7919,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">846</span><code></code></div>
 <div class="code-line"><span class="ln">847</span><code></code></div>
 <div class="code-line"><span class="ln">848</span><code><span class="k">def</span> _version() -&gt; str:</code></div>
-<div class="code-line"><span class="ln">849</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;版本号读 `tools/build_html.py`（**版本单一来源**）；读不到就如实说 unknown，不编。&quot;</span><span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">849</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;版本号读 `build_tools/build_html.py`（**版本单一来源**）；读不到就如实说 unknown，不编。&quot;</span><span class="s">&quot;&quot;</span></code></div>
 <div class="code-line"><span class="ln">850</span><code>    <span class="k">try</span>:</code></div>
 <div class="code-line"><span class="ln">851</span><code>        <span class="k">import</span> re</code></div>
 <div class="code-line"><span class="ln">852</span><code>        src = config.VERSION_SOURCE.read_text(encoding=<span class="s">&quot;utf-8&quot;</span>)</code></div>
@@ -7971,7 +7993,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
     <section class="card file-card">
       <div class="file-head">
         <span class="badge" style="background:#6b7280">🧯 并发安全闸</span>
-        <code class="file-path">framework/target_probe.py</code>
+        <code class="file-path">framework/tools/common/target_probe.py</code>
       </div>
       <p class="file-desc">被测目标能力探针（V7.5）：回答『这个目标能不能并发跑』——探测 /api/health 的 partitioned 声明。未声明就保守降级为 1 并发（多 worker 共享一份状态会让精确计数断言互相踩，且失败原因指向错的地方）。</p>
       <div class="codebox"><div class="code-line"><span class="ln">1</span><code><span class="s">&quot;&quot;</span>&quot;被测目标能力探针（F6b）—— 回答一个问题：这个目标**能不能并发跑**？</code></div>
@@ -8093,7 +8115,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
          <code>subprocess.run(..., capture_output=True, text=True)</code> 却<b>没指定 encoding</b>，
          于是父进程按系统默认编码（cp936/gbk）去解码子进程的 <b>UTF-8 中文输出</b>。<br>
          <b>规矩</b>：跨进程 / 落盘文本一律显式 UTF-8——
-         收子进程输出用 <code>framework.text_io.run_capture()</code>，
+         收子进程输出用 <code>framework.tools.common.text_io.run_capture()</code>，
          给子进程注入口径用 <code>utf8_env()</code>，本进程 stdio 用 <code>force_stdio()</code>
          （<code>cli.main()</code> 已经默认调了）。<code>tests/test_utf8_io.py</code> 会做 AST 全仓扫描，
          再写出「靠默认编码」的写法直接测试失败。</p></div>
@@ -8143,9 +8165,30 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V7.8</b>（2026-09-21）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.0</b>（2026-09-21）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V7.8</span><span class="cl-date">2026-09-21</span><span class="cl-tag">当前版本</span><span class="cl-theme">数据参数化「真展开」 · 一组数据 = 一条用例（L1）</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.0</span><span class="cl-date">2026-09-21</span><span class="cl-tag">当前版本</span><span class="cl-theme">结构重构：framework/ 按业务流程分层（破坏性变更）· 开发期工具进 build_tools/</span></div>
+      <p class="cl-sum">本版<b>不加新能力</b>，只把 <code>framework/</code> 从「平铺 17 个模块」改成<b>按业务流程分层</b>，让目录结构自己讲清链路顺序（探测 → AI 识别 → 生成 → 执行）。CLI 参数 / 断言体系 / 报告形态 / 用例格式<b>零变化</b>。⚠️ <b>破坏性变更</b>：模块 import 路径变了，且<b>不留兼容 shim</b>（升级请读下文「升级须知」）。</p>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
+        <li><b>分层结构</b>：<code>framework/tools/{common,probe,explore,generate,run}/</code> —— <code>common</code>（config/text_io/limits/retention/browser/target_probe）· <code>probe</code>（probe/element_map/locator_bridge）· <code>explore</code>（explorer/llm_cassette）· <code>generate</code>（generator/case_builder/scenario/data_driven）· <code>run</code>（runner/healer）；<code>framework/</code> 只留 <code>cli.py</code> + <code>tools/</code></li>
+        <li><b>导入路径变更（唯一破坏点）</b>：<code>from framework.probe import …</code> ⇒ <code>from framework.tools.probe.probe import …</code>（17 个模块同构映射）；<code>scripts/</code> 生成物已重建为新路径</li>
+        <li><b>开发期工具进 <code>build_tools/</code></b>（原仓库根 <code>tools/</code>）：打包器 / 培训页生成器 / 离线一键脚本 —— 避免与运行期的 <code>framework/tools/</code> 混淆</li>
+        <li><b>依赖方向实测无环</b>：<code>common ← probe ← explore ← generate</code>、<code>common ← run</code>、<code>cli → 全部</code>（AST 扫描 + import 目标存在性校验，一次抓出所有漏改）</li>
+        <li>版本号单一来源位置随之变为 <code>framework/tools/common/config.py::VERSION_SOURCE</code>（仍是<b>一处定义</b>，<code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 共用）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
+        <li><b>__file__ 层级推导随结构漂移</b>：<code>config.py::BASE</code> 原按 <code>parent.parent</code> 推目录，模块挪深两层后会<b>静默指错</b>（不报错、只指到错地方）⇒ 改为「向上找 <code>pyproject.toml</code>」的标记法</li>
+        <li><b>体检脚本的版本探针漂移</b>（仓库外 <code>kickoff_check.sh</code>）：<code>from framework.config import VERSION_SOURCE</code> 导入失败后<b>静默退回硬编码旧路径</b> ⇒ 改为「取不到就如实报未验」并指向新模块路径</li>
+        <li><b>打包器审计历史包的误报</b>按「升级日志两种落点都认」的先例加<b>历史形态别名</b>（命中如实标 <code>◐</code>、不拦；真缺项仍照拦）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
+        <li>判据：一类 <code>pytest tests/ -q</code> <b>238 passed</b>（与重构前逐条一致）· 端到端 <code>cli run</code> 19 个节点<b>分批</b>跑 <b>19 passed / exit 0</b> · 二类 <code>bash tests/run_verifications.sh</code> 10 个脚本 · <code>build_tools/pack_release.py --with-cassettes</code> 打包自检通过</li>
+        <li>⚠️ 本机内存红线（1.87G / 无 swap）：全量一次跑会触发 OOM（实测 Playwright 驱动崩溃 + 用例挂死），改用「每批 ≤5 条、独立进程、批间释放浏览器」；<b>SKIP 不等于通过</b>，内存不足要腾出来重跑</li>
+        <li><b>升级须知（v7.x → v8.0）</b>：① <code>cases/</code> / <code>scenarios/</code> / demo 一个字都不用改；② 自写的调试脚本若 <code>import framework.xxx</code>，按映射表改一行路径；③ 重跑 <code>python -m framework.cli generate</code> 重建 <code>scripts/</code></li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V7.8</span><span class="cl-date">2026-09-21</span><span class="cl-tag">上一版本</span><span class="cl-theme">数据参数化「真展开」 · 一组数据 = 一条用例（L1）</span></div>
       <p class="cl-sum">本版把<b>数据参数化</b>真正落地：场景 <code>data:</code> 里的一组数据会<b>展开成一条独立用例</b>（报告独立一行、失败能定位到具体数据集），不再是「只解析不展开」。写法沿用既有的占位符机制 —— 文案里写 <code>{关键词}</code>、<code>data:</code> 里给几组值，写场景的人不用学新东西。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>一组数据 = 一条用例</b>：生成器对带 <code>data:</code> 的用例产出 <code>parametrize(indirect=True)</code>，报告里形如 <code>test_xxx[编号-1007]</code>，可按组单选（<code>-k "&lt;case_id&gt; and &lt;组名&gt;"</code>）</li>
@@ -8181,12 +8224,12 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
         <li><b>仓库结构三层分离</b>：框架代码在仓库；项目台账与设计文档移出仓库（住 skill）；仓库 <code>docs/</code> 现在<b>只放唯一的对外文档</b> <code>training.html</code></li>
         <li><b><code>tools/</code> = 框架自己的工具目录</b>：<code>build_html.py</code> 从仓库根挪入，与交付打包器 <code>pack_release.py</code> 同列；仓库根不再散放脚本</li>
-        <li><b>版本号来源路径收敛为一处</b>：<code>framework/config.py::VERSION_SOURCE</code> —— <code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 三个读者共用（原先三处各写一遍；漏改一处 <code>--version</code> 会静默变 unknown）</li>
+        <li><b>版本号来源路径收敛为一处</b>：<code>framework/tools/common/config.py::VERSION_SOURCE</code> —— <code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 三个读者共用（原先三处各写一遍；漏改一处 <code>--version</code> 会静默变 unknown）</li>
         <li>README / 培训页 / 目录树同步，并把「逐条列文件名与数字」改成<b>抗腐烂写法</b>（减少文档漂移面）</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
         <li><b>培训页生成器三处真 bug</b>（改单遍分词）：① 关键字趟在已注入的 HTML 上再跑 ⇒ 把 <code>&lt;span class="k"&gt;</code> 里的 <code>class</code> 又包一层，已发布页实测 <b>2381 处畸形嵌套</b>；② 关键字集合是 <code>set</code>，同长度词序由哈希决定 ⇒ <b>同一份代码重跑两次 md5 都不同</b>（差 140 行）⇒「html 与代码是否同步」根本没法用重跑比对判定；③ 先 <code>html.escape</code> 把引号变实体 ⇒ 字符串正则永远匹配不上，<b>字符串高亮一直是死的</b></li>
-        <li><b>打包器审计历史包误报</b>：用当前必需项清单去审结构变更前的包会报「缺 tools/build_html.py / docs/training.html」—— 历史包按当时结构打包本就正常。按「升级日志两种落点都认」的先例加<b>历史形态别名</b>（命中时如实标出 <code>◐</code>、不拦），真缺项仍照拦</li>
+        <li><b>打包器审计历史包误报</b>：用当前必需项清单去审结构变更前的包会报「缺 build_tools/build_html.py / docs/training.html」—— 历史包按当时结构打包本就正常。按「升级日志两种落点都认」的先例加<b>历史形态别名</b>（命中时如实标出 <code>◐</code>、不拦），真缺项仍照拦</li>
         <li><b>一条负向验证段自 V7.5.1 起就没跑起来</b>：负向用例故意用「不存在的控件名」，而映射质量闸会把整个 generate 拦成 exit 2 ⇒ 负向段一步没跑、脚本自己变红。负向段改走 <code>--allow-unmapped</code> 并写明原因 ⇒ 修后<b>负向 15 条全部 FAILED</b>（预期）</li>
         <li><b>一条自测的隐式环境依赖</b>：GBK 解码用例会先 generate ⇒ 本机恰好有 demo 时它就真去 probe（起浏览器），同一条用例 <b>1.16s → 162.71s</b>（占整套 93%，整包 13s → 175s）—— 等于二类（端到端）悄悄混进一类（秒级自测）。改为钉确定性不可达目标，并收紧判据（必须真解码到中文）</li>
       </ul></div>
@@ -8273,7 +8316,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <div class="cl-head"><span class="cl-ver">V7.5.2</span><span class="cl-date">2026-09-16</span><span class="cl-tag">上一版本</span><span class="cl-theme">脱敏收敛 · 交付包落库（仓库内 releases/）· 闸门可移植性</span></div>
       <p class="cl-sum">本版是<b>对外交付与流程的收敛版</b>：清掉树内最后一处内部组织缩写、把交付包从 <code>/tmp</code> 搬进仓库内 <code>releases/</code>（并挡住它不进包）、把 pre-push 敏感信息闸门的环境依赖修好（原先在 <code>python3 = 3.6</code> 的机器上会误拦）。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
-        <li><b>交付包落库到仓库内 <code>releases/</code></b>：<code>tools/pack_release.py</code> 的 <code>--out</code> 默认从 <code>/tmp/pkg</code> 改为 <code>&lt;仓库&gt;/releases</code> —— 此前交付包是<b>唯一副本却躺在 <code>/tmp</code></b>（重启即可能丢），本版按根因修</li>
+        <li><b>交付包落库到仓库内 <code>releases/</code></b>：<code>build_tools/pack_release.py</code> 的 <code>--out</code> 默认从 <code>/tmp/pkg</code> 改为 <code>&lt;仓库&gt;/releases</code> —— 此前交付包是<b>唯一副本却躺在 <code>/tmp</code></b>（重启即可能丢），本版按根因修</li>
         <li><code>.gitignore</code> 加 <code>/releases/</code>、<code>pack_release.py</code> 的 <code>EXCLUDE_DIRS</code> 加 <code>releases</code>：打包按「已跟踪 + 未跟踪但不被忽略」收文件，漏挡会把<b>发布包套进发布包</b></li>
         <li>命名约定：<code>releases/hybrid_gui_qa_V&lt;版本&gt;_&lt;YYYYMMDD&gt;.zip</code> + <code>SHA256SUMS.txt</code>；历次交付记录放 <code>releases/</code> 下子目录</li>
       </ul></div>
@@ -8295,7 +8338,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>映射质量闸（根因修复）</b>：<code>generate</code> 算完定位映射后仍有语义名对不上 ⇒ 抛 <code>UnmappedElementsError</code>、<b>一个文件都不写</b>、CLI <b>exit 2</b>，并打印「缺哪些 + 真因（可达性预检结论）+ 下一步」；调试逃生口 <code>--allow-unmapped</code>（显式声明才允许产出带存根的脚本，产物永不允许进交付）</li>
         <li><b>目标可达性预检</b>：<code>target_probe.reachability()</code> 把「连不上（带『先起 demo』动作）」「有响应但无 <code>/api/health</code>（老目标，算活）」「可达」分开；<code>cli probe</code> 预检不过就 <b>exit 2 + 人话</b>，不再甩一屏 Playwright traceback（旧行为：<code>net::ERR_CONNECTION_REFUSED</code> 长栈 + exit 1，看着像框架坏了）</li>
-        <li><b>交付前自检</b>：① <code>tests/test_artifacts_health.py</code>（未映射=0 · 无裸 <code>page.goto</code> · conftest 接线齐 · cases↔datasets 一一对应 · scripts/ 无杂物）；② <code>tools/pack_release.py</code> 打包并用 <b>标准库 zipfile</b> 复扫包内产物，不达标就删包 + exit 2（它也用来审计历史包：拿它验 V7.5 那个包，当场抓出 100 处未映射）</li>
+        <li><b>交付前自检</b>：① <code>tests/test_artifacts_health.py</code>（未映射=0 · 无裸 <code>page.goto</code> · conftest 接线齐 · cases↔datasets 一一对应 · scripts/ 无杂物）；② <code>build_tools/pack_release.py</code> 打包并用 <b>标准库 zipfile</b> 复扫包内产物，不达标就删包 + exit 2（它也用来审计历史包：拿它验 V7.5 那个包，当场抓出 100 处未映射）</li>
         <li><code>tests/test_generate_quality_gate.py</code> · <code>tests/test_target_reachability.py</code> · <code>tests/test_pack_release.py</code>：三个「测试的测试」（不启浏览器、秒级）</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
@@ -8380,14 +8423,14 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
         <li>测试基线：<b>16 用例全绿</b>（12 条手写 + 4 条 AI）；框架自测 <b>86 条</b>；三个 verify 脚本全过（跨页四段 / 弹层回归 / 断言正负向）</li>
         <li>反证留痕：塞一条脏数据 + <code>HYBRID_RESET_URL=off</code> 跑跨页用例 → 「20 行」断言 <b>FAILED</b>（说明复位确实在起作用）；看门狗用 <code>HYBRID_CASE_TIMEOUT=1</code> 实测 → 进程 exit 1 + 调用栈落盘</li>
         <li>已知待办（诚实清单）：AI 给「返回列表」产的 url 断言只是 host（两页 URL 都含 ⇒ 等于没验换页）—— <b>2026-09-17 已修掉</b>：提示词禁止 host 片段 + 质量闸红线（拒绝落盘/生成）+ 用例改「目标页独有证据」；跨页流程 D1~D4（pages 声明 / 原地断言 <code>after_step</code> / 跨页重名消解 / 换页证据闸）已全部落地；场景 <code>data</code> 参数化仍只解析不展开</li>
-        <li>文档口径修正：生成物 <code>scripts/conftest.py</code> 会 <code>import framework.data_driven / framework.healer</code> ⇒ <b>要在项目内运行</b>，不是「拷到哪儿都能独立跑」</li>
+        <li>文档口径修正：生成物 <code>scripts/conftest.py</code> 会 <code>import framework.tools.generate.data_driven / framework.tools.run.healer</code> ⇒ <b>要在项目内运行</b>，不是「拷到哪儿都能独立跑」</li>
       </ul></div>
     </div>
     <div class="card cl">
       <div class="cl-head"><span class="cl-ver">V7.3</span><span class="cl-date">2026-09-13</span><span class="cl-tag">上一版本</span><span class="cl-theme">统一 UTF-8 · 跨平台文本口径</span></div>
       <p class="cl-sum">修掉一个「在中文 Windows 上必崩」的编码缺陷：`explore --ai` 默认带 --verify，而 --verify 里用 subprocess 收子进程输出时没指定编码 ⇒ 父进程按系统默认编码（中文 Windows = cp936/gbk）去解码子进程的 <b>UTF-8 中文输出</b>，报 `UnicodeDecodeError: 'gbk' codec can't decode byte 0xbb in position 13`（用例和脚本都生成了，偏偏校验这一步炸）。现在全链路显式 UTF-8，并且本机 <b>用 zh_CN.gbk locale 把原始报错复现到「同一个字节、同一个位置」</b>后再修，修完同一条命令实测通过。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
-        <li><b>framework/text_io.py</b>：跨平台文本口径的唯一入口 —— `utf8_env()`（给子进程注入 PYTHONUTF8/PYTHONIOENCODING）、`force_stdio()`（本进程 stdio 转 UTF-8 + Windows 控制台代码页切 65001）、`run_capture()`（收子进程输出，显式 UTF-8 解码 + errors=replace）</li>
+        <li><b>framework/tools/common/text_io.py</b>：跨平台文本口径的唯一入口 —— `utf8_env()`（给子进程注入 PYTHONUTF8/PYTHONIOENCODING）、`force_stdio()`（本进程 stdio 转 UTF-8 + Windows 控制台代码页切 65001）、`run_capture()`（收子进程输出，显式 UTF-8 解码 + errors=replace）</li>
         <li><b>tests/test_utf8_io.py</b>（10 条）：含<b>用 zh_CN.gbk locale 精确复现AprilPark1012那条报错</b>（断言里就写着 `byte 0xbb in position 13`）+ <b>AST 全仓扫描</b>（谁再写出「靠系统默认编码」的 subprocess/read_text/open 就直接测试失败）</li>
         <li>生成的 scripts/conftest.py 自带 UTF-8 自举：裸跑 pytest（不经 cli）也不会因中文/✓ 崩或乱码</li>
         <li>limits.py 在 Windows 上用 GlobalMemoryStatusEx 读可用内存（以前读不到 /proc 就恒判 1 并发）</li>
@@ -8443,7 +8486,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <p class="cl-sum">把「看不懂的参数」从静默忽略改成明确报错：过去 --workres（--workers 拼错）会照常跑完并 exit 0，未知子命令也只打文档就 exit 0 —— 脚本调用方会误判成功。现在参数错一律 exit 2 并给出「想写哪个」的建议，同时补上 --help / --version。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>--help / -h</b>：总览 + 子命令帮助（<b>直接取函数 docstring</b>，文档与代码同源，不会漂）</li>
-        <li><b>--version / -V</b>：版本号读 tools/build_html.py（版本单一来源；读不到就如实说 unknown）</li>
+        <li><b>--version / -V</b>：版本号读 build_tools/build_html.py（版本单一来源；读不到就如实说 unknown）</li>
         <li><b>tests/test_cli_flags.py</b>：参数契约回归（约 3 秒，不需要 demo / 不需要 AI key）——合法参数不许误杀 + 非法参数必须 exit 2</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
@@ -8467,7 +8510,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li>场景库 <b>scenarios/*.yml</b>（一个文件 = 一个场景）+ 三个入口：<b>--scenario</b>（内联）/<b>--scenario-file</b>/<b>--scenario-dir --tag --limit</b>（三者互斥，参数错 exit 2）</li>
         <li><b>explore --ai 默认落 cases/ai_&lt;id&gt;_&lt;ts&gt;.json</b>（--no-cases 可关）；<b>--verify</b> 交付即验证：落盘后立刻 generate + pytest 单跑，FAILED → exit 3（日志 output/verify/）</li>
-        <li><b>cli prune</b> 归档保留策略（framework/retention.py，HYBRID_KEEP_SNAPSHOTS 默认 20；explore/probe 结束自动静默执行）</li>
+        <li><b>cli prune</b> 归档保留策略（framework/tools/common/retention.py，HYBRID_KEEP_SNAPSHOTS 默认 20；explore/probe 结束自动静默执行）</li>
         <li><b>调试开关 --debug</b>（别名 --headed）：开了就「看得见」——有屏幕弹 Chromium 一步步跑；无屏幕自动录视频(webm) + <b>逐步截图</b> + trace 回放。配套 --case（只跑一条）/ --slowmo（放慢）</li>
         <li><b>资源安全 P0</b>：limits.safe_workers() 按 MemAvailable 自动降并发 + browser.py 收敛启动参数 + 日志 run-id 隔离</li>
         <li>本文档新增「版本与更新记录」；第 4 节新增<b>函数级调用链路图</b>（图 A 图形化泳道图 + 图 B 明细）</li>
@@ -8510,7 +8553,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V7.8</b>（2026-09-21）· 由 tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.0</b>（2026-09-21）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
