@@ -109,17 +109,21 @@ python build_tools/offline_explore_chain.py --repo . --run  # 离线一条命令
 |---|---|---|
 | 一类自测 | `pytest tests/ -q` | **242 passed**（238 → +4：新增 import 目标判据） |
 | 端到端（确定性链路） | `cli run`（19 个节点，**分批** 5 批跑） | **19 passed / 5 批全 exit 0**（共 29.2s） |
-| 二类特性验证 | `bash tests/run_verifications.sh` | **7 条 ✅ / 3 条 ⏭️ SKIP（内存闸，未通过）** ⇒ 见下方逐条真值；⚠️ **SKIP ≠ 通过**，本版如实列为未验项，待内存富余时补跑 |
+| 二类特性验证 | `bash tests/run_verifications.sh` + 3 条补跑 | **9 条 ✅ / 1 条 ⏭️ SKIP（内存闸，未通过）** ⇒ 见下方逐条真值；⚠️ **SKIP ≠ 通过**，`verify_slow_target` 如实列为未验项 |
 | 培训页同步 | `python build_tools/build_html.py` + `tests/verify_html_sync.py` | **exit 0**（三条判据全绿） |
 | CLI 版本一致性 | `python -m framework.cli --version` ⇄ `VERSION_SOURCE` | `v8.0` ⇄ `build_tools/build_html.py` **一致** |
 | import 目标存在性 | `pytest tests/test_import_targets.py -q` | **4 passed**（含 3 条负向自证） |
 | 旧路径残留 | 全仓 grep `framework\.(config\|probe\|…)\b` | **当前代码/文档 0 命中**（仅 V8.0 迁移对照示例与历史发行说明保留，属有意） |
 | 交付打包 | `python build_tools/pack_release.py --with-cassettes` + `sha256sum -c` | **两件套 2/2 OK**（自检含「版本 ⇄ 发行说明配套」） |
 
-> ⚠️ **本版尚未达成的判据（如实记）**：计划判据 2 要求二类「10/10 全绿 · 0 跳过」，本次实跑为
-> **7 ✅ / 3 ⏭️ SKIP**（`data_expand` / `element_ambiguity` / `slow_target`，全是**内存闸如实跳过**）。
-> 本机 MemAvailable 长期 520~550MB（hermes 本体占 ~1GB，1.87G 无 swap）⇒ 这三条**待内存富余时补跑**；
-> **不接受把 SKIP 当通过**，所以这里不写「二类全绿」。
+> ⚠️ **本版尚未达成的判据（如实记）**：计划判据 2 要求二类「10/10 全绿 · 0 跳过」，本次最终为
+> **9 ✅ / 1 ⏭️ SKIP** —— 唯一未过的是 `verify_slow_target.py`（**自带 650MB 闸门**）。
+> 补跑时为它腾过内存：停掉 dashboard（≈108MB）+ 停 demo（15MB）+ 清残留内核，闸门检查点仍只有 **634MB**，
+> **差 16MB**；剩下唯一还能腾的是 `april` profile 的网关（262MB，属对外服务）⇒ **需授权才动**，
+> 未获授权就如实留在这里当未验项。**不接受把 SKIP 当通过**，所以不写「二类全绿」。
+>
+> 📎 补跑命令与真值：`python tests/verify_element_ambiguity.py` → exit 0 · `python tests/verify_data_expand.py` → exit 0 ·
+> `python tests/verify_slow_target.py` → exit 3（SKIP，2026-09-21 17:2x 实跑）。
 
 > 📌 **打包器这次真的拦下了一件事**：版本号升到 V8.0 后第一次打包，包内自检报
 > 「包内没有本次版本的 RELEASE_NOTES_V8.0.md」⇒ 拒绝出包。也就是说「**改了版本号忘写发版说明**」
@@ -131,14 +135,14 @@ python build_tools/offline_explore_chain.py --repo . --run  # 离线一条命令
 |---|---|
 | verify_assert_kinds.py | exit 0（正向 4 passed；**负向 15 条全部 FAILED**，无假绿） |
 | verify_cross_page.py | exit 0 |
-| verify_data_expand.py | ⏭️ **exit 3 SKIP**（内存闸 533MB < 550MB）—— **未通过，待腾内存补跑** |
-| verify_element_ambiguity.py | ⏭️ **exit 3 SKIP**（内存闸 520MB < 550MB）—— 静态判据已过（5/5），浏览器级判据**未跑** |
+| verify_data_expand.py | ✅ **exit 0**（补跑：3 组数据 → 3 条独立用例 · 参数名可读 · 坏组只红那一行 · 单组可跑 · 收尾仓库零残留） |
+| verify_element_ambiguity.py | ✅ **exit 0**（补跑：静态判据 5/5 + 浏览器级「复现旧病形态 / 新行为拦得住 / 既有唯一名未误伤」） |
 | verify_html_sync.py | ✅ exit 0（本版从 exit 1 转绿 —— 三同步生效） |
 | verify_offline_delivery.py | ✅ exit 0（两件套都能打出来 + 内容齐 + 清单与事实一致；本版首次被「版本 ⇄ 发行说明配套」闸门拦过一次） |
 | verify_order_pages.py | ✅ exit 0（订单页与弹层，46 条判据全过） |
 | verify_order_pick_create.py | ✅ exit 0（弹层选客户/销售员，58/58 判据） |
 | verify_picker_layer.py | ✅ exit 0（弹层收集 6/6 + 探完关闭 + 有界轮询） |
-| verify_slow_target.py | ⏭️ **exit 3 SKIP**（该脚本自带 650MB 闸门）—— **未通过，待腾内存补跑** |
+| verify_slow_target.py | ⏭️ **exit 3 SKIP**（该脚本自带 **650MB** 闸门；补跑时停掉 dashboard + demo + 清残留内核后，闸门检查点仍只有 **634MB ⇒ 差 16MB**）—— **仍未通过** |
 
 > ⚠️ **内存红线（本机 1.87G / 无 swap，别忽略）**：跑浏览器类验证前看 `MemAvailable`
 > —— 低于闸门的脚本会**如实 SKIP（exit 3）而不是硬跑**；**SKIP 不等于通过**，要腾内存重跑。
