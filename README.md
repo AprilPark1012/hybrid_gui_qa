@@ -501,7 +501,8 @@ python -m pytest tests/ -q                       # CLI 契约 / UTF-8 / 断言�
 # ② 二类：端到端特性验证（需要 demo —— 统一入口会自己起停，跑完给汇总表）
 bash tests/run_verifications.sh                  # 全部 verify_*.py（内存 <550MB 会如实 SKIP，不硬跑）
 bash tests/run_verifications.sh --only slow_target     # 只跑某一个；--list 列出全部
-python tests/verify_slow_target.py               # 慢目标闸门：断言 11 种正向 + 负向 15/15 必须 FAILED（防假绿）
+python tests/verify_slow_target.py               # 慢目标闸门（F1/F2）：慢代理 300ms/请求下 6 条关键用例必须全绿
+                                                 #   （纯正向闸、无负向段；内存 <650MB 会如实 SKIP exit 3，SKIP≠通过）
 python tests/verify_html_sync.py                 # R8 判据：培训页能由代码可复现生成 且 与代码逐字节一致
 ```
 
