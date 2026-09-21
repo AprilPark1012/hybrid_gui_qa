@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -41,12 +42,33 @@ def run_chain(py: str, *extra: str):
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
+def _candidate_interpreters() -> list:
+    """探测「可能没装项目依赖」的解释器候选 —— **不写本机绝对路径**。
+
+    ⚠️ 2026-09-21 修（打包闸门提示 + 外发前复查发现）：这里原先硬编码了**打包机**上的
+    一条私有解释器路径（形如 `<用户主目录>/.local/bin/python3.x`）。两个毛病：
+      ① 交付包要被带到别人的机器上（还有 Windows），那条路径必然不存在 ⇒ 判据在对方机器上
+         等于失效；② 把开发机的机器痕迹写进对外产物。
+    正确做法：显式覆盖走 `HYBRID_BAD_PY`，其余**按名字探测**系统解释器（跨平台）。
+    """
+    out = [os.environ.get("HYBRID_BAD_PY", "")]
+    for name in ("python3", "python", "py"):        # py = Windows 官方启动器
+        p = shutil.which(name)
+        if p:
+            out.append(p)
+    out += [sys.executable, "/usr/bin/python3", "/usr/local/bin/python3"]
+    seen, uniq = set(), []
+    for c in out:
+        if c and c not in seen:
+            seen.add(c)
+            uniq.append(c)
+    return uniq
+
+
 def find_dep_less_python() -> str:
     """找一个「确实没装项目依赖」的解释器当样本（找不到就 SKIP，不硬造）。"""
-    cands = [os.environ.get("HYBRID_BAD_PY", ""), "/home/admin/.local/bin/python3.11",
-             sys.executable, "/usr/bin/python3"]
-    for c in cands:
-        if not c or not Path(c).exists():
+    for c in _candidate_interpreters():
+        if not Path(c).exists():
             continue
         r = subprocess.run([c, "-c", "import dotenv"], capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=60)
