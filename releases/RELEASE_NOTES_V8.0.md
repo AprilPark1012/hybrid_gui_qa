@@ -109,21 +109,22 @@ python build_tools/offline_explore_chain.py --repo . --run  # 离线一条命令
 |---|---|---|
 | 一类自测 | `pytest tests/ -q` | **242 passed**（238 → +4：新增 import 目标判据） |
 | 端到端（确定性链路） | `cli run`（19 个节点，**分批** 5 批跑） | **19 passed / 5 批全 exit 0**（共 29.2s） |
-| 二类特性验证 | `bash tests/run_verifications.sh` + 3 条补跑 | **9 条 ✅ / 1 条 ⏭️ SKIP（内存闸，未通过）** ⇒ 见下方逐条真值；⚠️ **SKIP ≠ 通过**，`verify_slow_target` 如实列为未验项 |
+| 二类特性验证 | `bash tests/run_verifications.sh` + 3 条补跑 | **10 条 ✅ / 0 ⏭️ SKIP（全绿）** ⇒ 见下方逐条真值（判据 2 达成） |
 | 培训页同步 | `python build_tools/build_html.py` + `tests/verify_html_sync.py` | **exit 0**（三条判据全绿） |
 | CLI 版本一致性 | `python -m framework.cli --version` ⇄ `VERSION_SOURCE` | `v8.0` ⇄ `build_tools/build_html.py` **一致** |
 | import 目标存在性 | `pytest tests/test_import_targets.py -q` | **4 passed**（含 3 条负向自证） |
 | 旧路径残留 | 全仓 grep `framework\.(config\|probe\|…)\b` | **当前代码/文档 0 命中**（仅 V8.0 迁移对照示例与历史发行说明保留，属有意） |
 | 交付打包 | `python build_tools/pack_release.py --with-cassettes` + `sha256sum -c` | **两件套 2/2 OK**（自检含「版本 ⇄ 发行说明配套」） |
 
-> ⚠️ **本版尚未达成的判据（如实记）**：计划判据 2 要求二类「10/10 全绿 · 0 跳过」，本次最终为
-> **9 ✅ / 1 ⏭️ SKIP** —— 唯一未过的是 `verify_slow_target.py`（**自带 650MB 闸门**）。
-> 补跑时为它腾过内存：停掉 dashboard（≈108MB）+ 停 demo（15MB）+ 清残留内核，闸门检查点仍只有 **634MB**，
-> **差 16MB**；剩下唯一还能腾的是 `april` profile 的网关（262MB，属对外服务）⇒ **需授权才动**，
-> 未获授权就如实留在这里当未验项。**不接受把 SKIP 当通过**，所以不写「二类全绿」。
+> ✅ **判据 2 达成路径（如实记）**：全量套件首跑时 3 条被内存闸 SKIP，随后逐条补跑转绿 ——
+> `verify_element_ambiguity.py` exit 0 · `verify_data_expand.py` exit 0 ·
+> `verify_slow_target.py` exit 0（这条要先腾到 ≥650MB：停 dashboard ≈108MB → 仍差 16MB（634MB）⇒
+> 再临时停 `april` 网关 262MB → 718MB 才跑得起来；**两处服务跑完均已原样恢复**，验收为 active / HTTP 200）。
+> 📎 补跑命令：`python tests/verify_<x>.py`（单条）或 `bash tests/run_verifications.sh --only <名字>`。
 >
-> 📎 补跑命令与真值：`python tests/verify_element_ambiguity.py` → exit 0 · `python tests/verify_data_expand.py` → exit 0 ·
-> `python tests/verify_slow_target.py` → exit 3（SKIP，2026-09-21 17:2x 实跑）。
+> ⚠️ **本机内存红线（别忽略）**：1.87G / 无 swap，hermes 本体常占 ~1GB ⇒ 浏览器类验证前必看 `MemAvailable`；
+> 低于闸门的脚本会**如实 SKIP（exit 3）而不是硬跑**，**SKIP 不等于通过**；全量一次跑 19 条会 OOM
+> （实测 Playwright 驱动内部崩溃 + 用例挂死）⇒ 正解是**每批 ≤5 条、独立进程、批间释放浏览器**。
 
 > 📌 **打包器这次真的拦下了一件事**：版本号升到 V8.0 后第一次打包，包内自检报
 > 「包内没有本次版本的 RELEASE_NOTES_V8.0.md」⇒ 拒绝出包。也就是说「**改了版本号忘写发版说明**」
@@ -142,7 +143,7 @@ python build_tools/offline_explore_chain.py --repo . --run  # 离线一条命令
 | verify_order_pages.py | ✅ exit 0（订单页与弹层，46 条判据全过） |
 | verify_order_pick_create.py | ✅ exit 0（弹层选客户/销售员，58/58 判据） |
 | verify_picker_layer.py | ✅ exit 0（弹层收集 6/6 + 探完关闭 + 有界轮询） |
-| verify_slow_target.py | ⏭️ **exit 3 SKIP**（该脚本自带 **650MB** 闸门；补跑时停掉 dashboard + demo + 清残留内核后，闸门检查点仍只有 **634MB ⇒ 差 16MB**）—— **仍未通过** |
+| verify_slow_target.py | ✅ **exit 0**（补跑：内存腾到 **718MB** 后跑起来 —— 300ms/请求 的慢目标下 **6 条全绿**，F1 就绪契约 + F2 有界等待生效；证据 `log/slowgate_20260921_172648/`） |
 
 > ⚠️ **内存红线（本机 1.87G / 无 swap，别忽略）**：跑浏览器类验证前看 `MemAvailable`
 > —— 低于闸门的脚本会**如实 SKIP（exit 3）而不是硬跑**；**SKIP 不等于通过**，要腾内存重跑。
