@@ -12,6 +12,9 @@
   pytest scripts/test_cases.py -n 1 --html=log/latest/report.html
 """
 from conftest import (_CURRENT_LOG, _log, _data, _act, _goto,
+                        # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
+                        # ⚠️ 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
+                        _ds_params, _ds_ids,
                       _assert_text, _assert_url,
                       _assert_visible, _assert_hidden, _assert_count,
                       _assert_attr, _assert_value,
@@ -133,9 +136,11 @@ def test_ai_contracts_cross_page_011030(page, ctx):
     _assert_text(page, _data('expect_5', ctx), '确认列表里仍有 HT-1005')
 
 
+@pytest.mark.parametrize("ctx", _ds_params('ai_contracts_search_by_no_000813'), ids=_ds_ids('ai_contracts_search_by_no_000813'), indirect=True)
 def test_ai_contracts_search_by_no_000813(page, ctx):
-    """在合同列表页面的搜索框输入 '1005'，点击搜索按钮，
-确认结果列表里出现编号为 HT-1005 的合同记录。"""
+    """在合同列表页面的搜索框输入 '{关键词}'，点击搜索按钮，
+确认结果列表里出现编号为 {期望编号} 的合同记录。
+（数据驱动 · L1：本用例由场景 data: 的 3 组数据展开成 3 条独立用例）"""
     _CURRENT_LOG["case_id"] = "ai_contracts_search_by_no_000813"
     _goto(page, 'http://localhost:8000')
     _log(page, "场景开始", f"case=ai_contracts_search_by_no_000813")
@@ -144,14 +149,14 @@ def test_ai_contracts_search_by_no_000813(page, ctx):
     _goto(page, 'http://localhost:8000')
     _log(page, "goto", f"打开合同列表页面")
 
-    # step 2: 在关键字搜索框输入 1005
+    # step 2: 在关键字搜索框输入 {关键词}
     _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_0', ctx))
-    _log(page, "fill", f"在关键字搜索框输入 1005")
+    _log(page, "fill", f"在关键字搜索框输入 {{关键词}}")
 
     # step 3: 点击搜索按钮触发查询
     _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
     _log(page, "click", f"点击搜索按钮触发查询")
-    _assert_text(page, _data('expect_0', ctx), '确认结果列表中出现编号为 HT-1005 的合同记录')
+    _assert_text(page, _data('expect_0', ctx), '确认结果列表中出现编号为 {期望编号} 的合同记录')
 
 
 def test_ai_orders_return_from_contract_004934(page, ctx):

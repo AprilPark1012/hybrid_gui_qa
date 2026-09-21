@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 import json
+import re
 from pathlib import Path
 
 from .config import BASE, CASES_DIR, SCRIPTS_DIR
@@ -202,6 +203,11 @@ def _semantic_to_locator_expr(it: dict) -> str:
     raise RuntimeError(f"元素 {it.get('semantic_name')} 无可用定位语义")
 
 
+def _brace_safe(text) -> str:
+    """把要嵌进「生成代码里的 f-string」的文本转义大括号（见 _log 那处注释）。"""
+    return str(text).replace("{", "{{").replace("}", "}}")
+
+
 def _render_pytest_case(case: dict, loc_map: dict) -> str:
     """把单个 cases 用例渲染成一个 pytest test 函数（locator 内联确定性定位）。
 
@@ -229,7 +235,12 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
             tail.append(a)
 
     uses_tabs = any(st.get("op") in ("click_new_tab", "close_tab") for st in steps)
-    lines = [
+    lines = []
+    if case.get("_data_sets"):
+        # L1：一组数据 = 一条用例（报告里独立一行）；indirect 让 ctx fixture 接住本组数据。
+        lines.append(f'@pytest.mark.parametrize("ctx", _ds_params({cid!r}), '
+                     f'ids=_ds_ids({cid!r}), indirect=True)')
+    lines += [
         f'def test_{cid}(page, ctx):',
         f'    """{name}"""',
         f'    _CURRENT_LOG["case_id"] = "{cid}"',
@@ -309,7 +320,11 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
                 # 同上：未知动作也要显式失败，绝不静默少做一步
                 lines.append(f"    pytest.fail({'未知操作类型 ' + str(op) + '：generator 不支持，拒绝静默跳过'!r},"
                              f" pytrace=False)")
-        lines.append(f'    _log(page, "{op}", f"{desc}")')
+        # ⚠️ desc 是自然语言，**可能含 {占位符}**（数据驱动用例就这么写）。
+        #    直接塞进生成的 f-string 会变成 f"输入 {关键词}" ⇒ 运行时 NameError（L1 实测踩到）。
+        #    转义成 {{...}} 后：运行时还原成 {关键词} 原文；不含花括号的 desc 转义前后完全一致
+        #    ⇒ 既有用例的产物逐字节不变。
+        lines.append(f'    _log(page, "{op}", f"{_brace_safe(desc)}")')
         # 该步之后的原地断言（after_step = i+1）
         for a in by_step.get(i + 1, []):
             lines.extend(_render_assert(a, loc_map, cross_page=is_cross_page, dup_raw=dup_raw))
@@ -506,6 +521,76 @@ def _probe_declared_pages(pages: list[tuple[str, str]]) -> tuple[dict, set[str],
     return loc_map, ambiguous, dup_pages
 
 
+# ---------------- L1 数据参数化「真展开」（2026-09-21）----------------
+# 口径：场景的 data: 每组 = 一个「占位符名: 值」映射；生成期把它写成
+#       scripts/datasets/<cid>.sets.json，脚本里用 parametrize(indirect ctx) 展开成 N 条用例。
+# ⚠️ 为什么校验必须严：`format_template` 对**未命中**的占位符是"原样保留" ⇒ 组值漏写/写错名字时，
+#    会把 "{关键词}" 这个字面值静默填进页面（看着在跑、其实全错）。所以生成期就拦死。
+_BUILTIN_PLACEHOLDERS = {"date", "datetime", "timestamp", "uuid", "random", "randomHex"}
+_FRAMEWORK_KEYS = {"contractName", "created_name"}          # resolve_dynamic_inputs 自己会填
+_PLACEHOLDER_IN_TEXT = re.compile(r"\{(\w+)\}")
+
+
+class DataSetsError(RuntimeError):
+    """数据组与用例占位符对不上（组值写了不生效 / 需要的值没人提供）⇒ 拒绝落产物、exit 2。"""
+
+
+def placeholder_names_ordered(data: dict) -> list[str]:
+    """按**首次出现顺序**列出「必须由数据组提供」的占位符名（内置/框架自带/数据键本身都不算）。"""
+    order: list[str] = []
+    keys = set(data.keys())
+    for v in data.values():
+        if not isinstance(v, str) or "{" not in v:
+            continue
+        for nm in _PLACEHOLDER_IN_TEXT.findall(v):
+            if nm in _BUILTIN_PLACEHOLDERS or nm in _FRAMEWORK_KEYS or nm in keys:
+                continue
+            if nm not in order:
+                order.append(nm)
+    return order
+
+
+def _scenario_data_sets(case: dict, cache: dict | None = None) -> list[dict]:
+    """按 case['scenario_id'] 反查场景库，取它的 data: 组（没有/查不到 ⇒ []，单组行为不变）。"""
+    sid = case.get("scenario_id")
+    if not sid:
+        return []
+    if cache is not None and sid in cache:
+        return cache[sid]
+    sets: list[dict] = []
+    try:
+        from .scenario import discover_scenarios
+        for sc in discover_scenarios():
+            if sc.id == sid:
+                sets = [dict(x) for x in (sc.data or [])]
+                break
+    except Exception:
+        sets = []            # 场景库不可用不能拖垮既有生成链路
+    if cache is not None:
+        cache[sid] = sets
+    return sets
+
+
+def _validate_data_sets(case: dict, data: dict, sets: list[dict]) -> None:
+    """每组组值必须**恰好**覆盖用例需要的占位符：少了会把 {xxx} 字面填进去，多了等于写了不生效。"""
+    cid = case.get("case_id")
+    need = placeholder_names_ordered(data)
+    for i, s in enumerate(sets, 1):
+        keys = {k for k in s if k != "id"}
+        miss = [k for k in need if k not in keys]
+        extra = sorted(keys - set(need))
+        if miss:
+            raise DataSetsError(
+                f"用例 {cid} 的数据组第 {i} 组缺少占位符值：{miss}\n"
+                f"  · 这条用例能用的占位符：{need or '（无）'}\n"
+                f"  · 不补上就会把 \"{{{miss[0]}}}\" 这个字面值原样填进页面（看着在跑、其实错了）")
+        if extra:
+            raise DataSetsError(
+                f"用例 {cid} 的数据组第 {i} 组里这些键**根本没被用到**：{extra}\n"
+                f"  · 这条用例能用的占位符：{need or '（无）'}\n"
+                f"  · 写了不生效的组值 = 静默误导，请删掉或改对名字")
+
+
 class UnmappedElementsError(RuntimeError):
     """映射质量闸（V7.5.1，2026-09-15 交付事故根因）：有语义名映射不上时**拒绝落盘**。
 
@@ -660,13 +745,41 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
                                    conflicts=_CONFLICT_BASES)
 
     # 1) 抽离数据 → scripts/datasets/<case_id>.json
+    #    + L1：场景有 data: 的用例，另写 <case_id>.sets.json（**不动**上面那份基础数据集，
+    #      所以没有 data 的用例产出与改动前逐字节一致）
+    sc_cache: dict[str, list] = {}
+    sets_by_case: dict[str, list] = {}
     for case in cases:
         data = _extract_data(case)
         (datasets_dir / f"{case['case_id']}.json").write_text(
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        sets = _scenario_data_sets(case, sc_cache)
+        if sets and not placeholder_names_ordered(data):
+            # 场景带了 data，但这条用例文案里没用任何 {占位符} ⇒ 它本来就不是数据驱动的。
+            # 这里**告警不报错**：硬拦会把「一个场景 + 混合用例」这种合理写法误伤
+            # （真正要防的是「组值写错名字/写不生效」，那属于 need≠∅ 的情况，下面照旧硬拦）。
+            print(f"[generate] ⚠️ 用例 {case['case_id']} 没用占位符 ⇒ 不做参数化"
+                  f"（该场景有 {len(sets)} 组 data；要参数化就把用例文案改成 {{占位符}} 写法）")
+            sets = []
+        if sets:
+            _validate_data_sets(case, data, sets)
+            (datasets_dir / f"{case['case_id']}.sets.json").write_text(
+                json.dumps(sets, ensure_ascii=False, indent=2), encoding="utf-8")
+            sets_by_case[case["case_id"]] = sets
+
+    # 1-b) 清扫**过期的**多组数据文件（场景把 data 删了、用例删了 ⇒ 旧 sets 必须消失）。
+    #      不清的话用例会继续用上一版的数据跑（产物看着正常、其实不是当前场景说的那组），
+    #      属于「改了没生效」的静默坑。
+    for stale in datasets_dir.glob("*.sets.json"):
+        cid = stale.name[: -len(".sets.json")]
+        if cid not in sets_by_case:
+            stale.unlink()
+            print(f"[generate] 清掉过期数据组文件：{stale.name}（该用例当前没有 data: 组）")
 
     # 2) 生成 pytest 用例函数（locator 内联）
     rewritten = [_add_payload_refs(c) for c in cases]
+    for _c in rewritten:                      # 只给渲染器的内部标记，不落盘
+        _c["_data_sets"] = sets_by_case.get(_c["case_id"], [])
     funcs = "\n\n".join(_render_pytest_case(c, loc_map) for c in rewritten)
 
     (scripts_dir / "test_cases.py").write_text(_TEST_FILE_HEADER + funcs + "\n", encoding="utf-8")
@@ -697,6 +810,9 @@ _TEST_FILE_HEADER = '''"""hybrid_gui_qa 数据驱动测试用例 —— 由 case
   pytest scripts/test_cases.py -n 1 --html=log/latest/report.html
 """
 from conftest import (_CURRENT_LOG, _log, _data, _act, _goto,
+                        # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
+                        # ⚠️ 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
+                        _ds_params, _ds_ids,
                       _assert_text, _assert_url,
                       _assert_visible, _assert_hidden, _assert_count,
                       _assert_attr, _assert_value,
@@ -830,7 +946,59 @@ def _load_data(case_id):
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-@pytest.fixture(scope="session", autouse=True)
+# ---- L1（2026-09-21）：一组数据 = 一条用例 -------------------------------------------------
+def _load_sets(case_id):
+    """多组数据（可选）：<case_id>.sets.json。没有该文件 ⇒ []（= 保持单组行为）。"""
+    import json
+    p = Path(__file__).resolve().parent / "datasets" / f"{case_id}.sets.json"
+    if not p.exists():
+        return []
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def _ds_params(case_id):
+    """给 parametrize 用：每组 = 基础数据 ⊕ 该组覆盖值。无 sets 时返回 [基础数据]。"""
+    base = _load_data(case_id)
+    sets = _load_sets(case_id)
+    if not sets:
+        return [base]
+    out = []
+    for s in sets:
+        d = dict(base)
+        for k, v in s.items():
+            if k != "id":
+                d[k] = v            # 组值只是补上占位符，不覆盖抽离出来的键
+        out.append(d)
+    return out
+
+
+def _ds_ids(case_id):
+    """参数名：显式 id > 组里第一个占位符的值 > 序号 dsN；唯一化 + 去 pytest 会转义的字符。
+
+    ⚠️ 模板是普通字符串 ⇒ 里头的反斜杠一律写双，生成出来的产物才是单个 \（输出不变）。
+    """
+    import re
+    sets = _load_sets(case_id)
+    base = _load_data(case_id)
+    keys = set(base.keys())
+    order = []
+    for v in base.values():
+        if isinstance(v, str) and "{" in v:
+            for nm in re.findall(r"\\{(\\w+)\\}", v):
+                if nm not in keys and nm not in order:
+                    order.append(nm)
+    used, out = {}, []
+    for i, s in enumerate(sets, 1):
+        raw = s.get("id")
+        if not raw and order:
+            raw = s.get(order[0])
+        name = str(raw) if raw not in (None, "") else f"ds{i}"
+        name = re.sub(r"[\\[\\]\\s]+", "_", name).strip("_")[:30] or f"ds{i}"
+        n = used.get(name, 0) + 1
+        used[name] = n
+        out.append(name if n == 1 else f"{name}-{n}")
+    return out
+
 def _prepare_run_log_dir():
     """保证"本次运行"的日志目录干净。
 
@@ -1213,7 +1381,9 @@ def page(request, _pool):
     _SHOT_N = 0                                # 每条用例从 01 重新编号
     import re as _re
     # trace 文件名带 case_id：多用例并发/多次运行**不再互相覆盖**（原先都写 latest_trace.zip）
-    _m = _re.search(r"test_(.+)", request.node.name)
+    # ⚠️ 同 ctx fixture：L1 参数化后节点名带 [组名] 后缀，必须切掉
+    #（否则 trace 文件名变成 xxx[编号-1005]_trace.zip，且并发/多次运行的文件名口径不一致）
+    _m = _re.match(r"test_([^\\[]+)", request.node.name)
     _cid = _m.group(1) if _m else request.node.name
     browser = _pool.get()                      # 会话级浏览器（崩了由 pool 重启 + 告警）
     _ctx_kw = {}
@@ -1252,9 +1422,14 @@ def page(request, _pool):
 @pytest.fixture
 def ctx(request):
     import re
-    node = request.node.name          # test_<case_id>
-    m = re.search(r"test_(.+)", node)
+    node = request.node.name                       # test_<case_id> 或 test_<case_id>[<数据组>]
+    # ⚠️ 必须切掉「[数据组]」后缀 —— L1 参数化后节点名带后缀，用 .+ 会把整串当 case_id，
+    #    于是找不到数据集（防复发判据见 tests/test_data_expand.py）
+    m = re.match(r"test_([^\\[]+)", node)
     case_id = m.group(1) if m else "run"
+    param = getattr(request, "param", None)
+    if isinstance(param, dict):                    # L1：parametrize(indirect=True) 传进来的本组数据
+        return CaseCtx(case_id, param)
     return CaseCtx(case_id, _load_data(case_id))
 
 

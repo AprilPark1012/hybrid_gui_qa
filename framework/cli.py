@@ -194,6 +194,17 @@ def _report_unmapped(e) -> NoReturn:
     raise SystemExit(2)
 
 
+def _report_data_sets(e) -> NoReturn:
+    """数据组与占位符对不上时的交代：哪个用例 / 哪一组 / 差哪几个 —— **绝不落产物**，exit 2。"""
+    print(f"\n[generate] ❌ 数据组校验拦下 → 拒绝产出任何产物（exit 2）")
+    for line in str(e).splitlines():
+        print(f"[generate]    {line}")
+    print("[generate]    为什么拦：未解析的 {占位符} 会被**原样填进页面**（看着在跑、其实全错），"
+          "写了不生效的组值则等于静默误导。")
+    print("[generate]    → 改场景的 data: 或用例文案里的占位符，使两者一一对上；改完重跑 generate。")
+    raise SystemExit(2)
+
+
 def _report_case_quality(e) -> NoReturn:
     """假绿红线触发时的交代：哪条用例 / 什么证据没牙 / 怎么改 —— **绝不落产物**，exit 2。"""
     print(f"\n[质量闸] ❌ 假绿红线拦下：{len(e.entries)} 条用例、共 {e.total} 处 → 拒绝产出任何产物")
@@ -224,7 +235,7 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
     ensure_dirs()
     from pathlib import Path as _P
     from .case_builder import CaseQualityError
-    from .generator import UnmappedElementsError, generate_scripts
+    from .generator import DataSetsError, UnmappedElementsError, generate_scripts
     rest = rest or []
     map_path = None
     if "--element-map" in rest:
@@ -238,6 +249,8 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
         _report_case_quality(e)
     except UnmappedElementsError as e:
         _report_unmapped(e)
+    except DataSetsError as e:
+        _report_data_sets(e)
     print(f"[generate] 读 cases/ → 生成 {res['count']} 个用例到 scripts/:")
     print(f"          tests: {res['tests']}")
     print(f"          datasets: {len(res['datasets'])} 个（脚本数据分离）")

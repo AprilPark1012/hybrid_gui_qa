@@ -106,8 +106,8 @@ FILES = [
     ),
     dict(
         path="framework/scenario.py", badge="🗂 场景库", color="gray",
-        desc="scenarios/*.yml 的解析/校验/发现：一个文件=一个场景，只有 scenario 必填；business_context 喂 AI、assert_guard 既是护栏也进质量闸。需 PyYAML。",
-        anchors=[("def load_scenario_file", "读+严格校验单个场景文件（缺 scenario/类型错/YAML 错 → 报错带路径）。"),
+        desc="scenarios/*.yml 的解析/校验/发现：一个文件=一个场景，只有 scenario 必填；business_context 喂 AI、assert_guard 既是护栏也进质量闸；<code>data:</code> 从 V7.8 起<b>真展开</b>（一组数据=一条用例，形态写错就报错）。需 PyYAML。",
+        anchors=[("def load_scenario_file", "读+严格校验单个场景文件（缺 scenario/类型错/YAML 错 → 报错带路径；data 组：非列表/非映射/重复 id 都拦）。"),
                  ("def discover_scenarios", "递归扫目录 + --tag 过滤 + priority 排序，任一文件不合法即中止。"),
                  ("def page_bg", "给 AI 的【页面背景】：页面说明 + 前置条件 + 领域上下文。")],
     ),
@@ -120,9 +120,10 @@ FILES = [
     ),
     dict(
         path="framework/generator.py", badge="✅ Playwright", color="seagreen",
-        desc="主链路第二步·生成：读 cases/*.json（含 AI 用例）→ 优先用 element_map 快照映射确定性 locator（缺项才现场 probe）+ 按操作类型翻译 + 抽离数据到 scripts/datasets。元素映射不到时显式 pytest.fail，绝不静默跳过。",
+        desc="主链路第二步·生成：读 cases/*.json（含 AI 用例）→ 优先用 element_map 快照映射确定性 locator（缺项才现场 probe）+ 按操作类型翻译 + 抽离数据到 scripts/datasets。元素映射不到时显式 pytest.fail，绝不静默跳过。V7.8 起还负责<b>数据参数化</b>：场景 <code>data:</code> 的每组数据展开成一条独立用例。",
         anchors=[("def _semantic_to_locator_expr", "从语义名推导出确定性 locator 源码字符串(test_id/role)。"),
-                 ("def generate_scripts", "核心：读 cases → 生成 scripts/test_cases.py + 抽离 datasets。")],
+                 ("def generate_scripts", "核心：读 cases → 生成 scripts/test_cases.py + 抽离 datasets。"),
+                 ("def _validate_data_sets", "数据参数化(V7.8)：组值必须**恰好**覆盖用例用到的占位符 —— 少了会把 {xxx} 字面填进页面、多了等于写了不生效，两者都 exit 2 + 人话点名。")],
     ),
     dict(
         path="framework/runner.py", badge="✅ Playwright", color="seagreen",
@@ -211,11 +212,58 @@ def render_cards() -> str:
 # ---------------- HTML 模板 ----------------
 
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "7.7.1"
-VERSION_DATE = "2026-09-19"
+VERSION = "7.8"
+VERSION_DATE = "2026-09-21"
 CHANGELOG = [
     dict(
-        version="7.7.1", date="2026-09-19", tag="当前版本",
+        version="7.8", date="2026-09-21", tag="当前版本",
+        theme="数据参数化「真展开」 · 一组数据 = 一条用例（L1）",
+        summary="本版把<b>数据参数化</b>真正落地：场景 <code>data:</code> 里的一组数据会<b>展开成一条独立用例</b>"
+                "（报告独立一行、失败能定位到具体数据集），不再是「只解析不展开」。写法沿用既有的占位符机制 —— "
+                "文案里写 <code>{关键词}</code>、<code>data:</code> 里给几组值，写场景的人不用学新东西。",
+        added=[
+            "<b>一组数据 = 一条用例</b>：生成器对带 <code>data:</code> 的用例产出 "
+            "<code>parametrize(indirect=True)</code>，报告里形如 <code>test_xxx[编号-1007]</code>，"
+            "可按组单选（<code>-k \"&lt;case_id&gt; and &lt;组名&gt;\"</code>）",
+            "<b>组名口径</b>：优先用组里的 <code>id</code>，其次取该组第一个占位符的值，最后回落 <code>ds1/ds2…</code>；"
+            "重名自动加序号、去掉方括号等字符（否则报告里分不清哪组）",
+            "两类判据：<code>tests/test_data_expand.py</code>（生成器契约，秒级 16 条）+ "
+            "<code>tests/verify_data_expand.py</code>（端到端：3 组→3 passed · <b>坏组只红那一行</b> · 单组可跑），"
+            "后者进 R7 统一入口",
+            "<b>样板场景</b> <code>scenarios/contracts/contracts_search_by_no.yml</code> 改 3 组数据，照它写即可",
+        ],
+        changed=[
+            "场景 <code>data</code> 字段从「二期 / 一期只解析不展开」变成<b>已支持</b>；"
+            "<code>scenarios/README.md</code> 同步",
+            "<code>scripts/datasets/&lt;cid&gt;.json</code>（基础数据）<b>格式不变</b>；多组另落 "
+            "<code>&lt;cid&gt;.sets.json</code>（基础 ⊕ 组值）—— 所以没有 <code>data</code> 的既有用例"
+            "产物<b>逐字节不变</b>",
+            "<code>generate</code> 会<b>清扫过期</b>的 <code>.sets.json</code>（场景把 data 删了 / 用例删了 ⇒ "
+            "旧组数据必须消失，否则用例会继续用上一版数据跑，属「改了没生效」的静默坑）",
+            "用例条数基线随之变化：样板场景那条由 1 条变 3 条（17 → 19）",
+        ],
+        fixed=[
+            "<b>描述里带 <code>{占位符}</code> 会把生成代码搞崩</b>：步骤描述被塞进生成代码的 f-string ⇒ "
+            "运行时报 <code>NameError: name '关键词' is not defined</code>（实测踩到）。渲染时转义大括号、"
+            "运行时还原成本文；不含花括号的描述转义前后一致 ⇒ 既有产物不受影响",
+            "<b>参数名被 pytest 转义</b>：中文参数名默认变成 <code>[\u7f16\u53f7-1005]</code> ⇒ "
+            "「失败定位到数据集」形同虚设。按 pytest 官方开关关掉 id 转义",
+            "<b>两处「从节点名反解 case_id」都没考虑参数后缀</b>：<code>ctx</code> fixture（取数据集）与 "
+            "<code>page</code> fixture（trace 文件名）用的都是 <code>re.search('test_(.+)')</code> ⇒ "
+            "参数化后会把 <code>[组名]</code> 当成 case_id 的一部分。两处统一改 <code>re.match</code> 切后缀",
+            "生成的测试文件<b>漏 import</b> <code>_ds_params/_ds_ids</code> ⇒ 收集期 NameError"
+            "（正是既有判据 <code>test_artifacts_health</code> 盯的那类「模板渲染漏 import」）",
+        ],
+        notes=[
+            "校验口径：组值**必须恰好覆盖**文案里用到的占位符 —— 少了 ⇒ 未解析的 <code>{xxx}</code> 会被"
+            "原样填进页面（看着在跑、其实全错）；多了 ⇒ 写了不生效（静默误导）。两者都 "
+            "<code>exit 2</code> + 人话点名是哪个键",
+            "场景有 <code>data:</code> 但某条用例没用占位符 ⇒ <b>告警 + 不参数化</b>（不硬拦）："
+            "避免误伤「一个场景 + 混合用例」的合理写法",
+        ],
+    ),
+    dict(
+        version="7.7.1", date="2026-09-19", tag="上一版本",
         theme="结构归一与修复批次 · tools/ 目录 · 版本来源收敛 · 文档可复现性",
         summary="本版<b>不加新能力</b>，只做三件事：把仓库结构按「框架代码 / 内部台账 / 门禁」三层分开；"
                 "把散落在仓库根的工具收进 <code>tools/</code>，并把「版本号来源路径」收敛成<b>只定义一处</b>；"

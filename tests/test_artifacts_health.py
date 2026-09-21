@@ -54,11 +54,21 @@ def test_generated_conftest_has_contract_helpers():
 
 
 def test_case_ids_and_datasets_are_one_to_one():
-    """cases/*.json 的 case_id 与 scripts/datasets/*.json 必须一一对应（缺 = 没生成；多 = 陈旧残留）。"""
+    """cases/*.json 的 case_id 与 scripts/datasets/*.json 必须一一对应（缺 = 没生成；多 = 陈旧残留）。
+
+    2026-09-21（V7.8 数据参数化）扩展：`<cid>.sets.json`（多组数据的**伴生件**，可选）不算基础数据集，
+    但**必须**有对应用例 —— 否则就是场景改了 / 用例删了之后留下的陈旧组数据，
+    用例会继续拿上一版数据跑（「改了没生效」的静默坑，比报错更难查）。
+    """
     case_ids = {json.loads(f.read_text(encoding="utf-8"))["case_id"] for f in CASES.glob("*.json")}
-    datasets = {f.stem for f in (SCRIPTS / "datasets").glob("*.json")}
+    all_files = list((SCRIPTS / "datasets").glob("*.json"))
+    sets_files = [f for f in all_files if f.name.endswith(".sets.json")]
+    datasets = {f.stem for f in all_files if not f.name.endswith(".sets.json")}
+    set_ids = {f.name[: -len(".sets.json")] for f in sets_files}
     assert case_ids - datasets == set(), f"这些用例没有数据集（重新 generate）：{sorted(case_ids - datasets)}"
     assert datasets - case_ids == set(), f"这些数据集是陈旧残留（用例已不存在）：{sorted(datasets - case_ids)}"
+    assert set_ids - case_ids == set(), \
+        f"这些数据组文件是陈旧残留（对应用例已不存在 ⇒ generate 该清掉它们）：{sorted(set_ids - case_ids)}"
 
 
 def test_no_unexpected_files_in_scripts():
@@ -100,3 +110,20 @@ def test_test_cases_imports_every_conftest_helper():
     missing = sorted((used & defined) - imported)
     assert not missing, (f"test_cases.py 用了 conftest 里的 {missing} 却没 import（跑到那一步就 NameError）"
                          f"⇒ 把这些名字加进 generator 的 `from conftest import (...)` 模板")
+
+def test_generated_artifacts_are_syntactically_valid():
+    """生成产物必须能 compile —— 语法/缩进错了要在这里就炸，不能等跑用例才发现。
+
+    2026-09-21 实测踩到（V7.8 L1 开发中）：改 `generator.py` 里**模板字符串内部**的代码时，
+    patch 的模糊匹配把模板缝合出「for 头被换成赋值 + 缩进错乱 + 引用未定义变量」的坏版本；
+    而生成阶段只写文本、**不校验语法** ⇒ 一路写盘，直到 pytest 收集才 SyntaxError。
+    更坏的是：磁盘产物还是旧的（能跑），所以「跑了没报错」不等于「模板是好的」。
+
+    ⇒ 两道哨兵：① 模板**渲染结果**（不依赖磁盘、改完模板立刻能炸）；② 磁盘产物本身。
+    """
+    import ast
+    from framework import generator as G
+    ast.parse(G._render_conftest(), filename="<渲染出的 conftest>")
+    for name in ("conftest.py", "test_cases.py"):
+        p = SCRIPTS / name
+        ast.parse(p.read_text(encoding="utf-8"), filename=str(p))

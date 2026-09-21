@@ -1,6 +1,6 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V7.7.1**（2026-09-19）· 版本号单一来源：`tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> 当前版本 **V7.8**（2026-09-21）· 版本号单一来源：`tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
 > （路径只在 `framework/config.py::VERSION_SOURCE` 定义一次，cli / llm_cassette / 打包器共用）
 > （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V7.7.md`；
 > 上一版见 `releases/RELEASE_NOTES_V7.6.md`（跨 tab 端到端 · 行内定位 · 首行断言）。
@@ -105,6 +105,23 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 > 需 DeepSeek key（AI 语义识别链路）：在项目根 `.env` 配 `DEEPSEEK_API_KEY`（见「快速上手·第4节」）。
 
 ---
+
+## 2026-09-21 变更要点 —— 数据参数化「真展开」（V7.8）
+
+**一组数据 = 一条用例**。以前场景的 `data:` 只解析不展开（一个场景只能跑一组数据，还会打警告）；
+现在它**真的展开**：文案里写 `{占位符}`、`data:` 里给几组值，生成器就产出几条独立用例，
+**报告里各占一行、失败能定位到具体数据集**，还能按键单跑某一组（`-k "<case_id> and <组名>"`）。
+与既有的 `{datetime}` 动态占位符同一套机制，写场景的人不用学新东西。
+
+| 项 | 内容 |
+|---|---|
+| 场景写法 | `scenario` 文案里写 `{关键词}`；`data:` 每组一个映射（`id` 可选，进报告用例名） |
+| 数据文件 | `scripts/datasets/<cid>.json`（基础数据）**格式不变**；多组另落 `<cid>.sets.json`（基础 ⊕ 组值） |
+| 报告形态 | `test_xxx[编号-1005]` / `[编号-1007]` …… 中文参数名**不被转义**（用 pytest 官方开关） |
+| 校验（硬拦） | 组值**少给**占位符 ⇒ 未解析的 `{xxx}` 会被原样填进页面（看着在跑、其实全错）；**给了用不到的键** ⇒ 写了不生效 ⇒ 两者都 `exit 2` + 人话点名 |
+| 样板 | `scenarios/contracts/contracts_search_by_no.yml`（3 组数据）+ 对应用例，可直接照抄 |
+| 新增判据 | 一类 `tests/test_data_expand.py`（16 条）· 二类 `tests/verify_data_expand.py`（一组一条 · 坏组只红那一行 · 单组可跑） |
+| 实测 | 样板场景 3 组 → **3 条独立用例 3 passed**；把第 2 组改成坏值 → **只有它 FAILED**、另两组仍 PASSED |
 
 ## 2026-09-19 变更要点 —— 结构归一与修复批次（V7.7.1）
 

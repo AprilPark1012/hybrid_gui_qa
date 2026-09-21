@@ -12,3 +12,9 @@ dependencies = [
     "pytest-html>=4.0",
     "PyYAML>=6.0",
 ]
+
+[tool.pytest.ini_options]
+# 数据驱动的参数名带中文（如 [编号-1005]）时，pytest 默认会转义成 [\u7f16\u53f7-1005] ——
+# 报告里就看不出是哪组数据了，违背「失败能定位到具体数据集」的初衷。
+# 这个开关是 pytest 官方给的唯一办法（选项名故意写得很劝退，本项目认同这个取舍）。
+disable_test_id_escaping_and_forfeit_all_rights_to_community_support = true

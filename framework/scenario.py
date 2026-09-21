@@ -183,8 +183,25 @@ def load_scenario_file(path) -> Scenario:
     data = raw.get("data") or []
     if not isinstance(data, list):
         raise ScenarioError(f"{p}: data 应为列表（每组数据一项）")
-    if data:
-        warns.append(f"data 暂未展开（一期只解析不展开）：{len(data)} 组数据被忽略")
+    # 2026-09-21 L1「真展开」：data 是真用的了（一组数据 = 一条用例），所以校验必须严格 ——
+    # 写错了不能静默忽略，否则会出现「改了 data、报告里还是只有一条」这种没人发现的假象。
+    seen_ids: list[str] = []
+    for i, item in enumerate(data, 1):
+        if not isinstance(item, dict):
+            raise ScenarioError(
+                f"{p}: data 第 {i} 组应为映射（占位符名: 值），实际是 {type(item).__name__}"
+                f"；例：- {{关键词: \"1007\"}}")
+        for k in item:
+            if not isinstance(k, str) or not k.strip():
+                raise ScenarioError(f"{p}: data 第 {i} 组的键必须是占位符名（非空字符串）")
+        if "id" in item:
+            if not isinstance(item["id"], str) or not item["id"].strip():
+                raise ScenarioError(f"{p}: data 第 {i} 组的 id 必须是非空字符串（它进报告里的用例名）")
+            seen_ids.append(item["id"].strip())
+    dup = sorted({x for x in seen_ids if seen_ids.count(x) > 1})
+    if dup:
+        raise ScenarioError(
+            f"{p}: data 的 id 重复：{dup} —— 参数名会撞车，报告里分不出是哪组数据")
 
     return Scenario(
         path=p, id=sid, scenario=text,

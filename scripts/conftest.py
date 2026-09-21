@@ -124,7 +124,59 @@ def _load_data(case_id):
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-@pytest.fixture(scope="session", autouse=True)
+# ---- L1（2026-09-21）：一组数据 = 一条用例 -------------------------------------------------
+def _load_sets(case_id):
+    """多组数据（可选）：<case_id>.sets.json。没有该文件 ⇒ []（= 保持单组行为）。"""
+    import json
+    p = Path(__file__).resolve().parent / "datasets" / f"{case_id}.sets.json"
+    if not p.exists():
+        return []
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def _ds_params(case_id):
+    """给 parametrize 用：每组 = 基础数据 ⊕ 该组覆盖值。无 sets 时返回 [基础数据]。"""
+    base = _load_data(case_id)
+    sets = _load_sets(case_id)
+    if not sets:
+        return [base]
+    out = []
+    for s in sets:
+        d = dict(base)
+        for k, v in s.items():
+            if k != "id":
+                d[k] = v            # 组值只是补上占位符，不覆盖抽离出来的键
+        out.append(d)
+    return out
+
+
+def _ds_ids(case_id):
+    """参数名：显式 id > 组里第一个占位符的值 > 序号 dsN；唯一化 + 去 pytest 会转义的字符。
+
+    ⚠️ 模板是普通字符串 ⇒ 里头的反斜杠一律写双，生成出来的产物才是单个 \（输出不变）。
+    """
+    import re
+    sets = _load_sets(case_id)
+    base = _load_data(case_id)
+    keys = set(base.keys())
+    order = []
+    for v in base.values():
+        if isinstance(v, str) and "{" in v:
+            for nm in re.findall(r"\{(\w+)\}", v):
+                if nm not in keys and nm not in order:
+                    order.append(nm)
+    used, out = {}, []
+    for i, s in enumerate(sets, 1):
+        raw = s.get("id")
+        if not raw and order:
+            raw = s.get(order[0])
+        name = str(raw) if raw not in (None, "") else f"ds{i}"
+        name = re.sub(r"[\[\]\s]+", "_", name).strip("_")[:30] or f"ds{i}"
+        n = used.get(name, 0) + 1
+        used[name] = n
+        out.append(name if n == 1 else f"{name}-{n}")
+    return out
+
 def _prepare_run_log_dir():
     """保证"本次运行"的日志目录干净。
 
@@ -507,7 +559,9 @@ def page(request, _pool):
     _SHOT_N = 0                                # 每条用例从 01 重新编号
     import re as _re
     # trace 文件名带 case_id：多用例并发/多次运行**不再互相覆盖**（原先都写 latest_trace.zip）
-    _m = _re.search(r"test_(.+)", request.node.name)
+    # ⚠️ 同 ctx fixture：L1 参数化后节点名带 [组名] 后缀，必须切掉
+    #（否则 trace 文件名变成 xxx[编号-1005]_trace.zip，且并发/多次运行的文件名口径不一致）
+    _m = _re.match(r"test_([^\[]+)", request.node.name)
     _cid = _m.group(1) if _m else request.node.name
     browser = _pool.get()                      # 会话级浏览器（崩了由 pool 重启 + 告警）
     _ctx_kw = {}
@@ -546,9 +600,14 @@ def page(request, _pool):
 @pytest.fixture
 def ctx(request):
     import re
-    node = request.node.name          # test_<case_id>
-    m = re.search(r"test_(.+)", node)
+    node = request.node.name                       # test_<case_id> 或 test_<case_id>[<数据组>]
+    # ⚠️ 必须切掉「[数据组]」后缀 —— L1 参数化后节点名带后缀，用 .+ 会把整串当 case_id，
+    #    于是找不到数据集（防复发判据见 tests/test_data_expand.py）
+    m = re.match(r"test_([^\[]+)", node)
     case_id = m.group(1) if m else "run"
+    param = getattr(request, "param", None)
+    if isinstance(param, dict):                    # L1：parametrize(indirect=True) 传进来的本组数据
+        return CaseCtx(case_id, param)
     return CaseCtx(case_id, _load_data(case_id))
 
 
