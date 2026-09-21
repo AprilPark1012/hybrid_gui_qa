@@ -217,7 +217,7 @@ python -m framework.cli run --workers 1
 | 命名 / 校验 | `releases/hybrid_gui_qa_V<版本>_<YYYYMMDD>.zip` + `SHA256SUMS.txt`；交付邮件就从这里取包 |
 | 脱敏收敛 | 文档里最后一处内部组织缩写已清（复扫 HEAD tree = 0 命中）；`.git/hooks/pre-push` 解释器探测 ≥3.7，不再把环境问题误报成「有残留」 |
 | 自测 | `pytest tests/ -q` → **130 passed**；包内自检通过；`releases/` 不进包（收集口径 0 命中） |
-| 遗留（如实记） | 对象级残留：2 个**已推送**历史 blob 需重写历史 + 删仓重建才能彻底清（见 `docs/BACKLOG-下一步优化.md`） |
+| 遗留（如实记） | 对象级残留：2 个**已推送**历史 blob 需重写历史 + 删仓重建才能彻底清（详见当版台账记录；台账现已移出仓库，住内部知识库） |
 
 ---
 
@@ -603,7 +603,7 @@ python -m framework.cli explore --ai --scenario-dir scenarios/ --tag smoke --lim
 - 关键增量字段：`business_context`（领域知识喂 AI）、`assert_guard.must_contain / forbidden`
   （**事前约束 AI + 事后落盘硬校验**，把"断言必须操作前可确定"从通用规则升级为每场景硬约束）、`tags`/`priority`（批量筛排）；
 - 产物可溯源：用例名 `ai_<scenario_id>_<HHMMSS>.json`，并回写 `scenario_id` / `source_scenario` 字段；
-- 详细字段表与设计逻辑见 `scenarios/README.md` 和 `docs/P2-scenario文件设计.md`。
+- 详细字段表见 `scenarios/README.md`（**设计文档已移出仓库**，住内部知识库）。
 
 > ⚠️ **Windows 注意**：
 > - `.env` 文件里 `DEEPSEEK_API_KEY` 的值不要有空格/引号，直接 `key=sk-xxx`。
