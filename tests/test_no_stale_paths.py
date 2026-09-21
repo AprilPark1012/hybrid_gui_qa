@@ -153,6 +153,9 @@ def _fake_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
+# r9-legacy-block:begin —— 本判据自身的**负向样例区**：
+#   下面这些字符串是「要测的坏形态」与「豁免用例的素材」，**必须保留旧路径写法**（否则判据测不到东西）。
+#   它们只作为字符串出现在测试里，不会被渲染进任何对外产物；扫仓库时本块跳过。
 @pytest.mark.parametrize("snippet, why_fragment", [
     ("from framework.probe import probe_page", "旧平铺 import"),
     ("见 framework/runner.py 的说明", "旧平铺模块路径"),
@@ -205,6 +208,7 @@ def test_exempt_dir_and_file_skipped(tmp_path):
     files = [rel for rel, _ in iter_tracked_text_files(tmp_path)] if _has_git(tmp_path) else []
     # 未初始化 git 的临时目录拿不到跟踪清单 ⇒ 直接验证豁免判定函数本身
     assert all(not rel.startswith(EXEMPT_DIRS) for rel in files)
+# r9-legacy-block:end
 
 
 def _has_git(p: Path) -> bool:

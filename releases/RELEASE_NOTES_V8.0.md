@@ -109,7 +109,7 @@ python build_tools/offline_explore_chain.py --repo . --run  # 离线一条命令
 |---|---|---|
 | 一类自测 | `pytest tests/ -q` | **267 passed**（242 → +25：新增 R9 搬家判据 + demo 新鲜度闸门；2026-09-21 傍晚修订后实测） |
 | 端到端（确定性链路） | `cli run`（19 个节点，**分批** 5 批跑） | **19 passed / 5 批全 exit 0**（共 29.2s） |
-| 二类特性验证 | `bash tests/run_verifications.sh` + 3 条补跑 | **10 条 ✅ / 0 ⏭️ SKIP（全绿）** ⇒ 见下方逐条真值（判据 2 达成） |
+| 二类特性验证 | `bash tests/run_verifications.sh`（统一入口） | **11 条 ✅ / 0 ⏭️ SKIP（全绿）**（2026-09-21 傍晚修订后实测，含新增的 demo 新鲜度闸门；逐条真值见 §八） |
 | 培训页同步 | `python build_tools/build_html.py` + `tests/verify_html_sync.py` | **exit 0**（三条判据全绿） |
 | CLI 版本一致性 | `python -m framework.cli --version` ⇄ `VERSION_SOURCE` | `v8.0` ⇄ `build_tools/build_html.py` **一致** |
 | import 目标存在性 | `pytest tests/test_import_targets.py -q` | **4 passed**（含 3 条负向自证） |
@@ -157,3 +157,17 @@ python build_tools/offline_explore_chain.py --repo . --run  # 离线一条命令
 3. **重跑一次 generate**：`python -m framework.cli generate` —— 生成物 `scripts/` 里的 import 也是新路径。
 4. **开发期命令**：路径前缀从 `tools/` 改为 `build_tools/`（见 §三）。
 5. **离线机器**：录像包与代码包用法不变（两件套都在，一键脚本换成 `build_tools/offline_explore_chain.py`）。
+
+## 八、本日修订（2026-09-21 傍晚）
+
+本版在同日做了三处修订（**包已重打**，sha256 见 `releases/SHA256SUMS.txt`）：
+
+| # | 内容 | 为什么（问题形态 → 处置） |
+|---|---|---|
+| 1 | **新增 R9「搬家协议」的自动判据** `tests/test_no_stale_paths.py` | 结构重构（`tools/` → `build_tools/`、模块按业务流程分层）之后，「**还有谁在指旧位置**」必须能自动回答，不能靠人工 grep。判据覆盖 6 种旧路径形态（旧平铺 import / 旧模块路径 / 旧开发工具目录 / 旧命令写法 / 指向已移出仓库的设计文档与台账）并逐条负向自证；历史记录与对照示例用行/块标记豁免，**豁免清单不许腐化**（条目不存在即判据报错） |
+| 2 | **新增 demo 新鲜度闸门**（`tests/demo_freshness.py` + 一类判据 + 二类验证 + 统一入口接线） | demo 是常驻进程：改了 `demo/app.py` / `demo/*.html` 却没重启 ⇒ 端到端验证**跑在旧页面上** —— 用例白跑，而且给出「看着通过/看着失败」的误导性结论。现在跑二类前自动比对「demo 源码最新 mtime vs 进程启动时刻」（从 `/proc` 精确取）：不新鲜就自动重启并复检，重启后仍不新鲜则**停手**，绝不在旧版本上继续跑 |
+| 3 | **修掉 7 处指向旧位置的活引用** | 含 2 处指向已移出仓库设计文档的**失效指针**（源码注释，含生成物模板同源句 ⇒ 已重建生成物）、2 处「照抄会失败」的命令提示（README 与测试里的 `python build_html.py`）、以及 `.gitignore` / `scenarios/README.md` / `requirements-ai.txt` 里的旧路径 |
+
+**修订后的验证真值（都是真跑）**：一类 `pytest tests/ -q` → **267 passed** · 二类 `bash tests/run_verifications.sh` → **11/11 exit 0 · 0 SKIP** ·
+培训页同步 `tests/verify_html_sync.py` → **exit 0** · 端到端 `cli run`（19 节点分批）→ **19 passed**。
+
