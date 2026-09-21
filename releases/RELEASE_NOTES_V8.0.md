@@ -167,7 +167,9 @@ python build_tools/offline_explore_chain.py --repo . --run  # 离线一条命令
 | 1 | **新增 R9「搬家协议」的自动判据** `tests/test_no_stale_paths.py` | 结构重构（`tools/` → `build_tools/`、模块按业务流程分层）之后，「**还有谁在指旧位置**」必须能自动回答，不能靠人工 grep。判据覆盖 6 种旧路径形态（旧平铺 import / 旧模块路径 / 旧开发工具目录 / 旧命令写法 / 指向已移出仓库的设计文档与台账）并逐条负向自证；历史记录与对照示例用行/块标记豁免，**豁免清单不许腐化**（条目不存在即判据报错） |
 | 2 | **新增 demo 新鲜度闸门**（`tests/demo_freshness.py` + 一类判据 + 二类验证 + 统一入口接线） | demo 是常驻进程：改了 `demo/app.py` / `demo/*.html` 却没重启 ⇒ 端到端验证**跑在旧页面上** —— 用例白跑，而且给出「看着通过/看着失败」的误导性结论。现在跑二类前自动比对「demo 源码最新 mtime vs 进程启动时刻」（从 `/proc` 精确取）：不新鲜就自动重启并复检，重启后仍不新鲜则**停手**，绝不在旧版本上继续跑 |
 | 3 | **修掉 7 处指向旧位置的活引用** | 含 2 处指向已移出仓库设计文档的**失效指针**（源码注释，含生成物模板同源句 ⇒ 已重建生成物）、2 处「照抄会失败」的命令提示（README 与测试里的 `python build_html.py`）、以及 `.gitignore` / `scenarios/README.md` / `requirements-ai.txt` 里的旧路径 |
+| 4 | **修掉离线一键脚本的「解释器选择」缺陷**（现场反馈驱动） | 现象：按文档敲 `python tools/offline_explore_chain.py --repo . --run` 报 `[FAIL] 这个解释器缺依赖：No module named 'dotenv'`，而用户 `pip list` 里有 dotenv、手动三步都能跑通。根因：**只挑一个解释器就判死** —— venv 只探测 `.venv/{bin,Scripts}` 两个固定位置，没命中就默默退回「跑脚本的那个解释器」（Windows 上常是系统 python，未装项目依赖），然后只甩一句「缺依赖」。改法：① 候选列表 + **逐个探测**取第一个依赖齐全的（`--python`/`HYBRID_PYTHON` → 仓库 venv 两种布局 → 当前进程解释器 → PATH 的 python3/python → Windows `py -3`）；② **显式指定不偷换**（指定的解释器缺依赖就报错停手，绝不静默换别的）；③ 全失败时列出每个候选缺什么 + 三条修法；④ 输出明写「解释器: …（来源：…）」；⑤ 新增 **`--check-deps`**（只做前置检查就退出，排查首选） |
 
-**修订后的验证真值（都是真跑）**：一类 `pytest tests/ -q` → **267 passed** · 二类 `bash tests/run_verifications.sh` → **11/11 exit 0 · 0 SKIP** ·
-培训页同步 `tests/verify_html_sync.py` → **exit 0** · 端到端 `cli run`（19 节点分批）→ **19 passed**。
+**修订后的验证真值（都是真跑）**：一类 `pytest tests/ -q` → **276 passed** · 二类 `bash tests/run_verifications.sh` → **12/12 exit 0 · 0 SKIP** ·
+培训页同步 `tests/verify_html_sync.py` → **exit 0** · 端到端 `cli run`（19 节点分批）→ **19 passed** ·
+离线一键脚本解释器自愈 `tests/verify_offline_chain_deps.py` → **6 项判据全过**（用真·缺依赖解释器跑 ⇒ 自愈 exit 0；`--python` 指定坏解释器 ⇒ exit 2 且明说「显式指定」）。
 

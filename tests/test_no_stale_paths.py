@@ -63,6 +63,14 @@ STALE = (
     (re.compile(r"python build_html\.py"),
      "旧命令写法（少了目录前缀，照抄会失败）",
      "改为 python build_tools/build_html.py"),
+    # ⚠️ 试过加一条「裸 tools/ 目录名」模式（匹配 `tools/` 独立出现），**实测误伤 14+ 处**：
+    #    README 里的说明文字、`framework/tools/common/…` 的提及、注释里的历史叙述全中 ——
+    #    按「假红与假绿一样会摧毁闸门」的口径**不启用**（一条会天天误报的判据最终会被人关掉）。
+    #    这类「说明性文字里的旧目录名」的成本远低于「用户照抄旧命令」（后者已由上面两条
+    # r9-legacy-ok（说明性引用：这里必须写出旧写法才能说清覆盖范围）
+    #    `tools/<脚本>.py` 与「缺目录前缀的 build_html 写法」两条覆盖）⇒ 作为**已知边界**记在这里，
+    #    靠人工审查兜（实例：build_tools/offline_explore_chain.py 的 docstring 曾写「住在仓库的 tools/」，
+    #    2026-09-21 人工发现并修掉）。
     (re.compile(r"docs/P\d+-[^\s`<>)）]*\.md"),
      "指向已移出仓库的设计文档（现住项目台账 references/design/）",
      "仓库内改成中性表述（如「见内部设计文档『X』」），别写内部台账路径"),
@@ -182,6 +190,8 @@ def test_negative_new_paths_are_not_flagged(tmp_path):
         "python build_tools/build_html.py",
         "设计见内部设计文档「慢目标与并发修复方案」",
         "见 build_tools/offline_explore_chain.py",
+        "运行期模块在 framework/tools/common/ 下（这条不许被误伤）",
+        "开发期工具都在 build_tools/ 下（这条也不许被误伤）",
     ])
     assert scan_text("ok.md", good) == []
 

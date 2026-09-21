@@ -4,21 +4,28 @@
 前置（录像目录 / demo 在跑 / **代码版本配套**），步骤散在 CLI 里容易漏。这里串起来逐条给结论，
 并且**强制把 LLM 端点指到黑洞（127.0.0.1:9）**—— 证明这次跑下来真的没联网、也没用 key。
 
-本脚本住在仓库的 `tools/`（框架工具目录，与 pack_release.py / build_html.py 同列）；
+本脚本住在仓库的 `build_tools/`（框架自己的开发工具目录，与 pack_release.py / build_html.py 同列；
+V8.0 起从仓库根 `tools/` 改名，避免与运行期的 `framework/tools/` 混淆）；
 **随代码包一起交付**，不需要额外安装（纯标准库）。
 
 用法（Windows / macOS / Linux 通用）：
+    python build_tools/offline_explore_chain.py --repo . --check-deps          # ★ 只做前置检查（排查首选）
     python build_tools/offline_explore_chain.py --repo .
     python build_tools/offline_explore_chain.py --repo . --scenario scenarios/contracts/contracts_search_by_no.yml
     python build_tools/offline_explore_chain.py --repo . --scenario scenarios/contracts/contracts_search_by_no.yml --run
     python build_tools/offline_explore_chain.py --repo . --scenario-dir scenarios            # 把所有场景都回放一遍
     python build_tools/offline_explore_chain.py --repo . --scenario <f> --cassette D:\\cassettes   # 录像不在默认位置
 
-退出码：0 = 全通 · 2 = 前置不满足（录像缺 / demo 没起 / 代码版本不含回放）· 1 = 链路某步失败。
+解释器：默认自动挑「依赖齐全的那个」——候选依次是 `--python` / 环境变量 `HYBRID_PYTHON` →
+`<repo>/.venv`（Linux/macOS 与 Windows 两种布局）→ 当前进程解释器 → PATH 上的 python3/python → Windows `py -3`；
+**显式指定了就不偷换**（指定的那个缺依赖会直接报错，而不是悄悄换一个能跑的）。
+
+退出码：0 = 全通 · 2 = 前置不满足（没可用解释器 / 录像缺 / demo 没起 / 代码版本不含回放）· 1 = 链路某步失败。
 """
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 import urllib.request
@@ -79,23 +86,59 @@ def newest_ai_case(repo):
     return items[-1] if items else None
 
 
-def guess_python(repo):
-    """优先用仓库自带的 venv 解释器 —— 依赖（dotenv / playwright / pytest）都装在那儿。
+def _split_cmd(s):
+    """把用户给的解释器描述拆成命令行（兼容 `py -3`、带空格的路径）。"""
+    return shlex.split(s, posix=(os.name != "nt"))
 
-    为什么必须有这一步：用系统 python 跑仓库 CLI 会当场 `ModuleNotFoundError: dotenv`
-    （实测：本机 ~/.local/bin/python3.11 就没装项目依赖）—— 那看起来像「框架坏了」，
-    其实只是解释器选错了。Windows 的 venv 解释器在 .venv\\Scripts\\python.exe。
+
+def python_candidates(repo, explicit=""):
+    """候选解释器（按优先级）—— 每项是 (来源说明, [命令行...])。
+
+    为什么是**一串候选**而不是只挑一个（2026-09-21 现场反馈驱动的修复）：
+      Windows 上按**旧文档**敲那条命令（`python tools/…`，V8.0 前的路径写法）时，`python` 往往是
+      **系统解释器**（没装项目依赖），而旧逻辑只探测 `.venv/{bin,Scripts}` 两个固定位置，
+      没命中就**默默退回当前进程解释器**，然后只甩一句「这个解释器缺依赖：No module named 'dotenv'」——
+      用户看到的是「框架坏了 / 依赖没装」（他确实去 `pip list` 查过，而 `pip list` 查的是 venv，
+      跟跑脚本的解释器**不是同一个**）。结论：候选要列全、逐个探测、选第一个依赖齐全的，
+      并把每个候选缺什么都摆出来 —— 让用户一眼知道「我该用哪个解释器」。
     """
-    for cand in (repo / ".venv" / "bin" / "python",            # Linux / macOS
-                 repo / ".venv" / "Scripts" / "python.exe"):   # Windows
-        if cand.exists():
-            return str(cand)
-    return ""
+    cands = []
+    if explicit:
+        cands.append(("--python / HYBRID_PYTHON 指定", _split_cmd(explicit)))
+    for p, label in ((repo / ".venv" / "bin" / "python", "仓库 venv（Linux / macOS）"),
+                     (repo / ".venv" / "Scripts" / "python.exe", "仓库 venv（Windows）")):
+        if p.exists():
+            cands.append((label, [str(p)]))
+    cands.append(("当前进程的解释器（跑本脚本的那个）", [sys.executable]))
+    for name in ("python3", "python"):
+        cands.append(("PATH 上的 %s" % name, [name]))
+    if os.name == "nt":
+        cands.append(("Windows py launcher", ["py", "-3"]))
+    return cands
 
 
-def deps_ok(py, repo):
-    rc, out = run([py, "-c", "import dotenv, playwright, pytest; print('deps-ok')"], repo)
-    return (rc == 0 and "deps-ok" in out), (out.strip().splitlines() or [""])[-1]
+def probe_deps(cmd, repo):
+    """探测某个解释器依赖是否齐全 ⇒ (是否齐全, 最后一行的报错或结论)。"""
+    rc, out = run(list(cmd) + ["-c", "import dotenv, playwright, pytest; print('deps-ok')"], repo)
+    return (rc == 0 and "deps-ok" in out), ((out.strip().splitlines() or [""])[-1][:200])
+
+
+def pick_python(repo, explicit="", probe=None):
+    """挑解释器 ⇒ (选中的命令行 or None, 来源说明, 探测清单)。
+
+    ⚠️ 刻意语义：**显式指定了就不偷换** —— 指定的解释器缺依赖时必须报错退出，
+    而不是静默换一个「能跑的」：否则用户以为在用 A、实际跑的是 B（沉默的错比报错贵得多）。
+    """
+    probe = probe or (lambda cmd: probe_deps(cmd, repo))
+    tried = []
+    for src, cmd in python_candidates(repo, explicit):
+        good, why = probe(cmd)
+        tried.append((src, " ".join(cmd), good, why))
+        if good:
+            return cmd, src, tried
+        if src.startswith("--python"):
+            return None, "", tried          # 显式指定不可用 ⇒ 停，不往下试
+    return None, "", tried
 
 
 def main():
@@ -114,6 +157,8 @@ def main():
                     help="跑本仓库用的解释器（默认自动用 <repo>/.venv 里的那个）")
     ap.add_argument("--run", action="store_true",
                     help="generate 之后再 run 试跑刚生成的那条用例（多花约 10 秒）")
+    ap.add_argument("--check-deps", action="store_true",
+                    help="只做前置检查（解释器 / 代码版本 / 录像 / demo）就退出，不跑链路 —— 排查首选")
     args = ap.parse_args()
 
     repo = Path(args.repo).resolve()
@@ -138,19 +183,25 @@ def main():
         return 2
     ok("代码含录像回放（--llm-cassette）")
 
-    venv_py = guess_python(repo)
-    py = args.python or venv_py or sys.executable
-    print("解释器: %s%s" % (py, "（仓库 venv）" if (venv_py and py == venv_py) else ""))
-    good, why = deps_ok(py, repo)
-    if not good:
-        bad("这个解释器缺依赖：%s" % why)
-        if venv_py:
-            info("用仓库 venv 的：--python \"%s\"" % venv_py)
+    explicit = args.python or os.environ.get("HYBRID_PYTHON", "")
+    py, py_src, tried = pick_python(repo, explicit)
+    if py is None:
+        if explicit:
+            bad("你显式指定的解释器依赖不全：%s" % explicit)
+            info("（按「显式指定不偷换」的约定停下：不会静默改用别的解释器，否则你不知道实际跑的是哪个）")
         else:
-            info("仓库里没找到 .venv ⇒ 先建环境并装依赖（uv 口径）：")
-            info("   uv venv .venv --python 3.11 && uv pip install -r requirements.txt "
-                 "&& python -m playwright install chromium")
+            bad("没找到依赖齐全的解释器（共探测 %d 个候选）" % len(tried))
+        for src, cmd, good, why in tried:
+            info("  %-40s %s" % (src, "✓ 可用" if good else "✗ " + why))
+        info("修法（任选一条）：")
+        info("  ① 给某个候选装依赖：<解释器> -m pip install -r requirements.txt "
+             "&& <解释器> -m playwright install chromium")
+        info("  ② 显式指定能用的那个：--python \"<解释器路径>\"（或设环境变量 HYBRID_PYTHON）")
+        info("  ③ Windows 上若仓库有 venv，直接拿它跑本脚本：<repo>\\.venv\\Scripts\\python.exe …")
         return 2
+    print("解释器: %s（来源：%s）" % (" ".join(py), py_src))
+    if len(tried) > 1:
+        info("候选探测：试了 %d 个、前 %d 个不可用" % (len(tried), len(tried) - 1))
     ok("依赖齐全（dotenv / playwright / pytest）")
 
     cas = sorted(cassette.glob("*.json"))
@@ -168,13 +219,18 @@ def main():
         return 2
     ok("demo 可达：%s" % detail[:80])
 
+    if args.check_deps:
+        print("\n结论：前置检查全部通过（解释器 / 代码版本 / 录像 / demo）"
+              " ⇒ 去掉 --check-deps 即可正式跑链路")
+        return 0
+
     if not scenarios and not args.scenario_dir:
         scenarios = sorted(str(p.relative_to(repo)) for p in repo.glob("scenarios/*/*.yml"))
         info("没指定场景 ⇒ 默认回放 scenarios/ 下全部 %d 个场景" % len(scenarios))
 
     # ---------- 二、explore：AI 语义识别（录像回放，不联网）----------
     head("二、explore 语义识别（离线回放；端点已指黑洞 %s）" % BLACKHOLE)
-    cmd = [py, "-m", "framework.cli", "explore", "--ai", "--llm-cassette", str(cassette),
+    cmd = [*py, "-m", "framework.cli", "explore", "--ai", "--llm-cassette", str(cassette),
            "--no-verify"]
     if args.scenario_dir:
         cmd += ["--scenario-dir", args.scenario_dir]
@@ -205,7 +261,7 @@ def main():
 
     # ---------- 三、generate：生成可跑的用例脚本 ----------
     head("三、generate 生成用例脚本（普通 generate，不带开关）")
-    rc, out = run([py, "-m", "framework.cli", "generate"], repo)
+    rc, out = run([*py, "-m", "framework.cli", "generate"], repo)
     tail(out, 8)
     script = repo / "scripts" / "test_cases.py"
     unmapped = script.read_text(encoding="utf-8", errors="replace").count("元素未映射") if script.exists() else -1
@@ -219,7 +275,7 @@ def main():
     # ---------- 四、（可选）run 试跑 ----------
     if args.run and case is not None:
         head("四、run 试跑刚生成的那条用例")
-        rc, out = run([py, "-m", "framework.cli", "run", "--workers", "1", "--case", case.stem], repo)
+        rc, out = run([*py, "-m", "framework.cli", "run", "--workers", "1", "--case", case.stem], repo)
         tail(out, 8)
         if rc != 0:
             bad("run 失败（退出码 %s）—— 打开 log/<run_id>/<case>.log 与 report.html 看真因" % rc)
