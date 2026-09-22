@@ -422,7 +422,13 @@ def _click_row_cell(page, row_text, cell_field, tabs=None):
     `data-field` 是被测页面既有约定（td[data-field='contractNo'] 这类）。
 
     唯一性：含该文本的行必须**恰好 1 行**，否则直接失败 —— 宁可失败，也不点错行。
+
+    2026-09-22（P16 批 3）：列定位改走 `scope_locate.locate_in_scope` —— 与「锚点 + 相对路径」
+    **同一条通道**（同一套唯一性口径、同一套表达式拼法），不再各写一份列逻辑。
+    函数名与签名保持不变 ⇒ **既有生成物零改动可跑**。
     """
+    from framework.tools.probe.scope_locate import locate_in_scope
+
     rows = page.locator("tbody tr").filter(has_text=row_text)
     n = _count_attached(rows)
     if n != 1:
@@ -430,9 +436,13 @@ def _click_row_cell(page, row_text, cell_field, tabs=None):
             f"行内定位失败：含文本 {row_text!r} 的行命中 {n} 个（要求恰好 1 个）。"
             f" 常见原因：① 这段文本不在任何行里（上一步的新建没成功 / 名称写错）；"
             f" ② 锚文本太短，多行都含它（用更长的独有片段）。")
-    target = rows.first.locator(f"td[data-field='{cell_field}'] a")
+    _col = locate_in_scope(rows.first, [{"axis": "col", "by": "field", "value": cell_field}])
+    if not _col["ok"]:
+        raise RuntimeError(f"行内列 {cell_field!r} 定位失败：{_col['reason']}")
+    cell = _col["locator_obj"]
+    target = cell.get_by_role("link")
     if target.count() == 0:
-        target = rows.first.locator(f"td[data-field='{cell_field}']")
+        target = cell
     kn = target.count()
     if kn != 1:
         raise RuntimeError(f"行内列 {cell_field!r} 的目标元素命中 {kn} 个（要求 1 个）")
@@ -671,7 +681,9 @@ def _fuzzy_lookup(hint):
             f"语义名歧义：{hint!r} 逐字不存在，而清单里有多个名字含它 → {cand}{more}。"
             f"模糊兜底不再「随便挑一个」（旧行为 = 按探测顺序静默挑，可能点到另一个控件还照样报绿）。"
             f"下一步：① 用例里改用清单中的准确名（同名控件用 base@上下文 形式）；"
-            f"② 给该控件补 data-testid 让名字稳定唯一；③ 确认不是语义名过期 —— 页面改版后重跑 probe/generate。"
+            f"② 行内/子元素改用「锚点 + 容器内相对语义」表达（anchor + path）；"
+            f"③ testid 只是可选优化 —— **框架不要求被测系统为测试埋点**；"
+            f"④ 确认不是语义名过期 —— 页面改版后重跑 probe/generate。"
         )
     if not hits:
         return None

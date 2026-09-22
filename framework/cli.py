@@ -229,7 +229,8 @@ def _report_unmapped(e) -> NoReturn:
         for base, names in sorted(conflicts.items()):
             print(f"[generate]      · {base!r} → 候选：{'、'.join(names)}")
         print("[generate]    下一步：挑一个候选写进用例的 element（上下文后缀来自该控件所在区域/行），"
-              "或给该控件补 data-testid 让它有稳定唯一名。")
+              "或行内/子元素改用「锚点 + 容器内相对语义」（anchor + path）；"
+              "data-testid 只是可选优化 —— 框架不要求被测系统为测试埋点。")
     print("[generate]    （旧行为：只打一句警告就照样落盘 ⇒ 产出「每步都是 pytest.fail 存根」的垃圾产物；"
           "2026-09-15 的 V7.5 交付事故就是它进包的）")
     print("[generate]    仅调试时可显式加 --allow-unmapped 放行；那样的产物永不允许进交付。")

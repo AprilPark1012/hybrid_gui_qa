@@ -31,6 +31,9 @@ from framework.tools.probe.element_map import ElementRef
 # data-testid 是 component contract，不随视觉改版变，业界公认最稳 → 置顶。
 TIER1 = [
     ("test_id",       0.95),
+    # P16 批 3：锚点 + 容器内相对路径。真实系统里**子元素（行/单元格/行内按钮）通常没有埋点**，
+    # 这条是"能不能定位到"的主通道；排在 test_id 之后、role+name 之前（结构性锚定比裸语义稳）。
+    ("anchor_path",   0.94),
     ("role+name",     0.93),
     ("label",         0.88),
     ("placeholder",   0.78),
@@ -106,12 +109,34 @@ def _try_text(page: Page, el: ElementRef):
     return None
 
 
+def _try_anchor_path(page: Page, el: ElementRef):
+    """锚点 + 容器内相对路径（P16 批 3）：子元素没埋点时的主通道。
+
+    交给 `scope_locate` 做唯一性校验（行/列步必须唯一，歧义如实失败）——本层不重复判断，
+    只把结果按 Tier1 的口径返回 `(locator, expr, count)`；`count != 1` 由上层降级。
+    """
+    if not el.anchor or not el.path:
+        return None
+    from framework.tools.probe.scope_locate import scope_locate
+    r = scope_locate(page, anchor=el.anchor, path=el.path)
+    if not r.get("ok"):
+        return None
+    return r["locator_obj"], r["locator"], r["count"]
+
+
 _TIER1_FNS = {
-    "test_id": _try_test_id, "role+name": _try_role, "label": _try_label,
-    "placeholder": _try_placeholder, "text": _try_text,
+    "test_id": _try_test_id, "anchor_path": _try_anchor_path, "role+name": _try_role,
+    "label": _try_label, "placeholder": _try_placeholder, "text": _try_text,
 }
 
 # ---------------- Tier2：元素指纹 + intent 判别 + P4 语义上下文消歧 ----------------
+def _anchor_key(anchor: dict | None) -> tuple | None:
+    """锚点归一成可比较的键（Tier2 判断"在不在同一容器"用）；无锚点 ⇒ None。"""
+    if not anchor:
+        return None
+    return (anchor.get("kind"), anchor.get("by"), anchor.get("value"))
+
+
 TIER2_THRESHOLD = 0.42      # 最低可接受相似度
 TIER2_MINGAP = 0.12         # 最高分与次高分的必要差距（唯一性）
 _T2_W = {"role": 0.30, "name": 0.20, "text": 0.15,
@@ -225,13 +250,28 @@ def _tier2_fingerprint(page: Page, el: ElementRef,
     threshold/mingap 可放宽（供 Healer 自愈再协商用），默认取严格值。"""
     from framework.tools.probe.probe import probe_page
     candidates = probe_page(page)
-    scored = [(_fingerprint_score(el, c), c) for c in candidates]
-    scored.sort(key=lambda x: -x[0])
-    if not scored:
+    if not candidates:
         return None
-    best_score, best = scored[0]
-    second = scored[1][0] if len(scored) > 1 else 0.0
-    if best_score < threshold or (best_score - second) < mingap:
+
+    # P16 批 3：有锚点 ⇒ **先在锚点作用域内打分**（同名控件跨容器会互相干扰：工具栏输入框 vs 弹层输入框），
+    # 域内没把握再回落全页。作用域靠 probe 采到的 `anchor` 数据比对（不额外查 DOM）。
+    groups = [candidates]
+    if el.anchor:
+        key = _anchor_key(el.anchor)
+        scoped = [c for c in candidates if _anchor_key(c.get("anchor")) == key]
+        if scoped and len(scoped) < len(candidates):
+            groups.insert(0, scoped)
+
+    best_score, best = 0.0, None
+    for group in groups:
+        scored = [(_fingerprint_score(el, c), c) for c in group]
+        scored.sort(key=lambda x: -x[0])
+        top, cand = scored[0]
+        second = scored[1][0] if len(scored) > 1 else 0.0
+        if top >= threshold and (top - second) >= mingap:
+            best_score, best = top, cand
+            break
+    if best is None:
         return None                                # 无把握，如实放弃
     loc_obj, expr = _locator_for_candidate(page, best)
     if loc_obj is None:
@@ -265,8 +305,11 @@ def resolve_locator(page: Page, el: ElementRef,
         if r:
             loc_obj, expr, cnt = r
             if cnt == 1:
-                # 方向③：Tier1 唯一命中后，意图复验（防"选对名字但语义不符"）
-                if not _intent_verify(page, el, loc_obj, expr):
+                # 方向③：Tier1 唯一命中后，意图复验（防"选对名字但语义不符"）。
+                # P16 批 3 例外：`anchor_path` 的消歧靠**结构**（行锚文本 + 列语义）而不是文本相似度，
+                # 且它通常用于"行内子元素"（自身文本很短，与 page_hint 相似度天然低）——
+                # 硬做复验会把这条主通道整条毙掉（实测会走到这里）。
+                if strategy != "anchor_path" and not _intent_verify(page, el, loc_obj, expr):
                     continue   # 复验不过 → 降级到下一个 Tier1 策略
                 return {"ok": True, "locator": expr, "locator_obj": loc_obj,
                         "strategy": strategy, "count": cnt,
@@ -278,4 +321,6 @@ def resolve_locator(page: Page, el: ElementRef,
         return t2
     return {"ok": False, "locator": None, "locator_obj": None,
             "strategy": None, "count": None, "confidence": 0.0, "healed": False,
-            "reason": "Tier1 语义 & Tier2 指纹均无法唯一确定，请补 data-testid 或核对语义"}
+            "reason": "Tier1 语义 & Tier2 指纹均无法唯一确定。先查①行内/子元素能否用"
+                      "「锚点 + 容器内相对语义」唯一（anchor + path，见 scope_locate）；"
+                      "② 语义名是否过期；data-testid 只是可选优化，框架不要求被测系统为测试埋点"}

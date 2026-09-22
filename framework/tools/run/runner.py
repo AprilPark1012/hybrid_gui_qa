@@ -53,7 +53,11 @@ def _run_step(page, t: TestStep, log, healer: Healer):
         if not healed["recovered"]:
             raise RuntimeError(
                 f"[{t.order}] {t.element.semantic_name} 定位失败且自愈未成功: "
-                f"{healed.get('reason') or '未知'}。请补 data-testid 或人工确认。"
+                f"{healed.get('reason') or '未知'}。"
+                f"排查顺序：① 目标是**行内/子元素**（行、单元格、行内链接按钮）时，先看"
+                f" anchor + path（锚点 + 容器内相对语义）能否唯一 —— 见 framework/tools/probe/scope_locate.py；"
+                f"② 再看语义名是否过期（页面改版后重跑 probe/generate）；"
+                f"③ data-testid 只是可选优化 —— **框架不要求被测系统为测试埋点**。"
             )
         loc = healed["locator_obj"]
         log(f"[HEAL ✓] {t.element.semantic_name} 自愈 -> {healed['strategy']} "
