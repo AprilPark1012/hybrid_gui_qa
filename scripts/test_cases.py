@@ -89,7 +89,7 @@ def test_ai_contracts_create_and_filter_by_customer_004651(page, ctx):
     _log(page, "fill", f"在列表页客户筛选输入框输入“北京华信”")
 
     # step 12: 点击“搜索”按钮执行客户右模糊筛选
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"点击“搜索”按钮执行客户右模糊筛选")
     _assert_text(page, _data('expect_1', ctx), '确认搜索结果中仍包含北京华信科技有限公司相关记录')
 
@@ -108,7 +108,7 @@ def test_ai_contracts_cross_page_011030(page, ctx):
     _log(page, "goto", f"打开合同列表页")
 
     # step 2: 在关键字搜索框输入 1005
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_0', ctx))
+    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
     _log(page, "fill", f"在关键字搜索框输入 1005")
 
     # step 3: 点击列表页搜索按钮
@@ -117,7 +117,7 @@ def test_ai_contracts_cross_page_011030(page, ctx):
     _assert_text(page, _data('expect_0', ctx), '确认搜索结果中出现 HT-1005')
 
     # step 4: 点击结果行中的编号链接 HT-1005 进入详情页
-    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0021 001 预po 北京中科智慧科技有限公司 bu_b").locator("td[data-field='contractNo']").get_by_role("link"))
+    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 1031 002 预po 北京中科智慧科技有限公司 bu_c").locator("td[data-field='contractNo']").get_by_role("link"))
     _log(page, "click", f"点击结果行中的编号链接 HT-1005 进入详情页")
     _assert_url(page, _data('expect_1', ctx), '确认已跳转到详情页（URL 含 contract_detail）')
     _assert_text(page, _data('expect_2', ctx), '确认详情页显示合同编号 HT-1005')
@@ -129,7 +129,7 @@ def test_ai_contracts_cross_page_011030(page, ctx):
     _assert_text(page, _data('expect_4', ctx), '确认已回到列表页（列表页独有的「新建合同」按钮文案 —— 列表页 URL 是根路径、没有独有片段，按弱 url 断言闸口径改用 text 断言做到达证据）')
 
     # step 6: 再次在关键字搜索框输入 1005
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_1', ctx))
+    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_1', ctx))
     _log(page, "fill", f"再次在关键字搜索框输入 1005")
 
     # step 7: 再次点击列表页搜索按钮
@@ -152,11 +152,11 @@ def test_ai_contracts_search_by_no_000813(page, ctx):
     _log(page, "goto", f"打开合同列表页面")
 
     # step 2: 在关键字搜索框输入 {关键词}
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_0', ctx))
+    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
     _log(page, "fill", f"在关键字搜索框输入 {{关键词}}")
 
     # step 3: 点击搜索按钮触发查询
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"点击搜索按钮触发查询")
     _assert_text(page, _data('expect_0', ctx), '确认结果列表中出现编号为 {期望编号} 的合同记录')
 
@@ -284,11 +284,11 @@ def test_ai_在合同列表页面的搜索框输入_1005_点击搜索按_235545(
     _log(page, "goto", f"打开合同列表页面")
 
     # step 2: 在关键字搜索框输入 1005
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_0', ctx))
+    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
     _log(page, "fill", f"在关键字搜索框输入 1005")
 
     # step 3: 点击搜索按钮触发查询
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"点击搜索按钮触发查询")
     _assert_text(page, _data('expect_0', ctx), '确认搜索结果中出现 HT-1005')
 
@@ -325,11 +325,11 @@ def test_assert_kinds_reset(page, ctx):
     _log(page, "goto", f"打开合同列表页")
 
     # step 2: 关键字输入 1005
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_0', ctx))
+    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
     _log(page, "fill", f"关键字输入 1005")
 
     # step 3: 点击搜索按钮
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"点击搜索按钮")
 
     # step 4: 点击重置按钮
@@ -337,7 +337,7 @@ def test_assert_kinds_reset(page, ctx):
     _log(page, "click", f"点击重置按钮")
 
     # ---- 断言（用例末尾）----
-    _assert_value(page, _data('expect_0', ctx), lambda p: p.get_by_test_id("tb-keyword"), semantic='合同编号_名称_管理单元_合同类型_帐套', desc='重置后关键字输入框被清空（value：空串也是合法期望值）')
+    _assert_value(page, _data('expect_0', ctx), lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), semantic='合同编号_名称_管理单元_合同类型_帐套', desc='重置后关键字输入框被清空（value：空串也是合法期望值）')
     _assert_count(page, _data('expect_1', ctx), lambda p: p.locator('#tbody-contracts tr'), semantic=None, desc='列表恢复全量 20 行')
     _assert_text(page, _data('expect_2', ctx), '状态行提示已重置')
 
@@ -353,11 +353,11 @@ def test_assert_kinds_search(page, ctx):
     _log(page, "goto", f"打开合同列表页")
 
     # step 2: 关键字输入 1005
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_0', ctx))
+    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
     _log(page, "fill", f"关键字输入 1005")
 
     # step 3: 点击搜索按钮
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"点击搜索按钮")
 
     # ---- 断言（用例末尾）----
@@ -368,7 +368,7 @@ def test_assert_kinds_search(page, ctx):
     _assert_text(page, _data('expect_4', ctx), '列表里出现编号 HT-1005（text，原有类型）')
     _assert_text(page, _data('expect_5', ctx), '状态行提示搜索完成')
     _assert_hidden(page, lambda p: p.locator('#modal-new'), semantic=None, desc='新建弹窗保持关闭（hidden）')
-    _assert_enabled(page, lambda p: p.get_by_test_id("btn-search"), semantic='搜索', desc='搜索按钮可用（enabled，走 element→语义映射的 locator）')
+    _assert_enabled(page, lambda p: p.get_by_role("button", name="搜索"), semantic='搜索', desc='搜索按钮可用（enabled，走 element→语义映射的 locator）')
     _assert_disabled(page, lambda p: p.locator('#btn-export'), semantic=None, desc='导出按钮未接入 → 禁用（disabled）')
 
 
@@ -502,7 +502,7 @@ def test_cross_page_detail(page, ctx):
     _log(page, "goto", f"打开合同列表页")
 
     # step 2: 关键字输入 1005
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_0', ctx))
+    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
     _log(page, "fill", f"关键字输入 1005")
 
     # step 3: 点击列表页的搜索按钮
@@ -512,7 +512,7 @@ def test_cross_page_detail(page, ctx):
     _assert_attr(page, 'data-cust', _data('expect_1', ctx), lambda p: p.locator("#tbody-contracts tr:has-text('HT-1005') td[data-field='customer']"), semantic=None, desc='【列表页】HT-1005 的客户编号 = c5（客户按序号确定：HT-1001→c1、HT-1005→c5、HT-1007→c1…）')
 
     # step 4: 点击结果里的编号链接 HT-1005 进入详情页
-    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0021 001 预po 北京中科智慧科技有限公司 bu_b").locator("td[data-field='contractNo']").get_by_role("link"))
+    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 1031 002 预po 北京中科智慧科技有限公司 bu_c").locator("td[data-field='contractNo']").get_by_role("link"))
     _log(page, "click", f"点击结果里的编号链接 HT-1005 进入详情页")
     _assert_url(page, _data('expect_2', ctx), '【换页证据】点击编号后 URL 已变为详情页')
     _assert_count(page, _data('expect_3', ctx), lambda p: p.locator("table[aria-label='合同详情'] tr:has-text('合同编号') td"), semantic=None, desc='【详情页】编号单元格存在（确认换的是详情页而不是别的页）')
@@ -526,7 +526,7 @@ def test_cross_page_detail(page, ctx):
     _assert_count(page, _data('expect_7', ctx), lambda p: p.locator("#tbody-contracts tr:has-text('HT-1001')"), semantic=None, desc='【回到列表页·基线】预置首行 HT-1001 在列表里（F5 稳健化：不再用「全量 20 行」——那条会被本次运行新建的数据顶掉，与「回到列表页」要验的事无关）')
 
     # step 6: 回到列表页后再输入关键字 1005
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_1', ctx))
+    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_1', ctx))
     _log(page, "fill", f"回到列表页后再输入关键字 1005")
 
     # step 7: 再次点击搜索
@@ -547,11 +547,11 @@ def test_hand_enter_search(page, ctx):
     _log(page, "goto", f"打开合同列表页")
 
     # step 2: 在搜索框输入'合同7'
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_0', ctx))
+    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
     _log(page, "fill", f"在搜索框输入'合同7'")
 
     # step 3: 在搜索框按回车触发查询
-    _act(page, "press_enter", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"))
+    _act(page, "press_enter", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"))
     _log(page, "press_enter", f"在搜索框按回车触发查询")
 
     # step 4: 客户筛选框输入前缀『北京』（右模糊：c1/c5 两家）
@@ -559,7 +559,7 @@ def test_hand_enter_search(page, ctx):
     _log(page, "fill", f"客户筛选框输入前缀『北京』（右模糊：c1/c5 两家）")
 
     # step 5: 点击搜索按钮
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"点击搜索按钮")
 
     # ---- 断言（用例末尾）----
@@ -582,7 +582,7 @@ def test_search_customer_fuzzy(page, ctx):
     _log(page, "fill", f"客户筛选框输入前缀『北京』")
 
     # step 3: 点击搜索按钮
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"点击搜索按钮")
 
     # step 4: 把客户筛选改成更窄的前缀『北京华』
@@ -590,7 +590,7 @@ def test_search_customer_fuzzy(page, ctx):
     _log(page, "fill", f"把客户筛选改成更窄的前缀『北京华』")
 
     # step 5: 再次点击搜索按钮
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"再次点击搜索按钮")
 
     # ---- 断言（用例末尾）----
@@ -615,7 +615,7 @@ def test_search_customer_fuzzy_negative(page, ctx):
     _log(page, "fill", f"客户筛选框输入**非前缀**的『华信』")
 
     # step 3: 点击搜索按钮
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"点击搜索按钮")
 
     # ---- 断言（用例末尾）----
@@ -634,7 +634,7 @@ def test_search_mixed(page, ctx):
     _log(page, "goto", f"打开合同列表页")
 
     # step 2: 在搜索框输入关键字'合同'
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_0', ctx))
+    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
     _log(page, "fill", f"在搜索框输入关键字'合同'")
 
     # step 3: 客户筛选框输入前缀『广州』（右模糊）
@@ -642,7 +642,7 @@ def test_search_mixed(page, ctx):
     _log(page, "fill", f"客户筛选框输入前缀『广州』（右模糊）")
 
     # step 4: 点击搜索按钮
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"点击搜索按钮")
 
     # ---- 断言（用例末尾）----
@@ -661,11 +661,11 @@ def test_search_name_fuzzy(page, ctx):
     _log(page, "goto", f"打开合同列表页")
 
     # step 2: 在搜索框输入关键字'合同1'
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_test_id("tb-keyword"), value=_data('fill_0', ctx))
+    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
     _log(page, "fill", f"在搜索框输入关键字'合同1'")
 
     # step 3: 点击搜索按钮
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_test_id("btn-search"))
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"点击搜索按钮")
 
     # ---- 断言（用例末尾）----

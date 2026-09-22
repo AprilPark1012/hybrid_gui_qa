@@ -642,6 +642,25 @@ class UnmappedElementsError(RuntimeError):
                           if k in set(self.missing)}
         super().__init__(f"{len(self.missing)} 个语义名未映射：{self.missing[:5]}…")
 
+class DanglingDatasetError(RuntimeError):
+    """产物引用了**不存在的数据集** ⇒ 拒绝落盘（2026-09-22 实测补）。
+
+    事故经过：录制/探测流程里出现过一条「临时用例」（id 带时间戳），期间的 generate 把它的
+    dataset 写进了产物，随后临时用例被清掉 ⇒ `scripts/test_cases.py` 里留下一条**死引用**。
+    后果不是"少一条用例"，而是**谁跑 test_cases.py 谁红**，且 pytest 报 FileNotFoundError +
+    退出码 2（= 执行环境问题）⇒ 看着像环境/偶发问题，实测被误判成 flaky 绕了一大圈。
+
+    红线：**宁可报错，也不产出跑不通的产物。**
+    """
+
+    def __init__(self, dead: list[str]) -> None:
+        self.dead = dead
+        super().__init__(
+            "产物引用了不存在的数据集（generate 拒绝落盘，请重跑一次 generate）：\n  - "
+            + "\n  - ".join(dead)
+        )
+
+
 
 def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = None,
                      element_map_path: Path | None = None, live_probe: bool = False,
@@ -815,6 +834,25 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
 
     (scripts_dir / "test_cases.py").write_text(_TEST_FILE_HEADER + funcs + "\n", encoding="utf-8")
     (scripts_dir / "conftest.py").write_text(_render_conftest(), encoding="utf-8")
+
+    # ---- 产物自洽闸（2026-09-22）：引用的 dataset 必须真实存在，否则**当场报错**、不落盘 ----
+    # 见 DanglingDatasetError 的事故经过。「产物看着合法但跑不通」是本项目吃过事故的那类垃圾，
+    # 必须在**生成期**拦住（运行期的 FileNotFoundError 会被当成环境问题，实测误判成 flaky）。
+    _refs: set[str] = set()
+    for _f in (scripts_dir / "test_cases.py", scripts_dir / "conftest.py"):
+        _refs |= set(re.findall(r"datasets/([A-Za-z0-9_.\-]+\.json)", _f.read_text(encoding="utf-8")))
+    _dead = sorted(r for r in _refs if not (datasets_dir / r).exists())
+    if _dead:
+        raise DanglingDatasetError(_dead)
+
+    # ---- 陈旧数据集自愈：用例已不存在的 dataset/sets 清掉（generate 自有目录，清掉要出声）----
+    _live = {f"{c['case_id']}.json" for c in cases} | {f"{c['case_id']}.sets.json" for c in cases}
+    _stale = sorted(p.name for p in datasets_dir.glob("*.json") if p.name not in _live)
+    for _n in _stale:
+        (datasets_dir / _n).unlink()
+    if _stale:
+        print(f"[generate] 🧹 清掉 {len(_stale)} 个陈旧数据集（对应用例已不存在）：{_stale[:5]}"
+              f"{'…' if len(_stale) > 5 else ''}")
 
     return {
         "scripts_dir": str(scripts_dir),

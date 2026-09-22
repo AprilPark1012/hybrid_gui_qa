@@ -220,6 +220,23 @@ def main() -> int:
         return FAIL
     ok(f"零残留：{moved} 条新增用例已归档到 {ARCHIVE.relative_to(REPO)}（用例库回到跑前状态）")
 
+    # 5-b) ★产物复原（2026-09-22 实测补）：归档用例后**必须重跑 generate**。
+    # 事故：链里 generate 出来的 `scripts/test_cases.py` 带着那条 AI 用例；用例归档后产物**没刷新**
+    # ⇒ 留下**死引用**（引用的 dataset 不存在）⇒ 之后任何跑 test_cases.py 的脚本都红，
+    #     而且报 FileNotFoundError + pytest 退出码 2（= 执行环境问题）⇒ 看着像"环境/偶发"。
+    #     （本脚本自己 7 项全过、却把后面的 retention_runs / slow_target 弄红 —— 现场就是这么发生的。）
+    _env = dict(os.environ)
+    _env["PYTHONUTF8"] = "1"
+    _env["PYTHONIOENCODING"] = "utf-8"
+    _p = subprocess.run([PY, "-m", "framework.cli", "generate"], cwd=str(REPO), env=_env,
+                        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    rc, out = _p.returncode, (_p.stdout or "") + (_p.stderr or "")
+    if rc != 0:
+        bad(f"归档后重跑 generate 失败（exit {rc}）⇒ 产物可能留着死引用")
+        print("\n".join(out.splitlines()[-8:]))
+        return FAIL
+    ok("产物复原：归档后重跑 generate ⇒ 用例库与产物重新自洽（不留死引用）")
+
     # 6) 负向①：录像缺失 ⇒ 必须 exit 2 且不产出
     print("\n—— 负向①：把录像指到空目录，必须前置不满足且不产出 ——")
     empty = REPO / "output" / "_neg_empty_cassette"

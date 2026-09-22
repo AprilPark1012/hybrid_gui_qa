@@ -278,7 +278,8 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
     ensure_dirs()
     from pathlib import Path as _P
     from framework.tools.generate.case_builder import CaseQualityError
-    from framework.tools.generate.generator import DataSetsError, UnmappedElementsError, generate_scripts
+    from framework.tools.generate.generator import (DataSetsError, DanglingDatasetError,
+                                                   UnmappedElementsError, generate_scripts)
     rest = rest or []
     map_path = None
     if "--element-map" in rest:
@@ -290,6 +291,11 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
                                allow_unmapped=allow_unmapped or ("--allow-unmapped" in rest))
     except CaseQualityError as e:
         _report_case_quality(e)
+    except DanglingDatasetError as e:
+        print(f"❌ {e}", file=sys.stderr)
+        print("   ⇒ 产物已拒绝落盘（宁可报错，也不产出跑不通的产物）；重跑一次 generate 即可自愈。",
+              file=sys.stderr)
+        return 2
     except UnmappedElementsError as e:
         _report_unmapped(e)
     except DataSetsError as e:

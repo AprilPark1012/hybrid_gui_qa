@@ -74,6 +74,31 @@ def test_case_ids_and_datasets_are_one_to_one():
         f"这些数据组文件是陈旧残留（对应用例已不存在 ⇒ generate 该清掉它们）：{sorted(set_ids - case_ids)}"
 
 
+def test_generated_artifacts_reference_only_existing_datasets():
+    """★缺口判据（2026-09-22 实测补）：生成物**嵌进去的 case_id**，其数据集必须真实存在。
+
+    为什么不能只查 `cases/`：上面那条「cases ⇄ datasets 一一对应」查的是**清单**。
+    这次翻车的是「两边清单都干净，生成物里却留着上一个窗口的 case_id」——
+    录制/负向验证期间会出现**临时用例**（id 带时间戳 / `neg_tmp_`），那个窗口里跑过的 generate
+    会把临时 case_id 写进产物；临时用例随后被清掉 ⇒ 产物**死引用**
+    ⇒ 谁跑 `scripts/test_cases.py` 谁红，而且 pytest 报的是 FileNotFoundError + 退出码 2
+    （= 执行环境问题）⇒ 极易被当成"环境/偶发"绕过（实测我误判成 flaky 绕了一圈）。
+
+    ⚠️ 不能靠静态扫 `datasets/xxx.json` 字面量：conftest 是 `datasets / f"{case_id}.json"` **运行期拼**的
+    （第一版判据就是这么写错的，注入死引用都抓不住 —— 负向证明当场拆穿了它）。
+    """
+    import re as _re
+    tc = (SCRIPTS / "test_cases.py").read_text(encoding="utf-8")
+    cf = (SCRIPTS / "conftest.py").read_text(encoding="utf-8")
+    used: set[str] = set()
+    for m in _re.finditer(r"^def test_([A-Za-z0-9_]+)\(", tc, _re.M):
+        used.add(m.group(1))
+    for m in _re.finditer(r"_ds_params\(\s*[\"\']([A-Za-z0-9_]+)[\"\']", cf + tc):
+        used.add(m.group(1))
+    dead = sorted(c for c in used if not (SCRIPTS / "datasets" / f"{c}.json").exists())
+    assert not dead, (f"生成物引用了不存在的数据集 ⇒ 产物是坏的（重跑 `python -m framework.cli generate`）：{dead}")
+
+
 def test_no_unexpected_files_in_scripts():
     """scripts/ 只应有 generate 的产物 —— 别把临时文件/日志留在里面一起发出去。"""
     allowed = {"test_cases.py", "conftest.py", "datasets"}

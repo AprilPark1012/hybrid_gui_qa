@@ -49,6 +49,17 @@ PER_SCRIPT_TIMEOUT_S = 1200
 # 能同时起几个浏览器脚本，由**当下真实可用内存**决定，而不是拍脑袋写死并发数。
 MEM_PER_BROWSER_MB = 550
 TAIL_LINES = 12
+
+# 每个脚本的**完整**日志落盘（2026-09-22 实测逼出来的）：
+# 只留尾部 12 行时，一旦出现偶发红项（如 verify_assert_kinds 那次正向 FAIL，
+# 单独跑却是 4 passed）就**没有现场可查** ⇒ 只能靠猜。落盘后红项可复诊、可直接贴证据。
+LOG_DIR = REPO / "log" / "verify_logs"
+
+
+def _script_log_path(script: Path) -> Path:
+    """完整日志路径（log/ 已被 retention 策略管，不入库）。"""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    return LOG_DIR / f"{script.stem}.log"
 DEMO_LOG = REPO / "log" / "_run_verifications_demo.log"
 DETACHED_PROCESS = 0x00000008
 CREATE_NEW_PROCESS_GROUP = 0x00000200
@@ -173,6 +184,8 @@ def classify(rc: int) -> str:
 def run_one(python: str, script: Path, *, stream: bool = False,
             timeout_s: float = PER_SCRIPT_TIMEOUT_S) -> tuple[int, float, list[str]]:
     """跑一个 verify 脚本：返回 (退出码, 秒数, 末 N 行输出)。超时按 124 记（同 `timeout(1)`）。"""
+    log_path = _script_log_path(script)
+    log_fh = log_path.open("w", encoding="utf-8")
     tail: deque[str] = deque(maxlen=TAIL_LINES)
     started = time.time()
     proc = subprocess.Popen([python, str(script)], cwd=str(REPO),
@@ -190,14 +203,25 @@ def run_one(python: str, script: Path, *, stream: bool = False,
     threading.Thread(target=_watchdog, daemon=True).start()
     if proc.stdout is not None:
         for line in proc.stdout:
+            log_fh.write(line)
             line = line.rstrip("\n")
             tail.append(line)
             if stream:
                 print(f"   {line}", flush=True)
     proc.wait()
+    log_fh.close()
     rc = 124 if killed["v"] else (proc.returncode or 0)
     if killed["v"]:
         tail.append(f"⏱️ 超时 {timeout_s:.0f}s ⇒ 已杀（不计通过）")
+    try:
+        tail.append(f"完整日志: {log_path.relative_to(REPO)}")
+    except ValueError:
+        tail.append(f"完整日志: {log_path}")
+    _dirty = artifacts_are_consistent()
+    if _dirty and rc == 0:
+        rc = 1
+        tail.append(f"❌ 产物被本脚本弄脏（悬空引用）：{_dirty[:3]}{'…' if len(_dirty) > 3 else ''}")
+        tail.append("   ⇒ 当场点名报错，不污染后续脚本（修法：删用例后必须重跑 generate 复原产物）")
     return rc, time.time() - started, list(tail)
 
 
@@ -223,6 +247,29 @@ _EXCLUSIVE_MARKERS = (
     "pack_release",
     "record_cassettes",
 )
+
+
+
+def artifacts_are_consistent() -> list[str]:
+    """产物自洽检查：`scripts/test_cases.py` / `conftest.py` 里嵌的 case_id 是否都有数据集。
+
+    为什么放在**每个脚本之间**跑：实测事故 —— 某验证脚本会**临时写用例再删掉**，删时忘了复原
+    产物 ⇒ 产物留下**死引用** ⇒ 之后任何跑 `test_cases.py` 的脚本都红，而且报 FileNotFoundError +
+    pytest 退出码 2（= 执行环境问题）⇒ 看着像"环境/偶发"。做成脚本间质检后，**弄脏产物的那个脚本
+    被当场点名**，不再污染后续脚本。
+
+    返回：死引用列表（空 = 干净）。
+    """
+    import re as _re
+    scripts = REPO / "scripts"
+    try:
+        tc = (scripts / "test_cases.py").read_text(encoding="utf-8")
+        cf = (scripts / "conftest.py").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    used: set[str] = set(_re.findall(r"^def test_([A-Za-z0-9_]+)\(", tc, _re.M))
+    used |= set(_re.findall(r"_ds_params\(\s*[\"\']([A-Za-z0-9_]+)[\"\']", cf + tc))
+    return sorted(c for c in used if not (scripts / "datasets" / f"{c}.json").exists())
 
 
 def is_exclusive_script(path: Path) -> bool:
@@ -389,9 +436,21 @@ def run_parallel(python: str, scripts: list[Path], *, jobs: int, timeout_s: floa
             script, _b, t0 = running.pop(proc)
             dur = time.monotonic() - t0
             out = proc.stdout.read() if proc.stdout else ""
+            _dirty = artifacts_are_consistent()
+            if _dirty and proc.returncode == 0:
+                proc.returncode = 1
+                print(f"  ❌ 产物被本脚本弄脏（悬空引用）：{_dirty[:3]}"
+                      f"{'…' if len(_dirty) > 3 else ''} ⇒ 删用例后必须重跑 generate 复原")
+            # 完整日志落盘（并发路径同样要落 —— 偶发红项没现场就只能靠猜）
+            try:
+                _script_log_path(script).write_text(out, encoding="utf-8")
+                log_note = f"（完整日志: log/verify_logs/{script.stem}.log）"
+            except OSError as e:
+                log_note = f"（⚠️ 完整日志落盘失败: {type(e).__name__}）"
             print(f"\n———— {script.name} ————")
             for line in out.strip().splitlines()[-12:]:
                 print(f"   {line}")
+            print(f"   {log_note}")
             verdict = {"ok": "✅ exit 0", "skip": "⏭️  exit 3 跳过（不是通过）",
                        "fail": f"❌ exit {rc}"}[classify(rc)]
             print(f"  {verdict}（{dur:.0f}s）")

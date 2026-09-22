@@ -103,3 +103,34 @@ def test_串行模式下独占不破坏原行为():
     ok, why = rv.may_start(is_browser=False, running=0, running_browsers=0, jobs=1,
                            mem_mb=99999, exclusive=True)
     assert ok is True and "串行" in why
+
+# ---------- 脚本间产物质检（悬空引用必须被抓到）----------
+def test_artifacts_check_catches_dangling_case_id(tmp_path, monkeypatch):
+    """★负向：产物嵌了一个没有数据集的 case_id ⇒ 必须报出来（这是 L15 事故的核心判据）。"""
+    import run_verifications as rv
+    (tmp_path / "scripts" / "datasets").mkdir(parents=True)
+    (tmp_path / "scripts" / "test_cases.py").write_text(
+        "def test_ghost_case_999999(page):\n    pass\n", encoding="utf-8")
+    (tmp_path / "scripts" / "conftest.py").write_text("# empty\n", encoding="utf-8")
+    monkeypatch.setattr(rv, "REPO", tmp_path)
+    assert rv.artifacts_are_consistent() == ["ghost_case_999999"]
+
+
+def test_artifacts_check_passes_when_dataset_exists(tmp_path, monkeypatch):
+    """正向：case_id 有对应数据集 ⇒ 干净（不许误报）。"""
+    import run_verifications as rv
+    d = tmp_path / "scripts" / "datasets"
+    d.mkdir(parents=True)
+    (tmp_path / "scripts" / "test_cases.py").write_text(
+        "def test_ok_case_000001(page):\n    pass\n", encoding="utf-8")
+    (tmp_path / "scripts" / "conftest.py").write_text("# empty\n", encoding="utf-8")
+    (d / "ok_case_000001.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(rv, "REPO", tmp_path)
+    assert rv.artifacts_are_consistent() == []
+
+
+def test_artifacts_check_tolerates_missing_files(tmp_path, monkeypatch):
+    """健壮性：产物还没生成（文件不在）⇒ 不崩、不误报。"""
+    import run_verifications as rv
+    monkeypatch.setattr(rv, "REPO", tmp_path)
+    assert rv.artifacts_are_consistent() == []
