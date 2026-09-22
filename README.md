@@ -1,8 +1,8 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.2**（2026-09-22）· 版本号单一来源：`build_tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> 当前版本 **V8.2.1**（2026-09-22 · 纯文档版：培训页新增「场景/用例文件怎么手搓」一章，零代码行为变化）· 版本号单一来源：`build_tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
 > （路径只在 `framework/tools/common/config.py::VERSION_SOURCE` 定义一次，cli / llm_cassette / 打包器共用）
-> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V8.2.md`
+> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V8.2.1.md`（V8.2 见 `RELEASE_NOTES_V8.2.md`）
 > （**口径 C：只有顶层容器才允许埋点**，页面与弹层同一口径 · 零 testid 下的定位与下钻）；
 > ⚠️ **口径是硬判据**：页面里控件层若仍带 `testid`，判据会直接报违规（有意如此 —— 口径不一致时宁可报错）；
 > ⚠️ 上一版 **V8.0 是破坏性结构变更**（`framework/tools/{common,probe,explore,generate,run}/` 业务流程分层），
@@ -118,6 +118,22 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 > 需 DeepSeek key（AI 语义识别链路）：在项目根 `.env` 配 `DEEPSEEK_API_KEY`（见「快速上手·第4节」）。
 
 ---
+
+## 2026-09-22（第四次）变更要点 —— 培训页补「怎么手搓」（V8.2.1 · 纯文档）
+
+**一句话**：培训页新开第 4 章，把「两种业务场景对应两种手搓文件」的约定写成可教学的一章。
+
+**两种业务场景 → 两种手搓文件**
+- **场景① 场景驱动**：手搓 `scenarios/<模块>/<id>.yml`（自然语言）→ `cli explore --ai` → 产出 `cases/ai_<id>_<HHMMSS>.json`（**花 token**）
+- **场景② 用例驱动**：手搓 `cases/<id>.json`（步骤 + 断言）→ `cli generate` + `run`（**零 token**）
+- **汇合点 = `cases/*.json`** —— 两条链路唯一的接口，也是「AI 产的用例」和「手搓的用例」跑同一条链的原因
+
+**新章包含**：两条链路对比 · 场景文件字段表 + 真实样例 + 写作四条要点 + 五步流程 ·
+用例文件 5 字段 + **7 个动作** + **9 类断言** + 真实模板 + 五步流程 ·
+`element`（语义名）从哪来（`cli probe` → `output/element_maps/probe_*.json`）·
+**六条团队约定** · 一页速查表。
+
+**其他**：培训页章节编号顺延（原 4~9 章 → 5~10 章）· 零代码行为变化（不用重跑 `generate`）。
 
 ## 2026-09-22（第三次）变更要点 —— 口径 C 对齐生产（V8.2 · 只有顶层容器才有埋点）
 

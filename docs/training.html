@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.2）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.2.1）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup>★</sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.2 · 2026-09-22　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.2.1 · 2026-09-22　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -279,9 +279,330 @@
   </div>
 </section>
 
-<!-- ========== 4. 函数调用关系 ========== -->
+<!-- ========== 4. 场景文件与用例文件：怎么手搓（两种业务场景） ========== -->
 <section>
-  <h2 class="sec-title"><span class="n">4</span>函数调用关系（代码地图）</h2>
+  <h2 class="sec-title"><span class="n">4</span>场景文件与用例文件：怎么手搓（两种业务场景）</h2>
+  <p class="sec-sub">
+    本框架支持<b>两种业务场景</b>，对应<b>两种手搓文件</b>——<b>两个文件都是人写的</b>，这是团队要记住的第一条约定。
+    两条链路在 <span class="code-inline">cases/*.json</span> <b>汇合</b>：那是它们<b>唯一的接口</b>。
+    汇合之后完全同一条链（<span class="code-inline">generate</span> → <span class="code-inline">run</span>），
+    这就是「<b>AI 产的用例</b>」和「<b>你手搓的用例</b>」能跑同一条执行链、拿到同一份报告的原因。
+  </p>
+
+  <h3 style="margin:26px 0 6px">4.1 先分清两条链路（决定你要写哪个文件）</h3>
+  <table class="tbl">
+    <tr><th style="width:11%"> </th><th style="width:44.5%">场景① · 场景驱动（AI 语义识别）</th><th>场景② · 用例驱动（直接写用例）</th></tr>
+    <tr>
+      <td><b>你手搓的文件</b></td>
+      <td><span class="code-inline">scenarios/&lt;模块&gt;/&lt;场景id&gt;.yml</span><br>
+          自然语言动作流（人话）</td>
+      <td><span class="code-inline">cases/&lt;用例id&gt;.json</span><br>
+          结构化步骤 + 断言（机器话）</td>
+    </tr>
+    <tr>
+      <td><b>入口命令</b></td>
+      <td><span class="code-inline">python -m framework.cli explore --ai --scenario-file …</span></td>
+      <td><span class="code-inline">python -m framework.cli generate &amp;&amp; … run</span></td>
+    </tr>
+    <tr>
+      <td><b>产出</b></td>
+      <td><span class="code-inline">cases/ai_&lt;场景id&gt;_&lt;HHMMSS&gt;.json</span>（AI 写的用例）</td>
+      <td>直接进 <span class="code-inline">scripts/test_cases.py</span>（无中间产物）</td>
+    </tr>
+    <tr>
+      <td><b>花不花 token</b></td>
+      <td><b>花</b>（每次跑都调 LLM；离线机器用录像回放，见第 6 章）</td>
+      <td><b>零 token</b>（纯确定性，可反复跑、可进 CI）</td>
+    </tr>
+    <tr>
+      <td><b>什么时候用</b></td>
+      <td>页面/口径已清楚，要<b>批量铺覆盖</b>（一个场景 × N 组数据 = N 条用例）；
+          或者你想先让 AI 试一遍看它怎么选控件</td>
+      <td><b>边界与负向</b>（点错该失败、空值该拦截）、要<b>精确断言</b>、临时补一条、
+          以及把 AI 产出的满意用例<b>固化</b>成回归资产</td>
+    </tr>
+    <tr>
+      <td><b>推荐节奏</b></td>
+      <td>先写场景跑通 → 看 AI 产出的用例 → 满意就<b>固化</b>成 <span class="code-inline">cases/&lt;id&gt;.json</span>（去掉 <span class="code-inline">ai_</span> 前缀）→ 之后当回归资产零成本重跑</td>
+      <td>抄一份<b>最像</b>的现成用例改（别从零写）</td>
+    </tr>
+  </table>
+  <p style="color:var(--muted);font-size:.9rem;margin-top:8px">
+    一句话：<b>场景① 前期花 token 换覆盖速度；场景② 零成本换精确度</b>。两者产出的用例格式完全相同，随时可以互相转换。
+  </p>
+
+  <h3 style="margin:26px 0 6px">4.2 场景文件 <span class="code-inline">scenarios/&lt;模块&gt;/&lt;场景id&gt;.yml</span></h3>
+  <p>
+    <b>一个文件 = 一个场景；文件名 = 场景 id</b>（小写蛇形，正则 <span class="code-inline">^[a-z][a-z0-9_]*$</span>）。
+    目录按业务模块分（如 <span class="code-inline">scenarios/contracts/</span>、<span class="code-inline">scenarios/orders/</span>）。
+    <b>只有 <span class="code-inline">scenario</span> 字段是必填的</b>，其余按需。
+  </p>
+
+  <h4 style="margin:18px 0 4px">字段表（谁读 / 干什么）</h4>
+  <table class="tbl">
+    <tr><th style="width:26%">字段</th><th style="width:12%">谁读</th><th>说明</th></tr>
+    <tr><td><span class="code-inline">scenario</span> ★必填</td><td><b>AI</b></td><td>自然语言动作流（YAML 块标量 <span class="code-inline">|</span> 支持多行）。<b>这是喂给 AI 的全部动作意图</b>，写得越具体，挑控件越准</td></tr>
+    <tr><td><span class="code-inline">id</span></td><td>框架/人</td><td>稳定标识（缺省取文件名）；用于 <span class="code-inline">case_id</span> 命名与溯源 —— <b>它就是产出用例的 id 前缀</b></td></tr>
+    <tr><td><span class="code-inline">title</span> / <span class="code-inline">description</span></td><td>人</td><td>标题与说明；报告里会显示，等于给同事看的注释</td></tr>
+    <tr><td><span class="code-inline">owner</span> / <span class="code-inline">updated</span> / <span class="code-inline">notes</span></td><td>人</td><td>责任人 / 更新时间 / 备注（<span class="code-inline">owner</span> 建议写你的 GitHub handle）</td></tr>
+    <tr><td><span class="code-inline">tags</span></td><td>框架</td><td>批量筛选用：<span class="code-inline">--tag smoke</span>（可重复，OR 语义）</td></tr>
+    <tr><td><span class="code-inline">priority</span></td><td>框架</td><td><span class="code-inline">P0/P1/P2</span>；目录批量时按此排序</td></tr>
+    <tr><td><span class="code-inline">target.url</span></td><td>框架</td><td>缺省用全局配置 <span class="code-inline">config.TARGET_URL</span></td></tr>
+    <tr><td><span class="code-inline">target.page</span></td><td>AI</td><td>页面的人话描述（喂 prompt，帮 AI 认页面）</td></tr>
+    <tr><td><span class="code-inline">target.preconditions</span></td><td>人/AI</td><td>前置条件；<b>一期只作为 AI 上下文，不自动执行</b>（别指望它帮你起服务）</td></tr>
+    <tr><td><span class="code-inline">business_context</span></td><td>AI</td><td><b>领域知识：字段含义、编号规则、易踩的坑</b>。把 placeholder、可选值、编码规则写进去 —— 这是提升 AI 准确率最划算的一处投入</td></tr>
+    <tr><td><span class="code-inline">assert_guard.must_contain</span></td><td>AI + 质量闸</td><td>断言必须围绕的<b>稳定文本</b>（操作前可确定的）。<b>双向生效</b>：事前告诉 AI 该围绕什么写断言，事后落盘硬校验断言是否真的验到了它</td></tr>
+    <tr><td><span class="code-inline">assert_guard.forbidden</span></td><td>AI + 质量闸</td><td>本场景禁止出现在断言里的内容（场景专属禁令）</td></tr>
+    <tr><td><span class="code-inline">data</span></td><td>框架</td><td><b>参数化：一组数据 = 一条独立用例</b>（报告里独立一行、失败能定位到具体数据集）。写法见下</td></tr>
+  </table>
+
+  <h4 style="margin:18px 0 4px">最小可跑样例（照着改就行）</h4>
+  <pre class="tree"># 一个文件 = 一个场景；文件名 = 场景 id
+id: contracts_search_by_no
+title: 合同列表 · 按编号搜索
+description: 输入合同编号片段 → 点搜索 → 确认列表出现对应编号的记录
+tags: [合同, 搜索, smoke]
+priority: P0
+owner: AprilPark1012
+updated: 2026-09-21
+
+target:
+  url: http://localhost:8000
+  page: 合同列表页（合同列表 + 多条件搜索 + 新建弹窗）
+  preconditions:
+    - demo 已启动：python -m demo.app
+
+# —— AI 语义识别的输入：自然语言动作流 ——
+scenario: |
+  在合同列表页面的搜索框输入 '{关键词}'，点击搜索按钮，
+  确认结果列表里出现编号为 {期望编号} 的合同记录。
+
+# —— 数据参数化：一组数据 = 一条用例（报告里独立一行）——
+# 占位符写在 scenario 文案里，这里每组给一组值；
+# 组值必须**恰好**覆盖文案里用到的占位符（少了会被拦）。
+# id 可选：给了就进报告里的用例名（如 test_xxx[编号-1007]），便于单组定位。
+data:
+  - {id: "编号-1005", 关键词: "1005", 期望编号: "HT-1005"}
+  - {id: "编号-1007", 关键词: "1007", 期望编号: "HT-1007"}
+
+# —— 领域上下文：帮 AI 挑对控件、判断数据规则 ——
+business_context: |
+  关键字搜索框的 placeholder 是“合同编号/名称/管理单元/合同类型/帐套”，名称列模糊匹配；
+  合同编号规则 HT-1000+i（输入片段 1005 ⇒ 目标记录编号 HT-1005）；
+  页面底部状态行文案形如“搜索完成，命中 N 条”——N 是运行时才知道的，不作断言。
+
+# —— 断言护栏：事前喂给 AI，事后落盘硬校验 ——
+assert_guard:
+  must_contain:
+    - "{期望编号}"     # 数据驱动后护栏也走占位符
+  forbidden:
+    - "命中"           # 计数文案不许进断言
+</pre>
+
+  <h4 style="margin:18px 0 4px">写场景的四条写作要点（血泪教训）</h4>
+  <ol style="line-height:1.85">
+    <li><b>断言必须「操作前可确定」</b>：写记录标识（<span class="code-inline">HT-1005</span>）或页面固定文案，
+        <b>别写运行时才知道的计数</b>（<span class="code-inline">共 N 条</span>）。全局已禁计数/时间戳/随机值，
+        <span class="code-inline">assert_guard</span> 里可再加本场景专属禁令。</li>
+    <li><b><span class="code-inline">business_context</span> 越具体，AI 挑控件越准</b>：把 placeholder、可选值、编号规则写进去。</li>
+    <li><span class="code-inline">must_contain</span> 会<b>双向生效</b>：事前告诉 AI 该围绕什么写断言，事后校验断言是否真的验到了它。</li>
+    <li><b>场景跑不通时，先改场景文件</b>（这是正常的编写循环），<b>而不是去改框架</b>。
+        只有当「框架真的缺能力」时才动框架 —— 判断标准：同一个卡点是否在多个场景反复出现。</li>
+  </ol>
+
+  <h4 style="margin:18px 0 4px">写场景前必知的 demo 三件事</h4>
+  <ol style="line-height:1.85">
+    <li><b>数据在服务端</b>：列表页与详情页读的是<b>同一条真实记录</b> ⇒ 预置数据的字段跨页一致，可以断言；
+        查不到的编号会如实报「未找到」，<b>不会编数据</b>。</li>
+    <li><b>每条用例开始前框架会复位数据</b> ⇒ 列表页固定 20 条预置；
+        <b>别写「上一条用例新建的数据留给下一条用」这种跨用例依赖</b>（复位后就不存在了）。</li>
+    <li><b>客户字段是「弹层列表里选一行」</b>：弹层里多个「选择」按钮文字完全相同 ⇒ 语义名形如
+        <span class="code-inline">选择@北京华信科技有限公司</span>；列表页客户筛选是<b>右模糊（前缀）匹配</b>（非前缀不命中）。</li>
+  </ol>
+
+  <h4 style="margin:18px 0 4px">手搓一个场景：五步</h4>
+  <pre class="tree"># ① 先看被测页面有哪些控件（语义名的唯一来源）
+python -m framework.cli probe                 # → output/element_maps/probe_*.json
+
+# ② 复制一个最像的现成场景，改 id / scenario / business_context
+cp scenarios/contracts/contracts_search_by_no.yml scenarios/contracts/&lt;你的场景id&gt;.yml
+
+# ③ 跑！默认会自动试跑（--verify 默认开）：FAILED → exit 3
+python -m framework.cli explore --ai --scenario-file scenarios/contracts/&lt;你的场景id&gt;.yml
+
+# ④ 看产出：用例 + 报告
+ls cases/ai_&lt;你的场景id&gt;_*.json
+ls log/&lt;run_id&gt;/                          # 用例日志 / 报告 / trace
+
+# ⑤ 不满意 → 回去改 yml（改 scenario 文案或 business_context），再跑第③步
+#    满意   → 固化成手搓用例（见 4.3），之后零 token 重跑
+</pre>
+  <p style="color:var(--muted);font-size:.9rem">
+    批量场景：<span class="code-inline">explore --ai --scenario-dir scenarios/ --tag smoke</span>（可加 <span class="code-inline">--limit N</span> 限流）。
+    三个入口 <span class="code-inline">--scenario</span> / <span class="code-inline">--scenario-file</span> / <span class="code-inline">--scenario-dir</span>
+    <b>互斥</b>，同时给会报错退出（exit 2）。内联 <span class="code-inline">--scenario "…"</span> 适合临时想法，不建议进场景库。
+  </p>
+
+  <h3 style="margin:26px 0 6px">4.3 用例文件 <span class="code-inline">cases/&lt;用例id&gt;.json</span></h3>
+  <p>
+    顶层<b>只有 5 个字段</b>：<span class="code-inline">case_id</span>（唯一 id，也是产物里测试函数名的来源）、
+    <span class="code-inline">name</span>（报告里显示的名字）、<span class="code-inline">base_url</span>、
+    <span class="code-inline">steps</span>（动作序列）、<span class="code-inline">asserts</span>（断言序列）。
+    AI 产的用例（<span class="code-inline">ai_*.json</span>）和你手搓的<b>格式完全一样</b>。
+  </p>
+
+  <h4 style="margin:18px 0 4px">steps：支持的 7 个动作（照抄即用）</h4>
+  <table class="tbl">
+    <tr><th style="width:16%">op</th><th style="width:30%">必填</th><th>说明</th></tr>
+    <tr><td><span class="code-inline">goto</span></td><td><span class="code-inline">url</span></td><td>打开页面（一般每个用例第一步）</td></tr>
+    <tr><td><span class="code-inline">click</span></td><td><span class="code-inline">element</span></td><td>点击；<span class="code-inline">element</span> 是<b>语义名</b>（见下）</td></tr>
+    <tr><td><span class="code-inline">fill</span></td><td><span class="code-inline">element</span> + <span class="code-inline">value</span></td><td>填输入框；<span class="code-inline">value</span> 支持 <span class="code-inline">{datetime}</span> 一类占位符</td></tr>
+    <tr><td><span class="code-inline">select</span></td><td><span class="code-inline">element</span> + <span class="code-inline">value</span></td><td>下拉选择</td></tr>
+    <tr><td><span class="code-inline">check</span></td><td><span class="code-inline">element</span></td><td>勾选/取消勾选（幂等，不要求当前状态）</td></tr>
+    <tr><td><span class="code-inline">press_enter</span></td><td><span class="code-inline">element</span></td><td>在输入框按回车触发（表单提交/搜索）</td></tr>
+    <tr><td><span class="code-inline">expect_text</span></td><td><span class="code-inline">text</span></td><td>文本类断言动作（AI 产出路径会用它落断言）</td></tr>
+  </table>
+  <p style="color:var(--muted);font-size:.9rem;margin-top:6px">
+    每个 step 都建议写 <span class="code-inline">desc</span>（人话描述）—— 它会进用例日志，<b>失败时是给同事看的第一手线索</b>。
+  </p>
+
+  <h4 style="margin:18px 0 4px">asserts：断言类型（kind）</h4>
+  <table class="tbl">
+    <tr><th style="width:16%">kind</th><th style="width:32%">写什么</th><th>语义</th></tr>
+    <tr><td><span class="code-inline">count</span></td><td><span class="code-inline">selector</span> + <span class="code-inline">expect</span></td><td>命中行数/元素数等于 N（<b>最常用</b>，如「筛完只剩 1 条」）</td></tr>
+    <tr><td><span class="code-inline">text</span></td><td><span class="code-inline">element</span> 或 <span class="code-inline">selector</span> + <span class="code-inline">expect</span></td><td>元素文本包含/等于期望值</td></tr>
+    <tr><td><span class="code-inline">value</span></td><td>同上</td><td>输入框的当前值</td></tr>
+    <tr><td><span class="code-inline">visible</span> / <span class="code-inline">hidden</span></td><td><span class="code-inline">element</span> 或 <span class="code-inline">selector</span></td><td>元素可见 / 不可见（弹层开合、错误提示是否出现）</td></tr>
+    <tr><td><span class="code-inline">enabled</span> / <span class="code-inline">disabled</span></td><td>同上</td><td>按钮可点 / 置灰（<b>负向用例主力</b>：必填没填时提交该置灰）</td></tr>
+    <tr><td><span class="code-inline">checked</span> / <span class="code-inline">unchecked</span></td><td>同上</td><td>勾选框状态</td></tr>
+    <tr><td><span class="code-inline">attr</span></td><td><span class="code-inline">selector</span> + <span class="code-inline">name</span> + <span class="code-inline">expect</span></td><td>属性值（如 <span class="code-inline">data-field</span>）</td></tr>
+    <tr><td><span class="code-inline">url</span></td><td><span class="code-inline">expect</span></td><td>当前地址（跳转/带参跳转）</td></tr>
+    <tr><td><span class="code-inline">first_row</span></td><td><span class="code-inline">selector</span> + <span class="code-inline">expect</span></td><td>取第一行做比对（排序类断言）</td></tr>
+  </table>
+  <p style="color:var(--muted);font-size:.9rem;margin-top:6px">
+    断言可以<b>多条并存</b>（一个用例 = 一串断言），失败时报告会指出<b>是哪一条</b>。断言是<b>唯一</b>的判定依据 ——
+    操作步骤成功不等于测试通过。
+  </p>
+
+  <h4 style="margin:18px 0 4px">⚠️ 最关键的一处约定：<span class="code-inline">element</span>（语义名）从哪来</h4>
+  <p>
+    <b>语义名不是 selector，也不是 testid</b>，而是「页面上这个控件叫什么」的<b>稳定说法</b>：
+  </p>
+  <pre class="tree">语义名 = 页面上可被"读"到的身份，按优先级取：
+        placeholder  →  role + name  →  控件可见文本  →  title / aria-label
+        例：'请输入合同名称'（placeholder）· '搜索'（按钮文本）· '选择@北京华信科技有限公司'（弹层选行）
+</pre>
+  <p style="margin-top:8px">
+    <b>怎么查到它们</b>：跑 <span class="code-inline">python -m framework.cli probe</span>，
+    它把页面（含<b>弹层及其内嵌挑选层</b>）的可交互元素翻译成语义清单，落到
+    <span class="code-inline">output/element_maps/probe_*.json</span>。
+    <b>手搓用例前先跑一次 probe，照着清单抄语义名</b> —— 别猜。
+  </p>
+  <p style="margin-top:8px;padding:10px 12px;border-left:3px solid #d97706;background:rgba(217,119,6,.07);border-radius:6px">
+    <b>口径与生产一致</b>：被测系统里<b>只有顶层容器带 testid，控件层没有</b>。
+    所以手搓时<b>不要指望用 testid 定位控件</b>；语义名命中不唯一时，框架会<b>如实报歧义并要求你给更精确的定位</b>
+    （加容器锚点/字段步/<span class="code-inline">title</span>），<b>不会按顺序猜第一个</b>——这是刻意设计，避免"点错元素还绿"。
+  </p>
+
+  <h4 style="margin:18px 0 4px">手搓一个用例：五步</h4>
+  <pre class="tree"># ① 跑 probe，拿到目标控件的语义名
+python -m framework.cli probe
+
+# ② 抄一个最像的现成用例改（手搓样例：cases/hand_enter_search.json）
+cp cases/hand_enter_search.json cases/&lt;你的用例id&gt;.json
+#    必改：case_id 与文件名一致 · name 给人看 · steps 换成你的动作 · asserts 换成你的判定
+
+# ③ 生成脚本（幂等，可反复跑）
+python -m framework.cli generate
+#    ⚠️ 映射不到语义名 → 会打印 "⚠️ 仍未映射" 并让那一步 pytest.fail（绝不静默跳过）
+
+# ④ 只跑你这一条（按 case_id 过滤）
+python -m pytest scripts/test_cases.py -q -k &lt;你的用例id&gt;
+
+# ⑤ 看报告与证据
+ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
+</pre>
+
+  <h4 style="margin:18px 0 4px">一个真实的手搓用例（节选，可当模板）</h4>
+  <pre class="tree">{
+  "case_id": "hand_enter_search",
+  "name": "手搓用例 · 回车触发搜索 + 客户右模糊筛选",
+  "base_url": "http://localhost:8000",
+  "steps": [
+    { "op": "goto",      "desc": "打开合同列表页", "url": "http://localhost:8000" },
+    { "op": "fill",      "desc": "在搜索框输入'合同7'",
+      "element": "合同编号_名称_管理单元_合同类型_帐套", "value": "合同7" },
+    { "op": "press_enter", "desc": "在搜索框按回车触发查询",
+      "element": "合同编号_名称_管理单元_合同类型_帐套" },
+    { "op": "fill",      "desc": "客户筛选框输入前缀『北京』（右模糊：两家命中）",
+      "element": "客户名称_右模糊_前缀匹配", "value": "北京" },
+    { "op": "click",     "desc": "点击搜索按钮", "element": "搜索" }
+  ],
+  "asserts": [
+    { "kind": "count", "desc": "关键字『合同7』× 客户前缀『北京』 ⇒ 1 条",
+      "selector": "#tbody-contracts tr:has(td[data-field='contractNo'])", "expect": 1 }
+  ]
+}
+</pre>
+
+  <h3 style="margin:26px 0 6px">4.4 两个文件的共同约定（团队要背的六条）</h3>
+  <table class="tbl">
+    <tr><th style="width:30%">约定</th><th>为什么 / 怎么做</th></tr>
+    <tr>
+      <td><b>① 只改源头，不改产物</b></td>
+      <td><span class="code-inline">scripts/test_cases.py</span>、<span class="code-inline">scripts/conftest.py</span>、
+          <span class="code-inline">scripts/datasets/*.json</span> 都是 <span class="code-inline">generate</span> 的<b>产物</b>，
+          手改会被下一次 generate 覆盖。要改行为 → 改 <span class="code-inline">cases/*.json</span> 或 <span class="code-inline">scenarios/*.yml</span>，然后重新 generate。</td>
+    </tr>
+    <tr>
+      <td><b>② 断言必须「操作前可确定」</b></td>
+      <td>禁计数（<span class="code-inline">共 N 条</span>）、时间戳、随机值 —— 这类断言要么永远为真（假绿），要么随机红。<br>
+          写记录标识（<span class="code-inline">HT-1005</span>）、固定文案、或<b>你自己造的数据</b>。</td>
+    </tr>
+    <tr>
+      <td><b>③ 不许跨用例依赖</b></td>
+      <td>每条用例开始前框架<b>复位数据</b> ⇒「上一条建的记录」不存在。需要前置数据就<b>在自己的 steps 里造</b>。</td>
+    </tr>
+    <tr>
+      <td><b>④ 定位不唯一要如实报错</b></td>
+      <td>语义名命中多个 ⇒ 框架报歧义、要求更精确的定位（容器锚点 / 字段步 / <span class="code-inline">title</span>），
+          <b>绝不按顺序猜</b>。你看到歧义报错时，是它<b>在保护你</b>，不是它坏了。</td>
+    </tr>
+    <tr>
+      <td><b>⑤ 元素口径对齐生产</b></td>
+      <td>只有顶层容器有 <span class="code-inline">testid</span>，控件层没有 ⇒ 手搓时用语义名，不用 testid 定位控件。</td>
+    </tr>
+    <tr>
+      <td><b>⑥ 交付前自检</b></td>
+      <td><span class="code-inline">python -m framework.cli generate</span>（必须 0 未映射）→
+          <span class="code-inline">python -m pytest tests/</span>（一类）→
+          <span class="code-inline">python tests/run_verifications.py</span>（二类）。
+          三条全绿才算改完。</td>
+    </tr>
+  </table>
+
+  <h3 style="margin:26px 0 6px">4.5 一页速查</h3>
+  <table class="tbl">
+    <tr><th style="width:34%">我想干什么</th><th style="width:30%">写哪个文件</th><th>命令</th></tr>
+    <tr><td>用自然语言批量铺覆盖</td><td><span class="code-inline">scenarios/&lt;模块&gt;/&lt;id&gt;.yml</span></td>
+        <td><span class="code-inline">cli explore --ai --scenario-file …</span></td></tr>
+    <tr><td>把 AI 产出的用例固化成回归资产</td><td><span class="code-inline">cases/&lt;id&gt;.json</span>（去掉 <span class="code-inline">ai_</span> 前缀）</td>
+        <td>改名 + <span class="code-inline">cli generate</span></td></tr>
+    <tr><td>补一条边界/负向用例</td><td><span class="code-inline">cases/&lt;id&gt;.json</span></td>
+        <td>抄现成的改 → <span class="code-inline">cli generate</span> → 单跑 <span class="code-inline">-k</span></td></tr>
+    <tr><td>一组数据跑多条用例</td><td>场景文件的 <span class="code-inline">data:</span> 段</td>
+        <td><span class="code-inline">cli explore --ai …</span>（每组一条用例）</td></tr>
+    <tr><td>查某个控件叫什么</td><td>—</td><td><span class="code-inline">cli probe</span> → <span class="code-inline">output/element_maps/probe_*.json</span></td></tr>
+    <tr><td>只跑我刚写的那条</td><td>—</td><td><span class="code-inline">pytest scripts/test_cases.py -q -k &lt;case_id&gt;</span></td></tr>
+    <tr><td>跑不通，想确认是环境还是用例</td><td>—</td><td>看 <span class="code-inline">log/&lt;run_id&gt;/</span> 里该用例日志 + <span class="code-inline">report.html</span> + trace</td></tr>
+  </table>
+</section>
+
+
+
+<!-- ========== 5. 函数调用关系 ========== -->
+<section>
+  <h2 class="sec-title"><span class="n">5</span>函数调用关系（代码地图）</h2>
   <p class="sec-sub">cli 是总入口：explore(AI 产用例) 的产物与手写用例一起，被 probe→generate→run 三步确定性链路消费。</p>
   <div class="tree">
 <b>cli.py 入口</b>   (python -m framework.cli <b>all</b> --workers 2)
@@ -639,9 +960,9 @@
   </div>
 </section>
 
-<!-- ========== 5. 关键设计图例说明（含「设计要点」，2026-09-22 与「关键设计要点」合并） ========== -->
+<!-- ========== 6. 关键设计图例说明（含「设计要点」，2026-09-22 与「关键设计要点」合并） ========== -->
 <section>
-  <h2 class="sec-title"><span class="n">5</span>关键设计图例说明</h2>
+  <h2 class="sec-title"><span class="n">6</span>关键设计图例说明</h2>
   <p class="sec-sub">先看「端到端全链路主线」——这是新手理解框架的唯一主线；①②③ 是这条线上的三个关键细节。<b>每个图例下面挂着它对应的「设计要点」</b>（原来是单独一章的《关键设计要点》，现已并入本章，避免同一件事讲两遍）。</p>
 
   <!-- 图例⓪：端到端全链路主线（新手必看） -->
@@ -812,10 +1133,10 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
   </div>
 </section>
 
-<!-- ========== 6. 框架特性设计实现说明（2026-09-22 新增） ========== -->
+<!-- ========== 7. 框架特性设计实现说明（2026-09-22 新增） ========== -->
 <section>
-  <h2 class="sec-title"><span class="n">6</span>框架特性设计实现说明</h2>
-  <p class="sec-sub">上面第 5 章讲的是「一条主线上有什么」；本章按<b>特性</b>横向讲清楚：每个特性 = <b>定位一句话 → 关键设计 → 实现图例 → 怎么用 → 测试验证用例设计</b>。新手按特性读一遍，既能看懂框架结构，也知道每个特性<b>拿什么证据证明它是好的</b>。</p>
+  <h2 class="sec-title"><span class="n">7</span>框架特性设计实现说明</h2>
+  <p class="sec-sub">上面第 6 章讲的是「一条主线上有什么」；本章按<b>特性</b>横向讲清楚：每个特性 = <b>定位一句话 → 关键设计 → 实现图例 → 怎么用 → 测试验证用例设计</b>。新手按特性读一遍，既能看懂框架结构，也知道每个特性<b>拿什么证据证明它是好的</b>。</p>
 
   <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
     <h4>先看全局：验证资产总览（真值，随代码增长）</h4>
@@ -1051,15 +1372,15 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
     <h4>📌 读本章的顺序建议（新手路线）</h4>
     <p style="font-size:.94rem;line-height:1.8">
       1️⃣ 先读 <b>特性 1</b>（知道两条链路怎么汇合）→ 2️⃣ 再读 <b>特性 4</b>（知道用例/脚本/数据怎么分工，这是你日常改的东西）→
-      3️⃣ 跑一遍第 5 章图例⓪ 的六个阶段对照代码 → 4️⃣ 遇到点不中元素时回读 <b>特性 2 / 3</b> →
+      3️⃣ 跑一遍第 6 章图例⓪ 的六个阶段对照代码 → 4️⃣ 遇到点不中元素时回读 <b>特性 2 / 3</b> →
       5️⃣ 交付或换机器前读 <b>特性 7</b>（录像与出厂闸门）→ 6️⃣ 改完代码用 <b>特性 8</b> 的入口自检。
     </p>
   </div>
 </section>
 
-<!-- ========== 7. 常见坑 ========== -->
+<!-- ========== 8. 常见坑 ========== -->
 <section>
-  <h2 class="sec-title"><span class="n">7</span>新同学最容易踩的坑</h2>
+  <h2 class="sec-title"><span class="n">8</span>新同学最容易踩的坑</h2>
   <p class="sec-sub">这些坑都是真实踩过的，碰到先对应这里。</p>
   <div class="card">
     <div class="pit"><h4>坑1 · 把 locator 字符串丢给 page.locator()</h4>
@@ -1093,9 +1414,9 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
   </div>
 </section>
 
-<!-- ========== 8. 动手上手 ========== -->
+<!-- ========== 9. 动手上手 ========== -->
 <section>
-  <h2 class="sec-title"><span class="n">8</span>动手跑一遍</h2>
+  <h2 class="sec-title"><span class="n">9</span>动手跑一遍</h2>
   <p class="sec-sub">先起被测应用，再跑链路。没 key 也能玩 mock。</p>
   <div class="card">
     <pre class="cmd"><span class="prompt">$</span> cd ~/hybrid_gui_qa && source .venv/bin/activate
@@ -1154,9 +1475,9 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
   </div>
 </section>
 
-<!-- ========== 9. 记住三点 ========== -->
+<!-- ========== 10. 记住三点 ========== -->
 <section>
-  <h2 class="sec-title"><span class="n">9</span>收尾 · 记住这三点</h2>
+  <h2 class="sec-title"><span class="n">10</span>收尾 · 记住这三点</h2>
   <div class="mem">
     <div class="mem-item a"><div class="big">🧠</div><b>AI 思考</b>
       <span>理解意图、规划步骤、挑元素——只干"智能"的活。</span></div>
@@ -1169,9 +1490,25 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.2</b>（2026-09-22）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.2.1</b>（2026-09-22）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.2</span><span class="cl-date">2026-09-22</span><span class="cl-tag">当前版本</span><span class="cl-theme">口径 C 对齐生产：<b>只有顶层容器才允许埋点</b>（页面与弹层同一口径）· 零 testid 下的定位与下钻</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.2.1</span><span class="cl-date">2026-09-22</span><span class="cl-tag">当前版本</span><span class="cl-theme">培训页新增第 4 章：<b>场景文件与用例文件怎么手搓</b>（两种业务场景）—— 把「团队约定」写成可教学的一章</span></div>
+      <p class="cl-sum">本版<b>零代码行为变化</b>，只补文档：培训页新开一章，讲清本框架支持的<b>两种业务场景</b>对应<b>两种手搓文件</b> —— <code>scenarios/&lt;模块&gt;/&lt;id&gt;.yml</code>（自然语言场景）与 <code>cases/&lt;id&gt;.json</code>（结构化用例）。两条链路在 <code>cases/*.json</code> <b>汇合</b>，那是它们唯一的接口，也是「AI 产的用例」与「你手搓的用例」能跑同一条执行链的原因。<br>整章按「<b>怎么手搓出来</b>」组织：字段表 / 动作表 / 断言表 / 两个真实样例 / 五步操作流程 / 六条团队约定 / 一页速查。</p>
+      <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
+        <li><b>培训页第 4 章《场景文件与用例文件：怎么手搓（两种业务场景）》</b>：① 两条链路对比（花不花 token / 什么时候用哪个 / 怎么把 AI 用例固化成回归资产）；② 场景文件字段表（谁读 / 干什么）+ 一份字段注释完整的真实样例 + 四条写作要点 + demo 三件事 + 五步流程；③ 用例文件五个顶层字段 + <b>7 个动作</b> + <b>9 类断言</b> + 一个真实用例模板 + 五步流程；④ 两个文件的<b>六条共同约定</b>（只改源头不改产物 / 断言必须操作前可确定 / 不许跨用例依赖 / 定位不唯一要如实报错 / 元素口径对齐生产 / 交付前三条自检）；⑤ 一页速查表</li>
+        <li><b>语义名（<code>element</code>）的来源写清楚了</b>：它不是 selector 也不是 testid，而是页面可被「读」到的身份（<code>placeholder</code> → <code>role+name</code> → 可见文本 → <code>title</code>/<code>aria-label</code>）；查法 = 先跑 <code>cli probe</code>，照 <code>output/element_maps/probe_*.json</code> 抄，别猜</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
+        <li>培训页章节编号顺延：原第 4~9 章 → 第 5~10 章（并同步修正章内两处章节交叉引用）</li>
+        <li>版本号 <code>8.2</code> → <code>8.2.1</code>（单一来源不变）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
+        <li><b>兼容性</b>：纯文档版，<b>零代码行为变化</b> —— CLI 参数、用例格式、报告形态、判据口径全部不变，升级只需替换代码包（不必重跑 <code>generate</code>）。</li>
+        <li>真值：一类 <b>421 passed / 0 red</b> · <code>verify_html_sync</code> 逐字节通过 · 培训页 <b>209.5 KB</b>（新增约 24 KB）。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.2</span><span class="cl-date">2026-09-22</span><span class="cl-tag">上一版本</span><span class="cl-theme">口径 C 对齐生产：<b>只有顶层容器才允许埋点</b>（页面与弹层同一口径）· 零 testid 下的定位与下钻</span></div>
       <p class="cl-sum">把「埋点只顶层有」从<b>口头约定</b>变成<b>可执行判据</b>，并按这个口径改造 demo、补齐「没有埋点也能定位」的能力。演示站点撤掉 <b>115 处</b>控件级埋点（只留 <b>27 个顶层容器</b>），判据规则 <b>⑤⑥</b> 把「交互控件无论层级一律不许有 testid」和「弹层内部（非容器本身）一律不许」钉死；定位侧新增<b>字段步 / title 消歧 / 元素身份</b>，让零 testid 下依然能唯一定位并下钻。<br><b>这不是演示站点的洁癖，是生产口径对齐</b> —— 若两者口径不一致，框架在真实页面上的可用性、正确性、健壮性就都是空谈。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>判据规则 ⑤⑥</b>（<code>tests/testid_policy.py</code>）：交互控件（<code>input/select/textarea/button/a/label/option</code>）<b>无论层级</b>一律不许有 <code>testid</code>；弹层<b>内部</b>（非容器本身）一律不许；<b>只有顶层容器</b>可保留埋点</li>
@@ -1606,7 +1943,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.2</b>（2026-09-22）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.2.1</b>（2026-09-22）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
