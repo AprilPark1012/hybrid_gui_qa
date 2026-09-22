@@ -210,6 +210,25 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     return ap.parse_args(argv)
 
 
+def _ensure_demo_fresh(python: str) -> bool:
+    """**每轮闸门**（AprilPark1012 2026-09-22 拍）—— 在脚本循环体内调用，不只入口查一次。
+
+    为什么：一轮十几个脚本、期间有人改了 demo ⇒ 后面几个脚本跑在旧页面上（白跑 + 误导结论）。
+    口径：内容指纹优先（`demo_freshness.demo_fingerprint`，能抓 `git checkout` 那种"内容变了 mtime 没变"），
+    stale ⇒ 真重启；unknown ⇒ **不擅自重启**、但如实喊出来（入口闸门已经拦过一次，这里不阻断整轮）。
+    """
+    sys.path.insert(0, str(REPO / "tests"))
+    sys.path.insert(0, str(REPO))
+    import demo_freshness as df
+    ok, note = df.ensure_fresh(quiet=True)
+    if ok:
+        if "重启" in note or "已启动" in note:
+            print(f"  ↻ 每轮闸门：{note}")
+        return True
+    print(f"  ⚠️ 每轮闸门未过：{note}（本轮继续，但该结论需人工复核 demo 新鲜度）")
+    return False
+
+
 def main(argv: list[str]) -> int:
     args = _parse(argv)
     python = _venv_python()
@@ -264,6 +283,8 @@ def main(argv: list[str]) -> int:
     results: list[tuple[str, int]] = []
     try:
         for i, script in enumerate(scripts, 1):
+            if not args.no_demo:
+                _ensure_demo_fresh(python)      # 每轮都查（AprilPark1012 2026-09-22）
             print(f"\n———— [{i}/{len(scripts)}] {script.name} ————")
             rc, dur, tail = run_one(python, script, stream=args.stream)
             for line in tail:

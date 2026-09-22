@@ -58,6 +58,7 @@ def health_ok() -> bool:
 def main() -> int:
     print("=" * 64)
     print(" demo 新鲜度闸门 · 端到端验证（改了 demo 必须重启，否则验证白跑）")
+    print(" 口径（2026-09-22 升级）：**内容指纹**为主 + mtime 降级；touch 不算改动")
     print("=" * 64)
 
     if not df.demo_pids():
@@ -71,38 +72,78 @@ def main() -> int:
         print("  基线都不新鲜 ⇒ 后续无意义，终止")
         return 1
 
-    original = TARGET.stat().st_mtime
+    # ①-b 前提：必须存在**属于当前进程**的指纹快照（否则只能退回 mtime 口径，测不出指纹能力）
+    st0 = df.check()
+    if not st0.get("snapshot_used"):
+        print("  快照不存在或不属于当前进程 ⇒ 真重启一次以落快照（本脚本自建前提）")
+        df.restart(quiet=True)
+        st0 = df.check()
+    record("② 前提：存在属于当前 demo 进程的指纹快照",
+           bool(st0.get("snapshot_used")) and (st0.get("state") == "fresh"),
+           f"snapshot_used={st0.get('snapshot_used')} · fp={st0.get('fingerprint')}")
+
+    original_bytes = TARGET.read_bytes()
+    original_mtime = TARGET.stat().st_mtime
+    fp_baseline = df.demo_fingerprint()["fingerprint"]
     try:
-        # ② 负向：只拨 mtime（内容不变）⇒ 必须判 stale
-        os.utime(TARGET, (time.time(), time.time()))
+        # ③ ★ 核心负向（新口径堵的正是这个洞）：**内容变了、但 mtime 拨回旧值** ⇒ 必须 stale
+        TARGET.write_bytes(original_bytes + b"\n# p16-gate-probe: content changed, mtime rolled back\n")
+        os.utime(TARGET, (original_mtime, original_mtime))
         rc, out = cli("--check")
-        record("② 负向证伪：改了 demo 没重启 ⇒ 必须判 stale（exit 3）",
+        record("③ 负向证伪【mtime 漏判口】：内容变了但 mtime 没前进 ⇒ 必须判 stale（exit 3）",
                rc == 3 and "不新鲜" in out, f"exit={rc}")
         st = df.check()
-        record("   负向细节：check() 的 state 必须是 stale", st["state"] == "stale", st["detail"])
+        record("   负向细节：check() state=stale 且理由指向「内容/指纹」（不是 mtime）",
+               st["state"] == "stale" and ("内容" in st["detail"] or "指纹" in st["detail"]),
+               st["detail"])
 
-        # ③ 修复路径：--ensure 必须真重启 + 复检 fresh + 健康
-        rc, out = cli("--ensure")
-        record("③ --ensure 自动重启后复检为新鲜（exit 0）", rc == 0 and "新鲜" in out, f"exit={rc}")
-        record("   重启后 demo 可服务（/api/health 200）", health_ok())
+        # ④ 内容还原（mtime 同样还原）⇒ 必须 fresh：闸门不许无故报警
+        TARGET.write_bytes(original_bytes)
+        os.utime(TARGET, (original_mtime, original_mtime))
         st2 = df.check()
-        record("   重启后进程时刻 > 源码 mtime（真重启，不是把时间戳改回去）",
-               st2["state"] == "fresh" and (st2["started_epoch"] or 0) >= time.time() - 120,
-               f"started={time.strftime('%H:%M:%S', time.localtime(st2['started_epoch'] or 0))}")
+        record("④ 正向：内容还原 ⇒ 判 fresh（闸门不无故报警）",
+               st2["state"] == "fresh", f"state={st2['state']} · {st2['detail']}")
+
+        # ⑤ 只动 mtime（touch，内容一字未改）⇒ 必须 fresh（touch 不是改动）
+        os.utime(TARGET, (time.time(), time.time()))
+        st3 = df.check()
+        record("⑤ 负向：只 touch 不改内容 ⇒ 必须 fresh（不许把 touch 当改动，否则天天白重启）",
+               st3["state"] == "fresh", f"state={st3['state']} · {st3['detail']}")
+
+        # ⑥ 修复路径：内容变（真改动）⇒ --ensure 必须真重启 + 复检 fresh + 快照指纹同步更新
+        TARGET.write_bytes(original_bytes + b"\n# p16-gate-probe: ensure must restart\n")
+        fp_before = df.demo_fingerprint()["fingerprint"]
+        rc, out = cli("--ensure")
+        record("⑥ --ensure 自动重启后复检为新鲜（exit 0）", rc == 0 and "新鲜" in out, f"exit={rc}")
+        record("   重启后 demo 可服务（/api/health 200）", health_ok())
+        st4 = df.check()
+        record("   重启后 state=fresh 且是**新进程**（started_epoch 就在刚刚）",
+               st4["state"] == "fresh" and (st4["started_epoch"] or 0) >= time.time() - 120,
+               f"started={time.strftime('%H:%M:%S', time.localtime(st4['started_epoch'] or 0))}")
+        record("   快照已同步为新指纹（下一轮才能用指纹判 fresh）",
+               (st4.get("snapshot") or {}).get("fingerprint") == fp_before,
+               f"snapshot={((st4.get('snapshot') or {}).get('fingerprint'))} vs 当前={fp_before}")
     finally:
-        # ④ 还原 mtime（内容从未改动）
-        os.utime(TARGET, (original, original))
-        print(f"  ↩️  已还原 demo/app.py 的 mtime（{time.strftime('%H:%M:%S', time.localtime(original))}）；内容未动")
+        # ⑦ 收尾：内容与 mtime 一起还原，并 ensure 到新鲜，留给后续脚本用
+        TARGET.write_bytes(original_bytes)
+        os.utime(TARGET, (original_mtime, original_mtime))
+        print(f"  ↩️  已还原 demo/app.py 内容与 mtime（逐字节相同 · "
+              f"{time.strftime('%H:%M:%S', time.localtime(original_mtime))}）")
+        rc_restore, _ = cli("--ensure")
+        print(f"  ↩️  收尾 --ensure：exit {rc_restore}（把 demo 交回新鲜态）")
 
     rc, out = cli("--check")
-    record("④ 还原后仍新鲜（闸门不会无故报警）", rc == 0, f"exit={rc}")
+    record("⑦ 还原后仍新鲜（闸门不会无故报警）", rc == 0, f"exit={rc}")
+    record("   还原后内容逐字节一致 + 指纹回到基线",
+           TARGET.read_bytes() == original_bytes and df.demo_fingerprint()["fingerprint"] == fp_baseline,
+           f"fp={df.demo_fingerprint()['fingerprint']} vs 基线={fp_baseline}")
 
     bad = [n for n, ok, _ in checks if not ok]
     print("-" * 64)
     if bad:
         print(f"  ❌ 未通过：{len(bad)} 项 —— {bad}")
         return 1
-    print(f"  ✅ 全部通过（{len(checks)} 项判据：含负向证伪 + 真重启 + 还原）")
+    print(f"  ✅ 全部通过（{len(checks)} 项判据：内容指纹正/负向 + touch 不误报 + 真重启 + 逐字节还原）")
     return 0
 
 

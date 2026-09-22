@@ -221,6 +221,151 @@ def test_cli_json_is_machine_readable():
     assert r.returncode in (0, 3, 4, 5), (
         f"退出码契约：0=fresh / 3=stale / 4=no_process / 5=unknown，实际 {r.returncode}\n{r.stderr}")
     assert '"state"' in r.stdout, f"--json 未输出 state 字段：{r.stdout!r}"
-    # stale+ensure 时可能打两段 JSON；取第一段验证结构即可
-    first = r.stdout[r.stdout.index("{"): r.stdout.index("}") + 1]
-    assert json.loads(first)["state"] in {"fresh", "stale", "no_process", "unknown"}
+    # stale+ensure 时可能打两段 JSON；取**第一段完整对象**（用 raw_decode 而不是找第一个 '}' ——
+    # check() 的输出含嵌套对象 snapshot，按花括号切片会切到嵌套层 ⇒ 解析失败）
+    first = json.JSONDecoder().raw_decode(r.stdout[r.stdout.index("{"):])[0]
+    assert json.loads(json.dumps(first))["state"] in {"fresh", "stale", "no_process", "unknown"}
+
+
+# ================ 内容指纹（2026-09-22 新增 · AprilPark1012 拍 A 档 ================
+# 背景（他 2026-09-22 现场口径）：demo 是常驻进程，「测试开始确保最新、跑完按需停」这件事不能只靠 mtime：
+#   mtime 口径有两个漏判口 —— ① `git checkout` / 解压覆盖 / `cp -p` 会**保留旧 mtime** ⇒ 内容变了却判 fresh；
+#   ② 系统时钟回拨。⇒ 升级为「**demo 源码内容指纹**」，且**每轮都查**（不只在入口开头查一次）。
+# 快照口径：谁起/重启 demo，谁就把"启动那一刻的指纹 + 进程号"落盘；check() 只有在**快照进程号 == 当前在跑的
+# 进程号**时才采信快照（别人的快照一律不认，退回 mtime 口径 —— 保守优先）。
+
+def test_fingerprint_stable_for_same_content(tmp_path):
+    (tmp_path / "a.html").write_text("<html>1</html>", encoding="utf-8")
+    f1 = df.demo_fingerprint(tmp_path)["fingerprint"]
+    f2 = df.demo_fingerprint(tmp_path)["fingerprint"]
+    assert f1 == f2, "同一份内容两次取指纹必须一致（否则闸门天天误报）"
+    assert len(f1) >= 12, f"指纹太短，碰撞风险高：{f1!r}"
+
+
+def test_fingerprint_changes_on_content_change(tmp_path):
+    p = tmp_path / "a.html"
+    p.write_text("<html>1</html>", encoding="utf-8")
+    f1 = df.demo_fingerprint(tmp_path)["fingerprint"]
+    p.write_text("<html>2</html>", encoding="utf-8")
+    assert df.demo_fingerprint(tmp_path)["fingerprint"] != f1, "内容改了指纹必须变"
+
+
+def test_fingerprint_immune_to_touch(tmp_path):
+    """★ 负向：只动 mtime（`touch`）**不算**改动 ⇒ 指纹必须不变（否则每次 touch 都白重启）。"""
+    p = tmp_path / "a.html"
+    p.write_text("x", encoding="utf-8")
+    f1 = df.demo_fingerprint(tmp_path)["fingerprint"]
+    now = time.time()
+    os.utime(p, (now + 100, now + 100))
+    assert df.demo_fingerprint(tmp_path)["fingerprint"] == f1
+
+
+def test_fingerprint_ignores_pycache_and_non_source(tmp_path):
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    cache = tmp_path / "__pycache__"
+    cache.mkdir()
+    (cache / "app.cpython-311.pyc").write_text("junk", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("not source", encoding="utf-8")
+    f1 = df.demo_fingerprint(tmp_path)["fingerprint"]
+    (cache / "app.cpython-311.pyc").write_text("changed junk", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("changed", encoding="utf-8")
+    assert df.demo_fingerprint(tmp_path)["fingerprint"] == f1, "__pycache__ / 非源码文件不许进指纹"
+    assert df.demo_fingerprint(tmp_path)["files"] == 1
+
+
+def test_verdict_stale_when_content_differs_even_if_mtime_old():
+    """★★ 核心负向：**内容变了、但 mtime 比进程旧**（`git checkout` / 解压覆盖场景）⇒ 必须 stale。
+
+    这是 mtime 口径的漏判口：老口径会判 fresh ⇒ 二类验证跑在旧页面上 = 假绿。
+    """
+    now = time.time()
+    state, detail = df.verdict(now, now - 3600,
+                              snapshot={"fingerprint": "aaaa", "pid": 1}, fingerprint="bbbb")
+    assert state == "stale", detail
+    assert "内容" in detail or "指纹" in detail, f"stale 原因要说清是「内容变了」：{detail}"
+
+
+def test_verdict_fresh_when_snapshot_matches_even_if_mtime_newer():
+    """对称场景：指纹一致（内容没变）⇒ fresh，哪怕 mtime 看着比进程新（时钟漂移/同秒）。"""
+    now = time.time()
+    assert df.verdict(now, now + 60,
+                      snapshot={"fingerprint": "same", "pid": 1}, fingerprint="same")[0] == "fresh"
+
+
+def test_verdict_without_snapshot_keeps_old_mtime_semantics():
+    """没有快照（demo 不是你起的）⇒ 退回原 mtime 口径，老判据一条都不许变。"""
+    now = time.time()
+    assert df.verdict(now, now - 60)[0] == "fresh"
+    assert df.verdict(now - 600, now)[0] == "stale"
+
+
+def test_check_ignores_snapshot_from_other_pid(monkeypatch):
+    """★ 负向：快照存在但**进程号不是当前在跑的那个** ⇒ 不许采信（否则会假 fresh）。"""
+    fp = {"fingerprint": "cur", "files": 1, "newest_mtime": time.time(), "newest_file": "app.py"}
+    monkeypatch.setattr(df, "demo_pids", lambda: [4242])
+    monkeypatch.setattr(df, "proc_start_epoch", lambda pid: 100.0)
+    monkeypatch.setattr(df, "demo_fingerprint", lambda *a, **k: dict(fp))
+    monkeypatch.setattr(df, "read_snapshot", lambda: {"fingerprint": "cur", "pid": 9999})
+    r = df.check()
+    assert r["state"] == "stale", f"别人的快照必须退回 mtime 口径（此处应 stale）：{r}"
+
+
+def test_check_uses_snapshot_of_same_pid(monkeypatch):
+    """快照属于当前进程且指纹一致 ⇒ fresh（即使 mtime 比进程新）。"""
+    fp = {"fingerprint": "cur", "files": 1, "newest_mtime": time.time(), "newest_file": "app.py"}
+    monkeypatch.setattr(df, "demo_pids", lambda: [4242])
+    monkeypatch.setattr(df, "proc_start_epoch", lambda pid: 100.0)
+    monkeypatch.setattr(df, "demo_fingerprint", lambda *a, **k: dict(fp))
+    monkeypatch.setattr(df, "read_snapshot", lambda: {"fingerprint": "cur", "pid": 4242})
+    assert df.check()["state"] == "fresh"
+
+
+def test_restart_writes_snapshot(monkeypatch):
+    """重启后必须落快照（指纹 = 启动那一刻的 demo 源码），否则下次 check 又只能退回 mtime 口径。"""
+    written: dict = {}
+    monkeypatch.setattr(df, "demo_pids", lambda: [])
+    monkeypatch.setattr(df, "_wait_ready", lambda timeout=None: True)
+    monkeypatch.setattr(df, "demo_fingerprint",
+                        lambda *a, **k: {"fingerprint": "fp1", "files": 2,
+                                         "newest_mtime": 0.0, "newest_file": ""})
+    monkeypatch.setattr(df, "write_snapshot", lambda **kw: written.update(kw))
+
+    class _P:
+        pid = 4242
+
+    monkeypatch.setattr(df.subprocess, "Popen", lambda *a, **k: _P())
+    assert df.restart(quiet=True) is True
+    assert written.get("fingerprint") == "fp1", f"没落快照：{written}"
+
+
+def test_ensure_fresh_restarts_when_stale(monkeypatch, tmp_path):
+    """每轮调用的封装：stale ⇒ 必须重启并复检，返回 (False, 原因) 表示"本轮一开始是不新鲜的"。"""
+    calls = {"restart": 0}
+    states = iter([{"state": "stale", "detail": "内容变了", "pid": 1},
+                   {"state": "fresh", "detail": "ok", "pid": 2}])
+    monkeypatch.setattr(df, "check", lambda *a, **k: next(states, {"state": "fresh", "detail": "", "pid": 2}))
+    monkeypatch.setattr(df, "restart", lambda quiet=False: (calls.__setitem__("restart", calls["restart"] + 1) or True))
+    ok, note = df.ensure_fresh(quiet=True)
+    assert ok is True and calls["restart"] == 1, f"stale 时没重启：{ok}, {note}"
+
+
+def test_ensure_fresh_unknown_state_does_not_restart(monkeypatch):
+    """★ 负向：读不到启动时刻（unknown）⇒ **不许**擅自重启（重启是破坏性动作，交人工）。"""
+    monkeypatch.setattr(df, "check", lambda *a, **k: {"state": "unknown", "detail": "读不到", "pid": 7})
+    monkeypatch.setattr(df, "restart", lambda quiet=False: pytest.fail("unknown 时不许重启"))
+    ok, note = df.ensure_fresh(quiet=True)
+    assert ok is False and "无法判定" in note
+
+
+def test_run_verifications_checks_gate_every_round():
+    """契约：**每轮都查**（闸门调用必须在脚本循环体内，不能只在入口开头查一次）。
+
+    为什么（AprilPark1012 2026-09-22）：一轮里跑十几个脚本、期间有人改了 demo ⇒ 后面几个脚本就白跑了；
+    只在开头查挡不住这种中途污染。
+    """
+    src = (Path(__file__).resolve().parents[1] / "tests" / "run_verifications.py").read_text(encoding="utf-8")
+    assert "_ensure_demo_fresh" in src, "run_verifications 没接每轮闸门（应调 _ensure_demo_fresh）"
+    loop = src.index("for i, script in enumerate(scripts")
+    body_end = src.index("finally:", loop)
+    assert "_ensure_demo_fresh(" in src[loop:body_end], \
+        "闸门必须写在脚本循环体内（每轮都查），不能只在循环之前查一次"
