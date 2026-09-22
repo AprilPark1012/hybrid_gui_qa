@@ -843,7 +843,9 @@ def _env_int(name: str, default: int) -> int:
 
 
 _MAX_LAYER_CLICKS = _env_int("HYBRID_LAYER_CLICKS", 8)
-_MAX_LAYER_DEPTH = 2
+# 2026-09-22（口径 C）：以前写死 2 ⇒ 循环只跑一轮，而**弹窗内的层入口**要等弹窗打开后才被采集到
+# ⇒ 订单页 6 个挑选入口里总有 2 个轮不到（实测只探到 4 层）。放宽到 4 轮，配合下面的"无进展就停"。
+_MAX_LAYER_DEPTH = _env_int("HYBRID_LAYER_ROUNDS", 4)
 _MAX_LAYER_TRIES = _env_int("HYBRID_LAYER_TRIES", 8)
 # 2026-09-14：点开一层/一个弹窗后，**最长等多久**让新控件出现（轮询间隔）。
 # 为什么是「有界轮询」而不是固定 sleep(300)：实测（2026-09-14 00:33，机器内存吃紧、
@@ -905,36 +907,42 @@ def _try_collect_modal_items(pg, base_items: list[dict]) -> list[dict]:
 
         # ---- 第 1 层：弹窗本体（沿用原有 test_id 特征过滤 ⇒ 老页面行为不变）----
         # 2026-09-14：固定 sleep(300) → 有界轮询（弹窗渲染可能慢于 300ms，见 _LAYER_RENDER_WAIT_S 注释）
-        modal_items: list[dict] = []
-        deadline = time.monotonic() + _LAYER_RENDER_WAIT_S
-        while True:
-            modal_items = _absorb([x for x in probe_page(pg)
-                                   if x.get("test_id") and x["test_id"].startswith(_MODAL_TEST_ID_HINTS)])
-            if modal_items or time.monotonic() >= deadline:
-                break
-            pg.wait_for_timeout(_LAYER_POLL_MS)
+        # ★2026-09-22（口径 C：demo 对齐生产——弹层内层不再有埋点）：
+        # 旧判据靠「内层 test_id 以 modal-* 开头」筛弹窗控件 ⇒ 内层埋点撤除后**必然采到 0 个**
+        # （实测：弹窗明明开了，日志是"点开后没有任何弹窗控件出现"，下游表现为 26 个语义名映射不上）。
+        # 改成与更深层**同一套口径**：打开后**新出现的可见控件**全收（不预筛 testid）。
+        modal_items = _wait_fresh_items(pg, _absorb)
         if not modal_items:
             print(f"      [explore] ℹ️ 点开「{_one_line(opener.get('name') or '')}」后"
                   f"没有任何弹窗控件出现（不是弹窗？或页面响应太慢）→ 跳过弹窗补充")
             return []
 
         # ---- 第 2..N 层：弹窗里嵌的 picker 层 ----
-        for _ in range(_MAX_LAYER_DEPTH - 1):
-            # 只把**按钮/链接**当"打开下一层"的候选：原生 select 的名字常带「请选择」会误入候选，
-            # 但点它并不会新增可见 DOM（实测把点击预算吃光，真正的「选择客户」没轮到）。
-            # 下拉的可选项本身已由 probe 的 name（拼接 option 文本）覆盖，不靠点开。
-            cands = [it for it in collected if is_layer_opener(it)]
+        # 只把**按钮/链接**当"打开下一层"的候选（原生 select 名字常带「请选择」但点了不新增 DOM）。
+        # ★2026-09-22（口径 C）：改成**"有新候选就继续"**——弹窗内的层入口是**弹窗打开后**才被采集到的，
+        # 旧实现按固定轮数跑（写死 2 ⇒ 只跑一轮）⇒ 订单页 6 个挑选入口总有 2 个轮不到（实测只探到 4 层）。
+        # 每轮只尝试**没见过**的候选，且"一层都没开成"就停（配合可见性预检，不会在陌生页面里乱点）。
+        rounds, tried = 0, set()
+        while rounds < _MAX_LAYER_DEPTH:
+            rounds += 1
+            # 弹层内的入口**优先**：真正的下一层都在弹层里；页面级的"选择/查看"类按钮往往不是层入口，
+            # 排在前面会把尝试预算吃光（实测：管理单元/帐套两个「…」入口因此一次都没轮到）。
+            _op = [it for it in collected if is_layer_opener(it) and id(it) not in tried]
+            _op.sort(key=lambda x: 0 if (x.get("anchor") or {}).get("kind") == "dialog" else 1)
+            cands = _op
             if not cands:
                 break
             opened = 0
             for cand in cands[:_MAX_LAYER_TRIES]:       # 尝试次数与"成功层数"分开计数
+                tried.add(id(cand))
                 if opened >= _MAX_LAYER_CLICKS:
                     break
-                if _open_layer_and_collect(pg, cand, _absorb):
+                if _open_layer_and_collect(pg, cand, _absorb, collected):
                     opened += 1
             if not opened:
                 break
-        _close_layer_by_item(pg, collected)          # 收尾：把弹窗/层关掉，页面恢复干净
+        _close_layer_by_item(pg, collected)          # 收尾①：挑选层（点该行「选择」回填并关层）
+        _close_open_modal(pg)                        # 收尾②：表单弹窗没有"那一行"，得单独关（见函数注释）
     except Exception as e:
         hint = "" if _page_alive(pg) else "（页面/渲染进程已失效：崩溃或被 OOM 杀 → 环境事故）"
         print(f"      [explore] ⚠️ 弹窗/弹层探测中断（{type(e).__name__}: {str(e)[:120]}）"
@@ -942,11 +950,63 @@ def _try_collect_modal_items(pg, base_items: list[dict]) -> list[dict]:
     return collected
 
 
+def _close_open_modal(pg) -> bool:
+    """收尾兜底：把**当前还开着的弹层**关掉（只关自己开的，绝不点提交/保存类按钮）。
+
+    为什么需要（2026-09-22 实测）：`_close_layer_by_item` 是给**挑选层**写的（点那一行的「选择」
+    回填并关层）；对**表单弹窗**（没有那一行）它无能为力 ⇒ 探完「新建订单」弹窗后弹窗**一直开着** ✗，
+    下游脚本点工具栏按钮全被它挡住（实测 30s 超时、`intercepts pointer events`）。
+    **框架开了的层必须由框架关掉**，否则"探测"这个只读动作会留下副作用污染后面的步骤。
+    关法（确定性、无副作用）：先 Esc；不行就点弹层内文案为「取消 / 关闭 / ✕」的按钮；再不行如实返回 False。
+    """
+    try:
+        for _ in range(3):
+            if not pg.locator(".modal.show").count():
+                return True
+            pg.keyboard.press("Escape")
+            pg.wait_for_timeout(150)
+            if not pg.locator(".modal.show").count():
+                return True
+            for label in ("取消", "关闭", "×", "✕"):
+                btn = pg.locator(".modal.show").get_by_role("button", name=label)
+                if btn.count():
+                    btn.first.click(timeout=3000)
+                    pg.wait_for_timeout(150)
+                    break
+        left = pg.locator(".modal.show").count()
+        if left:
+            print(f"      [explore] ⚠️ 收尾关层失败：仍有 {left} 个 .modal.show 开着"
+                  f"（后面的步骤可能被遮挡，已如实上报，不静默）")
+        return left == 0
+    except Exception as e:
+        print(f"      [explore] ⚠️ 收尾关层异常（{type(e).__name__}: {str(e)[:80]}）")
+        return False
+
+
 def _item_identity(it: dict) -> str:
-    """元素身份（跨探测轮次稳定）：test_id 优先，否则 role+name+placeholder+text。"""
+    """元素身份（跨探测轮次稳定）：test_id 优先 → 锚点+相对路径 → 语义签名。
+
+    ★2026-09-22（P16 批 5 实测根因，第 2 条）：行内埋点按口径撤除后，**不同层、不同行的同类子元素
+    签名完全一样**（订单页 6 个挑选层的按钮都是 `sig:button|选择||`）⇒ 旧口径把它们当成"同一个元素"，
+    第 2 层起的控件全被去重掉（`fresh` 为空）⇒ 层关不掉、后面的层被挡住 ⇒ 生成时表现为
+    「8 个语义名映射不上」。锚点 + 相对路径**正是它们的结构身份**（层 用 anchor 区分、行 用 row.text
+    区分）⇒ 纳入身份即可。同一元素重复探测时这两个字段是稳定的，不会造成重复采集。
+    """
     tid = (it.get("test_id") or "").strip()
     if tid:
         return f"tid:{tid}"
+    anchor = it.get("anchor") or {}
+    path = it.get("path") or []
+    if anchor or path:
+        a = "|".join(str(anchor.get(k) or "") for k in ("kind", "by", "value"))
+        p = "|".join(f"{s.get('axis')}.{s.get('by')}={s.get('value')}"
+                     for s in path if isinstance(s, dict))
+        # ★★2026-09-22（口径 C 深水区实测）：**图标按钮（文字都是 "..."）的锚点与路径完全相同**
+        # ⇒ 只按锚点+路径算身份，3 个「…」（业务单元/管理单元/帐套）会被当成**同一个元素**合并掉
+        # ⇒ 订单页 6 个挑选入口永远只探得到 4 个（管理单元/帐套的层根本没被点开）。
+        # title(help_text) / 邻近文本是区分它们的唯一稳定信号 ⇒ 纳入身份。
+        extra = "|".join(str(it.get(k) or "") for k in ("help_text", "nearby_text", "placeholder"))
+        return f"ap:{a}#{p}#{extra}"
     return "sig:" + "|".join(str(it.get(k) or "") for k in ("role", "name", "placeholder", "text"))
 
 
@@ -1002,12 +1062,21 @@ def is_layer_opener(it: dict) -> bool:
                     ("name", "help_text", "nearby_text", "container_heading", "test_id"))
     if any(a in blob for a in _LAYER_AVOID_HINTS):
         return False
+    # ★"会开新 tab / 会跨页"的控件**不是弹层入口**：点它会把采集流程带到别的页面去
+    # （实测「查看订单」命中"查看"、把上下文整个带跑偏）。层级探测只在**当前页面**里做。
+    if it.get("opens_new_tab"):
+        return False
+    # ★2026-09-22（口径 C 实测）：**表格行内的「选择」是"选这一行"的动作，不是"打开下一层"的入口**。
+    # 不排除的话它们会吃光尝试预算（实测 3 个行内「选择」被连点 8 次，真正的「…」入口一个都没轮到）。
+    _p = it.get("path") or []
+    if _p and isinstance(_p[0], dict) and _p[0].get("axis") == "row":
+        return False
     if any(h in blob for h in _LAYER_OPEN_HINTS):
         return True
     return "pick" in str(it.get("test_id") or "").lower()
 
 
-def _open_layer_and_collect(pg, cand: dict, absorb) -> bool:
+def _open_layer_and_collect(pg, cand: dict, absorb, collected: list | None = None) -> bool:
     """点开一个「下一层」候选控件，把新出现的控件吸收进来；返回是否真打开了新层。
 
     打开后立刻用该层内的「取消/关闭」按钮（按 test_id 精确定位 —— 页面上同名「取消」往往有多个）
@@ -1021,12 +1090,29 @@ def _open_layer_and_collect(pg, cand: dict, absorb) -> bool:
     try:
         loc = pg.get_by_test_id(test_id) if test_id else pg.get_by_role(role, name=name)
         n = loc.count()
+        # ★2026-09-22（口径 C 实测）：图标按钮（文字就是 "..."，靠 title 表明用途）在页面上往往**同名多个**
+        # ⇒ 按 name 取必然 count>1 被跳过（订单页 6 个挑选入口里 3 个正是这种，实测只探到 3 层）。
+        # title 是这类按钮唯一的稳定标识 ⇒ 同名时用 title 消歧（生产里图标按钮就是这么写的）。
+        if n != 1 and not test_id and str(name).strip() in ("...", "…", "") and cand.get("help_text"):
+            alt = pg.locator(f'[title="{cand["help_text"]}"]')
+            if alt.count() == 1:
+                loc, n = alt, 1
         if n != 1:
             print(f"      [explore] ℹ️ 弹层候选「{shown}」命中 {n} 个（要求唯一）→ 跳过")
             return False
-        loc.first.click()
+        # 2026-09-22（P16 批 5 实测）：候选可能来自**已经被关掉的层**（如「…」按钮在新建弹窗里，
+        # 弹窗关了它就不可见）⇒ 直接点会卡到 Playwright 30s 超时，而超时异常会把**本层其余钻取**
+        # 一起吃掉（实测订单页 6 个挑选层因此只探到 2 个，其余层的行内控件全部缺失）。
+        # ⇒ 先做可见性预检 + 把点击超时收短（5s）：只在**当前看得见**的东西上点，绝不硬等。
+        if not loc.first.is_visible():
+            print(f"      [explore] ℹ️ 弹层候选「{shown}」当前不可见（层已关/被遮挡）→ 跳过")
+            return False
+        loc.first.click(timeout=5000)
         fresh = _wait_fresh_items(pg, absorb)
         if not fresh:
+            # ★2026-09-22：**关了再退**。以前这里直接 return False ⇒ 层留在打开状态，
+            # 后面的层被它盖住、点击全部超时（订单页实测）。关层是幂等的，多关一次无害。
+            _close_layer_by_item(pg, collected or [])
             if not _page_alive(pg):
                 print(f"      [explore] ⚠️ 点开「{shown}」后页面/渲染进程已失效（标签崩溃或被 OOM 杀掉）"
                       f"—— 这不是「没有弹层」，是环境事故，本层控件会缺失")
@@ -1074,10 +1160,27 @@ def _close_layer_by_item(pg, items: list[dict]) -> None:
                      and str(x.get("semantic_name") or "").startswith("选择@")), None)
     if row_pick:
         try:
+            loc = None
             tid = row_pick.get("test_id")
-            loc = pg.get_by_test_id(tid) if tid else pg.get_by_role("button", name="选择")
-            if loc.count() == 1 and loc.first.is_visible():
-                loc.first.click()
+            if tid:
+                cand = pg.get_by_test_id(tid)
+                if cand.count() == 1:
+                    loc = cand.first
+            # 2026-09-22（P16 批 4/5 实测根因）：行内埋点按口径撤除后，`get_by_role("button", name="选择")`
+            # 在「每行一个选择按钮」的表里**必然歧义**（count>1）⇒ 这一层再也关不掉 ⇒ 层一直盖着，
+            # 后面的挑选层全被挡住（实测订单页 6 个挑选层只探到 1 个，生成时表现为「8 个语义名映射不上」）。
+            # 改走框架自己的「锚点 + 容器内相对路径」——行锚文本定位到行、再取该行的按钮。
+            if loc is None and row_pick.get("anchor") and row_pick.get("path"):
+                from framework.tools.probe.scope_locate import scope_locate
+                r = scope_locate(pg, row_pick["anchor"], row_pick["path"])
+                if r.get("ok"):
+                    loc = r["locator_obj"].first
+            if loc is None:                                # 旧兜底：整页只有一个「选择」才敢点
+                cand = pg.get_by_role("button", name="选择")
+                if cand.count() == 1:
+                    loc = cand.first
+            if loc is not None and loc.is_visible():
+                loc.click()
                 pg.wait_for_timeout(300)
         except Exception:
             pass

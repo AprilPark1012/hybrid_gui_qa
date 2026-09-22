@@ -160,7 +160,7 @@ def _render_assert(a: dict, loc_map: dict, cross_page: bool = False,
                       f"（generate 日志有 ⚠️ 仍未映射）；请检查 element 拼写，或改用 selector")
             return [f"    _log(page, \"unmapped\", '断言元素未映射: {elem}')",
                     f"    pytest.fail({reason!r}, pytrace=False)"]
-        prim = f"lambda p: p.{loc}"
+        prim = _primary_lambda(loc)
     if kind in _ASSERT_NEED_LOC and prim is None:
         return [f"    pytest.fail({'断言 kind=' + kind + ' 需要 selector 或 element 才能定位'!r},"
                 f" pytrace=False)"]
@@ -187,6 +187,19 @@ def _render_assert(a: dict, loc_map: dict, cross_page: bool = False,
 
 
 # ---------------- 生成一个用例的 pytest 函数 ----------------
+def _primary_lambda(expr: str) -> str:
+    """把定位表达式渲染成 `lambda p: …`（生成物里的 `primary=`）。
+
+    约定：表达式是**后缀**形态（`get_by_test_id("x").locator("tr")`）⇒ 拼成 `p.<后缀>`。
+    但**运行期下钻**是完整函数调用（`_drill(p, anchor, path)`）⇒ 不能再加 `p.`，
+    否则渲染成 `p._drill(p, …)`（页面对象上没这方法 ⇒ 运行必 AttributeError）。
+    ★2026-09-22（P16 批 5）实测踩到：加 `_drill` 那版生成物全部是 `p._drill(...)`。
+    """
+    if expr.startswith("_drill("):
+        return f"lambda p: {expr}"
+    return f"lambda p: p.{expr}"
+
+
 def _semantic_to_locator_expr(it: dict) -> str:
     """probe 元素字典 → Playwright 定位表达式（确定性，Tier1 顺序）。
 
@@ -203,7 +216,10 @@ def _semantic_to_locator_expr(it: dict) -> str:
         drill = path_expr(it.get("anchor"), it.get("path"))
         if drill and drill.startswith("page."):
             return drill[len("page."):]
-        # 拼不出（如 col.header 需要运行时读表头算列序）⇒ 如实落到下面的老分支
+        # 静态拼不出（`col.header` 要运行时读表头算列序）⇒ 退到**运行期下钻** `_drill(p, anchor, path)`。
+        # 绝不能落到下面的裸语义分支：那会生成 `get_by_role("button", name="选择")` 这种
+        # 在多行表里**必然歧义**的定位（实测就是这么错的），属于假通过。
+        return f"_drill(p, {it['anchor']!r}, {it['path']!r})"
     if it.get("test_id"):
         return f'get_by_test_id("{it["test_id"]}")'
     if it.get("role") and it.get("name"):
@@ -315,7 +331,7 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
                 lines.append(f"    _log(page, \"unmapped\", '元素未映射: {elem}')")
                 lines.append(f"    pytest.fail({reason!r}, pytrace=False)")
                 continue
-            primary = f"lambda p: p.{loc}"
+            primary = _primary_lambda(loc)
             semantic = repr(elem) if elem else "None"
             if op in ("fill", "select"):
                 ref = st["_payload_ref"]
@@ -838,6 +854,8 @@ from conftest import (_CURRENT_LOG, _log, _data, _act, _goto,
                       #    （实测：new 的 _Tabs 漏了 → verify 里 30 步用例第一步就 NameError；
                       #     防复发检查见 tests/test_artifacts_health.py::test_test_cases_imports_every_conftest_helper）
                       _Tabs, _click_row_cell, _assert_first_row)
+# P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）
+from framework.tools.probe.scope_locate import drill as _drill
 import pytest
 from playwright.sync_api import expect as _pw_expect
 

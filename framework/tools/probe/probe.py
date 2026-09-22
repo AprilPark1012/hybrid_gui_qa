@@ -299,6 +299,10 @@ def _ctx_token(nearby_text: str, container_heading: str, help_text: str) -> str:
     return ""
 
 
+# 光秃秃的通用占位符（没有区分度，只能靠 label 认人）；描述性占位符不在其列。
+_BARE_GENERIC_PLACEHOLDERS = {"请选择", "请输入", "选填", "全部", "请选择_", "选择", "-", "--"}
+
+
 def assign_semantic_names(items: list[dict], max_len: int = 26) -> None:
     """给探测结果统一分配 semantic_name（**两遍命名，且可重复调用**，2026-09-14 / 2026-09-18 批次 2 改造）。
 
@@ -330,6 +334,19 @@ def assign_semantic_names(items: list[dict], max_len: int = 26) -> None:
         if not base:
             base = _slug(readable_name(it.get("text") or "", it.get("help_text") or "")
                          or it.get("tag") or "")
+        # ★2026-09-22（口径 C 实测，订单页工具栏三个下拉）：
+        # 占位符是**通用词**（"请选择"/"请输入"/"选填"）时拿它当基础名**毫无区分度** ⇒ 同名一组只能落到
+        # `请选择_2/3/4`（序号 = DOM 顺序，行序一变就指向别的控件）；而且**命名随探测范围漂移**
+        # （一次性探测里是 `请选择_0021_0451_1031`，分轮探测里变成 `请选择_3`）⇒ 用例引用哪个名字都不稳。
+        # 这类控件真正稳定的身份是它的 **label**（实测正是"业务单元/管理单元/帐套"）⇒ 通用占位符时改用 label。
+        # ⚠️ 只对**光秃秃的通用占位符**生效（"请选择"/"请输入"/"选填"）：像「请选择客户」「请输入合同名称」
+        # 这类**描述性**占位符本身就是好名字，不该被改（改了反而与弹层里的客户字段撞名，
+        # 实测把 5 个搜索用例引用的 `客户名称_右模糊_前缀匹配` 逼成了不稳的 `客户_2`）。
+        _ph = _slug(it.get("placeholder") or "")
+        if base and _ph and base == _ph and _ph in _BARE_GENERIC_PLACEHOLDERS:
+            _lb = _slug((it.get("label") or "").split("\n")[0].strip())
+            if _lb:
+                base = _lb
         it["base_name"] = base
         it.setdefault("ctx_token", "")
         counts[base] = counts.get(base, 0) + 1
@@ -421,6 +438,25 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
                                       col_header=row_ctx.get("col_header"),
                                       col_index=row_ctx.get("col_index"),
                                       target_role=role, target_text=None) or None
+        elif anchor:
+            # P16 批 6（口径 C）：**锚点里的表单字段**（弹层/区块内的输入框、下拉、按钮）没有行/列语境，
+            # 但内层埋点撤除后它们恰恰最需要"从锚点下钻"。按字段自身信号产出一条 target 步：
+            # placeholder（最稳）→ label → text。相对锚点定位，唯一性由 scope_locate 兜底。
+            # 按**元素类型**挑最稳的信号（实测教训：demo 的 <label> 没有 for、也没包住 input
+            # ⇒ `get_by_label` 关联不上，给按钮选 label 步会定位失败 ⇒ 按钮/链接优先用文本）
+            if tag in ("input", "textarea", "select"):
+                cands = (("placeholder", placeholder), ("label", label), ("text", text))
+            elif str(text or "").strip() in ("...", "…", "") and help_text:
+                # ★2026-09-22：图标按钮（文字就是 "..."）**text 毫无区分度** —— 弹层里 3 个「…」
+                # （业务单元/管理单元/帐套）用 text 步定位**必然歧义**（实测：primary 命中 3 个，
+                # 用例直接红）。title（help_text）是这类按钮唯一的稳定标识，也是生产里的写法。
+                cands = (("title", help_text), ("text", text), ("label", label))
+            else:
+                cands = (("text", text), ("label", label), ("placeholder", placeholder))
+            for by, val in cands:
+                if val:
+                    path = [{"axis": "target", "by": by, "value": val}]
+                    break
 
         base = _slug(readable_name(text, help_text) or tag or f"el{i}")
 

@@ -110,6 +110,25 @@ def step_expr(prev: str, step: dict, *, col_index: int | None = None) -> str | N
             return f'{prev}.get_by_role("{val}")'
         if by == "text" and val not in (None, ""):
             return f'{prev}.get_by_text("{val}", exact=True)'
+        # ★2026-09-22：图标按钮（"…"）靠 title 定位 —— 同位 text 必然歧义（弹层里 3 个"…"）。
+        if by == "title" and val not in (None, ""):
+            return f'{prev}.get_by_title("{val}")'
+        # P16 批 6（口径 C）：**弹层内表单字段**的定位口径。撤掉内层埋点后，字段是"最需要下钻"的一类
+        # （实测：`modal-new-order` 里的订单名称输入框，撤掉 `o-name` 后没有路径可走 ⇒ 框架定位不了）。
+        # 按字段自身的稳定信号定位：placeholder（最稳）→ label（非 exact，真实表单的 label 常带必填星号）
+        if by == "placeholder" and val not in (None, ""):
+            return f'{prev}.get_by_placeholder("{val}")'
+        if by == "label" and val not in (None, ""):
+            # ★2026-09-22（口径 C 实测：合同弹层的管理单元/帐套/合同类型/业务单元四个下拉）：
+            # 真实表单的 `<label>` 常常**没有 for**、也没包住控件 ⇒ get_by_label 空手而归。
+            # ⇒ 把**确定性兜底写进表达式本身**（label 之后的第一个表单控件），靠 Playwright 的惰性
+            # 求值在运行时二选一。**不能**改成"返回 None 让调用方退到 _drill"——drill 也要先合成
+            # 表达式，那样会把运行期通道一起堵死（实测踩过：4 条用例的 primary 直接抛 RuntimeError）。
+            _fb = (f'{prev}.locator("xpath=.//label[normalize-space()="{val}" '
+                   f'or contains(normalize-space(), "{val}")]'
+                   f'/following::*[self::input or self::select or self::textarea][1]")')
+            return (f'({prev}.get_by_label("{val}") '
+                    f'if {prev}.get_by_label("{val}").count() else {_fb})')
         return None
     return None
 
@@ -258,6 +277,20 @@ def _apply_path(scope, path: list, base_expr: str):
                 if loc_hidden.count() > 0:
                     loc = loc_hidden
                     nxt = f'{expr}.get_by_role("{val}", include_hidden=True)'  # noqa: F841
+        elif axis == "target" and by == "title" and val not in (None, ""):
+            loc = cur.get_by_title(str(val))            # 图标按钮（"…"）：title 是唯一稳定标识
+        elif axis == "target" and by == "placeholder" and val not in (None, ""):
+            loc = cur.get_by_placeholder(str(val))     # 属性选择，隐藏元素也能命中（无需可见性降级）
+        elif axis == "target" and by == "label" and val not in (None, ""):
+            loc = cur.get_by_label(str(val))           # 非 exact：label 常带必填星号
+            # ★2026-09-22（口径 C 实测：合同弹层的「管理单元/帐套/合同类型/业务单元」四个下拉）：
+            # 真实表单里 `<label>` **经常没有 for、也没包住控件** ⇒ get_by_label 关联不上（实测 0 个）。
+            # 补一条**结构性**兜底：label 之后的第一个表单控件。这是**确定性规则**（不是猜 CSS，
+            # 本项目的铁律照旧：locator 一律由框架合成），且只在"关联失败"时才走。
+            if loc.count() == 0:
+                loc = cur.locator(
+                    f"xpath=.//label[normalize-space()='{val}' or contains(normalize-space(), '{val}')]"
+                    f"/following::*[self::input or self::select or self::textarea][1]")
         elif axis == "target" and by == "text" and val not in (None, ""):
             loc = cur.get_by_text(str(val), exact=True)
         if loc is None:
@@ -310,6 +343,20 @@ def locate_in_scope(scope, path: list | None = None, *, base_expr: str = "<scope
                 "strategy": strategy_for(steps), "reason": why}
     return {"ok": True, "locator": expr, "locator_obj": loc, "count": cnt,
             "strategy": strategy_for(steps), "reason": ""}
+
+
+def drill(page: Page, anchor: dict, path: list | None = None):
+    """运行期下钻：**直接返回 Locator**，定位不唯一/失败就抛错并带上 reason（P16 批 5）。
+
+    为什么要有它：`col.header` 这类列口径**必须运行时读表头算列序** ⇒ 生成物没法把它拼成
+    静态表达式链（`get_by_test_id(...).locator(...)…`）⇒ 生成期的表达式退化成 `get_by_role(...)`
+    这种**会歧义**的裸语义（实测：6 个挑选层的按钮全变成 `get_by_role("button", name="选择")`，
+    在"每行一个选择按钮"的表里必然 count>1）。有它就能把「锚点 + 路径」原样搬到运行期执行。
+    """
+    r = scope_locate(page, anchor, path)
+    if not r.get("ok"):
+        raise RuntimeError(f"下钻定位失败（anchor={anchor} path={path}）：{r.get('reason')}")
+    return r["locator_obj"]
 
 
 def scope_locate(page: Page, anchor: dict, path: list | None = None) -> dict:
