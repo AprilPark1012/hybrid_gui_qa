@@ -76,6 +76,58 @@ def test_key_stable_and_sensitive():
     assert a != cassette_key("P", "S2")             # system 变了（提示词改版）⇒ 不命中
 
 
+def test_struct_key_normalizes_data_values_and_placeholders():
+    """★ 归一化（2026-09-22 现场反馈 + 本机复现）：**换数据 / 参数化不该打死录像**。
+
+    现场形态：场景文件在 V7.8「数据参数化真展开」后写成占位符 ——
+        录像时的 prompt：「…搜索框输入 '1005'…」
+        现在的 prompt：  「…搜索框输入 '{关键词}'…」
+    结构键原先**逐字**取场景文案 ⇒ 只因「换了一组数据 / 把它参数化」就整份不命中，
+    而这恰恰是结构键本来要排除的东西（它排除的就是业务数据值）⇒ 用户被迫每次重录。
+
+    归一口径：引号内的值（'1005' / "1005" / ‘1005’）与花括号占位符（{关键词}）都视作「值」，
+    统一折成 `<VAL>`；**只动这两类**，语义文字一个不碰（下一节有负向自证）。
+    """
+    pages = [{"name": "合同列表页", "url": URL}]
+    base = struct_key("在搜索框输入 '1005' 点搜索按钮", ITEMS, pages)
+    assert base == struct_key("在搜索框输入 '2008' 点搜索按钮", ITEMS, pages), \
+        "换一个数据值就不命中 ⇒ 换数据即需重录（这不是结构键的本意）"
+    assert base == struct_key("在搜索框输入 '{关键词}' 点搜索按钮", ITEMS, pages), \
+        "占位符与具体值不等价 ⇒ 参数化即需重录（本次现场问题的根因）"
+    assert base == struct_key("在搜索框输入 “1005” 点搜索按钮", ITEMS, pages), \
+        "中文引号包的值没被归一（跨机器/文档里很容易写成中文引号）"
+
+
+def test_struct_key_still_sensitive_to_semantics():
+    """负向自证：归一化**不许**把语义变化也吃掉 —— 场景语义 / 控件骨架 / 页面变了必须不命中。"""
+    pages = [{"name": "合同列表页", "url": URL}]
+    base = struct_key("在搜索框输入 '1005' 点搜索按钮", ITEMS, pages)
+    assert base != struct_key("在搜索框输入 '1005' 点导出按钮", ITEMS, pages), \
+        "动作语义变了（搜索→导出）却不命中变化 ⇒ 会拿旧结论套新场景"
+    assert base != struct_key("在搜索框输入 '1005' 点搜索按钮", ITEMS[:1], pages), \
+        "控件骨架少一个却同键 ⇒ 元素清单变了不该复用旧判断"
+    assert base != struct_key("在搜索框输入 '1005' 点搜索按钮", ITEMS,
+                              [{"name": "合同列表页", "url": URL + "?x=1"}]), \
+        "页面 url 变了却同键"
+    assert base != struct_key("在列表页输入 '1005' 点搜索按钮", ITEMS, pages), \
+        "场景语义文字变了却同键（归一化只管值，不管语义）"
+
+
+def test_lookup_accepts_multiple_struct_keys(tmp_path):
+    """兼容性（2026-09-22）：查询时**新旧两把结构键都要认** —— 否则升级即让旧录像集体失效。"""
+    from framework.tools.explore.llm_cassette import struct_key_legacy
+    pages = [{"name": "合同列表页", "url": URL}]
+    legacy = struct_key_legacy(SCENARIO, ITEMS, pages)
+    c = Cassette(MODE_RECORD, tmp_path)
+    c.store("PROMPT-OLD", "m", "S", [{"kind": "text", "completion": "x"}], key_struct=legacy)
+    # 单把（新算法）不命中是预期的；把两把都递进去必须命中旧那份
+    # ⚠️ 必须换一个 prompt 才能走到结构键那条路（同 prompt ⇒ 严格键直接命中，兼容逻辑根本没被测到）
+    got = Cassette(MODE_REPLAY, tmp_path).lookup(
+        "PROMPT-NEW", "S", struct_key_value=["0000000000000000", legacy])
+    assert got is not None, "多把结构键查询没命中旧算法的 key_struct ⇒ 旧录像会集体失效"
+    assert got.get("_match") == "struct"
+
+
 # ---------------------------------------------------------------- 存取
 
 def test_store_lookup_roundtrip(tmp_path):

@@ -49,6 +49,9 @@ MODE_REPLAY = "replay"
 
 DEFAULT_DIRNAME = "llm_cassettes"
 
+# 归一化用的「值」形态（2026-09-22 引入，见 normalize_values 的说明）
+VAL_TOKEN = "<VAL>"
+
 
 class CassetteError(RuntimeError):
     """cassette 用法/内容有问题（目录不存在、文件损坏、键不命中……）。一律 fail loud。"""
@@ -94,6 +97,49 @@ def struct_key(scenario: str, items: list[dict] | None, pages: list[dict] | None
     大声说明**（步骤是录制当时针对那批数据做的判断，换了数据要人核对）。
 
     刻意排除的字段：nearby_text / text / help_text / container_heading（都可能含业务数据值）。
+    """
+    import hashlib as _h
+    parts = [system or "", normalize_values((scenario or "").strip())]
+    for pg in (pages or []):
+        parts.append(f"PAGE|{pg.get('name', '')}|{pg.get('url', '')}")
+    for it in sorted(items or [], key=lambda x: (str(x.get("page") or ""),
+                                                 str(x.get("semantic_name") or ""))):
+        parts.append("EL|" + "|".join(
+            str(it.get(k) or "") for k in ("page", "semantic_name", "role", "name", "label",
+                                           "placeholder", "test_id", "opens_new_tab")))
+    return _h.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
+
+
+def normalize_values(text: str) -> str:
+    """把「业务数据值 / 参数化占位符」折成同一个骨架 `<VAL>`（2026-09-22 现场反馈驱动）。
+
+    ⚠️ 为什么必须做：场景文件在 V7.8「数据参数化真展开」后把字面值写成占位符 ——
+        录像时：「…搜索框输入 '1005'…」   现在：「…搜索框输入 '{关键词}'…」
+    结构键原先**逐字**取场景文案 ⇒ 只因「换了一组数据 / 把它参数化」就整份不命中 ⇒
+    用户被迫每次重录；而这恰恰是结构键本来要排除的东西（它排除的就是业务数据值）。
+
+    口径（只动这两类，语义文字一个不碰）：
+      ① 花括号占位符 `{关键词}` / `{期望编号}`（含被引号包着的情形 `'{关键词}'`）
+      ② 成对引号里的值 `'1005'` / `"1005"` / “1005” / ‘1005’
+    ⇒ 换数据、参数化都不再打死录像；真改了页面 / 控件骨架 / 场景语义则照旧不命中
+    （宁可报错，也不拿旧结论套新场景 —— 这条红线不变）。
+    """
+    import re
+    t = re.sub(r"\{[^{}\n]{0,40}\}", VAL_TOKEN, text or "")
+    # 四对引号**各自闭合** —— ⚠️ 不能写「字符类 + 反向引用」：中文/西文引号的开闭是**不同字符**
+    #（`“1005”` 的开引号是 `“`、闭引号是 `”`），反向引用写法对它永远不匹配（实测踩过）。
+    return re.sub(r"""('[^'\n]{0,60}'|"[^"\n]{0,60}"|“[^”\n]{0,60}”|‘[^’\n]{0,60}’)""",
+                  VAL_TOKEN, t)
+
+
+def struct_key_legacy(scenario: str, items: list[dict] | None, pages: list[dict] | None = None,
+                      system: str = "") -> str:
+    """**旧算法**（场景文案不归一化）—— 只为兼容 2026-09-22 之前录的录像。
+
+    那些录像的 `key_struct` 是按这个算法算的；若不做兼容，升级后它们会**集体失效**
+    （等于逼用户把所有场景重录一遍）。口径：新录的用新算法（录像里记 `key_struct_algo`），
+    **查询时新旧两把键都试**（见 `Cassette.lookup`）—— 旧录像照旧能用，只是享受不到
+    「换数据也不失效」的好处。
     """
     import hashlib as _h
     parts = [system or "", (scenario or "").strip()]
@@ -236,12 +282,14 @@ class Cassette:
     def file_for(self, key: str) -> Path:
         return self.root / f"{key}.json"
 
-    def lookup(self, prompt: str, system: str = "", struct_key_value: str = "",
+    def lookup(self, prompt: str, system: str = "", struct_key_value: str | list[str] = "",
                strict_only: bool = False) -> dict | None:
         """回放：返回录好的记录（命中方式写在返回值的 `_match` 里）；没有返回 None。
 
         查找顺序：① **严格键**（prompt 逐字相同）→ 命中即用；② 给了 struct_key_value 且未禁用
         → 扫目录找**结构键**相同的录像（数据值不同但页面结构相同）。
+        `struct_key_value` 可以是**多把键**（2026-09-22 起：新算法 + 旧算法都传进来，
+        保证升级不会让旧录像集体失效）。
         文件存在但读不动 / 里面没有可用回答 ⇒ 抛 CassetteError（**不能**把坏文件当成「未命中」：
         那会把一次数据损坏伪装成「只是没录过」）。
         """
@@ -262,12 +310,14 @@ class Cassette:
 
         if strict_only or not struct_key_value:
             return None
+        # ⚠️ 支持**多把结构键**（2026-09-22）：新算法（值归一化）与旧算法（兼容旧录像）都试
+        _keys = [struct_key_value] if isinstance(struct_key_value, str) else list(struct_key_value)
         for f in sorted(self.root.glob("*.json")):      # 扫描时跳过坏文件：一个坏文件不该毁掉整次回放
             try:
                 rec = json.loads(f.read_text(encoding="utf-8"))
             except Exception:
                 continue
-            if rec.get("key_struct") == struct_key_value and rec.get("responses"):
+            if rec.get("key_struct") in _keys and rec.get("responses"):
                 self.hits += 1
                 self.last_key = rec.get("key") or key
                 self.last_match = "struct"

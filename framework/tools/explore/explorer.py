@@ -537,7 +537,7 @@ def _save_to_cassette(cassette, prompt: str, model: str, structured, raw_text,
 
 def _replay_from_cassette(cassette, prompt: str, items: list[dict], first_url: str,
                           scenario: str, pages: list[dict] | None = None,
-                          struct_key_value: str = "", strict_only: bool = False) -> ElementMap:
+                          struct_key_value: str | list[str] = "", strict_only: bool = False) -> ElementMap:
     """离线回放：从录像里取回答，走**与 live 完全相同**的解析链路（绝不联网）。
 
     录到的回答可能有两条（结构化 / 文本）：按序尝试，第一个能解析出步骤的胜出
@@ -631,10 +631,14 @@ async def _ai_explore_async(
     # ① 离线回放（--llm-cassette）：命中即用 —— **刻意放在 llm_from_env() 之前**，
     #    因为离线机器常常连 .env 都没配（回放不需要 key，也不联网）。
     if llm_cassette is not None and llm_cassette.is_replay:
-        from framework.tools.explore.llm_cassette import struct_key
+        from framework.tools.explore.llm_cassette import struct_key, struct_key_legacy
+        # ⚠️ **两把结构键都试**（2026-09-22）：新算法（值归一化 ⇒ 换数据/参数化不再失效）
+        #    + 旧算法（兼容此前录的录像 —— 它们的 key_struct 是按旧算法算的，
+        #    不做这层兼容，升级就会让所有旧录像集体失效 = 逼用户把所有场景重录一遍）
         return _replay_from_cassette(
             llm_cassette, prompt, page_items, first_url, scenario, pages=pages,
-            struct_key_value=struct_key(scenario, page_items, pages, _PLANNER_SYSTEM),
+            struct_key_value=[struct_key(scenario, page_items, pages, _PLANNER_SYSTEM),
+                              struct_key_legacy(scenario, page_items, pages, _PLANNER_SYSTEM)],
             strict_only=cassette_strict)
 
     obj = llm_from_env()   # ChatDeepSeek(deepseek) / ChatOpenAI 等
