@@ -555,8 +555,12 @@ pytest tests/test_cli_flags.py -q                # CLI 参数契约自测（不�
 # ① 一类：框架自测（秒级，不需要 demo/key）—— 条数以实跑输出为准，随批次增长
 python -m pytest tests/ -q                       # CLI 契约 / UTF-8 / 断言翻译 / 退出码 / 质量闸 / 打包 / 门禁解耦
 # ② 二类：端到端特性验证（需要 demo —— 统一入口会自己起停，跑完给汇总表）
-bash tests/run_verifications.sh                  # 全部 verify_*.py（内存 <550MB 会如实 SKIP，不硬跑）
-bash tests/run_verifications.sh --only slow_target     # 只跑某一个；--list 列出全部
+python tests/run_verifications.py                # 全部 verify_*.py（内存 <550MB 会如实 SKIP，不硬跑）
+python tests/run_verifications.py --only slow_target   # 只跑某一个；--list 列出全部
+python tests/run_verifications.py --no-demo      # 不起 demo（只跑自包含的验证）
+python tests/run_verifications.py --stream       # 实时打印子进程输出（默认只打尾部摘要）
+#   ↑ 二类入口是 **Python 版**（Windows / Linux / macOS 通用；PowerShell 里没有 bash）
+bash tests/run_verifications.sh                  # Linux/macOS 便捷包装：内部转发到上面那条 Python 版（唯一实现在 .py）
 python tests/verify_slow_target.py               # 慢目标闸门（F1/F2）：慢代理 300ms/请求下 6 条关键用例必须全绿
                                                  #   （纯正向闸、无负向段；内存 <650MB 会如实 SKIP exit 3，SKIP≠通过）
 python tests/verify_html_sync.py                 # R8 判据：培训页能由代码可复现生成 且 与代码逐字节一致

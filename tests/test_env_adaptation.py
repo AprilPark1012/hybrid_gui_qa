@@ -178,3 +178,73 @@ def test_contract_gates_now_report_actionable_message(tmp_path, monkeypatch):
         with pytest.raises(AssertionError) as ei:
             fn()
         assert "generate" in str(ei.value), f"{fn.__name__} 的报错没给出下一步：{ei.value}"
+
+
+# ==================== ④ 二类统一入口：跨平台 Python 实现 ====================
+# 背景（2026-09-22 使用者现场反馈）：Windows PowerShell 里**没有 bash** ⇒
+# `bash tests/run_verifications.sh` 直接报「无法将"bash"项识别为 cmdlet」⇒
+# 二类验证对团队里的 Windows 用户等于不存在，而本框架的现场恰恰是 Windows。
+# 口径：**唯一实现 = tests/run_verifications.py**；`.sh` 退化成转发包装（防漂移判据见 ⑤ 节）。
+
+def _run_runner(args):
+    import subprocess
+    return subprocess.run([sys.executable, "tests/run_verifications.py", *args],
+                          cwd=str(REPO), capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=180)
+
+
+def test_runner_lists_exactly_the_repo_verify_scripts():
+    """★ `--list` 必须与仓库里的 verify_*.py 完全一致（**自动收录、不许手写清单** ⇒ 新增脚本不会漏跑）。"""
+    r = _run_runner(["--list"])
+    assert r.returncode == 0, r.stderr
+    listed = sorted(ln.strip() for ln in r.stdout.splitlines() if ln.strip().endswith(".py"))
+    expected = sorted(p.name for p in (REPO / "tests").glob("verify_*.py"))
+    assert listed == expected, f"\n--list 给的: {listed}\n仓库实际有: {expected}"
+
+
+def test_runner_only_filter_and_unknown_flag():
+    r = _run_runner(["--only", "html_sync", "--list"])
+    assert r.returncode == 0 and "verify_html_sync.py" in r.stdout, r.stdout
+    assert "verify_assert_kinds.py" not in r.stdout, "过滤没生效"
+    bad = _run_runner(["--onlyy", "x"])
+    assert bad.returncode == 2, f"未知参数必须 exit 2（脚本调用方不能把「没跑」当成功），实际 {bad.returncode}"
+
+
+def test_runner_finds_windows_venv_layout(tmp_path):
+    """跨平台解释器定位：Windows 的 `.venv/Scripts/python.exe` 必须认得出来。"""
+    import run_verifications as rv
+    d = tmp_path / ".venv" / "Scripts"
+    d.mkdir(parents=True)
+    (d / "python.exe").write_text("", encoding="utf-8")
+    assert rv._venv_python(tmp_path).endswith("python.exe")
+
+
+def test_runner_mem_probe_never_fakes_a_number():
+    """内存探测：要么给出正整数，要么如实 None（Windows 走 ctypes；两条都拿不到就 None）。"""
+    import run_verifications as rv
+    mb = rv.mem_available_mb()
+    assert mb is None or (isinstance(mb, int) and mb > 0), mb
+
+
+def test_runner_classify_maps_exit_codes():
+    """退出码语义：0 通过 / 3 跳过（**不是通过**）/ 其它（含超时 124）一律算失败。"""
+    import run_verifications as rv
+    assert (rv.classify(0), rv.classify(3), rv.classify(1), rv.classify(124)) == \
+        ("ok", "skip", "fail", "fail")
+
+
+# ==================== ⑤ .sh 只许转发（防两处逻辑漂移）====================
+
+def test_sh_entry_is_thin_wrapper_over_python():
+    """★ 防漂移：`.sh` 只做转发 —— **唯一实现是 `.py`**（Windows 上 bash 根本不存在）。
+
+    历史：这份 .sh 原先自带全套逻辑（参数解析 / 内存检查 / demo 启停 / 逐个跑 / 汇总），
+    2026-09-22 因为 Windows 跑不起来而把实现搬到 Python ⇒ 若 .sh 里还留着旧逻辑，
+    两边就会各改各的（这类「改了一处忘了另一处」在本项目已踩过多次）。
+    """
+    sh = (REPO / "tests" / "run_verifications.sh").read_text(encoding="utf-8")
+    assert "run_verifications.py" in sh, ".sh 没有转发到 Python 版 ⇒ 两处逻辑会漂移"
+    body = [ln for ln in sh.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    assert len(body) <= 12, f".sh 里还有 {len(body)} 行实体逻辑 ⇒ 应只剩转发：{body}"
+    for stale in ("mapfile", "MemAvailable", "declare -a NAMES", "demo_up()"):
+        assert stale not in sh, f".sh 里还留着旧实现片段（应已搬到 .py）：{stale}"

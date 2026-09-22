@@ -1936,6 +1936,12 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       「先跑 <code>generate</code> / 重新解压」，而不是甩一堆「缺接线」；<b>连不上被测目标</b>时文案一律带
       「先起 <code>python -m demo.app</code>」这一步。如实 <code>SKIPPED</code> 会打印原因（<b>SKIP ≠ 通过</b>），其余必须全绿。
     </p>
+    <p style="margin-top:10px;color:var(--muted);font-size:.92rem">
+      <b>二类（端到端特性验证）也用 Python 跑</b>（Windows / Linux 通用，Python 入口是唯一实现）：
+      <code>python tests/run_verifications.py</code>（全部）·
+      <code>--only &lt;子串&gt;</code> 只跑一个 · <code>--list</code> 先看跑哪些 · <code>--no-demo</code> 不起 demo ·
+      内存不足会<b>如实 SKIP 并 exit 3（不是通过）</b>。
+    </p>
   </div>
 </section>
 
