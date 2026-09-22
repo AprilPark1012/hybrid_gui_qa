@@ -157,21 +157,38 @@ def seg3_mismatch_fails_loud() -> int:
     except Exception as e:
         bad(f"取缺录像清单失败：{type(e).__name__}: {e}")
         return FAIL
+    # ★2026-09-22 修：原来「所有场景都有录像」时直接 SKIP；但这条判据守的是**红线**
+    # （没有匹配录像 ⇒ 必须如实报「没有这一份」，绝不静默套用别的录像）。
+    # 录像补齐后它会**永远 SKIP** ⇒ 等于这条红线长期无人守（SKIP 不算通过，也没人逼它）。
+    # 正解：反例自己造 —— 仓库内临时场景，保证「绝不会有对应录像」；
+    # 清理一律走 finally，任何中途 return/异常都不留残渣（仓库零残留是硬要求）。
+    _tmp_scen: Path | None = None
     if not missing:
-        print("  ⏭️  SKIP：所有场景都有录像 ⇒ 构造不出「对不上」的情形；**不算通过**")
-        return SKIP
-    yml = REPO / str(missing[0]["scenario"])
-    rc, out = run_explore(["--scenario-file", str(yml.relative_to(REPO)),
-                           "--llm-cassette", str(CASSETTE_DIR), "--no-cases", "--no-verify"])
-    print(_tail(out, 8))
-    if rc == 0:
-        bad(f"{yml.name} 明明没有匹配的录像却 exit 0 ⇒ 静默用了别的录像（红线）")
-        return FAIL
-    if "没有这一份" not in out:
-        bad(f"退出码 {rc} 可以，但没明确报「没有这一份」⇒ 归因不够硬")
-        return FAIL
-    ok(f"负向：无匹配录像 ⇒ exit {rc} 且明确报「没有这一份」（{yml.name}）")
-    return OK
+        import yaml
+        # ⚠️ 文件名必须是合法场景 id（小写蛇形，正则 ^[a-z][a-z0-9_]*$）：以 `_` 开头会被
+        # explore 判「id 不合法」退出 2 ⇒ 判据会（正确地）判我「归因不够硬」——实测踩过。
+        _tmp_scen = REPO / "scenarios" / "tmp_verify_missing_scen.yml"
+        _tmp_scen.write_text(
+            yaml.safe_dump({"scenario": "体检用临时场景：打开一个不存在的页面做一件不可能的事。"},
+                           allow_unicode=True, sort_keys=False), encoding="utf-8")
+        yml = _tmp_scen
+    else:
+        yml = REPO / str(missing[0]["scenario"])
+    try:
+        rc, out = run_explore(["--scenario-file", str(yml.relative_to(REPO)),
+                               "--llm-cassette", str(CASSETTE_DIR), "--no-cases", "--no-verify"])
+        print(_tail(out, 8))
+        if rc == 0:
+            bad(f"{yml.name} 明明没有匹配的录像却 exit 0 ⇒ 静默用了别的录像（红线）")
+            return FAIL
+        if "没有这一份" not in out:
+            bad(f"退出码 {rc} 可以，但没明确报「没有这一份」⇒ 归因不够硬")
+            return FAIL
+        ok(f"负向：无匹配录像 ⇒ exit {rc} 且明确报「没有这一份」（{yml.name}）")
+        return OK
+    finally:
+        if _tmp_scen is not None:
+            _tmp_scen.unlink(missing_ok=True)
 
 
 # ---------------- 判据 4：录制 → 回放闭环（需 key/外网）----------------

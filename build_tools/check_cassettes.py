@@ -38,7 +38,15 @@ sys.path.insert(0, str(REPO))
 from framework.tools.explore.llm_cassette import default_dir, normalize_values   # noqa: E402
 
 OK, FAIL, USAGE, SKIP = 0, 1, 2, 3
-_SCEN_BLOCK_RE = re.compile(r"自然语言测试场景[:：]?\s*[「『“\"]([\s\S]*?)[」』”\"]")
+# ⚠️ 2026-09-22 实测修的坑：原来是非贪婪 `([\s\S]*?)[」』”"]` ⇒ 场景文案里**自带内层引号**
+# （「返回列表」「查看订单」「新建订单」…）时，抠取会在**第一个内层闭引号**处截断
+# ⇒ 长场景永远匹配不上，体检误报「没有录像」（实测：录制明明成功、prompt 里那句完整存在）。
+# 现在改成**取到段落边界**（下一个已知小节标题或空行），引号只做首尾剥离，不再当终止符。
+_SCEN_HEAD = re.compile(r"自然语言测试场景[:：]?\s*")
+_SCEN_END = re.compile(r"\n\s*\n|\n\s*(?:页面已探测出|跨页规则|可交互控件|可用控件|注意事项)")
+_SCEN_BLOCK_RE = re.compile(
+    r"自然语言测试场景[:：]?\s*[「『“\"]([\s\S]*?)[」』”\"]"
+    r"(?=\n\s*\n|\n\s*(?:页面已探测出|跨页规则|可交互控件|可用控件|注意事项)|$)")
 
 
 def _force_stdio() -> None:
@@ -71,7 +79,23 @@ def scenario_text_of(yml: Path) -> str | None:
 
 def scenario_block_in_prompt(prompt: str) -> str:
     """从录像 prompt 里抠出「自然语言测试场景: 「…」」的**完整段落**（跨行）。"""
-    m = _SCEN_BLOCK_RE.search(prompt or "")
+    text = prompt or ""
+    # ① 首选：抠到段落边界（长场景/含内层引号都稳）
+    i = _SCEN_HEAD.search(text)
+    if i:
+        rest = text[i.end():]
+        if rest[:1] in ("「", "『", "“", '"'):
+            rest = rest[1:]
+        m2 = _SCEN_END.search(rest)
+        block = rest[:m2.start()] if m2 else rest
+        block = block.strip()
+        for q in ("」", "』", "”", '"'):
+            if block.endswith(q):
+                block = block[:-1].rstrip()
+        if block:
+            return block
+    # ② 兜底：老正则（结构异常时至少别返回空）
+    m = _SCEN_BLOCK_RE.search(text)
     return m.group(1).strip() if m else ""
 
 
@@ -99,12 +123,20 @@ def check(scenario_files: list[Path], cassettes: list[dict]) -> tuple[list[dict]
     missing: list[dict] = []
     for yml in scenario_files:
         text = scenario_text_of(yml)
-        rel = str(yml.relative_to(REPO))
+        # ⚠️ 别对仓库外路径硬做 relative_to（实测：调用方传 /tmp 下的临时场景 ⇒ ValueError 崩，
+        # 而"体检"这种工具**不该被一个路径崩掉**）——能相对就相对，不能就如实用绝对路径。
+        try:
+            rel = str(yml.relative_to(REPO))
+        except ValueError:
+            rel = str(yml)
         if not text:
             missing.append({"scenario": rel, "why": "场景文件里没有 scenario 字段"})
             continue
         want = _flatten(normalize_values(text))
-        hit = next((c for c in norm_cass if c["normalized"] == want), None)
+        # 覆盖口径：录像里的场景文案 == 场景文件，**或**完整包含它
+        # （包含是精确判定，不是模糊相似度：录像记录的是当时真正发出去的 prompt，可能多带说明）
+        hit = next((c for c in norm_cass
+                    if c["normalized"] == want or want in c["normalized"]), None)
         row: dict[str, object] = {"scenario": rel, "scenario_text": text}
         if hit:
             row.update({"file": hit["file"], "framework_version": hit["framework_version"],
