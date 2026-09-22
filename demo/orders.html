@@ -70,7 +70,7 @@
 
 <div class="wrap">
   <!-- 搜索区：订单名称(全模糊) / 销售员(右模糊) / 客户(全模糊) / 业务单元·管理单元·帐套 用「...」弹层选值 -->
-  <div class="toolbar">
+  <div class="toolbar" aria-label="搜索工具栏">
     <label>订单名称 <input id="tb-o-name" data-testid="tb-o-name" placeholder="订单名称（全模糊）" autocomplete="off"></label>
     <label>销售员 <input id="tb-o-salesman" data-testid="tb-o-salesman" placeholder="销售员（右模糊：前缀匹配）" autocomplete="off"></label>
     <label>客户 <input id="tb-o-cust" data-testid="tb-o-cust" placeholder="客户（全模糊）" autocomplete="off"></label>
@@ -100,7 +100,7 @@
   </div>
 
   <!-- 订单列表：9 列（订单编号 / 合同编号 / 订单名称 / 管理单元 / 销售员 / 订单类型 / 业务单元 / 帐套 / 客户） -->
-  <table id="tbl-orders" data-testid="tbl-orders">
+  <table id="tbl-orders" data-testid="tbl-orders" aria-label="订单列表">
     <thead>
       <tr>
         <th>订单编号</th><th>合同编号</th><th>订单名称</th><th>管理单元</th><th>销售员</th>
@@ -347,11 +347,11 @@ function render(items){
     tb.innerHTML = '<tr><td colspan="9" class="empty">无匹配数据</td></tr>';
     return;
   }
-  tb.innerHTML = items.map(o=>`<tr data-testid="orow-${o.no}">
-    <td data-field="orderNo"><a data-testid="olink-${o.no}" href="/order_detail.html?no=${o.no}">${o.no}</a></td>
-    <td data-field="contractNo"><a data-testid="clink-${o.no}" target="_blank" rel="noopener"
+  tb.innerHTML = items.map(o=>`<tr>
+    <td data-field="orderNo"><a href="/order_detail.html?no=${o.no}">${o.no}</a></td>
+    <td data-field="contractNo"><a target="_blank" rel="noopener"
         href="/contract_detail.html?no=${o.contract_no}&from=order">${o.contract_no}</a></td>
-    <td data-field="orderName"><a data-testid="nlink-${o.no}" href="/order_detail.html?no=${o.no}">${o.name}</a></td>
+    <td data-field="orderName"><a href="/order_detail.html?no=${o.no}">${o.name}</a></td>
     <td data-field="managementUnit">${o.mu}</td>
     <td data-field="salesman" data-salesman="${o.salesman}">${o.salesmanName}</td>
     <td data-field="orderType">${o.order_type}</td>
@@ -367,7 +367,7 @@ function renderPager(info){
   $('btn-next-o').disabled = info.page >= info.pages;
   let html = '';
   for(let p = 1; p <= info.pages; p++){
-    html += `<button type="button" data-testid="page-${p}" data-page="${p}"
+    html += `<button type="button" data-page="${p}"
               class="${p === info.page ? 'active' : ''}">${p}</button>`;
   }
   $('pager').innerHTML = html;
@@ -404,10 +404,10 @@ let _pickKind = null, _pickTargets = [];
 function renderPickRows(kind){
   const body = $('tbody-pick-' + kind);
   if(!body) return;
-  const btn = (v, label) => `<button type="button" data-testid="pick-${kind}-${v}"
+  const btn = (v, label) => `<button type="button"
                               data-pick-value="${v}" data-pick-label="${label}">选择</button>`;
   // 需求②：行**本身**带同一组 data-pick-* ⇒ 点行任意位置 = 点该行的「选择」按钮（两种选中方式等效）
-  const row = (val_, label, cells) => `<tr data-testid="prow-${kind}-${val_}"
+  const row = (val_, label, cells) => `<tr
         data-pick-value="${val_}" data-pick-label="${label}">${cells}</tr>`;
   if(kind === 'bu' || kind === 'mu' || kind === 'file'){
     body.innerHTML = DICT[kind].map(v=>row(v, v,

@@ -61,8 +61,8 @@
   </div>
 </div>
 
-<!-- 搜索区 -->
-<div class="toolbar">
+<!-- 搜索区（P16 批 4：撤掉子元素埋点后，这里作为**顶层锚点** —— 真实项目常见写法）-->
+<div class="toolbar" aria-label="搜索工具栏">
   <label>关键字 <input id="tb-keyword" data-testid="tb-keyword" placeholder="合同编号/名称/管理单元/合同类型/帐套" autocomplete="off"></label>
   <!-- 2026-09-14 需求②：客户筛选由下拉框改为**输入框 + 右模糊（前缀）匹配**。
        匹配口径：客户名称前缀（大小写不敏感）或客户编号前缀（c1…）。
@@ -89,7 +89,7 @@
 </div>
 
 <!-- 合同列表 -->
-<table id="tbl-contracts" data-testid="tbl-contracts">
+<table id="tbl-contracts" data-testid="tbl-contracts" aria-label="合同列表">
   <thead>
     <tr>
       <th>合同编号</th><th>合同名称</th><th>管理单元</th><th>帐套</th>
@@ -210,8 +210,8 @@ function render(data){
   const tb = document.getElementById('tbody-contracts');
   if(!data.length){ tb.innerHTML='<tr><td colspan="7" class="empty">无匹配数据</td></tr>'; }
   else{
-    tb.innerHTML = data.map(c=>`<tr data-testid="row-${c.no}">
-      <td data-testid="cell-no" data-field="contractNo"><a data-testid="link-${c.no}" href="/contract_detail.html?no=${c.no}">${c.no}</a></td>
+    tb.innerHTML = data.map(c=>`<tr>
+      <td data-field="contractNo"><a href="/contract_detail.html?no=${c.no}">${c.no}</a></td>
       <td data-field="contractName">${c.name}</td>
       <td data-field="managementUnit">${c.mu}</td>
       <td data-field="folder">${c.file}</td>
@@ -227,10 +227,10 @@ function render(data){
 function renderCustomers(){
   // 2026-09-18 需求②：行**本身**也带 data-pick ⇒ 点行任意位置 = 点该行的「选择」按钮（两种选中方式等效）
   document.getElementById('tbody-customers').innerHTML = CUSTOMERS.map(c=>`
-    <tr data-testid="crow-${c.id}" data-cust="${c.id}" data-pick="${c.id}">
+    <tr data-cust="${c.id}" data-pick="${c.id}">
       <td data-field="custName">${c.name}</td>
       <td data-field="custAddr">${c.addr}</td>
-      <td><button type="button" data-testid="pick-${c.id}" data-pick="${c.id}">选择</button></td>
+      <td><button type="button" data-pick="${c.id}">选择</button></td>
     </tr>`).join('');
 }
 

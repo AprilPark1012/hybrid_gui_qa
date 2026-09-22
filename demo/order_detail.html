@@ -32,18 +32,18 @@
 </div>
 
 <div class="wrap">
-  <table>
+  <table aria-label="订单详情">
     <tbody>
-      <tr><th>订单编号</th><td data-testid="detail-no" id="d-no">—</td></tr>
-      <tr><th>合同编号</th><td data-testid="detail-contract" id="d-contract">—</td></tr>
-      <tr><th>订单名称</th><td data-testid="detail-name" id="d-name">—</td></tr>
-      <tr><th>管理单元</th><td data-testid="detail-mu" id="d-mu">—</td></tr>
-      <tr><th>销售员</th><td data-testid="detail-salesman" id="d-salesman">—</td></tr>
-      <tr><th>订单类型</th><td data-testid="detail-type" id="d-type">—</td></tr>
-      <tr><th>业务单元</th><td data-testid="detail-bu" id="d-bu">—</td></tr>
-      <tr><th>帐套</th><td data-testid="detail-file" id="d-file">—</td></tr>
-      <tr><th>客户</th><td data-testid="detail-cust" id="d-cust">—</td></tr>
-      <tr><th>订单备注</th><td data-testid="detail-remark" id="d-remark">—</td></tr>
+      <tr><th>订单编号</th><td id="d-no">—</td></tr>
+      <tr><th>合同编号</th><td id="d-contract">—</td></tr>
+      <tr><th>订单名称</th><td id="d-name">—</td></tr>
+      <tr><th>管理单元</th><td id="d-mu">—</td></tr>
+      <tr><th>销售员</th><td id="d-salesman">—</td></tr>
+      <tr><th>订单类型</th><td id="d-type">—</td></tr>
+      <tr><th>业务单元</th><td id="d-bu">—</td></tr>
+      <tr><th>帐套</th><td id="d-file">—</td></tr>
+      <tr><th>客户</th><td id="d-cust">—</td></tr>
+      <tr><th>订单备注</th><td id="d-remark">—</td></tr>
     </tbody>
   </table>
 
@@ -98,7 +98,7 @@ async function render(){
   }
   // 合同编号做成链接：**新 tab** 打开合同详情（与订单列表里点合同编号的行为一致）
   const dc = document.getElementById('d-contract');
-  dc.innerHTML = `<a data-testid="detail-contract-link" target="_blank" rel="noopener"
+  dc.innerHTML = `<a target="_blank" rel="noopener"
                       href="/contract_detail.html?no=${r.contract_no}&from=order">${r.contract_no}</a>`;
   dc.dataset.contract = r.contract_no || '';
   document.getElementById('d-cust').dataset.cust = r.cust || '';
