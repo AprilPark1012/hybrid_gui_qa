@@ -1942,6 +1942,19 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <code>--only &lt;子串&gt;</code> 只跑一个 · <code>--list</code> 先看跑哪些 · <code>--no-demo</code> 不起 demo ·
       内存不足会<b>如实 SKIP 并 exit 3（不是通过）</b>。
     </p>
+    <p style="margin-top:10px;color:var(--muted);font-size:.92rem">
+      <b>★ R7 四项验收：一条命令跑完</b> —— <code>python tests/run_acceptance.py</code>。<br>
+      执行顺序（<b>便宜先跑 + fail fast</b>，编号 ≠ 顺序）：
+      闸门自检 → ③ demo 新鲜度 → ① 框架自测 → ④ E2E → ② 特性自测。<br>
+      ④ E2E 有<b>三个场景</b>：场景1 = 自然语言 → <code>explore --ai</code> → <code>cases/ai_*.json</code>
+      → <code>generate</code> → <code>run</code>（日常走<b>离线录像回放</b>，不联网可证伪）；
+      场景2 = <code>generate</code> → <code>run</code>（手写用例驱动）；
+      <b>场景3 = 录制回放验证</b>（录像可用性体检 + 体检有效性负向 + 不匹配必须 fail loud；
+      <code>--with-record</code> 时加跑「录制 → 回放闭环」，要 key + 外网）。<br>
+      <b>录像运维</b>：<code>python build_tools/check_cassettes.py</code>（零成本体检：哪些场景没有可用录像）·
+      <code>python build_tools/record_cassettes.py --missing-only</code>（批量重录缺的）。
+      <b>SKIP ≠ 通过</b>：任一段跳过 ⇒ 整体退出码 3。
+    </p>
   </div>
 </section>
 

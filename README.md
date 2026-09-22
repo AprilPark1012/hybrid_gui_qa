@@ -561,6 +561,17 @@ python tests/run_verifications.py --no-demo      # 不起 demo（只跑自包含
 python tests/run_verifications.py --stream       # 实时打印子进程输出（默认只打尾部摘要）
 #   ↑ 二类入口是 **Python 版**（Windows / Linux / macOS 通用；PowerShell 里没有 bash）
 bash tests/run_verifications.sh                  # Linux/macOS 便捷包装：内部转发到上面那条 Python 版（唯一实现在 .py）
+# ③ ★ R7 四项验收：一条命令跑完（闸门自检 → demo 新鲜度 → 框架自测 → E2E 三场景 → 特性自测）
+python tests/run_acceptance.py                   # 日常口径（场景1 走离线回放；SKIP ≠ 通过）
+python tests/run_acceptance.py --list            # 先看会跑哪些步骤 / 三个 E2E 场景
+python tests/run_acceptance.py --with-record     # 发版前：额外跑场景3 的「录制→回放闭环」（要 key + 外网）
+# 单项排查（E2E 三个场景各自也能单跑）：
+python tests/verify_e2e_scenario1_offline.py     # 场景1：自然语言 → explore 回放 → cases → generate → run（不联网）
+python tests/verify_e2e_scenario3_cassette.py    # 场景3：录像可用性体检 + 体检有效性负向 + 不匹配必须 fail loud
+python -m framework.cli run --workers 2          # 场景2：generate → run（手写用例驱动，全量）
+# 录像运维（录像对不上 = 无网机器上场景跑不了 ⇒ 发版前必过体检）：
+python build_tools/check_cassettes.py            # 体检（零成本，不联网/不要 key）：哪些场景没有可用录像
+python build_tools/record_cassettes.py --missing-only   # 批量重录缺的（要 key + 外网；录制=真调 LLM）
 python tests/verify_slow_target.py               # 慢目标闸门（F1/F2）：慢代理 300ms/请求下 6 条关键用例必须全绿
                                                  #   （纯正向闸、无负向段；内存 <650MB 会如实 SKIP exit 3，SKIP≠通过）
 python tests/verify_html_sync.py                 # R8 判据：培训页能由代码可复现生成 且 与代码逐字节一致

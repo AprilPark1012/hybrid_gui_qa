@@ -66,12 +66,18 @@ def test_acceptance_unknown_flag_exits_2():
 
 
 def test_acceptance_skip_ai_marks_scenario1_skipped():
-    """`--skip-ai`：场景 1 的在线段跳过（日常口径），但**必须显式标出**，不许静默省略。"""
+    """`--skip-ai`：场景 1 那段跳过（日常口径），但**必须显式标出**，不许静默省略。
+
+    ⚠️ 判据写法坑（2026-09-22 自踩）：不能只看「含 scenario1 的第一行」—— `--list` 的
+    步骤标题行 `[3] e2e … 场景1 离线回放端到端` 也含「场景1」却不含「跳过」⇒ 会误红。
+    正解：含 scenario1 的**任意一行**标了跳过即可。
+    """
     r = _run_entry(["--list", "--skip-ai"])
     assert r.returncode == 0, r.stderr
-    line = [ln for ln in r.stdout.splitlines() if "scenario1" in ln or "场景1" in ln or "场景 1" in ln]
-    assert line, f"--list --skip-ai 里没有场景1 这一行：\n{r.stdout}"
-    assert "skip" in line[0].lower() or "跳过" in line[0], f"场景1 没标成跳过：{line[0]}"
+    lines = [ln for ln in r.stdout.splitlines() if "scenario1" in ln or "场景1" in ln]
+    assert lines, f"--list --skip-ai 里没有场景1 这一行：\n{r.stdout}"
+    assert any("skip" in ln.lower() or "跳过" in ln for ln in lines), \
+        f"场景1 没标成跳过（含 scenario1 的行里一处都没提）：\n" + "\n".join(lines)
 
 
 def test_summarize_skip_is_not_pass():
@@ -103,3 +109,18 @@ def test_acceptance_runs_gate_selfcheck_first():
     assert "verify_demo_freshness" in out, f"--list 里没有「闸门自检」这一步：\n{out}"
     assert out.find("verify_demo_freshness") < out.find("framework_selftest"), \
         f"闸门自检必须排在框架自测（① ）之前：\n{out}"
+
+
+def test_acceptance_lists_three_e2e_scenarios():
+    """★ ④ E2E 必须**三个场景**齐全（AprilPark1012 2026-09-22 增加场景3）。
+
+    场景1 = 自然语言 → `explore --ai` → `cases/ai_*.json` → `generate` → `run`（日常走离线回放）
+    场景2 = `generate` → `run`（手写用例驱动）
+    场景3 = **录制回放验证**（录像可用性：体检 + 体检有效性负向 + 不匹配必须 fail loud + 录制闭环）
+    —— 场景3 单独立项的原因：录像对不上会让离线机器上的 AI 链路整段跑不了，而这件事
+    以前只有现场才会发现（实测：包发出去后才发现 5 个场景里只有 1 个有录像）。
+    """
+    r = _run_entry(["--list"])
+    out = r.stdout
+    for tag in ("scenario1", "scenario2", "scenario3"):
+        assert tag in out, f"--list 里没有 {tag}（E2E 三个场景要列全）：\n{out}"
