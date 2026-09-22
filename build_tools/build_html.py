@@ -49,164 +49,6 @@ def hl(line: str) -> str:
     return "".join(out)
 
 
-# ---------------- 文件清单 ----------------
-FILES = [
-    dict(
-        path="demo/app.py", badge="⚙️ 被测应用", color="gray",
-        desc="跑在 8000 端口：静态页面 + 内存数据 API（客户 / 合同 / 复位）——列表页与详情页都从它取数，"
-             "保证两页看到的是同一条记录；我们也拿它当「靶子」做测试。",
-        anchors=[("DEFAULT_PAGE", "默认被测页面=contracts.html，可用环境变量切回旧 todo 页。"),
-                 ("do_GET / do_POST", "路由：静态页面 + /api/customers｜/api/contracts｜/api/contract?no=｜/api/reset。"),
-                 ("def reset_data", "把数据复位成预置 20 条 —— 用例间隔离（conftest 每用例前调它）靠这里。")],
-    ),
-    dict(
-        path="framework/tools/common/text_io.py", badge="⚙️ 基建", color="gray",
-        desc="跨平台文本口径的唯一入口：凡「跨进程 / 落盘」的文本一律显式 UTF-8 —— 中文 Windows（cp936/gbk）下不崩、不乱码。",
-        anchors=[("def utf8_env", "给子进程注入 PYTHONUTF8/PYTHONIOENCODING：子进程按 UTF-8 说，父进程按 UTF-8 听。"),
-                 ("def force_stdio", "本进程 stdio 转 UTF-8 + Windows 控制台代码页切 65001（否则中文显示乱码）。"),
-                 ("def run_capture", "收子进程输出：显式 encoding=utf-8（gbk 解码事故的根治点，别再裸用 text=True）。")],
-    ),
-    dict(
-        path="framework/tools/common/config.py", badge="⚙️ 配置", color="gray",
-        desc="配置文件：目标 URL + 怎么选 LLM（Browser Use 探索阶段要用）。",
-        anchors=[("def llm_from_env", "按 .env 里装的 key，自动挑一个 LLM。AI 阶段才花钱。")],
-    ),
-    dict(
-        path="framework/tools/probe/element_map.py", badge="📄 数据契约", color="dodgerblue",
-        desc="AI 和 Playwright 之间的『翻译件』：步骤 + 元素语义，两阶段无缝衔接。",
-        anchors=[("class ElementRef", "元素语义：role/name/label... 都是人能看的，不是 CSS。"),
-                 ("class ElementMap", "一次探索的完整产物：URL + 场景 + 步骤列表。")],
-    ),
-    dict(
-        path="framework/tools/probe/probe.py", badge="✅ Playwright", color="seagreen",
-        desc="第一步·探测：用代码扫页面，把可交互元素『翻译』成语义清单。不经过 LLM。",
-        anchors=[("def _role_of", "用代码推断 ARIA 角色——定位的第一手信息，全靠确定性代码。"),
-                 ("semantic_name", "给每个元素起个稳定小名，AI 后面只认这个小名。"),
-                 ("def probe_page", "核心：遍历交互元素，抓 role/name/placeholder/label/test_id。")],
-    ),
-    dict(
-        path="framework/tools/explore/explorer.py", badge="🤖 AI 层", color="royalblue",
-        desc="第二步·探索：AI 听懂意图→规划步骤→从探测清单里挑元素。只引用语义，绝不写 CSS。（默认把 AI 用例落到 cases/ai_*.json，`--no-cases` 可关；`--to-cases` 是历史方案里的叫法，代码里没有这个开关）",
-        anchors=[("def mock_explore", "无 key 也能跑的演示版：用固定规则拼出测试步骤（只有显式 --mock-fallback 才用，且不写 cases/）。"),
-                 ("async def _ai_explore_async", "方案C：DeepSeek 读自然语言场景+probe清单 → 产轻量步骤 JSON。"),
-                 ("def _build_planner_prompt", "构造给 LLM 的提示：场景+控件清单+轻量JSON格式约束。"),
-                 ("def _parse_steps_text", "宽松解析 LLM 步骤：容忍 markdown/杂字/单双引号混用。"),
-                 ("def _try_collect_modal_items", "点开新建弹窗，并**继续钻进它上面的弹层**（客户列表这类 picker）再 probe；"
-                                                  "同名按钮按所在行命名（选择@<客户名>），探完逐层关掉；等待是有界轮询。"),
-                 ("def _collect_page_context", "同步探测阶段：基础控件+弹窗字段+DOM 上下文（必须在事件循环外跑）。"),
-                 ("def ai_explore", "真·AI 探索入口：读场景+清单，智能规划（需 DeepSeek key）。LLM 不可用时【报错退出】而非静默用 mock 顶替。")],
-    ),
-    dict(
-        path="framework/tools/generate/case_builder.py", badge="🤖 转换层", color="royalblue",
-        desc="场景①第三段·落盘：ElementMap → cases/ai_*.json（expect_text 转 asserts[]；element 原样带走语义名）+ 落盘前质量校验（防假绿）。",
-        anchors=[("def elementmap_to_cases_file", "一站式：ElementMap → cases 文件，返回 (路径, 警告列表)。"),
-                 ("_OP_MAP = ", "action → cases.op 的映射表（不在表内的动作不产出步骤，不静默造假）。"),
-                 ("def case_warnings", "落盘前校验：回显断言 / 运行时计数 / 无断言 / 只有goto / 缺元素 / 护栏未覆盖。"),
-                 ("def make_case_id_from_scenario_id", "用例命名 ai_<scenario_id>_<HHMMSS>（可 grep 同场景历史产物）。")],
-    ),
-    dict(
-        path="framework/tools/generate/scenario.py", badge="🗂 场景库", color="gray",
-        desc="scenarios/*.yml 的解析/校验/发现：一个文件=一个场景，只有 scenario 必填；business_context 喂 AI、assert_guard 既是护栏也进质量闸；<code>data:</code> 从 V7.8 起<b>真展开</b>（一组数据=一条用例，形态写错就报错）。需 PyYAML。",
-        anchors=[("def load_scenario_file", "读+严格校验单个场景文件（缺 scenario/类型错/YAML 错 → 报错带路径；data 组：非列表/非映射/重复 id 都拦）。"),
-                 ("def discover_scenarios", "递归扫目录 + --tag 过滤 + priority 排序，任一文件不合法即中止。"),
-                 ("def page_bg", "给 AI 的【页面背景】：页面说明 + 前置条件 + 领域上下文。")],
-    ),
-    dict(
-        path="framework/tools/probe/locator_bridge.py", badge="✅ Playwright", color="seagreen",
-        desc="技术核心·桥梁：把语义转成『唯一、稳定』的 Playwright locator。",
-        anchors=[("def resolve_locator", "核心：按优先级依次尝试，返回第一个『唯一命中』的 locator。"),
-                 ("if cnt == 1", "唯一命中才算数(cnt==1)——宁可报错，绝不用可能点错元素的 locator。"),
-                 ("def _try_role", "第一首选：get_by_role + name，最贴近用户语义、最难被 UI 改版打破。")],
-    ),
-    dict(
-        path="framework/tools/generate/generator.py", badge="✅ Playwright", color="seagreen",
-        desc="主链路第二步·生成：读 cases/*.json（含 AI 用例）→ 优先用 element_map 快照映射确定性 locator（缺项才现场 probe）+ 按操作类型翻译 + 抽离数据到 scripts/datasets。元素映射不到时显式 pytest.fail，绝不静默跳过。V7.8 起还负责<b>数据参数化</b>：场景 <code>data:</code> 的每组数据展开成一条独立用例。",
-        anchors=[("def _semantic_to_locator_expr", "从语义名推导出确定性 locator 源码字符串(test_id/role)。"),
-                 ("def generate_scripts", "核心：读 cases → 生成 scripts/test_cases.py + 抽离 datasets。"),
-                 ("def _validate_data_sets", "数据参数化(V7.8)：组值必须**恰好**覆盖用例用到的占位符 —— 少了会把 {xxx} 字面填进页面、多了等于写了不生效，两者都 exit 2 + 人话点名。")],
-    ),
-    dict(
-        path="framework/tools/run/runner.py", badge="✅ Playwright", color="seagreen",
-        desc="ElementMap 场景执行引擎（run_scenario）：按步骤跑唯一性校验 + web-first 断言 + 集成 Healer。★注意：cases→pytest 并发执行是由 cli.cmd_run 以 subprocess 拉起的（不是 runner.py）。",
-        anchors=[("resolved = resolve_locator", "执行前先唯一性校验，拒绝歧义(防点错)。"),
-                 ('loc = resolved["locator_obj"]', "用真实 Playwright Locator 对象执行——不是字符串！"),
-                 ("def _run_step", "核心：goto/click/fill/select/check + 断言，一步步确定性地跑。")],
-    ),
-    dict(
-        path="framework/tools/run/healer.py", badge="🩹 自愈层", color="dodgerblue",
-        desc="Phase 3·自愈闭环：定位失败不中断，再协商 locator + 业务断言兜底 + 可审 diff。",
-        anchors=[("def try_heal", "自愈入口：定位失败时再协商 + 业务后置断言 + 记录可审 diff。"),
-                 ("result = \"recovered\"", "业务断言通过 → 才算自愈成功。"),
-                 ("else \"real_bug\"", "业务断言不过 → 判定疑似真 bug，拒用自愈 locator，不掩盖回归。"),
-                 ("def dump", "把自愈记录落盘成 json + markdown，供人工 review（绝不静默改写）。")],
-    ),
-    dict(
-        path="framework/tools/generate/data_driven.py", badge="🧩 数据驱动", color="dodgerblue",
-        desc="数据驱动核心：占位符替换 + 动态占位符{datetime} + 用例级变量池，支撑脚本数据分离并发用例。",
-        anchors=[("def resolve_dynamic_inputs", "动态占位符({datetime}/{date})一次解析固化——填表名==断言名，重跑不重名。"),
-                 ("def format_template", "占位符替换：脚本里写 {contractName}，运行时从数据文件取实际值——改动数据不改脚本。"),
-                 ("def new_vars", "构造用例级变量池：存运行过程动态数据（合同名/编号等），供断言 + 后续操作输入。"),
-                 ("def seed_vars_from_input", "把输入字段回填变量池，作为后续用途(如按名称回搜)的预置值。"),
-                 ("def new_case_ctx", "构造静态输入上下文(case_ctx)——与变量池分离，各用例独享。")],
-    ),
-    dict(
-        path="framework/cli.py", badge="⚙️ 入口", color="gray",
-        desc="命令行入口：probe / explore / generate / run / all / prune。两种业务场景都从这里进——explore 是「自然语言→AI 产用例」，generate+run 是「手搓用例→确定性生成与执行」。",
-        anchors=[("def cmd_explore", "场景①入口：三选一（--scenario 内联 / --scenario-file / --scenario-dir）+ 交付即验证。"),
-                 ("def _explore_one", "备 url/page_bg/guard/case_id → 交给 ai_explore（CLI 自己不探测）。"),
-                 ("def _verify_cases", "交付即验证：generate 一次 + 逐条 pytest 单跑 → FAILED 则 exit 3。"),
-                 ("def cmd_generate", "场景②阶段1：读 cases → 生成 scripts/（locator 翻译 + 数据抽离）。"),
-                 ("def cmd_run", "场景②阶段2：资源预检 + pytest 并发执行 + HTML 报告。"),
-                 ("def cmd_prune", "归档保留：element_map/probe 快照各留最近 N 个。"),
-                 ("def cmd_run", "V7.5 追加：并发安全闸（目标未声明 partitioned ⇒ 降为 1）+ --isolated-target。")],
-    ),
-    dict(
-        path="framework/tools/common/target_probe.py", badge="🧯 并发安全闸", color="gray",
-        desc="被测目标能力探针（V7.5）：回答『这个目标能不能并发跑』——探测 /api/health 的 partitioned 声明。"
-             "未声明就保守降级为 1 并发（多 worker 共享一份状态会让精确计数断言互相踩，且失败原因指向错的地方）。",
-        anchors=[("def probe_partitioned", "返回 (True/False/None, 理由)：True=可并发；False=明确不支持；None=没这个接口⇒视为未声明。"),
-                 ("def _base_url", "目标基地址：显式参数 > HYBRID_BASE_URL > 复位接口推断 > demo 默认。")],
-    ),
-]
-
-# ---------------- 渲染代码卡 ----------------
-TOOL_COLOR = {"seagreen": "#0f8f6a", "royalblue": "#3b6fdd",
-              "dodgerblue": "#2f7fd1", "gray": "#6b7280"}
-
-
-def render_cards() -> str:
-    chunks = []
-    for f in FILES:
-        p = BASE / f["path"]
-        body = p.read_text(encoding="utf-8").splitlines()
-        color = TOOL_COLOR[f["color"]]
-        anchors = f["anchors"]
-        lines_html = []
-        for i, line in enumerate(body, 1):
-            star = False
-            note = None
-            for sub, explain in anchors:
-                if sub in line:
-                    star = True
-                    note = explain
-                    break
-            cls = f'class="code-line{" star" if star else ""}"'
-            lines_html.append(f'<div {cls}><span class="ln">{i}</span>'
-                              f'<code>{hl(line)}</code></div>')
-            if note:
-                lines_html.append(
-                    f'<div class="code-note">⭐ <b>{note}</b></div>')
-        code_html = "\n".join(lines_html)
-        chunks.append(f"""
-    <section class="card file-card">
-      <div class="file-head">
-        <span class="badge" style="background:{color}">{f['badge']}</span>
-        <code class="file-path">{f['path']}</code>
-      </div>
-      <p class="file-desc">{f['desc']}</p>
-      <div class="codebox">{code_html}</div>
-    </section>""")
-    return "\n".join(chunks)
 
 
 # ---------------- HTML 模板 ----------------
@@ -1202,7 +1044,6 @@ def _svg_two_scenarios() -> str:
 
 
 def build() -> str:
-    cards = render_cards()
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1674,10 +1515,10 @@ def build() -> str:
   </div>
 </section>
 
-<!-- ========== 5. 关键设计图例说明 ========== -->
+<!-- ========== 5. 关键设计图例说明（含「设计要点」，2026-09-22 与「关键设计要点」合并） ========== -->
 <section>
   <h2 class="sec-title"><span class="n">5</span>关键设计图例说明</h2>
-  <p class="sec-sub">先看「端到端全链路主线」——这是新手理解框架的唯一主线；①②③是这条线上的三个关键细节。</p>
+  <p class="sec-sub">先看「端到端全链路主线」——这是新手理解框架的唯一主线；①②③ 是这条线上的三个关键细节。<b>每个图例下面挂着它对应的「设计要点」</b>（原来是单独一章的《关键设计要点》，现已并入本章，避免同一件事讲两遍）。</p>
 
   <!-- 图例⓪：端到端全链路主线（新手必看） -->
   <div class="card" style="margin-bottom:16px;border-top:4px solid var(--brand);">
@@ -1724,6 +1565,23 @@ def build() -> str:
       <div style="border:1px solid var(--line);border-radius:8px;padding:10px;font-size:.88rem">
         <b>📄 谁在"翻译"</b><br>ElementMap。一份结构化契约，让 AI 的规划无缝交给 Playwright。</div>
     </div>
+
+    <!-- ⬇ 并入的设计要点（原《关键设计要点》①②⑤⑥） -->
+    <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
+      <p style="font-weight:600;margin-bottom:8px">📌 本图例对应的设计要点</p>
+      <div style="border-left:3px solid var(--brand);padding-left:10px;margin-bottom:10px">
+        <b>① AI 只理解，不定位</b>
+        <p style="color:var(--muted);font-size:.9rem;margin:4px 0 0">绝不让 AI 写 <span class="code-inline">#mui-4821</span> 这类每次构建都在变的 ID。AI 只<b>引用语义</b>，定位交给代码。</p>
+      </div>
+      <div style="border-left:3px solid var(--brand);padding-left:10px;margin-bottom:10px">
+        <b>⑤ ElementMap 数据契约</b>
+        <p style="color:var(--muted);font-size:.9rem;margin:4px 0 0">AI 和 Playwright 之间用一份结构化"翻译件"传话（步骤+元素语义），换页面、换模型都不用改执行端。</p>
+      </div>
+      <div style="border-left:3px solid var(--brand);padding-left:10px">
+        <b>⑥ 成本分层</b>
+        <p style="color:var(--muted);font-size:.9rem;margin:4px 0 0">AI 只在<b>探索/规划</b>阶段花钱（每步一次推理）；一旦生成脚本，执行端 <b>零 token</b>、可无限次进 CI 回归。</p>
+      </div>
+    </div>
   </div>
 
   <!-- 图例A：locator 决策 -->
@@ -1743,6 +1601,33 @@ def build() -> str:
        评分差距&gt;0.12(MINGAP)? ──▶ ✅ 唯一采用
        否则 ──▶ ❌ 诚实失败(防 false-heal)</pre>
     <p style="color:var(--muted);font-size:.88rem">同名元素(两个checkbox/多个删除)靠<b>语义上下文</b>消歧，如 <code>page.locator("li").filter(has_text="写周报").get_by_role("checkbox")</code>。方向③ 专防"AI 选对名字但命中的长像素/同名控件语义不符"。</p>
+
+    <!-- ⬇ 并入的设计要点（原《关键设计要点》②③④） -->
+    <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
+      <p style="font-weight:600;margin-bottom:8px">📌 本图例对应的设计要点</p>
+      <div style="border-left:3px solid var(--brand);padding-left:10px;margin-bottom:10px">
+        <b>② locator 稳定性优先级</b>
+        <p style="color:var(--muted);font-size:.9rem;margin:4px 0 0"><b>我们实现（Tier1 顺序）：</b>
+           <span class="code-inline">data-testid</span> &gt;
+           <span class="code-inline">role+name</span> &gt;
+           <span class="code-inline">label</span> &gt;
+           <span class="code-inline">placeholder</span> &gt;
+           <span class="code-inline">text</span> &gt;
+           <span class="code-inline">CSS/路径</span>（几乎不用）</p>
+        <p style="color:var(--muted);font-size:.9rem;margin:6px 0 0"><b>为什么 data-testid 置顶？</b>它是<b>契约锚点</b>——由团队约定保护"不随视觉/文案改版变"，确定性最强，是 locator 栈的<b>主路径</b>；自愈领域共识是让它当 Tier1，才能让自愈只在 &lt;5% 的运行里触发。</p>
+        <p style="color:var(--muted);font-size:.9rem;margin:6px 0 0"><b>那 role 为什么仍第一重要？</b>它是<b>用户语义层</b>——可访问性对齐、开箱即用、无需被测应用埋点，是<b>没有 data-testid 时的首选</b>。</p>
+        <p style="color:var(--muted);font-size:.9rem;margin:6px 0 0"><b>一句话：</b>有 <span class="code-inline">data-testid</span> 用它（最稳）；没有就用 <span class="code-inline">role+name</span>（语义最稳）；CSS/路径永远最后（绑 DOM 结构，一改就断）。</p>
+      </div>
+      <div style="border-left:3px solid var(--brand);padding-left:10px;margin-bottom:10px">
+        <b>③ 防"假通过"</b>
+        <p style="color:var(--muted);font-size:.9rem;margin:4px 0 0">每个 locator 必须 <span class="code-inline">count()==1</span> 唯一命中。歧义→降级更稳；找不到→跳过；全败→<b>报错，绝不蒙一个可能点错的</b>。</p>
+      </div>
+      <div style="border-left:3px solid var(--brand);padding-left:10px">
+        <b>④ 同名元素靠"语义上下文"消歧</b>
+        <p style="color:var(--muted);font-size:.9rem;margin:4px 0 0">列表/表格/卡片里常出现<b>同一 role+name 命中多个元素</b>（如两个 checkbox、多个"删除"按钮），单靠 <span class="code-inline">role+name</span> 无法区分。probe 会给每个元素抓三类语义上下文：<span class="code-inline">nearby_text</span>（所属逻辑单元关键文本，如该项"写周报"）价值最高；<span class="code-inline">container_heading</span>（所在栏目标题）次之；<span class="code-inline">help_text</span>（aria-describedby/title 帮助文本）兜底。</p>
+        <p style="color:var(--muted);font-size:.9rem;margin:6px 0 0">定位时若 <b>nearby_text 能锚定唯一父单元</b>，就用 <span class="code-inline">父单元含文本 → 取 role</span> 的过滤表达式唯一命中（如 <code>page.locator("li").filter(has_text="写周报").get_by_role("checkbox")</code>）；无上下文的裸元素<b>诚实失败、绝不瞎选</b>（防 false-heal 兜底）。</p>
+      </div>
+    </div>
   </div>
 
   <!-- 图例B：成本分层 / 自愈 -->
@@ -1758,6 +1643,15 @@ def build() -> str:
             ──▶ B级: LLM 重猜(需key) → 成功/记为真bug
     事件落盘 heals/*.md → 区分 <b>recovered</b>/<b>real_bug</b>/<b>failed</b></pre>
     <p style="color:var(--muted);font-size:.88rem">自愈是"给流程兜底"，不是"让它瞎猜"——定位不出就<b>报错</b>，绝不蒙。</p>
+
+    <!-- ⬇ 并入的设计要点（原《关键设计要点》⑨ 的双保险 + 自愈定位） -->
+    <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
+      <p style="font-weight:600;margin-bottom:8px">📌 本图例对应的设计要点</p>
+      <div style="border-left:3px solid var(--brand);padding-left:10px">
+        <b>自愈的边界：兜底 ≠ 猜</b>
+        <p style="color:var(--muted);font-size:.9rem;margin:4px 0 0">A 级只<b>放宽阈值</b>（确定性、无 LLM）重定位；B 级才请 LLM 重猜（需 key）。每次自愈都落 <span class="code-inline">output/heals/*.md</span> 成为<b>可审 diff</b>，并用业务后置断言裁决成 <b>recovered / real_bug / failed</b> 三态 —— <b>绝不静默改写脚本</b>。自愈率越高越要警惕：它可能掩盖真实缺陷。</p>
+      </div>
+    </div>
   </div>
 
   <!-- 图例C：数据流 -->
@@ -1777,98 +1671,271 @@ generate(element_map快照→缺项现场probe)
              ▼
 pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</pre>
     <p style="color:var(--muted);font-size:.88rem">动态占位符{{datetime}}/{{date}}/{{uuid}} 运行时解析固化——<b>填表名==断言名，反复重跑不重名</b>。</p>
+
+    <!-- ⬇ 并入的设计要点（原《关键设计要点》⑦） -->
+    <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
+      <p style="font-weight:600;margin-bottom:8px">📌 本图例对应的设计要点</p>
+      <div style="border-left:3px solid var(--brand);padding-left:10px">
+        <b>⑦ cases 自然语言用例 → 脚本 + 数据抽离</b>
+        <p style="color:var(--muted);font-size:.9rem;margin:4px 0 0"><b>你在 <span class="code-inline">cases/*.json</span> 写自然语言用例</b>（步骤用 op 操作类型 + desc 描述 + element 探测语义 + value 写死数据；断言用 asserts[] 数组，<b>11 种 kind</b>：文本 / 可见 / 隐藏 / 数量 / 属性 / 输入值 / URL / 勾选 / 未勾选 / 可用 / 禁用）。</p>
+        <p style="color:var(--muted);font-size:.9rem;margin:6px 0 0">generate 读 cases → <b>优先 element_map 快照</b>（缺项才现场 probe）映射语义→确定性 locator → <b>按操作类型翻译 Playwright 代码</b> → 把字面值<b>抽离到 <span class="code-inline">scripts/datasets/&lt;case_id&gt;.json</span></b>，脚本仅留引用（<b>脚本数据分离</b>、解耦 demo）。</p>
+        <p style="color:var(--muted);font-size:.9rem;margin:6px 0 0"><b>动态占位符</b>：数据里写 <span class="code-inline">{{datetime}}</span>/<span class="code-inline">{{date}}</span>/<span class="code-inline">{{uuid}}</span> → 运行时解析固化（填表名==断言名，<b>反复重跑不重名</b>）。</p>
+        <p style="color:var(--muted);font-size:.9rem;margin:6px 0 0"><b>用例级变量池 <span class="code-inline">case.vars</span></b>：存运行过程数据（新建合同名/系统返回编号/抓取字段值），供检查点断言 + 后续操作输入，function-scope 隔离。</p>
+        <p style="color:var(--muted);font-size:.9rem;margin:6px 0 0"><b>检查点不依赖后端返回编号</b>：新建场景主检查点用「新建输入的合同名 + 各字段与输入一致」核验生成成功；系统返回编号仅作<b>增强项</b>条件回搜（无编号则跳过仍通过）。</p>
+        <p style="color:var(--muted);font-size:.9rem;margin:6px 0 0"><b>并发</b>用 pytest-xdist 多进程，<b>每个 worker（会话）只起一个 Chromium 并全程复用</b>（每条用例只新建 context+page，逐条 setup 0.57~0.66s → 0.04~0.06s）；<b>报告</b>用 pytest-html 自动生成执行统计。运行：<code>python -m framework.cli run --workers 2</code>（cli 会先做<b>资源预检</b>，内存不够自动降并发）。</p>
+      </div>
+    </div>
   </div>
 </section>
 
-<!-- ========== 6. 关键设计要点 ========== -->
+<!-- ========== 6. 框架特性设计实现说明（2026-09-22 新增） ========== -->
 <section>
-  <h2 class="sec-title"><span class="n">6</span>关键设计要点</h2>
-  <p class="sec-sub">把这些记住，就看懂这套框架了。</p>
-  <div class="pts">
-    <div class="pt"><div class="ico">🧠</div><h4>① AI 只理解，不定位</h4>
-      <p>绝不让 AI 写 <span class="code-inline">#mui-4821</span> 这类每次构建都在变的 ID。
-         AI 只<b>引用语义</b>，定位交给代码。</p></div>
-    <div class="pt"><div class="ico">🥇</div><h4>② locator 稳定性优先级</h4>
-      <p><b>我们实现（Tier1 顺序）：</b>
-         <span class="code-inline">data-testid</span> &gt;
-         <span class="code-inline">role+name</span> &gt;
-         <span class="code-inline">label</span> &gt;
-         <span class="code-inline">placeholder</span> &gt;
-         <span class="code-inline">text</span> &gt;
-         <span class="code-inline">CSS/路径</span>（几乎不用）</p>
-      <p><b>为什么 data-testid 置顶？</b>它是<b>契约锚点</b>——由团队约定保护"不随视觉/文案改版变"，
-         确定性最强，是 locator 栈的<b>主路径</b>；自愈领域共识是让它当 Tier1，才能让自愈只在
-         &lt;5% 的运行里触发。</p>
-      <p><b>那 role 为什么仍第一重要？</b>它是<b>用户语义层</b>——可访问性对齐、开箱即用、
-         无需被测应用埋点，是<b>没有 data-testid 时的首选</b>。</p>
-      <p><b>一句话：</b>有 <span class="code-inline">data-testid</span> 用它（最稳）；
-         没有就用 <span class="code-inline">role+name</span>（语义最稳）；
-         CSS/路径永远最后（绑 DOM 结构，一改就断）。</p></div>
-    <div class="pt"><div class="ico">🛡️</div><h4>③ 防"假通过"</h4>
-      <p>每个 locator 必须 <span class="code-inline">count()==1</span> 唯一命中。
-         歧义→降级更稳；找不到→跳过；全败→<b>报错，绝不蒙一个可能点错的</b>。</p></div>
-    <div class="pt"><div class="ico">🧩</div><h4>④ 同名元素靠"语义上下文"消歧</h4>
-      <p>列表/表格/卡片里常出现<b>同一 role+name 命中多个元素</b>（如两个 checkbox、多个"删除"按钮），
-         单靠 <span class="code-inline">role+name</span> 无法区分。P4 起 <b>probe 会给每个元素</b>抓三类语义上下文：</p>
-      <p><span class="code-inline">nearby_text</span>（所属逻辑单元关键文本，如该项"写周报"）价值最高；
-         <span class="code-inline">container_heading</span>（所在栏目标题）次之；
-         <span class="code-inline">help_text</span>（aria-describedby/title 帮助文本）兜底。</p>
-      <p>定位时若 <b>nearby_text 能锚定唯一父单元</b>，就用
-         <span class="code-inline">父单元含文本 → 取 role</span> 的过滤表达式唯一命中
-         （如 <code>page.locator("li").filter(has_text="写周报").get_by_role("checkbox")</code>）；
-         无上下文的裸元素<b>诚实失败、绝不瞎选</b>（防 false-heal 兜底）。</p></div>
-    <div class="pt"><div class="ico">📄</div><h4>⑤ ElementMap 数据契约</h4>
-      <p>AI 和 Playwright 之间用一份结构化"翻译件"传话（步骤+元素语义），
-         换页面、换模型都不用改执行端。</p></div>
-    <div class="pt"><div class="ico">💰</div><h4>⑥ 成本分层</h4>
-      <p>AI 只在<b>探索/规划</b>阶段花钱（每步一次推理）；
-         一旦生成脚本，执行端 <b>零 token</b>、可无限次进 CI 回归。</p></div>
-    <div class="pt"><div class="ico">🧩</div><h4>⑦ cases 自然语言用例 → 脚本 + 数据抽离</h4>
-      <p><b>你在 <span class="code-inline">cases/*.json</span> 写自然语言用例</b>（步骤用 op 操作类型 + desc 描述 + element 探测语义 + value 写死数据；断言用 asserts[] 数组，<b>11 种 kind</b>：文本 / 可见 / 隐藏 / 数量 / 属性 / 输入值 / URL / 勾选 / 未勾选 / 可用 / 禁用）。</p>
-      <p>generate 读 cases → <b>优先 element_map 快照</b>（缺项才现场 probe）映射语义→确定性 locator → <b>按操作类型翻译 Playwright 代码</b> → 把字面值<b>抽离到 <span class="code-inline">scripts/datasets/&lt;case_id&gt;.json</span></b>，脚本仅留引用（<b>脚本数据分离</b>、解耦 demo）。</p>
-      <p><b>动态占位符</b>：数据里写 <span class="code-inline">{{datetime}}</span>/<span class="code-inline">{{date}}</span>/<span class="code-inline">{{uuid}}</span> → 运行时解析固化（填表名==断言名，<b>反复重跑不重名</b>）。</p>
-      <p><b>用例级变量池 <span class="code-inline">case.vars</span></b>：存运行过程数据（新建合同名/系统返回编号/抓取字段值），供检查点断言 + 后续操作输入，function-scope 隔离。</p>
-      <p><b>检查点不依赖后端返回编号</b>：新建场景主检查点用「新建输入的合同名 + 各字段与输入一致」核验生成成功；系统返回编号仅作<b>增强项</b>条件回搜（无编号则跳过仍通过）。</p>
-      <p><b>并发</b>用 pytest-xdist 多进程，<b>每个 worker（会话）只起一个 Chromium 并全程复用</b>（每条用例只新建 context+page，逐条 setup 0.57~0.66s → 0.04~0.06s）；<b>报告</b>用 pytest-html 自动生成执行统计。运行：<code>python -m framework.cli run --workers 2</code>（cli 会先做<b>资源预检</b>，内存不够自动降并发）。</p>
-      <p><b>调试开关(<span class="code-inline">--debug</span>，别名 <span class="code-inline">--headed</span>)</b>：<b>布尔开关，默认关，只在调试时用</b>——开了就一句话「<b>我要看得见这次执行</b>」：单浏览器、顺序跑、动作放慢(默认 200ms)。<b>两种情况都不报错</b>：① <b>有图形显示</b> ⇒ <span class="code-inline">headless=False</span>，Chromium 窗口弹出，看它一步步执行到用例结束；② <b>没图形显示</b>(服务器) ⇒ 改成「<b>录下来给你看</b>」：视频 <span class="code-inline">log/&lt;run_id&gt;/videos/&lt;case_id&gt;.webm</span> + <b>逐步截图</b> <span class="code-inline">log/&lt;run_id&gt;/shots/&lt;case_id&gt;/01_*.png</span>(序号=执行顺序) + trace 交互回放。关着(默认)=无头并发跑、不录像不截图。<br>⚠️ 两个实测坑：① 调试模式<b>不能带 <span class="code-inline">-n</span></b>(<span class="code-inline">pytest -n 1</span> 也设 <span class="code-inline">PYTEST_XDIST_WORKER=gw0</span>，conftest 判「在 worker 里 ⇒ 无头」⇒ 旧版 <span class="code-inline">--headed</span> 是<b>空操作</b>)；② 录像 webm <b>必须等 <span class="code-inline">context.close()</span> 才落盘</b>(提前 save_as 只拿到 4KB 空壳，修后 152KB)。</p></div>
-    <div class="pt"><div class="ico">🤖</div><h4>⑧ AI 语义识别 + 确定性执行（真 AI 链路）</h4>
-      <p>用 <b>browser-use 0.13.10 原生 `ChatDeepSeek`</b>（OpenAI 兼容、走 function calling）读「自然语言场景 + probe 语义清单 + <b>DOM 上下文</b>」→ 产出轻量步骤 JSON：</p>
-      <p>AI 只做<b>理解意图 + 从 probe 清单里挑控件</b>（引用 <span class="code-inline">semantic_name</span>，绝不产 selector）；精确定位/执行交给确定性 Playwright，两者靠 ElementMap 契约衔接。</p>
-      <p><b>DOM 上下文增强</b>：`_collect_dom_context` 抓元素全局索引/可见性/状态/可访问名喂给 AI，让它更准判别"该选哪个控件"。</p>
-      <p><b>弹窗/弹层探测</b>：`_try_collect_modal_items` 点开新建弹窗后继续<b>钻进它上面的弹层</b>（客户列表这类 picker）再 probe —— 同名按钮按所在行命名（<span class="code-inline">选择@北京华信科技有限公司</span>），探完逐层关掉、页面恢复干净；等待是<b>有界轮询</b>（探到就走，最坏 2.5s），不是固定 sleep。断言支持<b>子串匹配</b>。</p></div>
-    <div class="pt"><div class="ico">🛡️</div><h4>⑨ AI 选错控件的双保险（方向① + 方向③）</h4>
-      <p>AI 在复杂页面可能<b>选对"名字"但对错"控件"</b>（如把"合同名称输入框"选成"搜索框"）。两道防线拦截：</p>
-      <p><b>①语义校准</b>（explorer `_apply_semantic_calibration`）：AI 挑完元素后，用其描述与元素语义做<b>字符级核心词重叠</b>，相似度&lt;0.3 打警告"疑似选错控件"。</p>
-      <p><b>③Tier1 意图复验</b>（locator_bridge `_intent_verify`）：Tier1 命中唯一后<b>回读元素实际语义</b>与 `page_hint/semantic_name` 比对（阈值0.15），不符→降级到下一策略/Tier2。</p>
-      <p>①②③ 与 Tier2 指纹、Healer 自愈构成<b>多层兜底</b>，把"AI 选错 → 框架点错"的概率压到最低。</p></div>
-    <div class="pt"><div class="ico">🧯</div><h4>⑩ 资源安全：并发自动降级（低内存保命）</h4>
-      <p>跑测试前先读 <span class="code-inline">/proc/meminfo</span> 的 <b>MemAvailable</b>，
-         按 <b>cap = max(1, min((MemAvailable - 保留) / 每worker预算, CPU核数))</b> 裁定并发数，
-         不够就<b>自动降级并打印理由</b>；也可用 <span class="code-inline">--force-workers</span> 覆盖。</p>
-      <p><b>为什么必须有</b>：实测 1 个 headless Chromium 实例 ≈ <b>515MB</b>；在 1.87GB / 无 swap 的机器上
-         强跑 2 并发 ⇒ 内核 <b>global OOM</b> ⇒ 渲染进程被杀（<code>Target crashed</code>），
-         <b>连 Hermes 网关进程也被连带杀掉</b>。单 worker 则稳定 5/5 通过。</p>
-      <p><b>参数集中</b>：<span class="code-inline">framework/tools/common/browser.py</span> 是 Chromium 启动参数唯一来源
-         （原先 8 处裸 launch 各写各的）；生成物 <span class="code-inline">scripts/conftest.py</span> 用<b>内联</b>方式带上参数，
-         免得再依赖框架常量。<br>⚠️ 口径澄清：生成物<b>不是「拷到哪儿都能独立跑」</b> —— conftest 会
-         <span class="code-inline">import framework.tools.generate.data_driven / framework.tools.run.healer</span>，
-         所以<b>要在项目内（或把 framework/ 一起带上）运行</b>。
-         <b>诚实提示</b>：这组参数实测<b>不降 RSS</b>，解决的是稳定性/一致性；<b>真正保命的是并发降级</b>。</p>
-      <p><b>日志 run-id 隔离</b>：每次运行的 <span class="code-inline">.log</span> / <span class="code-inline">report.html</span> / <span class="code-inline">traces/</span>
-         落在 <span class="code-inline">log/&lt;run_id&gt;/</span>，重跑生成新目录、历史不被覆盖（原先追加模式会跨运行累积，704 行混在一起无法定位本次）。</p></div>
-  </div>
-</section>
+  <h2 class="sec-title"><span class="n">6</span>框架特性设计实现说明</h2>
+  <p class="sec-sub">上面第 5 章讲的是「一条主线上有什么」；本章按<b>特性</b>横向讲清楚：每个特性 = <b>定位一句话 → 关键设计 → 实现图例 → 怎么用 → 测试验证用例设计</b>。新手按特性读一遍，既能看懂框架结构，也知道每个特性<b>拿什么证据证明它是好的</b>。</p>
 
-<!-- ========== 6. 参考代码走读 ========== -->
-<section>
-  <h2 class="sec-title"><span class="n">7</span>参考代码走读（含核心标注）</h2>
-  <p class="sec-sub">下面是框架所有源码。⭐高亮行是<b>重点</b>，配了白话讲解，从上往下读。</p>
-{cards}
+  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
+    <h4>先看全局：验证资产总览（真值，随代码增长）</h4>
+    <pre class="tree">一类「框架自测」  tests/test_*.py      24 个文件 / 337 条 —— 秒级、<b>不依赖 demo 与浏览器</b>、可离线跑
+二类「特性自测」  tests/verify_*.py    15 个脚本 —— 端到端、<b>需 demo</b>、<b>必含负向证伪</b>
+E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）· 场景2 手写用例驱动 · 场景3 录制回放验证
+统一入口          python tests/run_acceptance.py     ← R7 四项一条命令（便宜先跑 + fail fast；SKIP ≠ 通过）
+                  python tests/run_verifications.py  ← 二类全量（唯一实现；内存不足如实 SKIP 并 exit 3）</pre>
+    <p style="color:var(--muted);font-size:.88rem;margin-top:8px">下面每个特性都会列出<b>它自己的</b>判据文件与条数；条数以实跑输出为准（<code>pytest tests/ -q</code>、<code>run_acceptance.py</code>）。</p>
+  </div>
+
+  <!-- ============ 特性 1 ============ -->
+  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
+    <h4>特性 1 · 混合链路：AI 探索 + 确定性执行</h4>
+    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>把「想」和「做」拆开——AI 只负责把自然语言翻译成语义引用（花钱、一次性），确定性代码负责定位与执行（零 token、可无限回归）。</p>
+    <p><b>关键设计</b></p>
+    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
+      <li><b>两条业务链路在 <span class="code-inline">cases/*.json</span> 汇合</b>：① 自然语言 → <span class="code-inline">explore --ai</span> 产用例（花 token）；② 手搓用例 → <span class="code-inline">generate</span> → <span class="code-inline">run</span>（零 token）。下游 <b>probe → generate → run</b> 完全共用。</li>
+      <li><b>ElementMap 是契约</b>：AI 只引用 <span class="code-inline">semantic_name</span>，绝不产 selector —— 换页面、换模型都不用改执行端。</li>
+      <li><b>成本分层</b>：探索阶段每步一次推理；生成脚本后执行端零 token，可无限次进 CI。</li>
+    </ul>
+    <pre class="tree">自然语言场景 ──explore --ai──▶ cases/ai_*.json ─┐
+                                              ├─▶ generate ─▶ scripts/ + datasets/ ─▶ run（零 token）
+手搓 cases/*.json ──────────────────────────┘        ▲ 缺项才现场 probe；ElementMap 快照优先</pre>
+    <p><b>怎么用：</b><code>python -m framework.cli explore --ai --scenario-file scenarios/contracts/contracts_search_by_no.yml</code> → <code>python -m framework.cli generate</code> → <code>python -m framework.cli run --workers 2</code></p>
+    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
+      <b>🧪 测试验证用例设计</b>
+      <ul style="margin:6px 0 0 18px;line-height:1.75">
+        <li><b>一类：</b><span class="code-inline">tests/test_offline_chain_python.py</span>（9 条：离线链 Python 化，跨平台）· <span class="code-inline">tests/test_no_gate_coupling.py</span>（2 条：框架自测与 demo 解耦）</li>
+        <li><b>二类：</b><span class="code-inline">tests/verify_offline_delivery.py</span>（交付两件套形态）· <span class="code-inline">tests/verify_offline_chain_deps.py</span>（离线链依赖齐备）· <span class="code-inline">tests/verify_e2e_scenario1_offline.py</span>（<b>7 项，含 2 条负向证伪 + 归档零残留</b>）</li>
+        <li><b>E2E：</b>场景1（自然语言→AI→cases→generate→run，日常走离线回放）· 场景2（手写用例驱动 <span class="code-inline">cli run</span>）</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 特性 2 ============ -->
+  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
+    <h4>特性 2 · 语义识别 + 分层定位（probe → AI → Tier1/Tier2）</h4>
+    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>让「人能读懂的语义名」变成「Playwright 能唯一命中的 locator」，且每一步失败都可解释、不瞎猜。</p>
+    <p><b>关键设计</b></p>
+    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
+      <li><b>probe 先出「词汇表」</b>：扫页面可交互元素，产 role/name/placeholder/test_id/nearby_text 等语义清单（AI 与 Playwright 共用）。</li>
+      <li><b>Tier1 精确语义</b>（5 级顺序）：<span class="code-inline">data-testid</span> &gt; <span class="code-inline">role+name</span> &gt; <span class="code-inline">label</span> &gt; <span class="code-inline">placeholder</span> &gt; <span class="code-inline">text</span>，命中后还要<b>意图复验</b>（回读元素实际语义比对，阈值 0.15，不符降级）。</li>
+      <li><b>Tier2 指纹 + 语义上下文</b>：nearby_text / container_heading / help_text 加权评分，<b>评分差距 &gt; 0.12（MINGAP）才唯一采用</b>，否则诚实失败。</li>
+      <li><b>铁律</b>：<span class="code-inline">count()==1</span> —— 不唯一就降级，找不到就报错，绝不蒙一个可能点错的。</li>
+    </ul>
+    <pre class="tree">semantic_name ─▶ Tier1(精确语义) ──唯一命中?──▶ ▶ 意图复验(阈值0.15) ──符合──▶ ✅ 采用
+                     │  不唯一 / 找不到 / 复验不过
+                     ▼
+                 Tier2(指纹 + 语义上下文) ──评分差距&gt;0.12?──▶ ✅ 唯一采用
+                                          └── 否则 ──▶ ❌ 诚实失败（进 Healer）</pre>
+    <p><b>怎么用：</b><span class="code-inline">explore --ai</span> 产 ElementMap → <span class="code-inline">generate</span> 时优先吃 element_map 快照（缺项才现场 probe）→ <span class="code-inline">run</span> 时逐动作先 Tier1 再 Tier2。</p>
+    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
+      <b>🧪 测试验证用例设计</b>
+      <ul style="margin:6px 0 0 18px;line-height:1.75">
+        <li><b>一类：</b><span class="code-inline">tests/test_ready_and_locate.py</span>（13 条：ready 契约、_goto/_wait_ready 接线、误导性报错消失）· <span class="code-inline">tests/test_element_ambiguity_gate.py</span>（15 条）· <span class="code-inline">tests/test_name_alignment.py</span>（11 条：精确名优先 / 模糊命中留痕 / 歧义必须 fail loud / 严格模式拒绝近似）· <span class="code-inline">tests/test_import_targets.py</span>（4 条：内部 import 都能解析）</li>
+        <li><b>二类：</b><span class="code-inline">tests/verify_picker_layer.py</span>（弹层 picker 链回归）· <span class="code-inline">tests/verify_order_pages.py</span> / <span class="code-inline">tests/verify_order_pick_create.py</span>（真开浏览器点、真读页面与服务端状态，<b>不看「代码里写了」</b>）</li>
+        <li><b>⚠️ 待补缺口（如实标注）：</b>Tier1 意图复验阈值（0.15）与 Tier2 MINGAP（0.12）目前<b>没有直接判据</b>——只有闸门层与命名层判据。阈值改动可能静默退化，建议补两条（复验不符必须降级 / 评分差距不足必须失败）。</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 特性 3 ============ -->
+  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
+    <h4>特性 3 · 防「AI 选对名字、选错控件」的多层兜底</h4>
+    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>AI 在复杂页面可能挑错控件（如把「合同名称输入框」选成「搜索框」）——用代码侧的多道防线把「AI 选错 → 框架点错」压到最低。</p>
+    <p><b>关键设计</b></p>
+    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
+      <li><b>防线①语义校准</b>（explorer）：AI 挑完元素后，用其描述与元素语义做字符级核心词重叠，<b>相似度 &lt; 0.3 打警告</b>「疑似选错控件」。</li>
+      <li><b>防线③Tier1 意图复验</b>（locator_bridge）：Tier1 命中唯一后回读元素实际语义与 page_hint/semantic_name 比对（阈值 0.15），不符 → 降级下一策略 / Tier2。</li>
+      <li><b>防线②Tier2 指纹消歧</b>：同名元素靠语义上下文（nearby_text 等）选出唯一；<b>无上下文的裸元素诚实失败</b>（防 false-heal）。</li>
+      <li><b>兜底 Healer</b>：三道防线都失败才走自愈，且自愈结果要过业务后置断言裁决。</li>
+    </ul>
+    <pre class="tree">AI 挑控件 ─▶ ①语义校准(相似度&lt;0.3 → 告警)
+                ▼
+          locator 解析 ─▶ ③Tier1 意图复验(阈值0.15；不符→降级)
+                ▼
+          ②Tier2 指纹+上下文(差距&gt;0.12 才唯一；裸元素 → 失败)
+                ▼
+          Healer 自愈(A级放宽阈值 → B级LLM重猜) ─▶ 后置断言裁决 recovered / real_bug / failed
+   —— 任一层不确定都<b>走失败</b>，宁可报错也不点错元素</pre>
+    <p><b>怎么用：</b>无需额外开关——<span class="code-inline">explore --ai</span> 与 <span class="code-inline">run</span> 默认生效；告警出现在 explore 日志，自愈事件落 <span class="code-inline">output/heals/*.md</span>。</p>
+    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
+      <b>🧪 测试验证用例设计</b>
+      <ul style="margin:6px 0 0 18px;line-height:1.75">
+        <li><b>一类：</b><span class="code-inline">tests/test_element_ambiguity_gate.py</span>（15 条）· <span class="code-inline">tests/test_name_alignment.py</span>（11 条：<b>歧义裸名不许猜</b>、精确名优先、影子名要列出来）· <span class="code-inline">tests/test_llm_retry.py</span>（3 条：LLM 失败重试边界）</li>
+        <li><b>二类：</b><span class="code-inline">tests/verify_element_ambiguity.py</span>（<b>12 项，含负向</b>）· <span class="code-inline">tests/verify_cross_page.py</span>（跨页场景：<b>每条错误都必须失败</b>——防假绿铁律）</li>
+        <li><b>E2E：</b>场景1 的离线链本身就覆盖「AI 挑名 → 定位 → 执行」整条路（含 2 条负向）。</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 特性 4 ============ -->
+  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
+    <h4>特性 4 · 用例 / 脚本 / 数据三层分离</h4>
+    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>用例写自然语言、脚本只放逻辑、数据全部抽离——改数据不动脚本，改页面不动用例。</p>
+    <p><b>关键设计</b></p>
+    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
+      <li><b>cases/*.json</b>：op 操作类型 + desc 描述 + element 探测语义 + value 数据；断言用 <span class="code-inline">asserts[]</span>，<b>11 种 kind</b>（文本/可见/隐藏/数量/属性/输入值/URL/勾选/未勾选/可用/禁用）。</li>
+      <li><b>scripts/ + datasets/</b>：generate 把字面值抽到 <span class="code-inline">scripts/datasets/&lt;case_id&gt;.json</span>，脚本只留引用。</li>
+      <li><b>动态占位符</b>：<span class="code-inline">{{datetime}}</span> / <span class="code-inline">{{date}}</span> / <span class="code-inline">{{uuid}}</span> 运行时解析固化（填表名 == 断言名，反复重跑不重名）。</li>
+      <li><b>用例级变量池</b> <span class="code-inline">case.vars</span>：存过程数据（新建名称/系统返回编号），function-scope 隔离；检查点主判据用「输入值一致性」，系统编号仅作增强项（没有也照样通过）。</li>
+    </ul>
+    <pre class="tree">cases/xxx.json  ──generate──▶  scripts/test_cases.py   （逻辑：操作类型 → Playwright 调用）
+  (自然语言 + 数据)                scripts/conftest.py      （夹具：_goto/_wait_ready/_act…）
+                                scripts/datasets/xxx.json（数据：字面值抽离 + 占位符）
+                                        │
+                                        └─ run ─▶ 逐用例 .log + report.html + 变量池隔离</pre>
+    <p><b>怎么用：</b><code>python -m framework.cli generate</code> 后看 <code>scripts/datasets/&lt;case_id&gt;.json</code>；改数据只动 datasets（或改 cases 重生成）。</p>
+    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
+      <b>🧪 测试验证用例设计</b>
+      <ul style="margin:6px 0 0 18px;line-height:1.75">
+        <li><b>一类：</b><span class="code-inline">tests/test_data_expand.py</span>（16 条：占位符展开与固化）· <span class="code-inline">tests/test_assert_kinds_render.py</span>（25 条：11 种断言渲染正确）· <span class="code-inline">tests/test_case_quality_gate.py</span>（13 条：用例质量闸门）· <span class="code-inline">tests/test_generate_quality_gate.py</span>（4 条）</li>
+        <li><b>二类：</b><span class="code-inline">tests/verify_data_expand.py</span>（全真跑）· <span class="code-inline">tests/verify_assert_kinds.py</span>（<b>防假绿铁律：每条断言在「期望值写错」时必须 FAIL</b>）</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 特性 5 ============ -->
+  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
+    <h4>特性 5 · 自愈闭环 Healer</h4>
+    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>只给「定位意外」兜底（工程上占比应 &lt; 5%），且<b>每一次自愈都可审</b>——绝不静默改写脚本、绝不把真 bug 治愈成绿。</p>
+    <p><b>关键设计</b></p>
+    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
+      <li><b>A 级（确定性、无 LLM）</b>：放宽阈值重定位（阈值 × 0.75 / MINGAP × 0.6）。</li>
+      <li><b>B 级（可选，需 key）</b>：请 LLM 重猜；失败即记为真 bug。</li>
+      <li><b>可审 diff</b>：事件落 <span class="code-inline">output/heals/*.md</span>，含改前/改后，人可复核。</li>
+      <li><b>三态裁决</b>：自愈后跑业务后置断言 → <b>recovered / real_bug / failed</b>，只有 recovered 才算「自愈成功」。</li>
+    </ul>
+    <pre class="tree">定位失败 ──▶ A级 放宽阈值(×0.75 / MINGAP×0.6) ──成功?──▶ 后置断言裁决
+                │ 失败                                        ├─ recovered（真兜底）
+                ▼                                            ├─ real_bug（页面/数据真的坏了）
+             B级 LLM 重猜(需key) ──成功?──▶ 同上              └─ failed（兜不住，如实失败）
+                └─ 失败 ──▶ ❌ 失败（不静默跳过）        每次事件都落 output/heals/*.md（可审）</pre>
+    <p><b>怎么用：</b><span class="code-inline">run</span> 时默认生效；跑完看 <span class="code-inline">output/heals/*.md</span> 复核，或看 <span class="code-inline">log/&lt;run_id&gt;/*.log</span> 里的自愈记录。</p>
+    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
+      <b>🧪 测试验证用例设计</b>
+      <ul style="margin:6px 0 0 18px;line-height:1.75">
+        <li><b>⚠️ 现状（如实标注）：本特性目前<b>没有自动化判据</b></b>（<span class="code-inline">tests/</span> 里搜 <span class="code-inline">healer</span> / <span class="code-inline">try_heal</span> / <span class="code-inline">heals/</span> 零命中），属于 R7 口径下的<b>待补项</b>。</li>
+        <li><b>建议补的判据（一类，秒级可测）：</b>① A 级放宽阈值后能重新命中唯一元素；② B 级<b>只在 A 级失败后</b>才触发（不许一失败就烧 token）；③ 三态裁决正确（recovered / real_bug / failed 各一条）；④ <b>兜不住时必须如实失败</b>，不许静默通过或改写脚本。</li>
+        <li><b>二类建议：</b>用 demo 造一个「元素改名」的临时场景，端到端验证「自愈成功 → 后置断言放行」与「真改坏 → real_bug」两条路。</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 特性 6 ============ -->
+  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
+    <h4>特性 6 · 并发与资源安全（低内存机器保命）</h4>
+    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>在内存紧张的机器上，宁可降并发也不许 OOM 连锁——实测 1 个 headless Chromium ≈ 515MB，1.87GB 无 swap 的机器强跑 2 并发会触发内核 global OOM（连无关进程一起被杀）。</p>
+    <p><b>关键设计</b></p>
+    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
+      <li><b>资源预检</b>：读 MemAvailable → <span class="code-inline">cap = max(1, min((MemAvailable - 保留) / 每 worker 预算, CPU 核数))</span>，不够<b>自动降级并打印理由</b>；<span class="code-inline">--force-workers</span> 可显式覆盖。</li>
+      <li><b>worker 复用浏览器</b>：每个 pytest-xdist worker 只起一个 Chromium 全程复用（逐条 setup 0.57~0.66s → 0.04~0.06s）。</li>
+      <li><b>日志 run-id 隔离</b>：<span class="code-inline">log/&lt;run_id&gt;/</span> 下 .log / report.html / traces / videos，重跑不覆盖历史。</li>
+      <li><b>调试开关 <span class="code-inline">--debug</span></b>（别名 <span class="code-inline">--headed</span>，默认关）：有图形显示 → 真开窗口一步步跑；<b>无图形显示（服务器）→ 降级为录屏 + 逐步截图 + trace</b>，两种环境都<u>不报错退出</u>。</li>
+      <li><b>跨平台铁律</b>：所有脚本显式 UTF-8（Windows 中文环境不乱码）；入口一律 Python（PowerShell 没有 bash）。</li>
+    </ul>
+    <pre class="tree">cli run ─▶ 资源预检: MemAvailable ─▶ cap = max(1, min(可用/每worker预算, CPU)) ─▶ 不够则降级(打印理由)
+                                                                        │
+        ┌───────────────────────────────────────────────────────────────┘
+        ▼
+  workers=1..N，每个 worker: 1 个 Chromium（复用） ─▶ 逐用例: 新建 context+page
+  产物: log/&lt;run_id&gt;/{{run.log, report.html, traces/, videos/, shots/}}
+
+  --debug: 有 DISPLAY ─▶ 真窗口(headed)  |  无 DISPLAY ─▶ 录屏 + 逐步截图 + trace（都不报错）</pre>
+    <p><b>怎么用：</b><code>python -m framework.cli run --workers 2</code>（自动降级）· <code>--force-workers 1</code>（显式）· <code>--debug</code>（看得见这次执行）。</p>
+    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
+      <b>🧪 测试验证用例设计</b>
+      <ul style="margin:6px 0 0 18px;line-height:1.75">
+        <li><b>一类：</b><span class="code-inline">tests/test_env_adaptation.py</span>（22 条：Windows / 非 git 目录 / 无 demo 下的降级路径）· <span class="code-inline">tests/test_utf8_io.py</span>（20 条：UTF-8 机理 + 真实默认编码路径）· <span class="code-inline">tests/test_retention_runs.py</span>（14 条：run-id 日志隔离与保留策略）· <span class="code-inline">tests/test_cli_exit_codes.py</span>（10 条：退出码契约，跳过 ≠ 通过）</li>
+        <li><b>二类：</b><span class="code-inline">tests/verify_retention_runs.py</span>（全真跑：日志保留）· <span class="code-inline">tests/verify_slow_target.py</span>（慢目标闸门：慢代理 300ms 下 6 条关键用例全绿；<b>内存不足如实 SKIP exit 3</b>）</li>
+        <li><b>⚠️ 待补缺口：</b><span class="code-inline">--debug</span> 两态（有/无图形显示）目前只有手工验证，<b>无自动化判据</b>——建议至少补「无 DISPLAY 时不许报错退出、且产物清单里必须有录像/截图」。</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 特性 7 ============ -->
+  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
+    <h4>特性 7 · 离线回放（LLM 录像）：无外网也能跑完整 AI 链路</h4>
+    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>把 <span class="code-inline">explore --ai</span> 每次问 LLM 的「prompt → 回答」原件录下来，让<b>连不上外网的机器</b>也能跑完整 AI 链路（语义识别 → generate → run），全程无需 key、不联网。</p>
+    <p><b>关键设计</b></p>
+    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
+      <li><b>两种命中</b>：先试<b>严格键</b>（prompt 逐字），再用<b>结构键</b>（场景语义 + 页面清单 + 控件骨架）兜底；命中结构键时<b>大声告警</b>（步骤是录制时针对那批数据做的判断）。</li>
+      <li><b>值归一化</b>：场景数据里的<b>引号内字面值</b>与 <span class="code-inline">花括号占位符</span>统一折成 <span class="code-inline">&lt;VAL&gt;</span> ⇒ 换数据、参数化都不再让录像失效；只有真改页面/控件/场景语义才需重录。</li>
+      <li><b>多键兼容</b>：查询同时试「新算法 + 旧算法」两把结构键 ⇒ 框架升级<b>不会让已有录像集体失效</b>。</li>
+      <li><b>录像运维三件套</b>：体检（<span class="code-inline">check_cassettes.py</span>，零成本：哪些场景没有可用录像）· 批量重录（<span class="code-inline">record_cassettes.py --missing-only</span>，需 key+外网）· <b>出厂闸门</b>（打包前强制体检，<b>不过就不产包</b>）。</li>
+      <li><b>可证伪</b>：离线链把 LLM 端点指到黑洞 <span class="code-inline">127.0.0.1:9</span> ⇒「有没有偷偷联网」是可验证的。</li>
+    </ul>
+    <pre class="tree">有外网机器:  explore --ai --llm-record ─▶ output/llm_cassettes/*.json（prompt + 回答 + 键）
+                                                    │  打包体检(每场景都有可用录像?) ─▶ 录像包
+无外网机器:  output/llm_cassettes/ ◀── 解包        ▼
+             explore --ai --llm-cassette（严格键 → 结构键兜底）─▶ generate ─▶ run
+             一键: python build_tools/offline_explore_chain.py --repo . --run（端点指黑洞，可证伪）</pre>
+    <p><b>怎么用：</b><code>--llm-record</code>（录）· <code>--llm-cassette</code>（放）· <code>--llm-cassette-strict</code>（只认逐字）· <code>build_tools/check_cassettes.py</code>（体检）· <code>build_tools/pack_release.py --with-cassettes</code>（打录像包，含出厂闸门）。</p>
+    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
+      <b>🧪 测试验证用例设计</b>
+      <ul style="margin:6px 0 0 18px;line-height:1.75">
+        <li><b>一类：</b><span class="code-inline">tests/test_llm_cassette.py</span>（30 条：键计算 / 归一化 / 多键兼容 / <b>负向：键不匹配必须报「没有这一份」、坏录像文件不许毁掉整次回放</b>）· <span class="code-inline">tests/test_offline_chain_python.py</span>（9 条）· <span class="code-inline">tests/test_pack_release.py</span>（含出厂闸门 3 条：接线锁 / 覆盖不全必须拦 / 逃生口必须有效）</li>
+        <li><b>二类：</b><span class="code-inline">tests/verify_e2e_scenario1_offline.py</span>（场景1 离线端到端，<b>7 项含 2 条负向 + 归档零残留</b>）· <span class="code-inline">tests/verify_e2e_scenario3_cassette.py</span>（<b>场景3 = 录制回放验证</b>：覆盖体检 / 体检有效性负向 / 不匹配必须 fail loud / <span class="code-inline">--with-record</span> 时跑「录制→回放闭环」）</li>
+        <li><b>E2E：</b>场景3 就是为这个特性单独立项的（录像对不上 = 无网机器整段跑不了，以前只有现场才会发现）。</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 特性 8 ============ -->
+  <div class="card" style="border-left:4px solid var(--brand)">
+    <h4>特性 8 · 质量闸门体系（把隐性问题变成当场变红）</h4>
+    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>框架的可靠性不靠「记得检查」，靠闸门——每个曾经踩过的坑都变成一个会当场变红的判据。</p>
+    <p><b>关键设计</b></p>
+    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
+      <li><b>demo 新鲜度闸门</b>：跑用例前先确认 demo 是最新版（否则后面全白做）。</li>
+      <li><b>元素歧义闸门</b>：同名元素必须消歧或诚实失败，不许瞎选。</li>
+      <li><b>慢目标闸门</b>：慢代理 300ms/请求下 6 条关键用例必须全绿。</li>
+      <li><b>录像包出厂闸门</b>：打包前强制体检，覆盖不全不产包。</li>
+      <li><b>R7 四项验收 / SKIP ≠ 通过</b>：①框架自测 ②特性自测 ③新鲜度 ④E2E 三场景；任一段跳过 ⇒ 退出码 3（<b>跳过不算通过</b>）；新特性一律 <b>TDD 判据先行</b>（先落判据 → 留红态证据 → 再实现）。</li>
+    </ul>
+    <pre class="tree">python tests/run_acceptance.py        ← 一条命令跑完 R7 四项（便宜先跑 + fail fast）
+  [0] 闸门自检（先验「闸门自己」）
+  [1] ③ demo 新鲜度      [2] ① 框架自测 337 条     [3] ④ E2E 场景3→2→1     [4] ② 特性自测 15 脚本
+  退出码: 0 通过 / 3 跳过(不算通过) / 其它失败 —— 任一项红就停手并报「哪一项」</pre>
+    <p><b>怎么用：</b><code>python tests/run_acceptance.py</code>（日常）· <code>--with-record</code>（发版前含录制闭环）· <code>python tests/run_verifications.py</code>（只跑二类）。</p>
+    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
+      <b>🧪 测试验证用例设计（闸门自己也要被判据钉住）</b>
+      <ul style="margin:6px 0 0 18px;line-height:1.75">
+        <li><b>一类：</b><span class="code-inline">tests/test_acceptance_entry.py</span>（8 条：入口步骤顺序即契约 / 三场景齐全 / 跳过必须标出 / SKIP ≠ 通过）· <span class="code-inline">tests/test_demo_freshness_gate.py</span>（21 条）· <span class="code-inline">tests/test_pack_release.py</span>（16 条）· <span class="code-inline">tests/test_artifacts_health.py</span>（7 条：产物健康，坏产物给人话诊断）· <span class="code-inline">tests/test_target_reachability.py</span>（7 条：连不上时统一给「先起 demo」指引）· <span class="code-inline">tests/test_case_quality_gate.py</span>（13 条）</li>
+        <li><b>二类：</b><span class="code-inline">tests/verify_demo_freshness.py</span>（<b>7 项含负向证伪 + 真重启 + 还原</b>：闸门自己也必须被证明「坏 demo 能抓、好 demo 不误伤」）· <span class="code-inline">tests/verify_slow_target.py</span> · <span class="code-inline">tests/verify_html_sync.py</span>（R8：培训页可复现 + 与代码逐字节一致）</li>
+        <li><b>原则：</b>闸门类结论必须<b>先主动证伪</b>（实测漏洞 + 边界清单）再下结论；<b>宁漏不误伤</b>（误拦会诱发绕过工具）。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="border-top:4px solid var(--brand);margin-top:18px">
+    <h4>📌 读本章的顺序建议（新手路线）</h4>
+    <p style="font-size:.94rem;line-height:1.8">
+      1️⃣ 先读 <b>特性 1</b>（知道两条链路怎么汇合）→ 2️⃣ 再读 <b>特性 4</b>（知道用例/脚本/数据怎么分工，这是你日常改的东西）→
+      3️⃣ 跑一遍第 5 章图例⓪ 的六个阶段对照代码 → 4️⃣ 遇到点不中元素时回读 <b>特性 2 / 3</b> →
+      5️⃣ 交付或换机器前读 <b>特性 7</b>（录像与出厂闸门）→ 6️⃣ 改完代码用 <b>特性 8</b> 的入口自检。
+    </p>
+  </div>
 </section>
 
 <!-- ========== 7. 常见坑 ========== -->
 <section>
-  <h2 class="sec-title"><span class="n">8</span>新同学最容易踩的坑</h2>
+  <h2 class="sec-title"><span class="n">7</span>新同学最容易踩的坑</h2>
   <p class="sec-sub">这些坑都是真实踩过的，碰到先对应这里。</p>
   <div class="card">
     <div class="pit"><h4>坑1 · 把 locator 字符串丢给 page.locator()</h4>
@@ -1904,7 +1971,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 
 <!-- ========== 8. 动手上手 ========== -->
 <section>
-  <h2 class="sec-title"><span class="n">9</span>动手跑一遍</h2>
+  <h2 class="sec-title"><span class="n">8</span>动手跑一遍</h2>
   <p class="sec-sub">先起被测应用，再跑链路。没 key 也能玩 mock。</p>
   <div class="card">
     <pre class="cmd"><span class="prompt">$</span> cd ~/hybrid_gui_qa && source .venv/bin/activate
@@ -1963,7 +2030,7 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 
 <!-- ========== 9. 记住三点 ========== -->
 <section>
-  <h2 class="sec-title"><span class="n">10</span>收尾 · 记住这三点</h2>
+  <h2 class="sec-title"><span class="n">9</span>收尾 · 记住这三点</h2>
   <div class="mem">
     <div class="mem-item a"><div class="big">🧠</div><b>AI 思考</b>
       <span>理解意图、规划步骤、挑元素——只干"智能"的活。</span></div>
@@ -1991,4 +2058,3 @@ if __name__ == "__main__":
     OUT.write_text(html_str, encoding="utf-8")
     print(f"✓ 已生成 {OUT}")
     print(f"  大小: {len(html_str.encode('utf-8'))/1024:.1f} KB")
-    print(f"  代码卡: {len(FILES)} 个文件")
