@@ -8306,7 +8306,10 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
       <code>--with-record</code> 时加跑「录制 → 回放闭环」，要 key + 外网）。<br>
       <b>录像运维</b>：<code>python build_tools/check_cassettes.py</code>（零成本体检：哪些场景没有可用录像）·
       <code>python build_tools/record_cassettes.py --missing-only</code>（批量重录缺的）。
-      <b>SKIP ≠ 通过</b>：任一段跳过 ⇒ 整体退出码 3。
+      <b>SKIP ≠ 通过</b>：任一段跳过 ⇒ 整体退出码 3。<br>
+      <b>★ 录像包出厂闸门</b>：<code>pack_release.py --with-cassettes</code> 打包<b>前</b>强制体检
+      「每个场景都有可用录像」，<b>不过就不产包（exit 2）</b>并逐条列出缺哪个场景 + 修法命令 ——
+      录像包不会再「发出去了才发现是废包」。调试绕过：<code>--allow-missing-cassettes</code>（交付永不用）。
     </p>
   </div>
 </section>

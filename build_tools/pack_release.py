@@ -21,6 +21,7 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 import sys
 import zipfile
 from datetime import date, datetime
@@ -208,6 +209,41 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
 # 现在与代码包同一个打包器管：代码包**不含**录像（output/ 永不进包），录像单独一件。
 CASSETTE_SRC = REPO / "output" / "llm_cassettes"
 CASSETTE_HELPER = REPO / "build_tools" / "offline_explore_chain.py"
+CASSETTE_SCENARIO_DIR = REPO / "scenarios"
+CASSETTE_CHECK = REPO / "build_tools" / "check_cassettes.py"
+
+
+def cassette_coverage_problems(scenario_dir: Path | None = None,
+                               cassette_dir: Path | None = None) -> list[str]:
+    """录像包**出厂前体检**：`scenarios/` 下每个场景都要有可用录像 ⇒ 返回问题清单（空 = 通过）。
+
+    ★ 为什么必须拦（2026-09-22 实测）：录像包曾经「发出去之后才发现 5 个场景里只有 1 个有可用录像」
+    —— 包看着有内容（6 份录像），实际对另外 4 个场景毫无用处；无网机器上那些场景**直接跑不了**。
+    打包环节以前**没有任何检查**会告诉你这件事。
+
+    口径不重写一遍：subprocess 调 `build_tools/check_cassettes.py`（同一份体检口径；显式 UTF-8，
+    中文路径 / 中文 Windows 下都不依赖 locale）。
+    """
+    if not CASSETTE_CHECK.exists():
+        return [f"体检脚本不在（{CASSETTE_CHECK}）⇒ 先解决它再打包，不许「没体检就出厂」"]
+    cmd = [sys.executable, str(CASSETTE_CHECK)]
+    if scenario_dir is not None:
+        cmd += ["--scenario-dir", str(scenario_dir)]
+    if cassette_dir is not None:
+        cmd += ["--dir", str(cassette_dir)]
+    p = subprocess.run(cmd, cwd=str(REPO), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=300)
+    if p.returncode == 0:
+        return []
+    out = (p.stdout or "") + "\n" + (p.stderr or "")
+    if p.returncode == 1:                       # 1 = 有场景缺可用录像（体检的正式判定）
+        lines = [ln.strip() for ln in out.splitlines()
+                 if ln.strip().startswith("❌") or "缺录像" in ln]
+        return lines or ["体检报「有场景缺录像」，但没解析出逐条明细（见上面的体检输出）"]
+    hint = {2: "用法问题（体检脚本的参数被改坏了？）",
+            3: "环境问题（没有录像目录 / 没有场景文件 ⇒ 根本没法判定覆盖）"}.get(
+                p.returncode, f"体检自身退出码 {p.returncode}")
+    return [f"体检没跑成：{hint}"]
 
 CASSETTE_README = """# hybrid_gui_qa · LLM 录像包（在**连不上外网**的机器上跑 explore 用）
 
@@ -272,13 +308,39 @@ python -m framework.cli explore --ai --scenario-dir scenarios/ --llm-record --no
 """
 
 
-def pack_cassettes(out_dir: Path, ver: str) -> Path | None:
-    """打**独立**录像包（代码包保持干净、不夹带运行时数据）→ 路径；无录像则 None。"""
-    files = sorted(CASSETTE_SRC.glob("*.json"))
+def pack_cassettes(out_dir: Path, ver: str, *, allow_missing: bool = False,
+                   scenario_dir: Path | None = None,
+                   cassette_src: Path | None = None) -> Path | None:
+    """打**独立**录像包（代码包保持干净、不夹带运行时数据）→ 路径；无录像 / 体检不过则 None。
+
+    ★ 出厂闸门（2026-09-22）：打包**前**强制体检「scenarios/ 里每个场景都有可用录像」，
+    不通过就**不产包**（返回 None ⇒ main 里 return 2）。实测教训：录像包曾「发出去之后才发现
+    5 个场景只有 1 个有可用录像」，那种包在无网机器上等于废包。
+    `allow_missing` = 显式调试逃生口（问题照样打出来，只降噪不掩盖）。
+    `scenario_dir` / `cassette_src` 只为判据可注入（默认走仓库真实路径）。
+    """
+    src = Path(cassette_src) if cassette_src else CASSETTE_SRC
+    files = sorted(src.glob("*.json"))
     if not files:
-        print(f"[pack] ❌ --with-cassettes：录像目录为空（{CASSETTE_SRC}）"
+        print(f"[pack] ❌ --with-cassettes：录像目录为空（{src}）"
               f" ⇒ 先在**有外网**的机器上 `--llm-record` 录一份")
         return None
+
+    problems = cassette_coverage_problems(scenario_dir, src)
+    if problems:
+        if not allow_missing:
+            print(f"[pack] ❌ 录像包体检不过（{len(problems)} 项）⇒ **不产包**"
+                  f"（无网机器上这些场景会直接跑不了）：")
+            for x in problems[:10]:
+                print(f"       - {x}")
+            print("[pack]    修法：python build_tools/record_cassettes.py --missing-only"
+                  "（需 key + 外网；录完再跑 build_tools/check_cassettes.py 复检）")
+            print("[pack]    调试逃生口（**交付永不用**）：--allow-missing-cassettes")
+            return None
+        print("[pack] ⚠️⚠️ --allow-missing-cassettes 生效：体检问题只警告不拦（**永不允许用于交付**）")
+        for x in problems[:10]:
+            print(f"       - {x}")
+
     zp = out_dir / f"hybrid_gui_qa_llm_cassettes_{date.today().strftime('%Y%m%d')}.zip"
     rows, total = [], 0
     for f in files:
@@ -345,7 +407,11 @@ def main() -> int:
                     help="调试逃生口：跳过「坏产物」判据（交付永不用）")
     ap.add_argument("--with-cassettes", action="store_true",
                     help="同时打**独立的 LLM 录像包**（给连不上外网 LLM 的机器；"
-                         "交付形态 = 代码包 + 录像包「两件套」）")
+                         "交付形态 = 代码包 + 录像包「两件套」）；"
+                         "★ 打包前强制体检「每个场景都有可用录像」，不过就不产包")
+    ap.add_argument("--allow-missing-cassettes", action="store_true",
+                    help="调试逃生口：录像体检不过也照打录像包（**交付永不用**；"
+                         "正常情形请先跑 record_cassettes.py --missing-only 补齐再打）")
     a = ap.parse_args()
 
     repo_cases = len(list((REPO / "cases").glob("*.json")))
@@ -406,8 +472,8 @@ def main() -> int:
     print(f"[pack] sha256 {sha}")
 
     if a.with_cassettes:
-        if pack_cassettes(out_dir, ver) is None:
-            return 2                       # 显式要了却打不出来 ⇒ 别当成功
+        if pack_cassettes(out_dir, ver, allow_missing=a.allow_missing_cassettes) is None:
+            return 2                       # 显式要了却打不出来 / 体检不过 ⇒ 别当成功
     refresh_sums(out_dir)
     return 0
 

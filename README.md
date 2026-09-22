@@ -572,6 +572,9 @@ python -m framework.cli run --workers 2          # 场景2：generate → run（
 # 录像运维（录像对不上 = 无网机器上场景跑不了 ⇒ 发版前必过体检）：
 python build_tools/check_cassettes.py            # 体检（零成本，不联网/不要 key）：哪些场景没有可用录像
 python build_tools/record_cassettes.py --missing-only   # 批量重录缺的（要 key + 外网；录制=真调 LLM）
+python build_tools/pack_release.py --with-cassettes     # 打录像包（★ 出厂闸门：体检不过 ⇒ 不产包 + exit 2）
+#   ↑ 临时绕过只为调试（**交付永不用**）：--allow-missing-cassettes
+#   ↑ 闸门拦下时它会逐条列出「哪个场景缺录像」+ 给出修法命令，不用自己猜
 python tests/verify_slow_target.py               # 慢目标闸门（F1/F2）：慢代理 300ms/请求下 6 条关键用例必须全绿
                                                  #   （纯正向闸、无负向段；内存 <650MB 会如实 SKIP exit 3，SKIP≠通过）
 python tests/verify_html_sync.py                 # R8 判据：培训页能由代码可复现生成 且 与代码逐字节一致
