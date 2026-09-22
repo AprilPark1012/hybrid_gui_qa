@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>零 testid 挑战页（P16 夹具）</title>
+<style>body{font-family:sans-serif;margin:24px}table{border-collapse:collapse;margin-top:8px}td,th{border:1px solid #ccc;padding:4px 8px}.modal{display:none}</style>
+</head>
+<body>
+<!--
+  P16 批 1 夹具：**模拟最坏的真实系统** —— 整页零 data-testid、表格零 data-field。
+  用途：验证「锚点（表头文本 / aria-label / heading / role）+ 相对路径下钻」能不能定位到子元素，
+       以及歧义（同名控件/同文本多行）必须**如实失败**而不是 nth 猜。
+
+  刻意埋的坑：
+   ① 表格无 testid、无 data-field ⇒ 只能按「表头文本 + 列序」锚列（他 2026-09-22 拍的 C 降级路径）
+   ② 两行里各有一个文本同为「选择」的按钮 ⇒ 全页 `get_by_role('button', name='选择')` 必然歧义（count=2）
+   ③ 两行里各有一个文本同为「选择」的链接、且行内容不同 ⇒ 必须靠"行锚文本"消歧
+   ④ 表单控件只有 label / placeholder，没有 testid
+   ⑤ 一个无 testid 的 section 只有 aria-label="工具栏" 作为锚点
+   ⑥ 一个同名输入框出现在两个不同容器里（工具栏 + 弹层）⇒ 容器锚点必须参与消歧
+   ⑦ 表头中文且列序稳定 ⇒ 列可以按「第 N 列」退化定位（无 data-field 时的最后手段）
+-->
+<h1>采购单列表</h1>
+
+<section aria-label="工具栏">
+  <label>关键字 <input id="kw-1" placeholder="单号/供应商" autocomplete="off"></label>
+  <button type="button">搜索</button>
+  <button type="button">重置</button>
+</section>
+
+<table id="po-list">
+  <thead>
+    <tr><th>单号</th><th>供应商</th><th>金额</th><th>操作</th><th>链接</th></tr>
+  </thead>
+  <tbody>
+    <tr data-po="PO-1001">
+      <td>PO-1001</td>
+      <td>北京华信科技有限公司</td>
+      <td>12000</td>
+      <td><button type="button">选择</button></td>
+      <td><a href="/po/PO-1001">选择</a></td>
+    </tr>
+    <tr data-po="PO-1002">
+      <td>PO-1002</td>
+      <td>上海远东贸易有限公司</td>
+      <td>8600</td>
+      <td><button type="button">选择</button></td>
+      <td><a href="/po/PO-1002">选择</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="modal" role="dialog" aria-label="新建采购单">
+  <h2>新建采购单</h2>
+  <label>关键字 <input id="kw-2" placeholder="单号/供应商" autocomplete="off"></label>
+  <label>备注 <input id="remark" placeholder="可不填" autocomplete="off"></label>
+  <button type="button">提交</button>
+  <button type="button">取消</button>
+</div>
+</body>
+</html>

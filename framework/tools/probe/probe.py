@@ -14,12 +14,75 @@ import re
 import unicodedata
 from playwright.sync_api import Page
 
+from framework.tools.probe.anchor import container_from_ancestors, path_for_table_row
+
 # 被探测的交互元素选择器（覆盖绝大多数 GUI 控件）
 INTERACTIVE_SELECTOR = (
     "button, input, select, textarea, a[href], "
     "[role=button], [role=link], [role=checkbox], [role=radio], "
     "[role=menuitem], [role=tab]"
 )
+
+# P16：往上看几层祖先来找「可锚定容器」（表格/弹层/表单/区块）—— 8 层足够覆盖常见结构，
+# 再看更外面只会拿到 body/html（没有锚点价值），白花时间。
+ANCESTOR_MAX_DEPTH = 8
+
+
+def _ancestor_chain(loc, max_depth: int = ANCESTOR_MAX_DEPTH) -> list[dict]:
+    """采集该元素的祖先链（**由近到远**），带角色/类名/埋点/aria-label —— 供 anchor 模块挑锚点。
+
+    只在探测期跑一次 JS（一次 evaluate 拿全链，不逐个祖先往返）。
+    """
+    try:
+        return loc.evaluate(
+            """(e, maxDepth) => {
+                 const out = []; let n = e.parentElement; let d = 0;
+                 while (n && d < maxDepth) {
+                   out.push({tag: n.tagName.toLowerCase(),
+                             role: n.getAttribute('role') || '',
+                             class: (typeof n.className === 'string' ? n.className : ''),
+                             test_id: n.getAttribute('data-testid') || '',
+                             aria_label: n.getAttribute('aria-label') || ''});
+                   n = n.parentElement; d++;
+                 }
+                 return out;
+               }""", max_depth) or []
+    except Exception:
+        return []
+
+
+def _table_context(loc) -> dict | None:
+    """若元素在表格行内 ⇒ 采集「行锚文本 + 列（data-field / 表头文本 / 列序）」，供下钻定位。
+
+    真实项目表格常没有 `data-field`（也不是埋点），所以列信息是**三级降级**：
+    `data-field` → 表头文本 → 显式列序。拿不到就留空（下游据此放弃或另找锚点，绝不猜）。
+    """
+    try:
+        ctx = loc.evaluate(
+            """e => {
+                 const tr = e.closest('tr');
+                 if (!tr) return null;
+                 const td = e.closest('td,th');
+                 const tbl = e.closest('table');
+                 const heads = tbl ? Array.from(tbl.querySelectorAll('thead th'))
+                                       .map(x => (x.textContent || '').trim()) : [];
+                 let colField = '', colHeader = '', colIndex = null;
+                 if (td) {
+                   colField = td.getAttribute('data-field') || '';
+                   const cells = Array.from(tr.children);
+                   const idx = cells.indexOf(td);
+                   colIndex = idx >= 0 ? idx + 1 : null;
+                   if (colIndex && colIndex <= heads.length) colHeader = heads[colIndex - 1];
+                 }
+                 const rowText = (tr.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
+                 return {row_text: rowText, col_field: colField, col_header: colHeader,
+                         col_index: colIndex,
+                         table_test_id: tbl ? (tbl.getAttribute('data-testid') || '') : ''};
+               }"""
+        )
+        return ctx or None
+    except Exception:
+        return None
 
 
 def _slug(name: str) -> str:
@@ -300,7 +363,15 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
     """抓取当前页面的可交互元素语义清单。
 
     返回 [ {semantic_name, tag, role, name, placeholder, label, test_id, text,
-            nearby_text, container_heading, help_text, page} , ... ]
+            nearby_text, container_heading, help_text, page, opens_new_tab,
+            anchor, path} , ... ]
+
+    P16（2026-09-22）新增两个字段 —— 为「真实系统只有顶层元素有 testid」这件事服务：
+      · `anchor`：最近的**可锚定容器**（表格/弹层/表单/区块）+ 它的锚点信号
+        （`{"kind","by","value"}`；有容器但没信号时 by/value 为 None；没有容器 ⇒ None）；
+      · `path`：行内元素的**容器内相对路径**（行锚文本 / 列 = data-field→表头文本→列序 / 目标语义）；
+        不在表格行内 ⇒ None（此时靠 anchor + role/name 定位，不需要相对路径）。
+    两者都**只描述、不定位**，也不含任何 CSS/selector（本项目的铁律：不让 AI 猜 CSS）。
     page_name（跨页流程 P3 新增）：给每个元素打上所属页面标记，供「跨页同名唯一化」与 AI 分页理解用。
     单页场景不传 → 字段为空串，行为与改造前完全一致。
 
@@ -334,6 +405,23 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
         container_heading = _nearest_heading(loc)
         help_text = _help_text(page, loc)
 
+        # --- P16（2026-09-22）：顶层锚点 + 容器内相对路径 -----------------------------
+        # 为什么：真实系统一般只有顶层元素（表格/弹层/工具栏/区块）有 data-testid，
+        # 子元素没有埋点 ⇒ 定位必须"从锚点下钻"。这里把"锚点 + 相对路径"采集下来，
+        # 交给 locator_bridge 合成 locator、交给 AI 作为描述口径（不让 AI 猜 CSS）。
+        chain = _ancestor_chain(loc)
+        if chain:
+            chain[-1]["heading"] = container_heading        # 最外层节点带上最近 heading，供 region 锚用
+        anchor = container_from_ancestors(chain)
+        row_ctx = _table_context(loc)
+        path = None
+        if row_ctx:
+            path = path_for_table_row(row_text=row_ctx.get("row_text"),
+                                      cell_field=row_ctx.get("col_field"),
+                                      col_header=row_ctx.get("col_header"),
+                                      col_index=row_ctx.get("col_index"),
+                                      target_role=role, target_text=None) or None
+
         base = _slug(readable_name(text, help_text) or tag or f"el{i}")
 
         items.append({
@@ -357,6 +445,9 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
             "page": page_name or "",
             # 跨 tab 流程（2026-09-17）：点击是否新开 tab（探针给信号，AI 据此选 click_new_tab）
             "opens_new_tab": opens_new_tab,
+            # P16：顶层锚点 + 容器内相对路径（无锚点/不在行内 ⇒ None，绝不编造）
+            "anchor": anchor,
+            "path": path,
         })
     assign_semantic_names(items)                 # 第二遍：统一命名（同名 → 全部带上下文）
     return items

@@ -24,6 +24,12 @@ class ElementRef:
     nearby_text: str | None = None        # 同一逻辑单元的关键文本（如列表项的 span 等待办内容）
     help_text: str | None = None          # aria-describedby / title / 邻近提示文本
     notes: str = ""
+    # --- P16 新增（2026-09-22）：顶层锚点 + 容器内相对路径 -------------------------------
+    # 为什么：真实系统一般只有**顶层元素**（表格/弹层/工具栏/区块）有 data-testid，
+    # 子元素（行、单元格、行内链接按钮）没有 ⇒ 必须"从锚点下钻"。见 framework/tools/probe/anchor.py。
+    # 老生成物 / 老录像里没有这两个字段 ⇒ from_dict 会留 None（向后兼容，绝不编造）。
+    anchor: dict | None = None   # {"kind": table|dialog|form|region, "by": test_id|aria_label|role|heading, "value": ...}
+    path: list | None = None     # [{"axis": row|col|target, "by": ..., "value": ...}, ...]
 
     def to_dict(self) -> dict:
         return asdict(self)
