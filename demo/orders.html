@@ -63,40 +63,40 @@
   <h1>订单系统</h1>
   <div style="display:flex;gap:14px;align-items:center;font-size:13px;">
     <div>共 <span id="total" data-testid="total-o">0</span> 条订单</div>
-    <a href="/" data-testid="link-contracts">合同管理</a>
-    <button id="btn-new-order" data-testid="btn-new-order">+ 新建订单</button>
+    <a href="/">合同管理</a>
+    <button id="btn-new-order">+ 新建订单</button>
   </div>
 </div>
 
 <div class="wrap">
   <!-- 搜索区：订单名称(全模糊) / 销售员(右模糊) / 客户(全模糊) / 业务单元·管理单元·帐套 用「...」弹层选值 -->
   <div class="toolbar" aria-label="搜索工具栏">
-    <label>订单名称 <input id="tb-o-name" data-testid="tb-o-name" placeholder="订单名称（全模糊）" autocomplete="off"></label>
-    <label>销售员 <input id="tb-o-salesman" data-testid="tb-o-salesman" placeholder="销售员（右模糊：前缀匹配）" autocomplete="off"></label>
-    <label>客户 <input id="tb-o-cust" data-testid="tb-o-cust" placeholder="客户（全模糊）" autocomplete="off"></label>
+    <label>订单名称 <input id="tb-o-name" placeholder="订单名称（全模糊）" autocomplete="off"></label>
+    <label>销售员 <input id="tb-o-salesman" placeholder="销售员（右模糊：前缀匹配）" autocomplete="off"></label>
+    <label>客户 <input id="tb-o-cust" placeholder="客户（全模糊）" autocomplete="off"></label>
     <label>业务单元
       <span class="pick-row">
-        <input id="tb-o-bu" class="pick-mini" data-testid="tb-o-bu" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-bu-search" data-testid="btn-pick-bu-search"
+        <input id="tb-o-bu" class="pick-mini" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-bu-search"
                 title="按业务单元筛选">...</button>
       </span>
     </label>
     <label>管理单元
       <span class="pick-row">
-        <input id="tb-o-mu" class="pick-mini" data-testid="tb-o-mu" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-mu-search" data-testid="btn-pick-mu-search"
+        <input id="tb-o-mu" class="pick-mini" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-mu-search"
                 title="按管理单元筛选">...</button>
       </span>
     </label>
     <label>帐套
       <span class="pick-row">
-        <input id="tb-o-file" class="pick-mini" data-testid="tb-o-file" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-file-search" data-testid="btn-pick-file-search"
+        <input id="tb-o-file" class="pick-mini" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-file-search"
                 title="按帐套筛选">...</button>
       </span>
     </label>
-    <button id="btn-search-o" data-testid="btn-search-o">搜索</button>
-    <button id="btn-reset-o" data-testid="btn-reset-o" class="ghost">重置</button>
+    <button id="btn-search-o">搜索</button>
+    <button id="btn-reset-o" class="ghost">重置</button>
   </div>
 
   <!-- 订单列表：9 列（订单编号 / 合同编号 / 订单名称 / 管理单元 / 销售员 / 订单类型 / 业务单元 / 帐套 / 客户） -->
@@ -113,9 +113,9 @@
   <!-- 分页：默认 3 页 × 20 条 -->
   <div class="pager">
     <span id="page-info" data-testid="page-info">第 1 / 1 页</span>
-    <button id="btn-prev-o" data-testid="btn-prev-o" class="ghost" type="button">上一页</button>
+    <button id="btn-prev-o" class="ghost" type="button">上一页</button>
     <span id="pager" data-testid="pager"></span>
-    <button id="btn-next-o" data-testid="btn-next-o" class="ghost" type="button">下一页</button>
+    <button id="btn-next-o" class="ghost" type="button">下一页</button>
   </div>
   <div id="status-o" data-testid="status-o"></div>
 </div>
@@ -126,42 +126,42 @@
     <h3>新建订单</h3>
     <div class="field">
       <label>订单名称 <span class="required-mark">*</span></label>
-      <input id="o-name" data-testid="o-name" placeholder="请输入订单名称" autocomplete="off">
+      <input id="o-name" placeholder="请输入订单名称" autocomplete="off">
     </div>
     <div class="field">
       <label>合同 <span class="required-mark">*</span></label>
       <div class="pick-row">
-        <input id="o-contract" data-testid="o-contract" placeholder="请选择合同" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-contract" data-testid="btn-pick-contract">选择合同</button>
+        <input id="o-contract" placeholder="请选择合同" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-contract">选择合同</button>
       </div>
     </div>
     <div class="field">
       <label>业务单元 <span class="required-mark">*</span></label>
       <div class="pick-row">
-        <input id="o-bu" data-testid="o-bu" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-bu" data-testid="btn-pick-bu"
+        <input id="o-bu" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-bu"
                 title="选择业务单元">...</button>
       </div>
     </div>
     <div class="field">
       <label>管理单元 <span class="required-mark">*</span></label>
       <div class="pick-row">
-        <input id="o-mu" data-testid="o-mu" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-mu" data-testid="btn-pick-mu"
+        <input id="o-mu" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-mu"
                 title="选择管理单元">...</button>
       </div>
     </div>
     <div class="field">
       <label>帐套 <span class="required-mark">*</span></label>
       <div class="pick-row">
-        <input id="o-file" data-testid="o-file" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-file" data-testid="btn-pick-file"
+        <input id="o-file" placeholder="请选择" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-file"
                 title="选择帐套">...</button>
       </div>
     </div>
     <div class="field">
       <label>订单类型 <span class="required-mark">*</span></label>
-      <select id="o-type" data-testid="o-type">
+      <select id="o-type">
         <option value="">请选择</option>
         <option value="标准销售订单">标准销售订单</option>
         <option value="退货订单">退货订单</option>
@@ -172,24 +172,24 @@
     <div class="field">
       <label>客户 <span class="required-mark">*</span></label>
       <div class="pick-row">
-        <input id="o-cust" data-testid="o-cust" placeholder="请选择客户" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-cust" data-testid="btn-pick-cust">选择客户</button>
+        <input id="o-cust" placeholder="请选择客户" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-cust">选择客户</button>
       </div>
     </div>
     <div class="field">
       <label>销售员 <span class="required-mark">*</span></label>
       <div class="pick-row">
-        <input id="o-salesman" data-testid="o-salesman" placeholder="请选择销售员" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-salesman" data-testid="btn-pick-salesman">选择销售员</button>
+        <input id="o-salesman" placeholder="请选择销售员" readonly autocomplete="off">
+        <button type="button" class="pick" id="btn-pick-salesman">选择销售员</button>
       </div>
     </div>
     <div class="field">
       <label>订单备注（选填）</label>
-      <input id="o-remark" data-testid="o-remark" placeholder="订单备注（可不填）" autocomplete="off">
+      <input id="o-remark" placeholder="订单备注（可不填）" autocomplete="off">
     </div>
     <div class="modal-actions">
-      <button id="btn-cancel-order" data-testid="btn-cancel-order" class="ghost" type="button">取消</button>
-      <button id="btn-submit-order" data-testid="btn-submit-order" type="button">提交</button>
+      <button id="btn-cancel-order" class="ghost" type="button">取消</button>
+      <button id="btn-submit-order" type="button">提交</button>
     </div>
   </div>
 </div>
@@ -201,54 +201,74 @@
 <div id="modal-pick-bu" class="modal pick-modal" data-testid="modal-pick-bu">
   <div class="modal-box">
     <h3>选择业务单元</h3>
-    <table data-testid="tbl-pick-bu"><thead><tr><th>业务单元</th><th style="width:90px;">操作</th></tr></thead>
+    <table><thead><tr><th>业务单元</th><th style="width:90px;">操作</th></tr></thead>
       <tbody id="tbody-pick-bu"></tbody></table>
   </div>
 </div>
 <div id="modal-pick-mu" class="modal pick-modal" data-testid="modal-pick-mu">
   <div class="modal-box">
     <h3>选择管理单元</h3>
-    <table data-testid="tbl-pick-mu"><thead><tr><th>管理单元</th><th style="width:90px;">操作</th></tr></thead>
+    <table><thead><tr><th>管理单元</th><th style="width:90px;">操作</th></tr></thead>
       <tbody id="tbody-pick-mu"></tbody></table>
   </div>
 </div>
 <div id="modal-pick-file" class="modal pick-modal" data-testid="modal-pick-file">
   <div class="modal-box">
     <h3>选择帐套</h3>
-    <table data-testid="tbl-pick-file"><thead><tr><th>帐套</th><th style="width:90px;">操作</th></tr></thead>
+    <table><thead><tr><th>帐套</th><th style="width:90px;">操作</th></tr></thead>
       <tbody id="tbody-pick-file"></tbody></table>
   </div>
 </div>
 <div id="modal-pick-contract" class="modal pick-modal" data-testid="modal-pick-contract">
   <div class="modal-box wide">
     <h3>选择合同</h3>
-    <table data-testid="tbl-pick-contract">
+    <table>
       <thead><tr><th>合同编号</th><th>合同名称</th><th>客户</th><th style="width:90px;">操作</th></tr></thead>
       <tbody id="tbody-pick-contract"></tbody>
     </table>
+    <div class="modal-actions">
+      <button id="btn-new-contract" type="button">+ 新建合同</button>
+    </div>
+  </div>
+</div>
+<!-- 第 3 层：合同挑选层 →「+ 新建合同」→ 本弹层（需求③ 的合同版，2026-09-22 加） -->
+<div id="modal-create-contract" class="modal create-modal" data-testid="modal-create-contract">
+  <div class="modal-box">
+    <h3>新建合同</h3>
+    <div class="field"><label>合同名称 <span class="required-mark">*</span></label>
+      <input id="nct-name" placeholder="请输入合同名称" autocomplete="off"></div>
+    <div class="field"><label>管理单元</label><select id="nct-mu"></select></div>
+    <div class="field"><label>帐套</label><select id="nct-fs"></select></div>
+    <div class="field"><label>合同类型</label><select id="nct-type"></select></div>
+    <div class="field"><label>业务单元</label><select id="nct-bu"></select></div>
+    <div class="field"><label>客户</label><select id="nct-cust"></select></div>
+    <div class="modal-actions">
+      <button id="btn-create-contract-cancel" class="ghost" type="button">取消</button>
+      <button id="btn-create-contract-submit" type="button">提交</button>
+    </div>
   </div>
 </div>
 <div id="modal-pick-cust" class="modal pick-modal" data-testid="modal-pick-cust">
   <div class="modal-box wide">
     <h3>选择客户</h3>
-    <table data-testid="tbl-pick-cust">
+    <table>
       <thead><tr><th>客户名称</th><th>客户地址</th><th style="width:90px;">操作</th></tr></thead>
       <tbody id="tbody-pick-cust"></tbody>
     </table>
     <div class="modal-actions">
-      <button id="btn-new-cust" data-testid="btn-new-cust" type="button">+ 新建客户</button>
-      <button id="btn-pick-cust-cancel" data-testid="btn-pick-cust-cancel" class="ghost" type="button">取消</button>
+      <button id="btn-new-cust" type="button">+ 新建客户</button>
+      <button id="btn-pick-cust-cancel" class="ghost" type="button">取消</button>
     </div>
   </div>
 </div>
 <div id="modal-pick-salesman" class="modal pick-modal" data-testid="modal-pick-salesman">
   <div class="modal-box">
     <h3>选择销售员</h3>
-    <table data-testid="tbl-pick-salesman"><thead><tr><th>销售员</th><th style="width:90px;">操作</th></tr></thead>
+    <table><thead><tr><th>销售员</th><th style="width:90px;">操作</th></tr></thead>
       <tbody id="tbody-pick-salesman"></tbody></table>
     <div class="modal-actions">
-      <button id="btn-new-salesman" data-testid="btn-new-salesman" type="button">+ 新建销售员</button>
-      <button id="btn-pick-salesman-cancel" data-testid="btn-pick-salesman-cancel" class="ghost" type="button">取消</button>
+      <button id="btn-new-salesman" type="button">+ 新建销售员</button>
+      <button id="btn-pick-salesman-cancel" class="ghost" type="button">取消</button>
     </div>
   </div>
 </div>
@@ -264,15 +284,15 @@
     <h3>新建客户</h3>
     <div class="field">
       <label>客户名称 <span class="required-mark">*</span></label>
-      <input id="nc-name" data-testid="nc-name" placeholder="请输入客户名称" autocomplete="off">
+      <input id="nc-name" placeholder="请输入客户名称" autocomplete="off">
     </div>
     <div class="field">
       <label>客户地址</label>
-      <input id="nc-addr" data-testid="nc-addr" placeholder="选填" autocomplete="off">
+      <input id="nc-addr" placeholder="选填" autocomplete="off">
     </div>
     <div class="modal-actions">
-      <button id="btn-create-cust-cancel" data-testid="btn-create-cust-cancel" class="ghost" type="button">取消</button>
-      <button id="btn-create-cust-submit" data-testid="btn-create-cust-submit" type="button">提交</button>
+      <button id="btn-create-cust-cancel" class="ghost" type="button">取消</button>
+      <button id="btn-create-cust-submit" type="button">提交</button>
     </div>
   </div>
 </div>
@@ -281,11 +301,11 @@
     <h3>新建销售员</h3>
     <div class="field">
       <label>销售员姓名 <span class="required-mark">*</span></label>
-      <input id="ns-name" data-testid="ns-name" placeholder="请输入销售员姓名" autocomplete="off">
+      <input id="ns-name" placeholder="请输入销售员姓名" autocomplete="off">
     </div>
     <div class="modal-actions">
-      <button id="btn-create-salesman-cancel" data-testid="btn-create-salesman-cancel" class="ghost" type="button">取消</button>
-      <button id="btn-create-salesman-submit" data-testid="btn-create-salesman-submit" type="button">提交</button>
+      <button id="btn-create-salesman-cancel" class="ghost" type="button">取消</button>
+      <button id="btn-create-salesman-submit" type="button">提交</button>
     </div>
   </div>
 </div>
@@ -547,6 +567,44 @@ async function submitCreate(kind){
   st.textContent = '已新建' + (kind === 'cust' ? '客户' : '销售员') + ': ' + rec.id + ' ' + rec.name;
   return {id: rec.id, name: rec.name};
 }
+// ========== 需求③ 合同版：合同挑选层内「临时新建」→ 落主数据 + 回填（2026-09-22） ==========
+function _fillCreateContractOptions(){
+  const fill = (id, vals) => { const el = $(id); if(el && !el.options.length)
+    el.innerHTML = vals.map(v=>`<option>${v}</option>`).join(''); };
+  fill('nct-mu', ['0021','0451','1031']);
+  fill('nct-fs', ['001','002','003']);
+  fill('nct-type', ['合同','PO','预PO']);
+  fill('nct-bu', ['bu_a','bu_b','bu_c']);
+  const c = $('nct-cust');
+  if(c && !c.options.length) c.innerHTML = (CUSTOMERS||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+}
+function openCreateContract(){
+  _fillCreateContractOptions();
+  $('nct-name').value = '';
+  $('modal-create-contract').classList.add('show');
+}
+function closeCreateContract(){ $('modal-create-contract').classList.remove('show'); }
+async function submitCreateContract(){
+  const st = $('status-o');
+  const name = $('nct-name').value.trim();
+  if(!name){ st.textContent = '合同名称不能为空'; return null; }
+  const payload = {name, mu: $('nct-mu').value, file: $('nct-fs').value,
+                   type: $('nct-type').value, bu: $('nct-bu').value, cust: $('nct-cust').value};
+  const resp = await fetch(apiUrl('/api/contracts'), {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+  const rec = await resp.json().catch(()=>({}));
+  if(!resp.ok){ st.textContent = rec.error || ('新建合同失败（HTTP ' + resp.status + '）'); return null; }
+  CONTRACTS.push(rec);            // ① 落进本地主数据
+  renderPickRows('contract');     // ② 重渲染挑选层：新建这条立刻能在弹层里看到
+  fillTargets(_pickTargets, rec.no, rec.no + ' ' + rec.name);   // ③ 回填当前挑选目标
+  closeCreateContract(); closePick('contract');                 // ④ 两层一起关（与「新建客户」同约定）
+  st.textContent = '已新建合同: ' + rec.no + ' ' + rec.name;
+  return {no: rec.no, name: rec.name};
+}
+$('btn-new-contract').addEventListener('click', openCreateContract);
+$('btn-create-contract-cancel').addEventListener('click', closeCreateContract);
+$('btn-create-contract-submit').addEventListener('click', submitCreateContract);
+
 $('btn-new-cust').addEventListener('click', ()=>openCreate('cust'));
 $('btn-new-salesman').addEventListener('click', ()=>openCreate('salesman'));
 $('btn-create-cust-cancel').addEventListener('click', ()=>closeCreate('cust'));

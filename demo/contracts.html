@@ -55,36 +55,36 @@
   <div id="result-info" style="font-size:13px;color:#666;">共 <span id="total">0</span> 条合同</div>
   <div style="display:flex;gap:12px;align-items:center;">
     <!-- 2026-09-17 需求①：订单系统入口 —— 点击**新开一个 tab**打开订单系统页面（orders.html） -->
-    <a id="link-orders" data-testid="link-orders" href="/orders.html" target="_blank" rel="noopener"
+    <a id="link-orders" href="/orders.html" target="_blank" rel="noopener"
        style="font-size:13px;color:#2f6fed;">查看订单</a>
-    <button id="btn-new" data-testid="btn-new">+ 新建合同</button>
+    <button id="btn-new">+ 新建合同</button>
   </div>
 </div>
 
 <!-- 搜索区（P16 批 4：撤掉子元素埋点后，这里作为**顶层锚点** —— 真实项目常见写法）-->
 <div class="toolbar" aria-label="搜索工具栏">
-  <label>关键字 <input id="tb-keyword" data-testid="tb-keyword" placeholder="合同编号/名称/管理单元/合同类型/帐套" autocomplete="off"></label>
+  <label>关键字 <input id="tb-keyword" placeholder="合同编号/名称/管理单元/合同类型/帐套" autocomplete="off"></label>
   <!-- 2026-09-14 需求②：客户筛选由下拉框改为**输入框 + 右模糊（前缀）匹配**。
        匹配口径：客户名称前缀（大小写不敏感）或客户编号前缀（c1…）。
        「华信」这种包含但不前缀的输入**必须不命中**，用来证明是右模糊而不是包含匹配。 -->
   <label>客户
     <span class="pick-row">
-      <input id="tb-customer" data-testid="tb-customer" placeholder="客户名称（右模糊：前缀匹配）" autocomplete="off">
-      <button type="button" class="pick" id="btn-pick-c-search" data-testid="btn-pick-c-search"
+      <input id="tb-customer" placeholder="客户名称（右模糊：前缀匹配）" autocomplete="off">
+      <button type="button" class="pick" id="btn-pick-c-search"
               title="按客户筛选">...</button>
     </span>
   </label>
   <label>业务单元
-    <select id="sel-bu" data-testid="sel-bu">
+    <select id="sel-bu">
       <option value="">全部业务单元</option>
       <option value="bu_a">bu_a</option><option value="bu_b">bu_b</option>
       <option value="bu_c">bu_c</option>
     </select>
   </label>
-  <button id="btn-search" data-testid="btn-search">搜索</button>
-  <button id="btn-reset" data-testid="btn-reset" class="ghost">重置</button>
+  <button id="btn-search">搜索</button>
+  <button id="btn-reset" class="ghost">重置</button>
   <!-- 2026-09-13：断言类型扩展需要真页覆盖 enabled/disabled —— 加一个「功能未接入」的禁用按钮 -->
-  <button id="btn-export" data-testid="btn-export" class="ghost" disabled
+  <button id="btn-export" class="ghost" disabled
           title="导出功能未接入">导出</button>
 </div>
 
@@ -106,11 +106,11 @@
     <h3>新建合同</h3>
     <div class="field">
       <label>合同名称</label>
-      <input id="inp-name" data-testid="inp-name" placeholder="请输入合同名称" autocomplete="off">
+      <input id="inp-name" placeholder="请输入合同名称" autocomplete="off">
     </div>
     <div class="field">
       <label>管理单元</label>
-      <select id="sel-mu" data-testid="sel-mu">
+      <select id="sel-mu">
         <option value="">请选择</option>
         <option value="0021">0021</option><option value="0451">0451</option>
         <option value="1031">1031</option>
@@ -118,7 +118,7 @@
     </div>
     <div class="field">
       <label>帐套</label>
-      <select id="sel-fs" data-testid="sel-fs">
+      <select id="sel-fs">
         <option value="">请选择</option>
         <option value="001">001</option><option value="002">002</option>
         <option value="003">003</option>
@@ -126,7 +126,7 @@
     </div>
     <div class="field">
       <label>合同类型</label>
-      <select id="sel-type" data-testid="sel-type">
+      <select id="sel-type">
         <option value="">请选择</option>
         <option value="合同">合同</option><option value="po">po</option>
         <option value="预po">预po</option>
@@ -139,21 +139,21 @@
     <div class="field">
       <label>客户</label>
       <div class="pick-row">
-        <input id="inp-c" data-testid="inp-c" placeholder="请选择客户" readonly autocomplete="off">
-        <button id="btn-pick-c" data-testid="btn-pick-c" type="button" class="ghost">选择客户</button>
+        <input id="inp-c" placeholder="请选择客户" readonly autocomplete="off">
+        <button id="btn-pick-c" type="button" class="ghost">选择客户</button>
       </div>
     </div>
     <div class="field">
       <label>业务单元</label>
-      <select id="sel-b" data-testid="sel-b">
+      <select id="sel-b">
         <option value="">请选择</option>
         <option value="bu_a">bu_a</option><option value="bu_b">bu_b</option>
         <option value="bu_c">bu_c</option>
       </select>
     </div>
     <div class="modal-actions">
-      <button id="btn-cancel" data-testid="btn-cancel" class="ghost">取消</button>
-      <button id="btn-submit" data-testid="btn-submit">提交</button>
+      <button id="btn-cancel" class="ghost">取消</button>
+      <button id="btn-submit">提交</button>
     </div>
   </div>
 </div>
@@ -162,14 +162,14 @@
 <div id="modal-customer" class="modal" data-testid="modal-customer">
   <div class="modal-box wide">
     <h3>选择客户</h3>
-    <table id="tbl-customers" data-testid="tbl-customers">
+    <table id="tbl-customers">
       <thead>
         <tr><th>客户名称</th><th>客户地址</th><th>操作</th></tr>
       </thead>
       <tbody id="tbody-customers"></tbody>
     </table>
     <div class="modal-actions">
-      <button id="btn-cust-cancel" data-testid="btn-cust-cancel" class="ghost" type="button">取消</button>
+      <button id="btn-cust-cancel" class="ghost" type="button">取消</button>
     </div>
   </div>
 </div>

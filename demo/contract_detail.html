@@ -56,16 +56,16 @@
     <!-- 正常入口（从合同列表点进来）：返回列表 = 回合同列表页。
          注意：2026-09-17 需求⑥ —— 从**订单页**点「合同编号」进来时（?from=order），
          本按钮文案变成「返回」，点击是**关闭本 tab**（回到订单系统页面）。见下方 applyBackMode()。 -->
-    <a class="btn" data-testid="btn-back" id="btn-back" href="/">返回列表</a>
-    <button class="primary" id="btn-edit" data-testid="btn-edit" type="button">编辑（未接入）</button>
+    <a class="btn" id="btn-back" href="/">返回列表</a>
+    <button class="primary" id="btn-edit" type="button">编辑（未接入）</button>
   </div>
   <!-- 2026-09-13：这页也有一个「搜索」—— 故意与列表页同名，用来真页验证
        P3 的「跨页同名唯一化」（探测后自动变成 搜索@列表页 / 搜索@详情页） -->
   <div class="actions" style="align-items:center;">
-    <input id="tb-detail-keyword" data-testid="tb-detail-keyword"
+    <input id="tb-detail-keyword"
            placeholder="输入合同编号搜索其他合同" autocomplete="off"
            style="font:inherit;flex:1;padding:7px 10px;border:1px solid #cfd4da;border-radius:6px;">
-    <button id="btn-detail-search" data-testid="btn-detail-search" type="button">搜索</button>
+    <button id="btn-detail-search" type="button">搜索</button>
   </div>
   <div id="status" data-testid="detail-status"></div>
 </div>
