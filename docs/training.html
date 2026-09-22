@@ -8134,57 +8134,84 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 <div class="code-line"><span class="ln">33</span><code>    <span class="k">return</span> DEFAULT_BASE</code></div>
 <div class="code-line"><span class="ln">34</span><code></code></div>
 <div class="code-line"><span class="ln">35</span><code></code></div>
-<div class="code-line"><span class="ln">36</span><code><span class="k">def</span> reachability(url: str | <span class="k">None</span> = <span class="k">None</span>, timeout: float = 1.5) -&gt; tuple[bool, str]:</code></div>
-<div class="code-line"><span class="ln">37</span><code>    <span class="s">&quot;&quot;</span>&quot;目标是否**可达**。返回 (ok, 人话理由)。</code></div>
+<div class="code-line"><span class="ln">36</span><code><span class="k">def</span> unreachable_hint(base: str, reason: object = <span class="k">None</span>) -&gt; str:</code></div>
+<div class="code-line"><span class="ln">37</span><code>    <span class="s">&quot;&quot;</span>&quot;「连不上」的**统一文案** —— 先给动作（起 demo），再给真实原因。</code></div>
 <div class="code-line"><span class="ln">38</span><code></code></div>
-<div class="code-line"><span class="ln">39</span><code>    为什么单独一个函数（2026-09-15，F3 同源）：probe/generate 以前直接 `page.goto(TARGET_URL)`，</code></div>
-<div class="code-line"><span class="ln">40</span><code>    目标没起时甩出一屏 Playwright traceback（`net::ERR_CONNECTION_REFUSED`）+ exit 1 ——</code></div>
-<div class="code-line"><span class="ln">41</span><code>    既吵又误导（看着像框架坏了，其实是「demo 没启动」）。而且旧的 `probe_partitioned`</code></div>
-<div class="code-line"><span class="ln">42</span><code>    把「连不上」和「有响应但没声明分区」混成同一句『未声明可并发隔离』⇒ 归因错位。</code></div>
-<div class="code-line"><span class="ln">43</span><code>    这里统一口径：**先回答「活没活」，再谈能力**。</code></div>
-<div class="code-line"><span class="ln">44</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">45</span><code>    base = (url <span class="k">or</span> _base_url()).rstrip(<span class="s">&quot;/&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">46</span><code>    target = base + <span class="s">&quot;/api/health&quot;</span></code></div>
-<div class="code-line"><span class="ln">47</span><code>    <span class="k">try</span>:</code></div>
-<div class="code-line"><span class="ln">48</span><code>        <span class="k">with</span> urllib.request.urlopen(target, timeout=timeout) <span class="k">as</span> r:</code></div>
-<div class="code-line"><span class="ln">49</span><code>            <span class="k">return</span> <span class="k">True</span>, f<span class="s">&quot;{base} 可达（/api/health → HTTP {r.status}）&quot;</span></code></div>
-<div class="code-line"><span class="ln">50</span><code>    <span class="k">except</span> urllib.error.HTTPError <span class="k">as</span> e:</code></div>
-<div class="code-line"><span class="ln">51</span><code>        <span class="c"># 有响应 ⇒ 目标活着，只是没有 /api/health（老目标 / 非本项目目标）</span></code></div>
-<div class="code-line"><span class="ln">52</span><code>        <span class="k">return</span> <span class="k">True</span>, f<span class="s">&quot;{base} 可达（/api/health → HTTP {e.code}，无该接口）&quot;</span></code></div>
-<div class="code-line"><span class="ln">53</span><code>    <span class="k">except</span> urllib.error.URLError <span class="k">as</span> e:</code></div>
-<div class="code-line"><span class="ln">54</span><code>        reason = getattr(e, <span class="s">&quot;reason&quot;</span>, e)</code></div>
-<div class="code-line"><span class="ln">55</span><code>        <span class="k">if</span> <span class="s">&quot;refused&quot;</span> <span class="k">in</span> str(reason).lower():</code></div>
-<div class="code-line"><span class="ln">56</span><code>            <span class="k">return</span> <span class="k">False</span>, (f<span class="s">&quot;连不上 {base}（ConnectionRefused）⇒ 被测目标没起：&quot;</span></code></div>
-<div class="code-line"><span class="ln">57</span><code>                           f<span class="s">&quot;另开一个窗口跑 `python -m demo.app`（默认 8000）&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">58</span><code>        <span class="k">return</span> <span class="k">False</span>, f<span class="s">&quot;连不上 {base}（{type(reason).__name__}: {reason}）&quot;</span></code></div>
-<div class="code-line"><span class="ln">59</span><code>    <span class="k">except</span> Exception <span class="k">as</span> e:</code></div>
-<div class="code-line"><span class="ln">60</span><code>        <span class="k">return</span> <span class="k">False</span>, f<span class="s">&quot;探测 {base} 失败（{type(e).__name__}: {e}）&quot;</span></code></div>
+<div class="code-line"><span class="ln">39</span><code>    ⚠️ 为什么不再按「字符串里含 refused」分流（2026-09-22 修，AprilPark1012 本地 Windows 实测）：</code></div>
+<div class="code-line"><span class="ln">40</span><code>    同一个「端口没人听」在 Linux 抛 `ConnectionRefusedError`，在 **Windows 抛 `TimeoutError`**</code></div>
+<div class="code-line"><span class="ln">41</span><code>    ⇒ 老写法只覆盖了 Linux，在 Windows 上恰好把「另开一个窗口跑 `python -m demo.app`」这句</code></div>
+<div class="code-line"><span class="ln">42</span><code>    **唯一的下一步指引**丢掉了 ⇒ 用户看到的仍是「看着像框架坏了」——正是 G2 要治的现象，</code></div>
+<div class="code-line"><span class="ln">43</span><code>    却在 Windows 上没治住。</code></div>
+<div class="code-line"><span class="ln">44</span><code>    ⇒ 口径改成：**任何**连不上（拒连 / 超时 / DNS / 泛 OSError）都给同一句；</code></div>
+<div class="code-line"><span class="ln">45</span><code>    原因只作括注细节（`TimeoutError: timed out` 这类信息仍保留，便于排查）。</code></div>
+<div class="code-line"><span class="ln">46</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
+<div class="code-line"><span class="ln">47</span><code>    <span class="k">if</span> reason is <span class="k">None</span>:</code></div>
+<div class="code-line"><span class="ln">48</span><code>        detail = <span class="s">&quot;原因未明&quot;</span></code></div>
+<div class="code-line"><span class="ln">49</span><code>    <span class="k">else</span>:</code></div>
+<div class="code-line"><span class="ln">50</span><code>        detail = f<span class="s">&quot;{type(reason).__name__}: {reason}&quot;</span> <span class="k">if</span> str(reason) <span class="k">else</span> type(reason).__name__</code></div>
+<div class="code-line"><span class="ln">51</span><code>    <span class="k">return</span> (f<span class="s">&quot;连不上 {base}（{detail}）⇒ 被测目标没起：&quot;</span></code></div>
+<div class="code-line"><span class="ln">52</span><code>            f<span class="s">&quot;另开一个窗口跑 `python -m demo.app`（默认 8000）；&quot;</span></code></div>
+<div class="code-line"><span class="ln">53</span><code>            f<span class="s">&quot;目标在别的地址就设 HYBRID_BASE_URL&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">54</span><code></code></div>
+<div class="code-line"><span class="ln">55</span><code></code></div>
+<div class="code-line"><span class="ln">56</span><code><span class="k">def</span> probe_failed_hint(base: str, err: object) -&gt; str:</code></div>
+<div class="code-line"><span class="ln">57</span><code>    <span class="s">&quot;&quot;</span><span class="s">&quot;兜底文案：原因不明时**也给动作**，但把「目标没起」写成条件（不硬下结论）。&quot;</span><span class="s">&quot;&quot;</span></code></div>
+<div class="code-line"><span class="ln">58</span><code>    <span class="k">return</span> (f<span class="s">&quot;探测 {base} 失败（{type(err).__name__}: {err}）⇒ 若确认目标没起，&quot;</span></code></div>
+<div class="code-line"><span class="ln">59</span><code>            f<span class="s">&quot;先跑 `python -m demo.app`（默认 8000）再试&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">60</span><code></code></div>
 <div class="code-line"><span class="ln">61</span><code></code></div>
-<div class="code-line"><span class="ln">62</span><code></code></div>
-<div class="code-line star"><span class="ln">63</span><code><span class="k">def</span> probe_partitioned(base: str | <span class="k">None</span> = <span class="k">None</span>, timeout: float = 1.5) -&gt; tuple[bool | <span class="k">None</span>, str]:</code></div>
+<div class="code-line"><span class="ln">62</span><code><span class="k">def</span> reachability(url: str | <span class="k">None</span> = <span class="k">None</span>, timeout: float = 1.5) -&gt; tuple[bool, str]:</code></div>
+<div class="code-line"><span class="ln">63</span><code>    <span class="s">&quot;&quot;</span>&quot;目标是否**可达**。返回 (ok, 人话理由)。</code></div>
+<div class="code-line"><span class="ln">64</span><code></code></div>
+<div class="code-line"><span class="ln">65</span><code>    为什么单独一个函数（2026-09-15，F3 同源）：probe/generate 以前直接 `page.goto(TARGET_URL)`，</code></div>
+<div class="code-line"><span class="ln">66</span><code>    目标没起时甩出一屏 Playwright traceback（`net::ERR_CONNECTION_REFUSED`）+ exit 1 ——</code></div>
+<div class="code-line"><span class="ln">67</span><code>    既吵又误导（看着像框架坏了，其实是「demo 没启动」）。而且旧的 `probe_partitioned`</code></div>
+<div class="code-line"><span class="ln">68</span><code>    把「连不上」和「有响应但没声明分区」混成同一句『未声明可并发隔离』⇒ 归因错位。</code></div>
+<div class="code-line"><span class="ln">69</span><code>    这里统一口径：**先回答「活没活」，再谈能力**。</code></div>
+<div class="code-line"><span class="ln">70</span><code></code></div>
+<div class="code-line"><span class="ln">71</span><code>    ⚠️ 2026-09-22：连不上时的文案统一走 `unreachable_hint()`（跨平台，任何连不上都给动作）。</code></div>
+<div class="code-line"><span class="ln">72</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
+<div class="code-line"><span class="ln">73</span><code>    base = (url <span class="k">or</span> _base_url()).rstrip(<span class="s">&quot;/&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">74</span><code>    target = base + <span class="s">&quot;/api/health&quot;</span></code></div>
+<div class="code-line"><span class="ln">75</span><code>    <span class="k">try</span>:</code></div>
+<div class="code-line"><span class="ln">76</span><code>        <span class="k">with</span> urllib.request.urlopen(target, timeout=timeout) <span class="k">as</span> r:</code></div>
+<div class="code-line"><span class="ln">77</span><code>            <span class="k">return</span> <span class="k">True</span>, f<span class="s">&quot;{base} 可达（/api/health → HTTP {r.status}）&quot;</span></code></div>
+<div class="code-line"><span class="ln">78</span><code>    <span class="k">except</span> urllib.error.HTTPError <span class="k">as</span> e:</code></div>
+<div class="code-line"><span class="ln">79</span><code>        <span class="c"># 有响应 ⇒ 目标活着，只是没有 /api/health（老目标 / 非本项目目标）</span></code></div>
+<div class="code-line"><span class="ln">80</span><code>        <span class="k">return</span> <span class="k">True</span>, f<span class="s">&quot;{base} 可达（/api/health → HTTP {e.code}，无该接口）&quot;</span></code></div>
+<div class="code-line"><span class="ln">81</span><code>    <span class="k">except</span> urllib.error.URLError <span class="k">as</span> e:</code></div>
+<div class="code-line"><span class="ln">82</span><code>        <span class="k">return</span> <span class="k">False</span>, unreachable_hint(base, getattr(e, <span class="s">&quot;reason&quot;</span>, e))</code></div>
+<div class="code-line"><span class="ln">83</span><code>    <span class="k">except</span> (TimeoutError, OSError) <span class="k">as</span> e:</code></div>
+<div class="code-line"><span class="ln">84</span><code>        <span class="c"># Windows 上「端口没人听」到这里（不走 URLError 包装）：详情见 unreachable_hint</span></code></div>
+<div class="code-line"><span class="ln">85</span><code>        <span class="k">return</span> <span class="k">False</span>, unreachable_hint(base, e)</code></div>
+<div class="code-line"><span class="ln">86</span><code>    <span class="k">except</span> Exception <span class="k">as</span> e:</code></div>
+<div class="code-line"><span class="ln">87</span><code>        <span class="k">return</span> <span class="k">False</span>, probe_failed_hint(base, e)</code></div>
+<div class="code-line"><span class="ln">88</span><code></code></div>
+<div class="code-line"><span class="ln">89</span><code></code></div>
+<div class="code-line star"><span class="ln">90</span><code><span class="k">def</span> probe_partitioned(base: str | <span class="k">None</span> = <span class="k">None</span>, timeout: float = 1.5) -&gt; tuple[bool | <span class="k">None</span>, str]:</code></div>
 <div class="code-note">⭐ <b>返回 (True/False/None, 理由)：True=可并发；False=明确不支持；None=没这个接口⇒视为未声明。</b></div>
-<div class="code-line"><span class="ln">64</span><code>    <span class="s">&quot;&quot;</span>&quot;探测目标是否支持「按 worker 分区」。</code></div>
-<div class="code-line"><span class="ln">65</span><code></code></div>
-<div class="code-line"><span class="ln">66</span><code>    返回 (<span class="k">True</span>/<span class="k">False</span>/<span class="k">None</span>, 人类可读理由)：</code></div>
-<div class="code-line"><span class="ln">67</span><code>      <span class="k">True</span>  = 支持（可放心并发）</code></div>
-<div class="code-line"><span class="ln">68</span><code>      <span class="k">False</span> = 明确声明不支持（必须串行）</code></div>
-<div class="code-line"><span class="ln">69</span><code>      <span class="k">None</span>  = 没有这个探针接口 ⇒ 未声明（保守按不支持处理）</code></div>
-<div class="code-line"><span class="ln">70</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
-<div class="code-line"><span class="ln">71</span><code>    url = _base_url(base) + <span class="s">&quot;/api/health&quot;</span></code></div>
-<div class="code-line"><span class="ln">72</span><code>    <span class="k">try</span>:</code></div>
-<div class="code-line"><span class="ln">73</span><code>        <span class="k">with</span> urllib.request.urlopen(url, timeout=timeout) <span class="k">as</span> r:</code></div>
-<div class="code-line"><span class="ln">74</span><code>            body = json.loads(r.read().decode(<span class="s">&quot;utf-8&quot;</span>, <span class="s">&quot;replace&quot;</span>) <span class="k">or</span> <span class="s">&quot;{}&quot;</span>)</code></div>
-<div class="code-line"><span class="ln">75</span><code>    <span class="k">except</span> Exception <span class="k">as</span> e:                       <span class="c"># 连不上 / 404 / 不是 JSON —— 一律视为&quot;未声明&quot;</span></code></div>
-<div class="code-line"><span class="ln">76</span><code>        <span class="c"># 先分清「目标没起」和「目标起了但没这个接口」——两者对使用者的下一步完全不同</span></code></div>
-<div class="code-line"><span class="ln">77</span><code>        ok, why = reachability(_base_url(base))</code></div>
-<div class="code-line"><span class="ln">78</span><code>        <span class="k">if</span> <span class="k">not</span> ok:</code></div>
-<div class="code-line"><span class="ln">79</span><code>            <span class="k">return</span> <span class="k">None</span>, f<span class="s">&quot;目标不可达（{why}）⇒ 视为『未声明可并发隔离』&quot;</span></code></div>
-<div class="code-line"><span class="ln">80</span><code>        <span class="k">return</span> <span class="k">None</span>, f<span class="s">&quot;探测 {url} 失败（{type(e).__name__}）⇒ 视为『未声明可并发隔离』&quot;</span></code></div>
-<div class="code-line"><span class="ln">81</span><code>    <span class="k">if</span> <span class="k">not</span> isinstance(body, dict) <span class="k">or</span> <span class="s">&quot;partitioned&quot;</span> <span class="k">not</span> <span class="k">in</span> body:</code></div>
-<div class="code-line"><span class="ln">82</span><code>        <span class="k">return</span> <span class="k">None</span>, f<span class="s">&quot;{url} 响应里没有 partitioned 字段 ⇒ 视为『未声明可并发隔离』&quot;</span></code></div>
-<div class="code-line"><span class="ln">83</span><code>    <span class="k">if</span> body.get(<span class="s">&quot;partitioned&quot;</span>):</code></div>
-<div class="code-line"><span class="ln">84</span><code>        <span class="k">return</span> <span class="k">True</span>, f<span class="s">&quot;{url} 声明 partitioned=true（presets={body.get(&#x27;presets&#x27;)}）&quot;</span></code></div>
-<div class="code-line"><span class="ln">85</span><code>    <span class="k">return</span> <span class="k">False</span>, f<span class="s">&quot;{url} 明确声明 partitioned=false&quot;</span></code></div></div>
+<div class="code-line"><span class="ln">91</span><code>    <span class="s">&quot;&quot;</span>&quot;探测目标是否支持「按 worker 分区」。</code></div>
+<div class="code-line"><span class="ln">92</span><code></code></div>
+<div class="code-line"><span class="ln">93</span><code>    返回 (<span class="k">True</span>/<span class="k">False</span>/<span class="k">None</span>, 人类可读理由)：</code></div>
+<div class="code-line"><span class="ln">94</span><code>      <span class="k">True</span>  = 支持（可放心并发）</code></div>
+<div class="code-line"><span class="ln">95</span><code>      <span class="k">False</span> = 明确声明不支持（必须串行）</code></div>
+<div class="code-line"><span class="ln">96</span><code>      <span class="k">None</span>  = 没有这个探针接口 ⇒ 未声明（保守按不支持处理）</code></div>
+<div class="code-line"><span class="ln">97</span><code>    <span class="s">&quot;&quot;</span>&quot;</code></div>
+<div class="code-line"><span class="ln">98</span><code>    url = _base_url(base) + <span class="s">&quot;/api/health&quot;</span></code></div>
+<div class="code-line"><span class="ln">99</span><code>    <span class="k">try</span>:</code></div>
+<div class="code-line"><span class="ln">100</span><code>        <span class="k">with</span> urllib.request.urlopen(url, timeout=timeout) <span class="k">as</span> r:</code></div>
+<div class="code-line"><span class="ln">101</span><code>            body = json.loads(r.read().decode(<span class="s">&quot;utf-8&quot;</span>, <span class="s">&quot;replace&quot;</span>) <span class="k">or</span> <span class="s">&quot;{}&quot;</span>)</code></div>
+<div class="code-line"><span class="ln">102</span><code>    <span class="k">except</span> Exception <span class="k">as</span> e:                       <span class="c"># 连不上 / 404 / 不是 JSON —— 一律视为&quot;未声明&quot;</span></code></div>
+<div class="code-line"><span class="ln">103</span><code>        <span class="c"># 先分清「目标没起」和「目标起了但没这个接口」——两者对使用者的下一步完全不同</span></code></div>
+<div class="code-line"><span class="ln">104</span><code>        ok, why = reachability(_base_url(base))</code></div>
+<div class="code-line"><span class="ln">105</span><code>        <span class="k">if</span> <span class="k">not</span> ok:</code></div>
+<div class="code-line"><span class="ln">106</span><code>            <span class="k">return</span> <span class="k">None</span>, f<span class="s">&quot;目标不可达（{why}）⇒ 视为『未声明可并发隔离』&quot;</span></code></div>
+<div class="code-line"><span class="ln">107</span><code>        <span class="k">return</span> <span class="k">None</span>, f<span class="s">&quot;探测 {url} 失败（{type(e).__name__}）⇒ 视为『未声明可并发隔离』&quot;</span></code></div>
+<div class="code-line"><span class="ln">108</span><code>    <span class="k">if</span> <span class="k">not</span> isinstance(body, dict) <span class="k">or</span> <span class="s">&quot;partitioned&quot;</span> <span class="k">not</span> <span class="k">in</span> body:</code></div>
+<div class="code-line"><span class="ln">109</span><code>        <span class="k">return</span> <span class="k">None</span>, f<span class="s">&quot;{url} 响应里没有 partitioned 字段 ⇒ 视为『未声明可并发隔离』&quot;</span></code></div>
+<div class="code-line"><span class="ln">110</span><code>    <span class="k">if</span> body.get(<span class="s">&quot;partitioned&quot;</span>):</code></div>
+<div class="code-line"><span class="ln">111</span><code>        <span class="k">return</span> <span class="k">True</span>, f<span class="s">&quot;{url} 声明 partitioned=true（presets={body.get(&#x27;presets&#x27;)}）&quot;</span></code></div>
+<div class="code-line"><span class="ln">112</span><code>    <span class="k">return</span> <span class="k">False</span>, f<span class="s">&quot;{url} 明确声明 partitioned=false&quot;</span></code></div></div>
     </section>
 </section>
 
@@ -8243,11 +8270,20 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 
 <span class="prompt">$</span> python -m framework.cli explore --ai --scenario "输入1005点搜索确认出现HT-1005"
                                               <span class="cmt"># ④ AI 语义识别 → cases/ai_*.json（默认 --verify 立刻试跑）</span>
-<span class="prompt">$</span> python -m framework.cli prune --keep 20  <span class="cmt"># ⑤ 归档保留：快照各留最近 N 个</span></pre>
+<span class="prompt">$</span> python -m framework.cli prune --keep 20  <span class="cmt"># ⑤ 归档保留：快照各留最近 N 个</span>
+<span class="prompt">$</span> python -m pytest tests/ -q               <span class="cmt"># ⑥ 框架自测（一类）：秒级，不需要 demo / key</span></pre>
     <p style="margin-top:10px;color:var(--muted);font-size:.92rem">
       预期输出：<code>fill→在搜索框输入关键字</code>、<code>click→点击搜索按钮</code>、
       <code>断言→搜索完成 ✓ 全部通过</code>，<code>&lt;N&gt; passed</code>（<b>N 随 cases/ 里的用例数变化</b>，本文档写作时为 15 条：11 手写 + 4 AI），
       HTML 报告在 <code>log/&lt;run_id&gt;/report.html</code>（每次运行独立目录）。
+    </p>
+    <p style="margin-top:12px;color:var(--muted);font-size:.92rem;border-left:3px solid #999;padding-left:10px">
+      <b>框架自测（一类）的环境前提</b>（2026-09-22 实测口径）：上面那条 <code>pytest tests/ -q</code>
+      在 <b>Windows</b>、<b>非 git 目录（交付包解压目录）</b>、<b>demo 没起</b> 这三种情况下都要能跑 ——
+      进程探测按平台取（Linux <code>/proc</code> · Windows PowerShell · 其它 <code>ps</code>）；
+      文件清单在 git 不可用时降级为文件树扫描；<b>生成物缺失或为 0 字节</b>时直接告诉你
+      「先跑 <code>generate</code> / 重新解压」，而不是甩一堆「缺接线」；<b>连不上被测目标</b>时文案一律带
+      「先起 <code>python -m demo.app</code>」这一步。如实 <code>SKIPPED</code> 会打印原因（<b>SKIP ≠ 通过</b>），其余必须全绿。
     </p>
   </div>
 </section>

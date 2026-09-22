@@ -22,11 +22,16 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
+
+# 同目录测试工具：文件清单入口（git 优先 / 非 git 等效降级）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import repo_files  # noqa: E402
 
 # ---- 豁免 ①：历史交付记录（冻结历史，不随搬家修正）--------------------------
 # 理由：releases/ 里是**当时发出的**发行说明与交付记录 —— 它们记录的是当时真实的路径，
@@ -87,23 +92,21 @@ def iter_repo_text_files(repo: Path = REPO):
     本判据原先只走 `git ls-files`（仅已跟踪）⇒ **新写的文件在提交前根本不在扫描范围内** ——
     提交前全绿、刚提交就红。人看到「刚才跑过一遍是绿的」就以为查过了，实际漏的就是**新增文件**
     （而搬家/改名恰恰最爱在新文件里留下旧路径引用，比如新写的测试里照抄老命令）。
-    ⇒ 与 `tools`→`build_tools` 打包脚本的收集口径 `git ls-files --cached --others --exclude-standard`
-    对齐：文件一落到工作区（哪怕还没 add）就被查。
+    ⇒ 与打包脚本的收集口径对齐：文件一落到工作区（哪怕还没 add）就被查。
+
+    ⚠️ 2026-09-22 再修一层：清单来源改走 `tests/repo_files.py`（**git 优先、非 git 等效降级**）。
+    老写法是直调 `git ls-files ... check=True` —— 而**交付包解压目录不是 git 仓库**，
+    团队用户按 README 跑到这里直接 exit 128 报红；可本判据要判的事（「还有谁在指旧位置」）
+    与有没有 `.git` 毫无关系（AprilPark1012 本地 Windows 验收实测）。降级后判据照常判，清单来源写进消息。
     """
-    out = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"],
-                         cwd=str(repo), capture_output=True,
-                         text=True, encoding="utf-8", errors="replace", check=True).stdout
-    for rel in out.splitlines():
+    rels, _source = repo_files.file_list(repo)
+    for rel in rels:
         if any(rel.startswith(d) for d in EXEMPT_DIRS) or rel in EXEMPT_FILES:
             continue
-        p = repo / rel
-        try:
-            raw = p.read_bytes()
-        except OSError:
+        text = repo_files.read_text_file(repo / rel)
+        if text is None:
             continue
-        if b"\0" in raw[:4096]:
-            continue
-        yield rel, raw.decode("utf-8", errors="replace")
+        yield rel, text
 
 
 def scan_text(rel: str, text: str):

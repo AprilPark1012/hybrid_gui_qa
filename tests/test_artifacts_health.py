@@ -19,6 +19,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(Path(__file__).resolve().parent))        # 同目录测试工具
+
+import artifacts                                              # noqa: E402
 
 SCRIPTS = REPO / "scripts"
 CASES = REPO / "cases"
@@ -33,7 +36,7 @@ REQUIRED_CONFTEST = ("_act", "_goto", "_data", "_log", "_reset_target_data",
 
 def test_generated_test_cases_has_no_unmapped_stubs():
     """`scripts/test_cases.py` 绝不允许含「元素未映射」存根 —— 那就是交付事故本体。"""
-    tc = (SCRIPTS / "test_cases.py").read_text(encoding="utf-8")
+    tc = artifacts.read_artifact(SCRIPTS / "test_cases.py", role="生成物 scripts/test_cases.py")
     n = tc.count("元素未映射")
     assert n == 0, (f"生成物里有 {n} 处「元素未映射」存根 ⇒ 这份产物是探测失败时落盘的垃圾，"
                     f"别提交/打包/交付；重新在目标可用的前提下跑 `python -m framework.cli generate`")
@@ -41,14 +44,14 @@ def test_generated_test_cases_has_no_unmapped_stubs():
 
 def test_generated_test_cases_uses_ready_contract():
     """每个 goto 都必须走 `_goto`（就绪契约），而不是裸 `page.goto`。"""
-    tc = (SCRIPTS / "test_cases.py").read_text(encoding="utf-8")
+    tc = artifacts.read_artifact(SCRIPTS / "test_cases.py", role="生成物 scripts/test_cases.py")
     assert "_goto(" in tc, "生成物没走就绪契约 _goto（慢目标下会假红）"
     assert "page.goto(" not in tc, "生成物里出现裸 page.goto —— 绕过了就绪契约"
 
 
 def test_generated_conftest_has_contract_helpers():
     """`scripts/conftest.py` 必须带齐辅助函数（浏览器池/复位/断言/数据注入）。"""
-    cf = (SCRIPTS / "conftest.py").read_text(encoding="utf-8")
+    cf = artifacts.read_artifact(SCRIPTS / "conftest.py", role="生成物 scripts/conftest.py")
     missing = [f"def {name}" for name in REQUIRED_CONFTEST if f"def {name}" not in cf]
     assert not missing, f"conftest 缺这些接线：{missing}"
 

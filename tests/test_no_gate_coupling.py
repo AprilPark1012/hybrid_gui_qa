@@ -19,9 +19,14 @@
 """
 
 import subprocess
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+
+# 同目录测试工具：文件清单入口（git 优先 / 非 git 等效降级）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import repo_files  # noqa: E402
 
 # 出现即视为耦合（skill 路径 / 门禁工具 / 词表 / 钩子安装器）
 FORBIDDEN = (
@@ -39,18 +44,24 @@ EXEMPT_PREFIXES = ("releases/RELEASE_NOTES_",)
 SELF = "tests/test_no_gate_coupling.py"
 
 
-def _tracked_files() -> list[str]:
-    out = subprocess.run(
-        ["git", "ls-files"], cwd=REPO, capture_output=True, encoding="utf-8", errors="replace"
-    )
-    return [p for p in (out.stdout or "").split("\n") if p.strip()]
+def _tracked_files() -> tuple[list[str], str]:
+    """(文件清单, 清单来源) —— 走 `tests/repo_files.py`：git 优先、非 git **等效降级**。
+
+    ⚠️ 2026-09-22 修（AprilPark1012 本地 Windows 验收实测）：老写法直调 `git ls-files`，
+    而**交付包解压目录不是 git 仓库** ⇒ 返回空清单 ⇒ 本判据自报「测试前提不成立」而红。
+    本判据要判的是「仓库里有没有引用门禁路径」，与有没有 `.git` 无关
+    ⇒ 非 git 环境降级为文件树扫描（排除第三方树 / 运行时目录），照常判。
+    """
+    return repo_files.file_list(REPO)
 
 
 def test_repo_has_zero_gate_references():
     """仓库里不得出现门禁/skill 路径引用（R1 判据）。"""
-    files = [f for f in _tracked_files()
+    all_files, source = _tracked_files()
+    files = [f for f in all_files
              if not f.startswith(EXEMPT_PREFIXES) and f != SELF]
-    assert files, "git ls-files 返回空 —— 测试前提不成立"
+    assert files, (f"文件清单为空 —— 判据前提不成立（清单来源：{source}）。"
+                   f" 若这里是交付包解压目录：非 git 环境本应走降级扫描，请检查 tests/repo_files.py")
 
     violations = []
     for rel in files:
@@ -73,7 +84,7 @@ def test_repo_has_zero_gate_references():
 
 def test_hooks_are_not_tracked():
     """三个钩子必须只在 .git/hooks/（永不入库）——被跟踪即为耦合 + 泄本机路径。"""
-    tracked = _tracked_files()
+    tracked, source = _tracked_files()
     leaked = [f for f in tracked if f.startswith(".git/hooks/") or Path(f).name in
               ("pre-commit", "commit-msg", "pre-push") and "/" not in f]
     assert not leaked, f"钩子被跟踪进仓库了：{leaked}"

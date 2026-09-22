@@ -33,6 +33,32 @@ def _base_url(explicit: str | None = None) -> str:
     return DEFAULT_BASE
 
 
+def unreachable_hint(base: str, reason: object = None) -> str:
+    """「连不上」的**统一文案** —— 先给动作（起 demo），再给真实原因。
+
+    ⚠️ 为什么不再按「字符串里含 refused」分流（2026-09-22 修，AprilPark1012 本地 Windows 实测）：
+    同一个「端口没人听」在 Linux 抛 `ConnectionRefusedError`，在 **Windows 抛 `TimeoutError`**
+    ⇒ 老写法只覆盖了 Linux，在 Windows 上恰好把「另开一个窗口跑 `python -m demo.app`」这句
+    **唯一的下一步指引**丢掉了 ⇒ 用户看到的仍是「看着像框架坏了」——正是 G2 要治的现象，
+    却在 Windows 上没治住。
+    ⇒ 口径改成：**任何**连不上（拒连 / 超时 / DNS / 泛 OSError）都给同一句；
+    原因只作括注细节（`TimeoutError: timed out` 这类信息仍保留，便于排查）。
+    """
+    if reason is None:
+        detail = "原因未明"
+    else:
+        detail = f"{type(reason).__name__}: {reason}" if str(reason) else type(reason).__name__
+    return (f"连不上 {base}（{detail}）⇒ 被测目标没起："
+            f"另开一个窗口跑 `python -m demo.app`（默认 8000）；"
+            f"目标在别的地址就设 HYBRID_BASE_URL")
+
+
+def probe_failed_hint(base: str, err: object) -> str:
+    """兜底文案：原因不明时**也给动作**，但把「目标没起」写成条件（不硬下结论）。"""
+    return (f"探测 {base} 失败（{type(err).__name__}: {err}）⇒ 若确认目标没起，"
+            f"先跑 `python -m demo.app`（默认 8000）再试")
+
+
 def reachability(url: str | None = None, timeout: float = 1.5) -> tuple[bool, str]:
     """目标是否**可达**。返回 (ok, 人话理由)。
 
@@ -41,6 +67,8 @@ def reachability(url: str | None = None, timeout: float = 1.5) -> tuple[bool, st
     既吵又误导（看着像框架坏了，其实是「demo 没启动」）。而且旧的 `probe_partitioned`
     把「连不上」和「有响应但没声明分区」混成同一句『未声明可并发隔离』⇒ 归因错位。
     这里统一口径：**先回答「活没活」，再谈能力**。
+
+    ⚠️ 2026-09-22：连不上时的文案统一走 `unreachable_hint()`（跨平台，任何连不上都给动作）。
     """
     base = (url or _base_url()).rstrip("/")
     target = base + "/api/health"
@@ -51,13 +79,12 @@ def reachability(url: str | None = None, timeout: float = 1.5) -> tuple[bool, st
         # 有响应 ⇒ 目标活着，只是没有 /api/health（老目标 / 非本项目目标）
         return True, f"{base} 可达（/api/health → HTTP {e.code}，无该接口）"
     except urllib.error.URLError as e:
-        reason = getattr(e, "reason", e)
-        if "refused" in str(reason).lower():
-            return False, (f"连不上 {base}（ConnectionRefused）⇒ 被测目标没起："
-                           f"另开一个窗口跑 `python -m demo.app`（默认 8000）")
-        return False, f"连不上 {base}（{type(reason).__name__}: {reason}）"
+        return False, unreachable_hint(base, getattr(e, "reason", e))
+    except (TimeoutError, OSError) as e:
+        # Windows 上「端口没人听」到这里（不走 URLError 包装）：详情见 unreachable_hint
+        return False, unreachable_hint(base, e)
     except Exception as e:
-        return False, f"探测 {base} 失败（{type(e).__name__}: {e}）"
+        return False, probe_failed_hint(base, e)
 
 
 def probe_partitioned(base: str | None = None, timeout: float = 1.5) -> tuple[bool | None, str]:

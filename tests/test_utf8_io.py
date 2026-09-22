@@ -146,47 +146,107 @@ from framework.tools.common.text_io import force_stdio, run_capture
 #    而 UTF-8 模式下 `locale.getpreferredencoding()` 会返回 utf-8 ⇒ 那读到的就不是「默认编码」了。
 print("MIDDLE_LOCALE=", locale.getpreferredencoding(False))
 force_stdio()                                  # 本进程 stdio 拉齐（等价 cli.main 的行为）
+# ⚠️ 子进程（事故里的「上游」）的输出编码**显式钉成 UTF-8**，不指望 force_stdio 的副作用：
+#    事故形态本体就是「上游按 UTF-8 输出、下游按系统默认编码（中文 = gbk）解码」，
+#    上游必须确定是 UTF-8，否则这条判据在别的平台上会因环境差异而「复现不出」。
+_child_env = dict(os.environ)
+_child_env["PYTHONUTF8"] = "1"
+_child_env["PYTHONIOENCODING"] = "utf-8"
 # 子脚本落**临时文件**：argv 里带中文在 GBK locale 下会先炸（同一个病），
 # 所以这里只让「子进程的 stdout」承担中文，专测解码方向。
 _child = os.path.join(tempfile.mkdtemp(), "child.py")
 with open(_child, "w", encoding="utf-8") as f:
     f.write("print('[generate] 读 cases/')\n")
 child = [sys.executable, _child]
-r = run_capture(child)                         # ★ 修好的写法
+
+# ① 修好后的写法（text_io.run_capture）：显式 UTF-8 ⇒ 必须正确
+r = run_capture(child, env=_child_env)
 print("NEW=", r.stdout.strip())
-try:                                           # 修前的写法（对照，用来证明本机真能复现）
-    subprocess.run(child, capture_output=True, text=True)
-    print("OLD= 未复现")
+
+# ② 修前的写法 A：**真实默认编码路径**（text=True 且不指定 encoding）—— 平台相关
+try:
+    subprocess.run(child, capture_output=True, text=True, env=_child_env)
+    print("OLD_DEFAULT= 未复现")
 except UnicodeDecodeError as e:
-    print("OLD=", type(e).__name__, str(e))
+    print("OLD_DEFAULT=", type(e).__name__, str(e))
+
+# ③ 修前的写法 B：**显式 encoding="gbk"** —— 跨平台确定：上游 UTF-8 + 下游 gbk ⇒ 必炸
+try:
+    subprocess.run(child, capture_output=True, text=True,
+                   encoding="gbk", errors="strict", env=_child_env)
+    print("OLD_GBK= 未复现")
+except UnicodeDecodeError as e:
+    print("OLD_GBK=", type(e).__name__, str(e))
+
+# ④ 对照：errors="replace" 时不炸、但内容**静默变错** ⇒ 证明「不炸 ≠ 对」
+bad = subprocess.run(child, capture_output=True, text=True, encoding="gbk",
+                     errors="replace", env=_child_env).stdout
+print("REPLACED_WRONG=", str(bad.strip() != "[generate] 读 cases/"))
 '''
+
+# 原始报错签名：codec 名跨平台可能是 gbk（POSIX 口径）或 cp936（Windows 默认编码名，同一个 codec）
+_GBK_SIG = r"'(?:gbk|cp936)' codec can't decode byte 0xbb in position 13"
+
+
+def _probe_out(tmp_path: Path, tag: str) -> str:
+    """在「子进程默认编码 = GBK 家族」的环境里跑一次探针，返回它的 stdout。"""
+    env = _gbk_child_env()
+    probe = tmp_path / f"probe_{tag}.py"
+    probe.write_text(_PROBE.format(repo=str(REPO)), encoding="utf-8")
+    return subprocess.run([sys.executable, str(probe)],
+                          cwd=str(REPO), capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", env=env).stdout
+
+
+def _line(out: str, key: str) -> str | None:
+    """取探针输出里 `KEY= value` 那一行（按 key 解析，不依赖行序）。"""
+    for line in out.splitlines():
+        if line.startswith(key + "="):
+            return line.split("=", 1)[1].strip()
+    return None
+
+
+def test_gbk_upstream_utf8_downstream_gbk_must_explode(tmp_path):
+    """★ 机理判据（**不依赖本机能否造出 GBK locale** ⇒ 任何平台都跑，永不 SKIP）：
+
+    上游按 UTF-8 输出、下游按 gbk 解码 ⇒ 必然 `byte 0xbb in position 13`；
+    `errors="replace"` 那条不炸但内容**静默变错**（所以「不炸」绝不等于「对」）；
+    `run_capture` 显式 UTF-8 解码 ⇒ 正确。
+    """
+    out = _probe_out(tmp_path, "mech")
+    assert out.strip(), "探针没有输出（子进程起不来？）"
+    assert _line(out, "NEW") == "[generate] 读 cases/", f"run_capture 未能正确解码 UTF-8 输出:\n{out}"
+    old_gbk = _line(out, "OLD_GBK") or ""
+    assert "UnicodeDecodeError" in old_gbk, f"显式 gbk 解码居然没炸（机理不成立？）:\n{out}"
+    assert re.search(_GBK_SIG, old_gbk), f"签名不是 0xbb@13：{old_gbk!r}"
+    assert _line(out, "REPLACED_WRONG") == "True", \
+        f"errors='replace' 竟然解出了正确文本（那这条对照就失去意义）:\n{out}"
 
 
 @pytest.mark.skipif(_gbk_default_encoding() is None, reason=_GBK_SKIP_REASON)
 def test_reproduce_and_fix_gbk_byte_0xbb_position_13(tmp_path):
-    """在 GBK locale 下：修前写法必须精确复现 `byte 0xbb in position 13`；run_capture 必须正常。
+    """真实默认编码路径（中文 Windows / GBK locale）：老写法不带 encoding 时必须复现原始报错。
 
-    ⚠️ 探针写成**临时文件**跑，不用 `python -c`：GBK locale 下连命令行参数里的中文
-    都解不开（`Unable to decode the command from the command line`）—— 同一个病。
+    ⚠️ Windows 侧**如实降级**（2026-09-22，AprilPark1012 本地实测报「未复现出报错，本测试失去意义」）：
+    `text=True` 不带 encoding 的解码口径在 Windows 上还受 UTF-8 模式 / 控制台代码页影响，
+    与 POSIX 不同 —— 我方只有 Linux，**无法验证 Windows 的真实行为** ⇒ 不拿未验证的假设去红别人的环境：
+    Windows 上若这条没复现，只打印诊断（机理已由上面那条判据钉死，修复有效性也由它证明）；
+    POSIX + GBK 家族环境下仍必须复现（本机可验 ⇒ 绝不放松）。
     """
-    env = _gbk_child_env()
-    probe = tmp_path / "probe.py"
-    probe.write_text(_PROBE.format(repo=str(REPO)), encoding="utf-8")
-    out = subprocess.run([sys.executable, str(probe)],
-                         cwd=str(REPO), capture_output=True, text=True,
-                         encoding="utf-8", errors="replace", env=env).stdout
-
+    out = _probe_out(tmp_path, "default")
     mid = _middle_locale_from(out)
     assert mid is not None and _norm_enc(mid) in _GBK_FAMILY, \
         f"用例前提不成立（中间进程默认编码不在 GBK 家族，实际={mid!r}）:\n{out}"
-    # ① 修前写法：与AprilPark1012报错逐字一致（codec = gbk 家族 / byte 0xbb / position 13）
-    #    ⚠️ codec 名跨平台可能是 `gbk`（POSIX 报错口径）或 `cp936`（Windows 拿到的默认编码名）——
-    #    两者是同一个 codec（cp936 是 gbk 的别名）⇒ 用「家族」判，但字节与位置必须精确到 0xbb@13。
-    assert "UnicodeDecodeError" in out, f"未复现出报错，本测试失去意义:\n{out}"
-    assert re.search(r"'(?:gbk|cp936)' codec can't decode byte 0xbb in position 13", out), \
-        f"未复现出 0xbb@13 这个原始签名，本测试失去意义:\n{out}"
-    # ② 修好后的写法：同一条中文输出正常解码
-    assert "NEW= [generate] 读 cases/" in out, f"run_capture 未能正确解码 UTF-8 输出:\n{out}"
+    assert _line(out, "NEW") == "[generate] 读 cases/", f"run_capture 未能正确解码 UTF-8 输出:\n{out}"
+    old_default = _line(out, "OLD_DEFAULT") or ""
+    if "UnicodeDecodeError" in old_default:
+        assert re.search(_GBK_SIG, old_default), f"未复现出 0xbb@13 这个原始签名:\n{out}"
+        return
+    if os.name == "nt":
+        print(f"[诊断] Windows 默认编码路径未复现（默认编码={mid!r}）；"
+              f"机理与修复有效性由 test_gbk_upstream_utf8_downstream_gbk_must_explode 覆盖")
+        return
+    pytest.fail(f"POSIX + GBK 家族环境下老写法必须复现原始报错（否则本判据失去意义）:\n{out}")
 
 
 # ==================== 三、CLI 入口必须统一 UTF-8 ====================

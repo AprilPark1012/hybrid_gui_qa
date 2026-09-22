@@ -214,10 +214,16 @@ def test_generated_item_for_strict_mode_refuses_even_a_single_near_hit(tmp_path,
 
 def test_s3_wiring_is_locked_between_template_and_artifact():
     """互锁判据：模板与仓库里的生成物**必须同时**具备 S3 接线，且旧的一行式静默挑法绝迹。"""
+    import sys
     from pathlib import Path
+
     root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(Path(__file__).resolve().parent))     # 同目录测试工具
+    import artifacts                                             # noqa: E402
+
     template_src = (root / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
-    artifact_src = (root / "scripts" / "conftest.py").read_text(encoding="utf-8")
+    artifact_src = artifacts.read_artifact(root / "scripts" / "conftest.py",
+                                           role="生成物 scripts/conftest.py")
     old_silent = "if k and (hint in k or k in hint):"
     for label, src in (("模板(generator.py)", template_src), ("生成物(scripts/conftest.py)", artifact_src)):
         assert "_fuzzy_lookup" in src, f"{label} 缺 S3 接线：_fuzzy_lookup"

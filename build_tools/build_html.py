@@ -1921,11 +1921,20 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 
 <span class="prompt">$</span> python -m framework.cli explore --ai --scenario "输入1005点搜索确认出现HT-1005"
                                               <span class="cmt"># ④ AI 语义识别 → cases/ai_*.json（默认 --verify 立刻试跑）</span>
-<span class="prompt">$</span> python -m framework.cli prune --keep 20  <span class="cmt"># ⑤ 归档保留：快照各留最近 N 个</span></pre>
+<span class="prompt">$</span> python -m framework.cli prune --keep 20  <span class="cmt"># ⑤ 归档保留：快照各留最近 N 个</span>
+<span class="prompt">$</span> python -m pytest tests/ -q               <span class="cmt"># ⑥ 框架自测（一类）：秒级，不需要 demo / key</span></pre>
     <p style="margin-top:10px;color:var(--muted);font-size:.92rem">
       预期输出：<code>fill→在搜索框输入关键字</code>、<code>click→点击搜索按钮</code>、
       <code>断言→搜索完成 ✓ 全部通过</code>，<code>&lt;N&gt; passed</code>（<b>N 随 cases/ 里的用例数变化</b>，本文档写作时为 15 条：11 手写 + 4 AI），
       HTML 报告在 <code>log/&lt;run_id&gt;/report.html</code>（每次运行独立目录）。
+    </p>
+    <p style="margin-top:12px;color:var(--muted);font-size:.92rem;border-left:3px solid #999;padding-left:10px">
+      <b>框架自测（一类）的环境前提</b>（2026-09-22 实测口径）：上面那条 <code>pytest tests/ -q</code>
+      在 <b>Windows</b>、<b>非 git 目录（交付包解压目录）</b>、<b>demo 没起</b> 这三种情况下都要能跑 ——
+      进程探测按平台取（Linux <code>/proc</code> · Windows PowerShell · 其它 <code>ps</code>）；
+      文件清单在 git 不可用时降级为文件树扫描；<b>生成物缺失或为 0 字节</b>时直接告诉你
+      「先跑 <code>generate</code> / 重新解压」，而不是甩一堆「缺接线」；<b>连不上被测目标</b>时文案一律带
+      「先起 <code>python -m demo.app</code>」这一步。如实 <code>SKIPPED</code> 会打印原因（<b>SKIP ≠ 通过</b>），其余必须全绿。
     </p>
   </div>
 </section>

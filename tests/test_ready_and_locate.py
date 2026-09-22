@@ -18,6 +18,11 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# 同目录测试工具：生成物读取入口（缺失/为空时给「先跑 generate」这类可行动诊断）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import artifacts  # noqa: E402
+
 GEN = ROOT / "framework" / "tools" / "generate" / "generator.py"
 CONFTEST = ROOT / "scripts" / "conftest.py"
 TESTS_PY = ROOT / "scripts" / "test_cases.py"
@@ -28,6 +33,14 @@ DETAIL_HTML = ROOT / "demo" / "contract_detail.html"
 
 
 def _read(p: Path) -> str:
+    """读来源文件：**生成物**走带动作诊断的入口，框架源码照常读。
+
+    ⚠️ 2026-09-22（AprilPark1012 本地 Windows 验收 19 红驱动）：生成物为 0 字节时，6 条契约判据各自
+    报「生成物 缺少 _wait_ready / 缺 _goto」这类细节 —— 读的人看不出真因是「产物是空的」。
+    产物缺失/为空属**环境问题**，第一句就要说清 + 给出下一步命令（见 tests/artifacts.py）。
+    """
+    if p.parent == ROOT / "scripts":
+        return artifacts.read_artifact(p, role=f"生成物 scripts/{p.name}")
     return p.read_text(encoding="utf-8")
 
 
