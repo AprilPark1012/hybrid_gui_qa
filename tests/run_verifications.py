@@ -40,7 +40,14 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_MIN_MEM_MB = 550
-PER_SCRIPT_TIMEOUT_S = 600
+# 单脚本预算（AprilPark1012 2026-09-22 拍板 600 → 1200）：用例越来越多，脚本自身规模就会超 600s
+# ——`verify_assert_kinds.py` 30+ 子用例 × ~28s ≈ 840s，600s 下**永远跑不完**（exit 124 会被记成失败，
+# 可它根本不是断言失败，是预算不够）。超预算就如实记 124，**绝不降级成「通过」**。
+PER_SCRIPT_TIMEOUT_S = 1200
+
+# 单个 Chromium 实例要留的内存（与框架其它地方同源的红线：低于它就整套 SKIP）。并行时用它当闸门：
+# 能同时起几个浏览器脚本，由**当下真实可用内存**决定，而不是拍脑袋写死并发数。
+MEM_PER_BROWSER_MB = 550
 TAIL_LINES = 12
 DEMO_LOG = REPO / "log" / "_run_verifications_demo.log"
 DETACHED_PROCESS = 0x00000008
@@ -163,7 +170,8 @@ def classify(rc: int) -> str:
     return "ok" if rc == 0 else ("skip" if rc == 3 else "fail")
 
 
-def run_one(python: str, script: Path, *, stream: bool = False) -> tuple[int, float, list[str]]:
+def run_one(python: str, script: Path, *, stream: bool = False,
+            timeout_s: float = PER_SCRIPT_TIMEOUT_S) -> tuple[int, float, list[str]]:
     """跑一个 verify 脚本：返回 (退出码, 秒数, 末 N 行输出)。超时按 124 记（同 `timeout(1)`）。"""
     tail: deque[str] = deque(maxlen=TAIL_LINES)
     started = time.time()
@@ -174,7 +182,7 @@ def run_one(python: str, script: Path, *, stream: bool = False) -> tuple[int, fl
 
     def _watchdog() -> None:
         try:
-            proc.wait(timeout=PER_SCRIPT_TIMEOUT_S)
+            proc.wait(timeout=timeout_s)
         except subprocess.TimeoutExpired:
             killed["v"] = True
             proc.kill()
@@ -189,11 +197,99 @@ def run_one(python: str, script: Path, *, stream: bool = False) -> tuple[int, fl
     proc.wait()
     rc = 124 if killed["v"] else (proc.returncode or 0)
     if killed["v"]:
-        tail.append(f"⏱️ 超时 {PER_SCRIPT_TIMEOUT_S}s ⇒ 已杀（不计通过）")
+        tail.append(f"⏱️ 超时 {timeout_s:.0f}s ⇒ 已杀（不计通过）")
     return rc, time.time() - started, list(tail)
 
 
 # ---------------- 入口 ----------------
+
+# 「会跑起 Chromium」的两种形态：
+#   ① 直接起：脚本自己调 sync_playwright；
+#   ② 间接起：脚本自己不起，但**shell 出去跑生成用例**（真正起浏览器的是子进程）——
+#      实测 verify_assert_kinds.py 就是这么漏判成「纯离线」的（当时只认 ①）。
+_BROWSER_DIRECT = ("sync_playwright",)
+_BROWSER_INDIRECT = ("test_cases.py", "framework.cli")
+_SPAWN_HINTS = ("subprocess", "Popen")
+
+
+# ★「独占」脚本（2026-09-22 实测补）：会写**共享产物**的脚本，彼此之间、以及与任何别的脚本都不能同时跑。
+# 实测事故：并发那次 `verify_data_expand.py` 报「generate 失败（exit 2）」，**单独跑**却是 exit 0 全过
+# —— generate 会重写 `scripts/`（含 test_cases.py）与 element_map，和并发脚本撞了。
+# 这是并发模式**自己引入的假红** ⇒ 自己判掉（宁漏不误伤：宁可少并，绝不误报）。
+_EXCLUSIVE_MARKERS = (
+    "framework.cli",      # generate / run：重写 scripts/ 与 element_map
+    "build_tools/",       # 打包、渲染培训页
+    "build_html.py",
+    "pack_release",
+    "record_cassettes",
+)
+
+
+def is_exclusive_script(path: Path) -> bool:
+    """会写共享产物 ⇒ 必须独占跑（读不到文件按独占处理：保守优先）。"""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return True
+    return any(m in text for m in _EXCLUSIVE_MARKERS)
+
+
+def is_browser_script(path: Path) -> bool:
+    """该验证脚本是否会起 Chromium（决定能不能参与并行、要占多少内存）。
+
+    判据是**脚本自己的源码**里有没有 sync_playwright —— 确定性判据，不靠文件名猜。
+    读不到文件 ⇒ 按「会起浏览器」处理（保守：宁可少并一个，也不冒内存风险）。
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return True
+    # ⚠️ 只看 sync_playwright **不够**（实测踩到）：像 verify_assert_kinds.py 自己不起浏览器，
+    # 但它**shell 出去跑 pytest**，真正起 Chromium 的是那个子进程 ⇒ 会被误判成「纯离线」而绕过内存闸。
+    # ⇒ 凡是"会间接跑起浏览器"的痕迹都算浏览器类（保守优先：宁可少并一个，也不冒被 SKIP 的风险）。
+    if any(m in text for m in _BROWSER_DIRECT):
+        return True
+    return (any(m in text for m in _BROWSER_INDIRECT)
+            and any(h in text for h in _SPAWN_HINTS))
+
+
+def mem_available_mb() -> int:
+    """当前可用内存（MB）。拿不到 ⇒ 返回 0（触发最保守策略）。"""
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except OSError:
+        pass
+    return 0
+
+
+def may_start(*, is_browser: bool, running: int, running_browsers: int, jobs: int,
+              mem_mb: int, exclusive: bool = False,
+              running_exclusive: bool = False) -> tuple[bool, str]:
+    """并行调度的准入判据（纯函数，便于单测；调用方负责真正起进程）。
+
+    四条红线，任一不满足就「先别起」：
+      ⓪ **独占屏障**：会写共享产物的脚本跑着时谁也别起；它要起时别人必须都跑完；
+      ① 并发数没到上限；
+      ② 浏览器脚本额外过内存闸 —— 可用内存 ≥ 550MB × (已跑的浏览器脚本数 + 1)；
+         **差几 MB 也不硬闯**（硬闯的下场是浏览器起不来 ⇒ 整套验证被跳过，比慢更糟）；
+      ③ jobs <= 1 ⇒ 永远串行（与改造前行为**完全一致**）。
+    返回 (能不能起, 原因)：原因会打进日志，方便事后看懂当时为什么没并。
+    """
+    if jobs <= 1:
+        return (running == 0), "串行模式：一次只跑一个"
+    if running >= jobs:
+        return False, f"并发已满（{running}/{jobs}）"
+    if running_exclusive:
+        return False, "已有独占脚本在跑（它会重写共享产物，等它）"
+    if exclusive and running:
+        return False, "本脚本要独占（会重写共享产物），等当前任务跑完"
+    if is_browser:
+        need = MEM_PER_BROWSER_MB * (running_browsers + 1)
+        if mem_mb < need:
+            return False, f"内存闸未过：可用 {mem_mb}MB < 需要 {need}MB（不硬闯，先腾内存）"
+    return True, "准行"
 
 def _parse(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(
@@ -207,6 +303,11 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--stream", action="store_true", help="实时打印子进程输出（默认只在结束时打尾部摘要）")
     ap.add_argument("--min-mem", type=int, default=int(os.environ.get("VERIFY_MIN_MEM_MB", DEFAULT_MIN_MEM_MB)),
                     metavar="MB", help=f"内存阈值（默认 {DEFAULT_MIN_MEM_MB}MB，低于它整体 SKIP 并 exit 3）")
+    ap.add_argument("--timeout-s", type=float, default=PER_SCRIPT_TIMEOUT_S,
+                    help=f"单个脚本的预算秒数（默认 {PER_SCRIPT_TIMEOUT_S:.0f}）")
+    ap.add_argument("--jobs", type=int, default=1,
+                    help="并发脚本数（默认 1 = 串行，行为与改造前完全一致）。"
+                         "浏览器脚本会各自过内存闸，内存不够时自动退回串行")
     return ap.parse_args(argv)
 
 
@@ -228,6 +329,76 @@ def _ensure_demo_fresh(python: str) -> bool:
     print(f"  ⚠️ 每轮闸门未过：{note}（本轮继续，但该结论需人工复核 demo 新鲜度）")
     return False
 
+
+
+def run_parallel(python: str, scripts: list[Path], *, jobs: int, timeout_s: float,
+                 verbose: bool = True) -> list[tuple[str, int]]:
+    """并发跑多个验证脚本（**只在不满足准入时空转等待，绝不硬闯内存**）。
+
+    与串行版的差别只在"什么时候起下一个"：串行版是"跑完一个起一个"，
+    这里在**准入判据**（并发数 + 浏览器内存闸）允许时就起下一个，并把结果按**完成顺序**打出来。
+    输出会整体贴上脚本名，避免并发日志串台看不出是谁的。
+    """
+    pending = list(scripts)
+    # 预先算好分类（轮询 0.3s 一次，别每轮都去读 16 个文件）
+    _excl = {s: is_exclusive_script(s) for s in scripts}
+    running: dict[subprocess.Popen, tuple[Path, bool, float]] = {}
+    results: list[tuple[str, int]] = []
+    state: dict[str, str] = {"last_hold": ""}        # 供"同一原因不重复刷屏"用
+    while pending or running:
+        started = False
+        while pending:
+            script = pending[0]
+            is_b = is_browser_script(script)
+            is_x = _excl.get(script, True)                    # 读不到 ⇒ 按独占（保守）
+            rb = sum(1 for _s, _b, _t in running.values() if _b)
+            rx = any(_excl.get(_s, True) for _s, _b, _t in running.values())
+            ok, why = may_start(is_browser=is_b, running=len(running), running_browsers=rb,
+                                jobs=jobs, mem_mb=mem_available_mb(),
+                                exclusive=is_x, running_exclusive=rx)
+            if not ok:
+                # 只在**原因变化**时打一行：内存闸未过是常态（本机 2 个浏览器要 1100MB），
+                # 每 0.3s 重复同一行会把日志刷爆（实测单次跑刷出几百行，真正有用的信息全被埋了）。
+                if verbose and running and why != state.get("last_hold"):
+                    state["last_hold"] = why
+                    print(f"   ⏸ {script.name} 暂不起：{why}")
+                break
+            pending.pop(0)
+            proc = subprocess.Popen([python, str(script)], cwd=str(REPO),
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, encoding="utf-8", errors="replace")
+            running[proc] = (script, is_b, time.monotonic())
+            state["last_hold"] = ""
+            print(f"▶ 起 {script.name}（并发 {len(running)}/{jobs}{'，含浏览器' if is_b else ''}）")
+            started = True
+        if not running:
+            if pending:
+                continue                      # 等内存腾出来（外层没有死循环：pending 只在准行时减少）
+            break
+        time.sleep(0.3)          # 轮询间隔：真脚本动辄几百秒，这 0.3s 可忽略；短脚本也别为它多等
+        for proc in list(running):
+            rc = proc.poll()
+            if rc is None:
+                script, _b, t0 = running[proc]
+                if time.monotonic() - t0 > timeout_s:
+                    proc.kill()
+                    running.pop(proc)
+                    print(f"\n———— {script.name} ————\n   ⏱️ 超时 {timeout_s:.0f}s ⇒ 已杀（不计通过）")
+                    results.append((script.name, 124))
+                continue
+            script, _b, t0 = running.pop(proc)
+            dur = time.monotonic() - t0
+            out = proc.stdout.read() if proc.stdout else ""
+            print(f"\n———— {script.name} ————")
+            for line in out.strip().splitlines()[-12:]:
+                print(f"   {line}")
+            verdict = {"ok": "✅ exit 0", "skip": "⏭️  exit 3 跳过（不是通过）",
+                       "fail": f"❌ exit {rc}"}[classify(rc)]
+            print(f"  {verdict}（{dur:.0f}s）")
+            results.append((script.name, rc))
+        if not started and not any(p.poll() is None for p in running) and pending:
+            time.sleep(0.2)
+    return results
 
 def main(argv: list[str]) -> int:
     args = _parse(argv)
@@ -279,20 +450,26 @@ def main(argv: list[str]) -> int:
             if started_demo is None:
                 return 2
             print(f"· demo 就绪（pid {started_demo.pid}）")
-
     results: list[tuple[str, int]] = []
     try:
-        for i, script in enumerate(scripts, 1):
+        if args.jobs > 1 and len(scripts) > 1:
+            print(f"· 并发模式 jobs={args.jobs}（浏览器脚本各自过内存闸，内存不够自动退回串行；"
+                  f"单脚本预算 {args.timeout_s:.0f}s）")
             if not args.no_demo:
-                _ensure_demo_fresh(python)      # 每轮都查（AprilPark1012 2026-09-22）
-            print(f"\n———— [{i}/{len(scripts)}] {script.name} ————")
-            rc, dur, tail = run_one(python, script, stream=args.stream)
-            for line in tail:
-                print(f"   {line}")
-            results.append((script.name, rc))
-            verdict = {"ok": "✅ exit 0", "skip": "⏭️  exit 3 跳过（不是通过）",
-                       "fail": f"❌ exit {rc}"}[classify(rc)]
-            print(f"  {verdict}（{dur:.0f}s）")
+                _ensure_demo_fresh(python)
+            results = run_parallel(python, scripts, jobs=args.jobs, timeout_s=args.timeout_s)
+        else:
+            for i, script in enumerate(scripts, 1):
+                if not args.no_demo:
+                    _ensure_demo_fresh(python)      # 每轮都查（AprilPark1012 2026-09-22）
+                print(f"\n———— [{i}/{len(scripts)}] {script.name} ————")
+                rc, dur, tail = run_one(python, script, stream=args.stream, timeout_s=args.timeout_s)
+                for line in tail:
+                    print(f"   {line}")
+                results.append((script.name, rc))
+                verdict = {"ok": "✅ exit 0", "skip": "⏭️  exit 3 跳过（不是通过）",
+                           "fail": f"❌ exit {rc}"}[classify(rc)]
+                print(f"  {verdict}（{dur:.0f}s）")
     finally:
         if started_demo is not None:
             started_demo.kill()

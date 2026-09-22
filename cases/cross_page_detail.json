@@ -25,7 +25,7 @@
     },
     {
       "kind": "attr",
-      "selector": "#tbody-contracts tr[data-testid='row-HT-1005'] td[data-field='customer']",
+      "selector": "#tbody-contracts tr:has-text('HT-1005') td[data-field='customer']",
       "name": "data-cust",
       "expect": "c5",
       "desc": "【列表页】HT-1005 的客户编号 = c5（客户按序号确定：HT-1001→c1、HT-1005→c5、HT-1007→c1…）",
@@ -39,7 +39,7 @@
     },
     {
       "kind": "count",
-      "selector": "[data-testid='detail-no']",
+      "selector": "table[aria-label='合同详情'] tr:has-text('合同编号') td",
       "expect": 1,
       "desc": "【详情页】编号单元格存在（确认换的是详情页而不是别的页）",
       "after_step": 4
@@ -52,7 +52,7 @@
     },
     {
       "kind": "attr",
-      "selector": "[data-testid='detail-cust']",
+      "selector": "table[aria-label='合同详情'] tr:has-text('客户') td",
       "name": "data-cust",
       "expect": "c5",
       "desc": "【详情页·客户跨页一致】HT-1005 的客户编号也是 c5 —— 2026-09-14 起两页读服务端的同一条记录，客户不再各自推导",
@@ -60,20 +60,20 @@
     },
     {
       "kind": "visible",
-      "selector": "[data-testid='btn-new']",
+      "selector": "#btn-new",
       "desc": "【回到列表页】「+ 新建合同」按钮可见（列表页特征）",
       "after_step": 5
     },
     {
       "kind": "count",
-      "selector": "#tbody-contracts tr[data-testid='row-HT-1001']",
+      "selector": "#tbody-contracts tr:has-text('HT-1001')",
       "expect": 1,
       "desc": "【回到列表页·基线】预置首行 HT-1001 在列表里（F5 稳健化：不再用「全量 20 行」——那条会被本次运行新建的数据顶掉，与「回到列表页」要验的事无关）",
       "after_step": 5
     },
     {
       "kind": "count",
-      "selector": "#tbody-contracts tr[data-testid='row-HT-1005']",
+      "selector": "#tbody-contracts tr:has-text('HT-1005')",
       "expect": 1,
       "desc": "【末尾】再搜索 1005 仍能命中 HT-1005",
       "after_step": 7

@@ -23,7 +23,7 @@
   "asserts": [
     {
       "kind": "count",
-      "selector": "#tbody-contracts tr[data-testid^='row-']",
+      "selector": "#tbody-contracts tr:has(td[data-field='contractNo'])",
       "expect": 0,
       "desc": "『华信』不是任何客户名的前缀 ⇒ 0 条（若命中就说明实现成了包含匹配，不是右模糊）"
     },

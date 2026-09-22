@@ -559,6 +559,9 @@ python tests/run_verifications.py                # 全部 verify_*.py（内存 <
 python tests/run_verifications.py --only slow_target   # 只跑某一个；--list 列出全部
 python tests/run_verifications.py --no-demo      # 不起 demo（只跑自包含的验证）
 python tests/run_verifications.py --stream       # 实时打印子进程输出（默认只打尾部摘要）
+python tests/run_verifications.py --timeout-s 1200     # 单脚本预算（默认 1200s；用例多了脚本自身就慢）
+python tests/run_verifications.py --jobs 2             # 并发跑（默认 1=串行）。浏览器脚本各自过内存闸，
+#                                                      内存不够会自动退回串行 —— 不硬闯（硬闯会被 SKIP）
 #   ↑ 二类入口是 **Python 版**（Windows / Linux / macOS 通用；PowerShell 里没有 bash）
 bash tests/run_verifications.sh                  # Linux/macOS 便捷包装：内部转发到上面那条 Python 版（唯一实现在 .py）
 # ③ ★ R7 四项验收：一条命令跑完（闸门自检 → demo 新鲜度 → 框架自测 → E2E 三场景 → 特性自测）

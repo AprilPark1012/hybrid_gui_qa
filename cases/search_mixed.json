@@ -29,7 +29,7 @@
   "asserts": [
     {
       "kind": "count",
-      "selector": "#tbody-contracts tr[data-testid^='row-']",
+      "selector": "#tbody-contracts tr:has(td[data-field='contractNo'])",
       "expect": 3,
       "desc": "关键字『合同』(全命中) × 客户前缀『广州』(c3) ⇒ 3 条：HT-1003/1009/1015"
     },

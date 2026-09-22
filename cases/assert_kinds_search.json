@@ -10,12 +10,12 @@
   "asserts": [
     { "kind": "url", "expect": "localhost:8000", "desc": "URL 仍在合同列表页（url 断言：子串匹配）" },
     { "kind": "count", "selector": "#tbody-contracts tr", "expect": 1, "desc": "搜索结果恰好 1 行（count：结果行数）" },
-    { "kind": "count", "selector": "#tbody-contracts tr[data-testid='row-HT-1005']", "expect": 1, "desc": "命中的正是 HT-1005 那一行" },
+    { "kind": "count", "selector": "#tbody-contracts tr:has-text('HT-1005')", "expect": 1, "desc": "命中的正是 HT-1005 那一行" },
     { "kind": "attr", "selector": "#tbody-contracts tr:first-child td[data-field='contractNo']", "name": "data-field", "expect": "contractNo", "desc": "首单元格是合同编号列（attr：data-field）" },
     { "kind": "text", "expect": "HT-1005", "desc": "列表里出现编号 HT-1005（text，原有类型）" },
     { "kind": "text", "expect": "搜索完成", "desc": "状态行提示搜索完成" },
     { "kind": "hidden", "selector": "#modal-new", "desc": "新建弹窗保持关闭（hidden）" },
     { "kind": "enabled", "element": "搜索", "desc": "搜索按钮可用（enabled，走 element→语义映射的 locator）" },
-    { "kind": "disabled", "selector": "[data-testid='btn-export']", "desc": "导出按钮未接入 → 禁用（disabled）" }
+    { "kind": "disabled", "selector": "#btn-export", "desc": "导出按钮未接入 → 禁用（disabled）" }
   ]
 }

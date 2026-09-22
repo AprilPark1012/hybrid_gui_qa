@@ -22,7 +22,7 @@
     },
     {
       "kind": "visible",
-      "selector": "[data-testid='inp-name']",
+      "selector": "#inp-name",
       "desc": "弹窗里的合同名称输入框可见"
     },
     {
@@ -33,7 +33,7 @@
     },
     {
       "kind": "enabled",
-      "selector": "[data-testid='btn-submit']",
+      "selector": "#btn-submit",
       "desc": "提交按钮可用"
     }
   ]

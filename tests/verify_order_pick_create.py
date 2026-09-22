@@ -100,7 +100,7 @@ def _ready(page, timeout: int = 8000):
 
 
 def _vis(page, modal_testid: str) -> bool:
-    return page.locator(f"[data-testid='{modal_testid}']").is_visible()
+    return page.locator(f"#{modal_testid}").is_visible()
 
 
 def _wait_status(page, text: str, status_id: str = "status-o", timeout: int = 6000):
@@ -150,9 +150,9 @@ def run() -> None:
                 page.click(opener)
                 if not check(_vis(page, modal), f"[{kind}] 弹层能打开"):
                     continue
-                row = page.locator(f"[data-testid='{modal}'] tbody tr").first
+                row = page.locator(f"#{modal} tbody tr").first
                 row_txt = (row.inner_text() or "").replace("\n", " ").strip()
-                btn = page.locator(f"[data-testid='{modal}'] tbody tr").first.locator(
+                btn = page.locator(f"#{modal} tbody tr").first.locator(
                     "button[data-pick-value]")
                 want_v = btn.get_attribute("data-pick-value")
                 want_l = btn.get_attribute("data-pick-label")
@@ -163,7 +163,7 @@ def run() -> None:
 
                 # (b) 点整行（需求②的另一半）
                 page.click(opener)
-                page.locator(f"[data-testid='{modal}'] tbody tr").nth(1).click()
+                page.locator(f"#{modal} tbody tr").nth(1).click()
                 ok2 = (not _vis(page, modal))
                 check(ok2, f"[{kind}] 点**整行** → 选中并关闭弹层",
                       f"输入框={_val(page, target)!r} data={_dval(page, target)!r}")
@@ -172,7 +172,7 @@ def run() -> None:
 
             # ---------- 回归：两类有「取消」、四类没有；点「取消」不算选中 ----------
             for kind, opener, modal, target in PICKS:
-                n = page.locator(f"[data-testid='{modal}'] button", has_text="取消").count()
+                n = page.locator(f"#{modal} button", has_text="取消").count()
                 if kind in NO_CANCEL:
                     check(n == 0, f"[{kind}] 弹层里**没有**「取消」（按需求设计）", f"count={n}")
                 else:
@@ -183,7 +183,7 @@ def run() -> None:
             page.evaluate("() => { const e = document.getElementById('o-cust');"
                           " e.value = ''; e.dataset.value = ''; }")
             page.click("#btn-pick-cust")
-            page.locator("[data-testid='modal-pick-cust'] button", has_text="取消").click()
+            page.locator("#modal-pick-cust button", has_text="取消").click()
             check(_val(page, "#o-cust") == "" and _dval(page, "#o-cust") == "",
                   "点「取消」不算选中（客户字段仍为空）",
                   f"value={_val(page, '#o-cust')!r} data={_dval(page, '#o-cust')!r}")
@@ -232,14 +232,14 @@ def run() -> None:
 
             # 新建的这条要能在弹层里看到（说明前端主数据也刷新了）
             page.click("#btn-pick-cust")
-            rows_n = page.locator("[data-testid='modal-pick-cust'] tbody tr").count()
-            has = page.locator("[data-testid='modal-pick-cust'] tbody tr",
+            rows_n = page.locator("#modal-pick-cust tbody tr").count()
+            has = page.locator("#modal-pick-cust tbody tr",
                                has_text="验证客户甲").count()
             check(rows_n == before + 1 and has == 1,
                   "重新打开客户弹层：新建那条**在列表里**且可选",
                   f"行数 {before}→{rows_n}")
             # 点新建那条（点行）→ 仍能正确回填
-            page.locator("[data-testid='modal-pick-cust'] tbody tr", has_text="验证客户甲").click()
+            page.locator("#modal-pick-cust tbody tr", has_text="验证客户甲").click()
             check(_val(page, "#o-cust") == "验证客户甲", "点新建那条行也能回填（两种方式对新数据同样有效）")
             page.click("#btn-pick-cust")
 
@@ -281,13 +281,13 @@ def run() -> None:
             # ---------- 闭环：新建的客户/销售员 → 提交订单成功 ----------
             page.fill("#o-name", "验证订单甲")
             page.click("#btn-pick-contract")
-            page.locator("[data-testid='modal-pick-contract'] tbody tr").first.click()
+            page.locator("#modal-pick-contract tbody tr").first.click()
             page.click("#btn-pick-bu")
-            page.locator("[data-testid='modal-pick-bu'] tbody tr").first.click()
+            page.locator("#modal-pick-bu tbody tr").first.click()
             page.click("#btn-pick-mu")
-            page.locator("[data-testid='modal-pick-mu'] tbody tr").first.click()
+            page.locator("#modal-pick-mu tbody tr").first.click()
             page.click("#btn-pick-file")
-            page.locator("[data-testid='modal-pick-file'] tbody tr").first.click()
+            page.locator("#modal-pick-file tbody tr").first.click()
             page.select_option("#o-type", "标准销售订单")
             page.click("#btn-submit-order")
             page.wait_for_function(
@@ -306,11 +306,11 @@ def run() -> None:
                 ("file", "#btn-pick-file-search", "modal-pick-file", "#tb-o-file"),
             ]:
                 page.click(opener)
-                page.locator(f"[data-testid='{modal}'] tbody tr").first.click()      # 点整行
+                page.locator(f"#{modal} tbody tr").first.click()      # 点整行
                 check(not _vis(page, modal) and _dval(page, target) != "",
                       f"[搜索区 {kind}] 点**整行** → 回填搜索条件并关闭弹层", f"{_val(page, target)!r}")
                 page.click(opener)
-                page.locator(f"[data-testid='{modal}'] tbody tr").first.locator(
+                page.locator(f"#{modal} tbody tr").first.locator(
                     "button[data-pick-value]").click()                               # 点「选择」按钮
                 check(not _vis(page, modal) and _dval(page, target) != "",
                       f"[搜索区 {kind}] 点行内「选择」按钮 → 同样回填搜索条件", f"{_val(page, target)!r}")
@@ -329,13 +329,13 @@ def run() -> None:
             _ready(page)
             page.click("#btn-new")
             page.click("#btn-pick-c")
-            page.locator("[data-testid='modal-customer'] tbody tr").nth(1).click()        # 点整行
+            page.locator("#modal-customer tbody tr").nth(1).click()        # 点整行
             check((not _vis(page, "modal-customer")) and _val(page, "#inp-c") != ""
                   and (page.get_attribute("#inp-c", "data-cust") or "") != "",
                   "[合同页] 点**整行** → 选中客户并回填新建表单",
                   f"value={_val(page, '#inp-c')!r} cust={page.get_attribute('#inp-c', 'data-cust')!r}")
             page.click("#btn-pick-c")
-            page.locator("[data-testid='modal-customer'] tbody tr").nth(2).locator(
+            page.locator("#modal-customer tbody tr").nth(2).locator(
                 "button[data-pick]").click()                                              # 点「选择」按钮
             check((not _vis(page, "modal-customer")) and _val(page, "#inp-c") != "",
                   "[合同页] 点行内「选择」按钮 → 同样回填", f"value={_val(page, '#inp-c')!r}")
@@ -345,7 +345,7 @@ def run() -> None:
             page.goto(DEMO + "/contracts.html")
             _ready(page)
             page.click("#btn-pick-c-search")
-            page.locator("[data-testid='modal-customer'] tbody tr",
+            page.locator("#modal-customer tbody tr",
                          has_text="北京中科智慧科技").click()
             check((not _vis(page, "modal-customer"))
                   and (page.get_attribute("#tb-customer", "data-cust") or "") == "c5",
@@ -370,7 +370,7 @@ def run() -> None:
             check(n_none == 0, "「华信」包含但不前缀 ⇒ 0 条（既有右模糊语义未被破坏）", f"命中 {n_none} 条")
             # 换一种选中方式：点行内「选择」按钮
             page.click("#btn-pick-c-search")
-            page.locator("[data-testid='modal-customer'] tbody tr").first.locator(
+            page.locator("#modal-customer tbody tr").first.locator(
                 "button[data-pick]").click()
             check((page.get_attribute("#tb-customer", "data-cust") or "") == "c1",
                   "[合同页搜索区] 点行内「选择」按钮 → 同样选中 c1",
@@ -389,7 +389,7 @@ def run() -> None:
             check(c_n == 6 and s_n == 6,
                   "/api/reset 后临时新建的客户/销售员一并复位（不污染后续用例）",
                   f"客户={c_n} 销售员={s_n}")
-            ent = page.locator("[data-testid='modal-pick-cust'] tbody tr").count()
+            ent = page.locator("#modal-pick-cust tbody tr").count()
             check("验证客户甲" not in page.content(), "复位后页面里也不再有临时新建的记录")
             check(ent >= 0, "（信息）复位后客户弹层行数", f"rows={ent}")
         except Exception:

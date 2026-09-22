@@ -105,14 +105,28 @@ def main() -> int:
 
         toolbar_btns = [it for it in items if it.get("tag") == "button" and it.get("name") == "搜索"]
         region_ok = bool(toolbar_btns) and (toolbar_btns[0].get("anchor") or {}).get("kind") == "region"
-        record("⓪-c probe 采集：工具栏按钮锚到 region（aria-label=工具栏），且**无行内路径**",
-               region_ok and toolbar_btns[0].get("path") is None,
+        # ★2026-09-22（P16 批 6 · 口径 C）判据更新：旧契约是「工具栏按钮**无**行内路径」，
+        # 那是在「只有表格行内才有路径」的时代。撤掉内层埋点后，**只要有锚点就该产出相对路径**
+        # （弹层/区块内的字段全靠它定位，实测四个下拉没了它就定位不了）——
+        # 所以现在断言的是「锚到 region **且恰好一条 target 步**」。
+        _btn_path = toolbar_btns[0].get("path") if toolbar_btns else None
+        record("⓪-c probe 采集：工具栏按钮锚到 region（aria-label=工具栏），且产出一条容器内相对路径（口径 C 新契约）",
+               region_ok and isinstance(_btn_path, list) and len(_btn_path) == 1
+               and _btn_path[0].get("axis") == "target",
                f"anchor={toolbar_btns[0].get('anchor') if toolbar_btns else None} path={toolbar_btns[0].get('path') if toolbar_btns else None}")
 
+        # ★形状对 ≠ 能用：拿探到的锚点+路径**真定位一次**（下面 locate 定义在即，先声明再补这条判据）
         def locate(anchor, path):
             if not have_api:
                 return {"ok": False, "reason": "capability_missing"}
             return scope_locate(page, anchor=anchor, path=path)
+
+        # ★形状对 ≠ 能用（2026-09-22）：把刚探到的「锚点 + 路径」**真定位一次**。
+        # 只断言字段形状是**假绿**的高发区——路径长得对、执行层不认（或表达式拼不出）照样定位不到。
+        _r_btn = locate(toolbar_btns[0].get("anchor"), _btn_path) if toolbar_btns else {"ok": False}
+        record("⓪-d 工具栏按钮的「锚点 + 路径」**真能定位**（唯一命中）",
+               bool(_r_btn.get("ok")) and _r_btn.get("count") == 1,
+               f"ok={_r_btn.get('ok')} count={_r_btn.get('count')} {_r_btn.get('reason','')}")
 
         # ① 零 testid 页面：按「行锚文本 + 表头文本列 + 目标语义」下钻拿到行内链接
         r = locate({"kind": "table", "by": "heading", "value": "采购单列表"},

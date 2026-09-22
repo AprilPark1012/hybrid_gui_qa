@@ -34,7 +34,7 @@
   "asserts": [
     {
       "kind": "count",
-      "selector": "#tbody-contracts tr[data-testid^='row-']",
+      "selector": "#tbody-contracts tr:has(td[data-field='contractNo'])",
       "expect": 1,
       "desc": "关键字『合同7』(HT-1007) × 客户前缀『北京』(北京华信) ⇒ 1 条"
     },

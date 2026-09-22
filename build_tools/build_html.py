@@ -133,7 +133,7 @@ CHANGELOG = [
         notes=[
             "判据：一类 <code>pytest tests/ -q</code> <b>238 passed</b>（与重构前逐条一致）· "
             "端到端 <code>cli run</code> 19 个节点<b>分批</b>跑 <b>19 passed / exit 0</b> · "
-            "二类 <code>bash tests/run_verifications.sh</code> 10 个脚本 · "
+            "二类 <code>bash tests/run_verifications.sh</code> 全部 verify_*.py（条数以 <code>--list</code> 输出为准）· "
             "<code>build_tools/pack_release.py --with-cassettes</code> 打包自检通过",
             "⚠️ 本机内存红线（1.87G / 无 swap）：全量一次跑会触发 OOM（实测 Playwright 驱动崩溃 + 用例挂死），"
             "改用「每批 ≤5 条、独立进程、批间释放浏览器」；<b>SKIP 不等于通过</b>，内存不足要腾出来重跑",
@@ -2007,6 +2007,8 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <b>二类（端到端特性验证）也用 Python 跑</b>（Windows / Linux 通用，Python 入口是唯一实现）：
       <code>python tests/run_verifications.py</code>（全部）·
       <code>--only &lt;子串&gt;</code> 只跑一个 · <code>--list</code> 先看跑哪些 · <code>--no-demo</code> 不起 demo ·
+      <code>--timeout-s 1200</code> 单脚本预算（默认 1200s）·
+      <code>--jobs 2</code> 并发（浏览器脚本各自过内存闸，不够自动退回串行）·
       内存不足会<b>如实 SKIP 并 exit 3（不是通过）</b>。
     </p>
     <p style="margin-top:10px;color:var(--muted);font-size:.92rem">

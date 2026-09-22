@@ -28,8 +28,23 @@ BASE = Path(__file__).resolve().parents[1]
 # 系统默认编码（Windows cp936/gbk）解码子进程的 UTF-8 中文输出。
 sys.path.insert(0, str(BASE))
 from framework.tools.common.text_io import UTF8_ENV, force_stdio  # noqa: E402
+from framework.tools.probe.scope_locate import scope_locate  # noqa: E402
 
 force_stdio()
+
+
+def _pick(page, modal, row_text):
+    """在弹层里点「含 row_text 的那一行」的按钮（P16 批 5）。
+
+    行内埋点（`pick-*`）已按「真实系统只有顶层容器有埋点」的口径撤除 ⇒ 判据走**顶层锚点 + 容器内下钻**。
+    行锚歧义如实失败，不猜。
+    """
+    r = scope_locate(page, {"kind": "dialog", "by": "test_id", "value": modal},
+                     [{"axis": "row", "by": "text", "value": row_text},
+                      {"axis": "target", "by": "role", "value": "button"}])
+    if not r["ok"]:
+        raise RuntimeError(f"下钻定位失败（modal={modal} 行锚={row_text!r}）：{r.get('reason')}")
+    return r["locator_obj"]
 _U8 = {**os.environ, **UTF8_ENV}
 CASES = BASE / "cases"
 DATASETS = BASE / "scripts" / "datasets"
@@ -172,15 +187,15 @@ def _check_new_then_detail():
         pg = b.new_context().new_page()
         pg.goto(LIST)
         pg.wait_for_load_state("networkidle")
-        pg.get_by_test_id("btn-new").click()
-        pg.fill("[data-testid='inp-name']", name)
-        pg.select_option("[data-testid='sel-mu']", "0021")
-        pg.select_option("[data-testid='sel-fs']", "001")
-        pg.select_option("[data-testid='sel-type']", "合同")
-        pg.get_by_test_id("btn-pick-c").click()          # 打开客户弹层
-        pg.get_by_test_id("pick-c1").click()             # 选「北京华信科技有限公司」
-        pg.select_option("[data-testid='sel-b']", "bu_a")
-        pg.get_by_test_id("btn-submit").click()
+        pg.locator("#btn-new").click()
+        pg.fill("#inp-name", name)
+        pg.select_option("#sel-mu", "0021")
+        pg.select_option("#sel-fs", "001")
+        pg.select_option("#sel-type", "合同")
+        pg.locator("#btn-pick-c").click()          # 打开客户弹层
+        _pick(pg, "modal-customer", "北京华信科技有限公司").click()   # 选客户（撤行内埋点后走容器下钻）
+        pg.select_option("#sel-b", "bu_a")
+        pg.locator("#btn-submit").click()
         pg.wait_for_selector("#status:has-text('已新增合同')", timeout=8000)
         with urllib.request.urlopen(DEMO + "/api/contracts", timeout=5) as r:
             rows = json.loads(r.read().decode("utf-8"))
