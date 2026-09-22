@@ -22,6 +22,7 @@
     output/      probe/element_map/plan/heals/trace（运行时证据）
 """
 from __future__ import annotations
+import json
 import sys
 from typing import NoReturn
 
@@ -30,8 +31,49 @@ from framework.tools.common.config import ensure_dirs, TARGET_URL, LOG_DIR
 from framework.tools.probe.probe import probe_page
 from framework.tools.common.browser import launch_opts
 from framework.tools.common.limits import safe_workers
-from framework.tools.common.retention import DEFAULT_KEEP as KEEP_SNAPSHOTS, prune_snapshots
+from framework.tools.common.retention import (                  # noqa: E402
+    DEFAULT_KEEP as KEEP_SNAPSHOTS, prune_snapshots,
+    DEFAULT_KEEP_RUNS, DEFAULT_KEEP_RUN_DAYS, DEFAULT_MAX_DELETE,
+    auto_prune_runs, prune_runs,
+)
 from framework.tools.common.text_io import force_stdio, fs_encoding_warning, run_capture, utf8_env
+
+
+def _write_run_summary(run_dir: Path, run_id: str, exit_code: int) -> None:
+    """给 run 目录落 `summary.json` —— 归档保留策略据此判「能否证明成功」。
+
+    缺它 / 坏了 ⇒ 策略一律只**瘦身**不整删（宁可少回收，也不赌一次运行是成功的），
+    所以这个文件也承担"失败证据永远留得住"的责任。
+
+    失败数从**用例日志**里数（`✗` 是 runner 执行失败时打的、另有 Python traceback 兜底），
+    不去解析 pytest 的文本输出：日志是框架自己的产物、口径稳定，pytest 输出格式会随版本变。
+    误判方向是安全的（多算失败 ⇒ 更保守）。
+    """
+    try:
+        logs = [p for p in run_dir.rglob("*.log") if p.is_file()]
+        failed = 0
+        for p in logs:
+            try:
+                txt = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if "✗" in txt or "Traceback (most recent call last)" in txt:
+                failed += 1
+        tdir = run_dir / "traces"
+        traces = sum(p.stat().st_size for p in tdir.glob("*.zip")) if tdir.is_dir() else 0
+        data = {
+            "run_id": run_id,
+            "ended": _now(),
+            "exit_code": int(exit_code),
+            "case_logs": len(logs),
+            "failed_cases": failed,
+            "traces_bytes": traces,
+            "note": "failed_cases 由用例日志里的 ✗ / Traceback 计数；exit_code = pytest 退出码",
+        }
+        (run_dir / "summary.json").write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as e:
+        print(f"  [run] ⚠️ summary.json 写入失败（归档策略会因此保守：只瘦身不整删）：{e}")
 
 
 def _now() -> str:
@@ -496,6 +538,7 @@ def cmd_explore(rest: list[str] = None):
             print("          ⚠️ mock 兜底产物 → 按约定【不落 cases/】（避免假 AI 用例污染用例库）")
 
     prune_snapshots(quiet_if_none=True)          # 归档保留策略：快照各留最近 N 个
+    auto_prune_runs(quiet_if_none=True)          # 归档保留策略：run 目录（L5）
 
     if cassette is not None and cassette.is_replay:
         print(f"[explore] ⚠️ 本次 AI 判断来自**录像回放**（{cassette.root}）："
@@ -563,20 +606,51 @@ def _verify_case(case_name: str) -> bool | None:
     return _verify_cases([("", case_name)])
 
 
+def _int_flag(rest: list[str], name: str, default: int) -> int:
+    """取 `--name v` / `--name=v` 的**整数**取值；没给返回默认值，取值不合法按参数错误处理（exit 2）。
+
+    ⚠️ 名字故意不叫 `_arg_value`：本文件早有一个 `_arg_value(rest, flag)`（返回字符串或 None，
+    给 llm-cassette / scenario 用）。同名会**遮蔽**它 ⇒ 那些 2 参数调用全部 TypeError（实测踩到，
+    被一类 `test_arg_value_supports_equals_form` 抓出来）。
+    """
+    for i, a in enumerate(rest):
+        if a == name and i + 1 < len(rest):
+            raw = rest[i + 1]
+        elif a.startswith(name + "="):
+            raw = a.split("=", 1)[1]
+        else:
+            continue
+        try:
+            return cast(raw)
+        except ValueError:
+            _fail(f"参数 {name} 取值不合法：{raw}", f"用法：{name} <整数>")
+    return default
+
+
 def cmd_prune(rest: list[str] = None):
-    """归档保留策略：output/element_maps/ 的 element_map_*.json / probe_*.json 各留最近 N 个。
+    """归档保留策略（两类目录）：
+
+      ① `output/element_maps/`：element_map_*.json / probe_*.json 各留最近 `--keep` 个；
+      ② `log/<run_id>/` 与 `output/verify/`（`--runs` / `--all` 才生效）：
+         保留最近 `--keep-runs` 个 ∪ `--keep-days` 天（默认 30 个 / 7 天）；超龄的 run 里，
+         **能证明成功**（有 summary.json 且全绿）的才整删，历史（无 summary）/失败 ⇒
+         只**瘦身**（删掉 traces 录像，保留 .log + report.html + summary.json）。
 
     用法: python -m framework.cli prune [--keep 20] [--dry-run]
-    默认保留数可用环境变量 HYBRID_KEEP_SNAPSHOTS 覆盖；--dry-run 只预演不删。
+          python -m framework.cli prune --all [--keep-runs 30] [--keep-days 7] [--max-delete 20] [--dry-run]
+    默认值可用环境变量覆盖：HYBRID_KEEP_SNAPSHOTS / HYBRID_KEEP_RUNS / HYBRID_KEEP_RUN_DAYS /
+    HYBRID_MAX_DELETE_PER_PRUNE / HYBRID_MAX_FREE_MB；`--dry-run` 只预演不删。
+    ⚠️ 不带 `--runs/--all` 时行为同旧版（**只清快照，不碰 log/**）。
     """
     ensure_dirs()
     rest = rest or []
-    keep = KEEP_SNAPSHOTS
-    if "--keep" in rest:
-        i = rest.index("--keep")
-        if i + 1 < len(rest) and rest[i + 1].isdigit():
-            keep = int(rest[i + 1])
+    keep = _int_flag(rest, "--keep", KEEP_SNAPSHOTS)
+    keep_runs = _int_flag(rest, "--keep-runs", DEFAULT_KEEP_RUNS)
+    keep_days = _int_flag(rest, "--keep-days", DEFAULT_KEEP_RUN_DAYS)
+    max_delete = _int_flag(rest, "--max-delete", DEFAULT_MAX_DELETE)
     dry = "--dry-run" in rest
+    do_runs = ("--all" in rest) or ("--runs" in rest)
+    do_snaps = ("--all" in rest) or not do_runs          # 默认沿用旧行为：只清快照
     print(f"[prune] 快照保留策略：每类保留最近 {keep} 个（{'dry-run 预演，不删' if dry else '实际清理'}）")
     removed = prune_snapshots(keep=keep, dry_run=dry, quiet_if_none=False)
     print(f"[prune] {'将清理' if dry else '已清理'} {len(removed)} 个快照文件")
@@ -585,6 +659,24 @@ def cmd_prune(rest: list[str] = None):
             print(f"          - {f.name}")
         if len(removed) > 5:
             print(f"          … 其余 {len(removed) - 5} 个")
+
+    if do_runs:
+        print(f"[prune] run/verify 保留策略：最近 {keep_runs} 个 ∪ {keep_days} 天 · "
+              f"单次上限 {max_delete} 个目录（{'dry-run 预演，不删' if dry else '实际清理'}）")
+        res = prune_runs(keep=keep_runs, keep_days=keep_days, max_delete=max_delete,
+                         dry_run=dry, quiet_if_none=False)
+        print(f"[prune] {'将处理' if dry else '已处理'}：整删 {len(res['removed_dirs'])} 个目录 · "
+              f"瘦身 {len(res['slimmed_dirs'])} 个目录（删录像 {len(res['slim_files'])} 个文件）· "
+              f"清理 verify 日志 {len(res['verify_files'])} 个 · "
+              f"释放 {res['freed_bytes'] / 1024 / 1024:.1f} MB"
+              + ("（已达单次上限，余量留到下次）" if res["capped"] else "")
+              + f"；显式保护跳过 {len(res['protected_skipped'])} 个 · "
+                f"命名不认识跳过 {res['unknown_skipped']} 个")
+        if dry and res["removed_dirs"]:
+            for name in res["removed_dirs"][:5]:
+                print(f"          - 整删 {name}")
+            if len(res["removed_dirs"]) > 5:
+                print(f"          … 其余 {len(res['removed_dirs']) - 5} 个")
 
 
 def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool = False,
@@ -714,6 +806,12 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
               "scripts/test_cases.py 里的 def test_* ）")
     # 退出码必须**如实传递**（2026-09-13 修）：以前 cmd_run 跑完就返回 ⇒ cli 永远 exit 0，
     # 用例失败(1)/没匹配到用例(5)/collect error(2) 全被吞掉 ⇒ CI 与脚本调用方一律误判成功。
+    # ---- 收尾（**必须在退出码判断之前**）：summary.json + 归档保留 ----
+    # 为什么要在 raise 之前：失败 run 也要留下 summary.json —— 归档策略据此判「能否证明成功」
+    # （失败/无 summary 一律只瘦身不整删），而且"最近一次全红"要靠它才保得住。
+    _write_run_summary(run_dir, run_id, r.returncode)
+    auto_prune_runs(quiet_if_none=True)
+
     if r.returncode != 0:
         print(f"[run] ❌ 以 pytest 退出码 {r.returncode} 结束（1=有用例失败 / 5=没匹配到用例 / "
               f"其它=执行环境问题）→ cli 同样返回该退出码，别把它当成功")
@@ -754,7 +852,10 @@ FLAG_SPECS: dict[str, str | None] = {
     # LLM 录像录制 / 回放（2026-09-18）：opt = 值可省（省了就用默认目录 output/llm_cassettes）
     "--llm-cassette": "opt", "--llm-record": "opt", "--llm-cassette-strict": None,
     "--keep": "value", "--dry-run": None,
-}
+    # L5 归档保留（2026-09-22）：run / verify 目录
+    "--all": None, "--runs": None,
+    "--keep-runs": "value", "--keep-days": "value", "--max-delete": "value",
+    }
 # 对 run/all 生效的通用参数（main 统一解析）
 _COMMON_FLAGS = {"--workers", "--debug", "--headed", "--force-workers", "--isolated-target",
                 "--case", "--slowmo"}
@@ -766,7 +867,8 @@ CMD_FLAGS: dict[str, set[str]] = {
                 "--llm-cassette", "--llm-record", "--llm-cassette-strict"},
     "run": set(_COMMON_FLAGS),
     "all": set(_COMMON_FLAGS) | {"--allow-unmapped"},
-    "prune": {"--keep", "--dry-run"},
+    "prune": {"--keep", "--dry-run", "--all", "--runs",
+              "--keep-runs", "--keep-days", "--max-delete"},
 }
 # 已移除的参数：给"为什么没了 + 该用什么"，而不是笼统的"不认识"
 REMOVED_FLAGS = {

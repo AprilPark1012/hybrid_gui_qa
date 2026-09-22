@@ -1,10 +1,11 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.0**（2026-09-21）· 版本号单一来源：`build_tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> 当前版本 **V8.1**（2026-09-22）· 版本号单一来源：`build_tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
 > （路径只在 `framework/tools/common/config.py::VERSION_SOURCE` 定义一次，cli / llm_cassette / 打包器共用）
-> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V8.0.md`；
-> ⚠️ **V8.0 是破坏性结构变更**（`framework/tools/{common,probe,explore,generate,run}/` 业务流程分层），
-> 升级前请读发行说明的「升级须知」；上一版见 `releases/RELEASE_NOTES_V7.7.1.md`（结构归一 + 离线两件套）。
+> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V8.1.md`
+> （归档保留策略 L5：`log/` 与 `output/verify/` 分级清理，证据优先）；
+> ⚠️ 上一版 **V8.0 是破坏性结构变更**（`framework/tools/{common,probe,explore,generate,run}/` 业务流程分层），
+> 升级前请读 `releases/RELEASE_NOTES_V8.0.md` 的「升级须知」；
 > 历次升级日志都在 `releases/RELEASE_NOTES_V*.md`，**每次交付包会一并带上**。
 
 > 一个 Python 骨架，示范如何把 **Browser Use（AI 智能探索）** 和 **Playwright（确定性执行）**
@@ -105,11 +106,39 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 - **脚本自愈**：生成脚本走 `conftest._loc()` → `locator_bridge` 分层定位（Tier1 多策略 → Tier2 指纹 → 意图复验），仍失败才交 `healer.try_heal()`；`HYBRID_SELF_HEAL=0` 可关成「失败即报」（CI 语义）。heal 事件落 `output/heals/`（可审 diff）；业务断言不过仍判真 bug，绝不静默改写。
 - **未映射元素 = 显式失败（不静默跳过）**：手搓用例的 `element` 必须是 probe 探测出的 semantic_name；generate 映射不到时打印 `⚠️ 仍未映射 [...]`，并在生成的脚本里对那一步 `pytest.fail(..., pytrace=False)`。⚠️ 这里以前只留一行注释就跳过，用例照样 `PASSED` —— 属"少做一步还报绿"的假绿，2026-09-11 已修。
 - **AI 用例与质量闸**：`cli explore --ai` 默认把产物落 `cases/ai_*.json`（`--no-cases` 可关）。落盘前 `case_builder` 做质量校验：断言=输入回显、断言=运行时计数（"共 N 条"）都会告警；**LLM 不可用时直接报错退出（exit 2），拒绝用 mock 冒充 AI 产物**（`--mock-fallback` 才显式降级，且不写 cases/）。**落盘后默认 `--verify` 试跑该用例**（实测不过 → ❌ + exit 3，日志 `output/verify/`）；
-- **归档保留策略**：`cli prune [--keep 20] [--dry-run]`，`output/element_maps/` 的 element_map/probe 快照各留最近 N 个（`HYBRID_KEEP_SNAPSHOTS` 可调）；explore/probe 每次结束自动静默清理。
+- **归档保留策略（两类目录）**：
+  - **快照**：`cli prune [--keep 20] [--dry-run]` —— `output/element_maps/` 的 element_map/probe 快照各留最近 N 个（`HYBRID_KEEP_SNAPSHOTS` 可调）；explore/probe 结束自动静默清理。
+  - **run / verify（V8.1 新增，L5）**：`cli prune --runs|--all [--keep-runs 30] [--keep-days 7] [--max-delete 20] [--dry-run]`
+    —— `log/<run_id>/` 与 `output/verify/` 保留「最近 30 个 ∪ 7 天」；超龄 run **分级处理**：只有**能证明成功**
+    （`summary.json` 且全绿）才整删，历史/失败**只瘦身**（删 traces 录像，保留 `.log` + `report.html` + `summary.json`）。
+    保护规则优先于旋钮：最近一次全绿/全红各保一个 · `log/.protected_runs` 登记过的完全不碰 · 不认识的命名一律不动；
+    单次删除上限 20 个目录 / 100 MB（防「策略写错一夜清空」）；`HYBRID_NO_AUTO_PRUNE=1` 可关掉自动清理。
 
 > 需 DeepSeek key（AI 语义识别链路）：在项目根 `.env` 配 `DEEPSEEK_API_KEY`（见「快速上手·第4节」）。
 
 ---
+
+## 2026-09-22 变更要点 —— 归档保留策略（V8.1 · 证据优先的分级清理）
+
+**一句话**：`log/` 与 `output/verify/` 不再「只增不减」—— 保留**最近 30 个 run ∪ 7 天**，
+超龄的**分级处理**：只有**能证明成功**的才整删，历史与失败**只瘦身**（删录像、留日志与报告）。
+CLI 参数 / 用例格式 / 报告形态**零变化**；不带 `--runs/--all` 时 `prune` 行为同旧版。
+
+**为什么分级**（这是本版的核心取舍）：`log/` 实测 281 个目录 / 212 MB，其中 **103 MB 是 trace 录像** ——
+它们正是排查疑难用例时最想看的证据。所以策略不是"删旧的"，而是：
+**能证明成功**（`summary.json` 且 `exit_code==0` 且无失败用例）⇒ 整目录删；
+**历史（无 `summary.json`）/ 失败** ⇒ 只删录像，`.log` + `report.html` + `summary.json` 永久留下。
+⇒ 回收空间的同时，**证据的"摘要"一份都不丢**。
+
+| 项 | 内容 |
+|---|---|
+| 新增产物 | `summary.json`（`cli run` 收尾写，**在退出码判断之前** ⇒ 失败 run 也留证）|
+| 新增命令 | `cli prune --runs\|--all [--keep-runs 30] [--keep-days 7] [--max-delete 20] [--dry-run]` |
+| 保护清单 | `log/.protected_runs`（被台账/发行说明/交付邮件引用过的 run 登记在此；框架只读仓库内文件，守 R1）|
+| 保护优先于旋钮 | 最近一次全绿 / 全红各保一个 · 登记过的不碰 · 不匹配 `YYYYMMDD_HHMMSS` 的命名一律不动 |
+| 安全默认 | 单次上限 20 个目录 / 100 MB · `--dry-run` 可预演 · 处置失败即停（fail-safe）|
+| 开关 | `HYBRID_NO_AUTO_PRUNE=1` 关掉 `run`/`generate` 结束时的自动清理 |
+| 实测 | 首次执行回收 **66.2 MB**（213 MB → 146 MB：瘦身 34 个 run / 281 个录像文件 · 整删 0 · 清 45 个老 verify 日志）；一类 14 条新判据（含 7 条负向自证）· 二类 `verify_retention_runs.py` 全绿 |
 
 ## 2026-09-21 变更要点 —— 结构重构：业务流程分层（V8.0 · **破坏性变更**）
 

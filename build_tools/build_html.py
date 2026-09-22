@@ -214,11 +214,49 @@ def render_cards() -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.0"
-VERSION_DATE = "2026-09-21"
+VERSION = "8.1"
+VERSION_DATE = "2026-09-22"
 CHANGELOG = [
     dict(
-        version="8.0", date="2026-09-21", tag="当前版本",
+        version="8.1", date="2026-09-22", tag="当前版本",
+        theme="归档保留策略（L5）：log/ 与 output/verify/ 不再只增不减 —— 分级清理，证据优先",
+        summary="给两类「只增不减」的自动产物目录加保留策略：<b>保留最近 30 个 run ∪ 7 天</b>；"
+                "超龄的 run <b>分两级</b>处理 —— 只有<b>能证明成功</b>的才整删，历史与失败<b>只瘦身</b>"
+                "（删录像、留日志与报告）。CLI 参数 / 用例格式 / 报告形态<b>零变化</b>；"
+                "不带 <code>--runs/--all</code> 时 <code>prune</code> 行为同旧版。",
+        added=[
+            "<b><code>summary.json</code></b>：<code>cli run</code> 收尾写进 run 目录"
+            "（在退出码判断<b>之前</b>写 ⇒ 失败 run 也留证），记录 <code>exit_code</code> / 用例日志数 / "
+            "失败数 / 录像体积 —— 归档策略据此判定「能否证明成功」",
+            "<b><code>cli prune --runs|--all</code></b>："
+            "<code>[--keep-runs 30] [--keep-days 7] [--max-delete 20] [--dry-run]</code>；"
+            "环境变量 <code>HYBRID_KEEP_RUNS</code> / <code>HYBRID_KEEP_RUN_DAYS</code> / "
+            "<code>HYBRID_MAX_DELETE_PER_PRUNE</code> / <code>HYBRID_MAX_FREE_MB</code> 可调",
+            "<b><code>log/.protected_runs</code></b>：保护清单（每行一个 run_id + 理由）。"
+            "框架只读仓库内文件（不读 skill 路径，守 R1）—— 台账/发行说明/交付邮件引用过的 run 登记在这里",
+        ],
+        changed=[
+            "<b>两级处理</b>：超龄 run 里，<b>能证明成功</b>（有 <code>summary.json</code> 且全绿）⇒ 整目录删；"
+            "<b>历史（无 summary）/ 失败</b> ⇒ 只瘦身（删 <code>traces/*.zip</code> 录像，"
+            "保留 <code>.log</code> + <code>report.html</code> + <code>summary.json</code>）",
+            "<b>保护规则（优先于任何旋钮）</b>：最近一次全绿 / 全红各保一个 · "
+            "<code>.protected_runs</code> 登记过的完全不碰 · 不匹配 <code>YYYYMMDD_HHMMSS</code> 的命名一律不动"
+            "（用户手工产物绝不误删）· <code>slowgate_*</code> 同口径",
+            "<b>执行点</b>：<code>cli run</code> / <code>generate</code> 结束时自动清理（静默，无可清理不打印）；"
+            "<code>HYBRID_NO_AUTO_PRUNE=1</code> 可整体关掉（排查现场时用）",
+            "<b>安全默认</b>：单次删除上限 <b>20 个目录 / 100 MB</b>（防「策略写错、一夜清空」）· "
+            "<code>--dry-run</code> 可预演 · 处置失败即停（fail-safe，不 fail-open）",
+        ],
+        notes=[
+            "<b>兼容性</b>：零破坏。不带 <code>--runs/--all</code> 时 <code>prune</code> 行为与旧版一致"
+            "（只清 <code>output/element_maps/</code> 快照）；旧 <code>--keep</code> 语义不变。",
+            "<b>实测</b>：首次实际执行回收 <b>66.2 MB</b>（<code>log/</code> 213 MB → 146 MB："
+            "瘦身 34 个 run / 281 个录像文件 + 清 45 个老 verify 日志；整删 0 —— 当时的 run 都是历史数据、"
+            "不可证明成功，按保守口径只瘦身）。",
+        ],
+    ),
+    dict(
+        version="8.0", date="2026-09-21", tag="上一版本",
         theme="结构重构：framework/ 按业务流程分层（破坏性变更）· 开发期工具进 build_tools/",
         summary="本版<b>不加新能力</b>，只把 <code>framework/</code> 从「平铺 17 个模块」改成"
                 "<b>按业务流程分层</b>，让目录结构自己讲清链路顺序（探测 → AI 识别 → 生成 → 执行）。"
