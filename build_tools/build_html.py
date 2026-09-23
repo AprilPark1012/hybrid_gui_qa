@@ -9,7 +9,7 @@ import os
 import re
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent.parent.parent      # build_tools/ 的上一层 = 仓库根
+BASE = Path(__file__).resolve().parent.parent      # build_tools/ 的上一层 = 仓库根
 # 输出路径可用 BUILD_HTML_OUT 覆盖 —— 供「可复现性验证」在 /tmp 里生成、不污染仓库（tests/featureTest/verify_html_sync.py）
 OUT = Path(os.environ.get("BUILD_HTML_OUT") or (BASE / "docs" / "training.html"))
 

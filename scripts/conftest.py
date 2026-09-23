@@ -35,7 +35,7 @@ import pytest
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import expect as _expect
 
-BASE = Path(__file__).resolve().parent.parent.parent
+BASE = Path(__file__).resolve().parent.parent
 LOG_DIR = BASE / "log"
 
 # ---- 本次运行的日志目录（run-id 隔离）----
