@@ -2288,7 +2288,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
         <li><b>一类：</b><span class="code-inline">frameworkTest/test_offline_chain_python.py</span>（9 条：离线链 Python 化，跨平台）· <span class="code-inline">frameworkTest/test_no_gate_coupling.py</span>（2 条：框架自测与 demo 解耦）</li>
-        <li><b>二类：</b><span class="code-inline">featureTest/verify_offline_delivery.py</span>（交付两件套形态）· <span class="code-inline">featureTest/verify_offline_chain_deps.py</span>（离线链依赖齐备）· <span class="code-inline">featureTest/verify_e2e_scenario1_offline.py</span>（<b>7 项，含 2 条负向证伪 + 归档零残留</b>）</li>
+        <li><b>二类：</b><span class="code-inline">featureTest/verify_offline_delivery.py</span>（交付两件套形态）· <span class="code-inline">featureTest/verify_offline_chain_deps.py</span>（离线链依赖齐备）· <span class="code-inline">featureTest/verify_e2e_scenario3_replay.py</span>（<b>7 项，含 2 条负向证伪 + 归档零残留</b>）</li>
         <li><b>E2E：</b>场景1（自然语言→AI→cases→generate→run，日常走离线回放）· 场景2（手写用例驱动 <span class="code-inline">cli run</span>）</li>
       </ul>
     </div>
@@ -2457,7 +2457,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
         <li><b>一类：</b><span class="code-inline">frameworkTest/test_llm_cassette.py</span>（30 条：键计算 / 归一化 / 多键兼容 / <b>负向：键不匹配必须报「没有这一份」、坏录像文件不许毁掉整次回放</b>）· <span class="code-inline">frameworkTest/test_offline_chain_python.py</span>（9 条）· <span class="code-inline">frameworkTest/test_pack_release.py</span>（含出厂闸门 3 条：接线锁 / 覆盖不全必须拦 / 逃生口必须有效）</li>
-        <li><b>二类：</b><span class="code-inline">featureTest/verify_e2e_scenario1_offline.py</span>（场景1 离线端到端，<b>7 项含 2 条负向 + 归档零残留</b>）· <span class="code-inline">featureTest/verify_e2e_scenario3_cassette.py</span>（<b>场景3 = 录制回放验证</b>：覆盖体检 / 体检有效性负向 / 不匹配必须 fail loud / <span class="code-inline">--with-record</span> 时跑「录制→回放闭环」）</li>
+        <li><b>二类：</b><span class="code-inline">featureTest/verify_e2e_scenario3_replay.py</span>（场景1 离线端到端，<b>7 项含 2 条负向 + 归档零残留</b>）· <span class="code-inline">featureTest/verify_e2e_scenario3_cassette.py</span>（<b>场景3 = 录制回放验证</b>：覆盖体检 / 体检有效性负向 / 不匹配必须 fail loud / <span class="code-inline">--with-record</span> 时跑「录制→回放闭环」）</li>
         <li><b>E2E：</b>场景3 就是为这个特性单独立项的（录像对不上 = 无网机器整段跑不了，以前只有现场才会发现）。</li>
       </ul>
     </div>

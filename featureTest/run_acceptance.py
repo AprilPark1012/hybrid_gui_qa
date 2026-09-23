@@ -16,7 +16,7 @@ AprilPark1012 2026-09-22 刷新的 R7 四条：
   · **场景3 = 录制回放验证**（`verify_e2e_scenario3_cassette.py`，零成本 ⇒ 放最前）：
     录像可用性体检 + 体检有效性负向 + 不匹配必须 fail loud（+ `--with-record` 时跑录制闭环，要 key/外网）
   · **场景2 = 手写用例驱动**（`cli run` 全量）
-  · **场景1 = 自然语言 → AI 链路**（`verify_e2e_scenario1_offline.py`：explore 回放 → cases → generate → run）
+  · **场景1 = 自然语言 → AI 链路**（`verify_e2e_scenario3_replay.py`：explore 回放 → cases → generate → run）
 
 退出码：**0** 全通过 · **1** 有失败 · **2** 环境/用法错 · **3** 有跳过（**SKIP ≠ 通过**，与二类入口同口径）
 
@@ -135,7 +135,7 @@ def step_e2e(py: str, *, skip_ai: bool, with_record: bool = False) -> tuple[str,
         subs.append(("scenario1", 3))
         logs.append("· 场景1（离线回放端到端）：跳过（--skip-ai）")
     else:
-        rc1, tail1 = _run(py, ["featureTest/verify_e2e_scenario1_offline.py"], timeout=1800)
+        rc1, tail1 = _run(py, ["featureTest/verify_e2e_scenario3_replay.py"], timeout=1800)
         subs.append(("scenario1", rc1))
         logs.append("· 场景1（自然语言 → explore 回放 → cases → generate → run）：exit %d\n%s"
                     % (rc1, tail1))
@@ -162,7 +162,7 @@ def _print_plan(skip_ai: bool, with_record: bool) -> None:
             print(f"        ├ scenario3  录制回放验证：体检 + 负向（零成本）"
                   f"{'＋录制闭环（--with-record）' if with_record else ''}")
             print(f"        ├ scenario2  cli run 全量（手写用例驱动）")
-            print(f"        └ scenario1  verify_e2e_scenario1_offline.py{mark}")
+            print(f"        └ scenario1  verify_e2e_scenario3_replay.py{mark}")
     if skip_ai:
         print("      ⚠️ 跳过场景1 ⇒ 本次验收**不算通过**（SKIP ≠ 通过）")
 

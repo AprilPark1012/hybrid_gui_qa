@@ -10,7 +10,7 @@
 - 场景 1 的离线判据脚本必须**可证伪地不联网**（LLM 端点指黑洞 `127.0.0.1:9`），
   否则「离线也能跑通场景 1」这句话本身就无从验证。
 
-⚠️ **TDD 口径**：本文件在 `featureTest/run_acceptance.py` / `verify_e2e_scenario1_offline.py` 落地
+⚠️ **TDD 口径**：本文件在 `featureTest/run_acceptance.py` / `verify_e2e_scenario3_replay.py` 落地
 **之前**先写好（先红后绿）；红态证据记在提交信息里（P15 §五 批 0）。
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 ENTRY = REPO / "featureTest" / "run_acceptance.py"
-SCEN1 = REPO / "featureTest" / "verify_e2e_scenario1_offline.py"
+SCEN1 = REPO / "featureTest" / "verify_e2e_scenario3_replay.py"
 
 # 四项的稳定标识 —— **顺序即执行顺序**：③ 闸门 → ① 框架自测 → ④ E2E → ② 特性自测。
 # ⚠️ 这不是按编号排的（编号 ≠ 执行顺序）：AprilPark1012 2026-09-22 拍板「便宜先跑 + fail fast」——

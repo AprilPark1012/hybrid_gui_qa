@@ -117,7 +117,7 @@ def test_ai_contracts_cross_page_011030(page, ctx):
     _assert_text(page, _data('expect_0', ctx), '确认搜索结果中出现 HT-1005')
 
     # step 4: 点击结果行中的编号链接 HT-1005 进入详情页
-    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 1031 002 po 北京中科智慧科技有限公司 bu_a").locator("td[data-field='contractNo']").get_by_role("link"))
+    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0021 002 po 北京中科智慧科技有限公司 bu_b").locator("td[data-field='contractNo']").get_by_role("link"))
     _log(page, "click", f"点击结果行中的编号链接 HT-1005 进入详情页")
     _assert_url(page, _data('expect_1', ctx), '确认已跳转到详情页（URL 含 contract_detail）')
     _assert_text(page, _data('expect_2', ctx), '确认详情页显示合同编号 HT-1005')
@@ -420,57 +420,6 @@ def test_create_bu_a_c1(page, ctx):
     _assert_text(page, _data('expect_1', ctx), '断言列表出现新建的合同名称')
 
 
-def test_create_bu_b_c2(page, ctx):
-    """新建合同(bu_b/c2)（客户从弹层列表选择）"""
-    _CURRENT_LOG["case_id"] = "create_bu_b_c2"
-    _goto(page, 'http://localhost:8000')
-    _log(page, "场景开始", f"case=create_bu_b_c2")
-
-    # step 1: 打开合同列表页
-    _goto(page, 'http://localhost:8000')
-    _log(page, "goto", f"打开合同列表页")
-
-    # step 2: 点击新建合同按钮
-    _act(page, "click", semantic='新建合同', primary=lambda p: p.get_by_role("button", name="+ 新建合同"))
-    _log(page, "click", f"点击新建合同按钮")
-
-    # step 3: 在合同名称输入框输入名称
-    _act(page, "fill", semantic='请输入合同名称', primary=lambda p: p.get_by_test_id("modal-new").get_by_placeholder("请输入合同名称"), value=_data('fill_0', ctx))
-    _log(page, "fill", f"在合同名称输入框输入名称")
-
-    # step 4: 选择管理单元0451
-    _act(page, "select", semantic='请选择_0021_0451_1031', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '管理单元'}]), value=_data('select_1', ctx))
-    _log(page, "select", f"选择管理单元0451")
-
-    # step 5: 选择帐套002
-    _act(page, "select", semantic='请选择_001_002_003', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '帐套'}]), value=_data('select_2', ctx))
-    _log(page, "select", f"选择帐套002")
-
-    # step 6: 选择合同类型po
-    _act(page, "select", semantic='请选择_合同_po_预po', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '合同类型'}]), value=_data('select_3', ctx))
-    _log(page, "select", f"选择合同类型po")
-
-    # step 7: 点『选择客户』打开客户列表弹层
-    _act(page, "click", semantic='选择客户', primary=lambda p: p.get_by_test_id("modal-new").get_by_text("选择客户", exact=True))
-    _log(page, "click", f"点『选择客户』打开客户列表弹层")
-
-    # step 8: 在客户列表里选『上海远东贸易有限公司』那一行
-    _act(page, "click", semantic='选择@上海远东贸易有限公司', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-customer'}, [{'axis': 'row', 'by': 'text', 'value': '上海远东贸易有限公司 上海市浦东新区世纪大道100号 选择'}, {'axis': 'col', 'by': 'header', 'value': '操作'}, {'axis': 'target', 'by': 'role', 'value': 'button'}]))
-    _log(page, "click", f"在客户列表里选『上海远东贸易有限公司』那一行")
-
-    # step 9: 选择业务单元bu_b
-    _act(page, "select", semantic='请选择_bu_a_bu_b_bu_c', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '业务单元'}]), value=_data('select_4', ctx))
-    _log(page, "select", f"选择业务单元bu_b")
-
-    # step 10: 点击提交按钮
-    _act(page, "click", semantic='提交', primary=lambda p: p.get_by_test_id("modal-new").get_by_text("提交", exact=True))
-    _log(page, "click", f"点击提交按钮")
-
-    # ---- 断言（用例末尾）----
-    _assert_value(page, _data('expect_0', ctx), lambda p: p.get_by_test_id("modal-new").get_by_placeholder("请选择客户"), semantic='请选择客户', desc='提交前：客户输入框已被弹层回填为『上海远东贸易有限公司』(value)')
-    _assert_text(page, _data('expect_1', ctx), '断言列表出现新建的合同名称')
-
-
 def test_cross_page_detail(page, ctx):
     """跨页：列表搜索 → 点编号进详情页（换页有 url 断言）→ 返回列表再搜索核验"""
     _CURRENT_LOG["case_id"] = "cross_page_detail"
@@ -492,7 +441,7 @@ def test_cross_page_detail(page, ctx):
     _assert_attr(page, 'data-cust', _data('expect_1', ctx), lambda p: p.locator("#tbody-contracts tr:has-text('HT-1005') td[data-field='customer']"), semantic=None, desc='【列表页】HT-1005 的客户编号 = c5（客户按序号确定：HT-1001→c1、HT-1005→c5、HT-1007→c1…）')
 
     # step 4: 点击结果里的编号链接 HT-1005 进入详情页
-    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 1031 002 po 北京中科智慧科技有限公司 bu_a").locator("td[data-field='contractNo']").get_by_role("link"))
+    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0021 002 po 北京中科智慧科技有限公司 bu_b").locator("td[data-field='contractNo']").get_by_role("link"))
     _log(page, "click", f"点击结果里的编号链接 HT-1005 进入详情页")
     _assert_url(page, _data('expect_2', ctx), '【换页证据】点击编号后 URL 已变为详情页')
     _assert_count(page, _data('expect_3', ctx), lambda p: p.locator("table[aria-label='合同详情'] tr:has-text('合同编号') td"), semantic=None, desc='【详情页】编号单元格存在（确认换的是详情页而不是别的页）')
@@ -628,26 +577,4 @@ def test_search_mixed(page, ctx):
     # ---- 断言（用例末尾）----
     _assert_count(page, _data('expect_0', ctx), lambda p: p.locator("#tbody-contracts tr:has(td[data-field='contractNo'])"), semantic=None, desc='关键字『合同』(全命中) × 客户前缀『广州』(c3) ⇒ 3 条：HT-1003/1009/1015')
     _assert_text(page, _data('expect_1', ctx), '断言页面出现搜索结果')
-
-
-def test_search_name_fuzzy(page, ctx):
-    """按合同名称模糊搜索"""
-    _CURRENT_LOG["case_id"] = "search_name_fuzzy"
-    _goto(page, 'http://localhost:8000')
-    _log(page, "场景开始", f"case=search_name_fuzzy")
-
-    # step 1: 打开合同列表页
-    _goto(page, 'http://localhost:8000')
-    _log(page, "goto", f"打开合同列表页")
-
-    # step 2: 在搜索框输入关键字'合同1'
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
-    _log(page, "fill", f"在搜索框输入关键字'合同1'")
-
-    # step 3: 点击搜索按钮
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
-    _log(page, "click", f"点击搜索按钮")
-
-    # ---- 断言（用例末尾）----
-    _assert_text(page, _data('expect_0', ctx), '断言页面出现搜索结果')
 

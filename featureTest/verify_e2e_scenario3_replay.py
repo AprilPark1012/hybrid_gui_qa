@@ -21,7 +21,7 @@
   6. **负向①**：录像目录指到空目录 ⇒ 链必须 **exit 2（前置不满足）且不产出任何用例**（没录像时不许假绿）
   7. **负向②**：`--scenario` 指不存在的文件 ⇒ 必须非 0（不许静默跳过）
 
-跑法（需 demo 在跑）：`python featureTest/verify_e2e_scenario1_offline.py`
+跑法（需 demo 在跑）：`python featureTest/verify_e2e_scenario3_replay.py`
 退出码：0 通过 / 1 失败 / 2 用法 / 3 跳过（缺录像 ⇒ **不算通过**）
 """
 from __future__ import annotations
