@@ -1,8 +1,8 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.2.1**（2026-09-22 · 纯文档版：培训页新增「场景/用例文件怎么手搓」一章，零代码行为变化）· 版本号单一来源：`build_tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> 当前版本 **V8.2.2**（2026-09-23 · 开箱即用：**浏览器预检**（缺了就给人话 + 一行修复命令）+ 培训页补「装环境三件事」）· 版本号单一来源：`build_tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
 > （路径只在 `framework/tools/common/config.py::VERSION_SOURCE` 定义一次，cli / llm_cassette / 打包器共用）
-> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V8.2.1.md`（V8.2 见 `RELEASE_NOTES_V8.2.md`）
+> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V8.2.2.md`（V8.2.1 见 `RELEASE_NOTES_V8.2.1.md`）
 > （**口径 C：只有顶层容器才允许埋点**，页面与弹层同一口径 · 零 testid 下的定位与下钻）；
 > ⚠️ **口径是硬判据**：页面里控件层若仍带 `testid`，判据会直接报违规（有意如此 —— 口径不一致时宁可报错）；
 > ⚠️ 上一版 **V8.0 是破坏性结构变更**（`framework/tools/{common,probe,explore,generate,run}/` 业务流程分层），
@@ -118,6 +118,29 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 > 需 DeepSeek key（AI 语义识别链路）：在项目根 `.env` 配 `DEEPSEEK_API_KEY`（见「快速上手·第4节」）。
 
 ---
+
+## 2026-09-23 变更要点 —— 浏览器预检 + 装环境三件事（V8.2.2）
+
+**一句话**：真机踩坑驱动的一版 —— 新机器（Windows 首次部署）上 `explore`/`generate`/`run`
+**三条命令各炸一次**，抛的都是 Playwright 原始异常栈
+（`BrowserType.launch: Executable doesn't exist at …chromium_headless_shell-1243\…`），
+真因是**没装浏览器**，但报错完全不提「该跑哪条命令」。
+
+**修法**
+- **框架加浏览器预检**（`framework/tools/common/browser.py::ensure_browser_installed`）：
+  `probe/generate/explore/run/all` 开跑前探一次 chromium ⇒ 缺了就打印
+  **缺什么 + 期望路径 + 当前 playwright 版本 + 一行修复命令**，**exit 2**。
+  可跳过：`HYBRID_SKIP_BROWSER_CHECK=1`。`--version` / `--help` 不受影响。
+- **培训页 9.0「装环境三件事」**：venv → 依赖 → **浏览器**（标注「最容易漏，漏了必报错」）
+  + 自检命令 + 「报错 → 怎么办」对照表（Executable doesn't exist / revision 号变了 /
+  ModuleNotFoundError / Target crashed 内存 / Windows 控制台乱码）。
+
+**关键知识**：报错里的 revision 号（如 `chromium_headless_shell-1243`）由 **playwright 版本**决定
+（实测：1.62.0 ⇒ 1234 · 1.63.0 ⇒ 1243）——升级 playwright 后要重跑
+`python -m playwright install --force chromium`。
+
+**真值**：一类 **426 passed / 0 red**（新增 5 条预检判据，含负向与子进程端到端）·
+培训页 **220.6 KB** · 零兼容性影响（CLI 参数/用例格式/报告形态/判据口径全不变）。
 
 ## 2026-09-22（第四次）变更要点 —— 培训页补「怎么手搓」（V8.2.1 · 纯文档）
 

@@ -61,3 +61,74 @@ def launch_opts(headless: bool = True) -> dict:
     if slow and slow.isdigit() and int(slow) > 0:
         opts["slow_mo"] = int(slow)
     return opts
+
+
+# ============ 浏览器可用性预检（2026-09-23 新增，V8.2.2）============
+# 为什么加：实测事故 —— 在新机器（Windows/首次部署）上跑 explore/generate/run 时，
+# Playwright 的浏览器**没装**（或装了另一个版本的），三条命令各炸一次，每次都抛原始异常栈：
+#     BrowserType.launch: Executable doesn't exist at
+#       C:\Users\<user>\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+# 新人看不懂、也搜不到该跑哪条命令 ⇒ 违反「开箱即用 / 提示说人话」的口径。
+# 现在：**开跑前先探一次**，缺了就当场给「一行修复命令」，exit 2。
+#
+# 版本对应的 revision 会变：playwright 1.62.0 ⇒ revision 1234；新版 ⇒ 1243 …
+# 所以**不能**把路径写死，靠真实 launch 探（探到的异常里带实际期望路径，直接转述给人）。
+def ensure_browser_installed() -> None:
+    """跑任何需要浏览器的命令前调用：确认 chromium 能起来，否则抛人话异常。
+
+    跳过（只在已确认浏览器可用时用）：环境变量 `HYBRID_SKIP_BROWSER_CHECK=1`。
+    """
+    if os.environ.get("HYBRID_SKIP_BROWSER_CHECK") == "1":
+        return
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as e:  # 连 playwright 都没装
+        raise BrowserNotInstalledError(
+            "❌ 没装 playwright —— 框架需要它才能探测页面 / 跑用例。\n"
+            "   一行修好：\n"
+            "       pip install -r requirements.txt\n"
+            f"   （原始报错：{e}）"
+        ) from None
+    try:
+        with sync_playwright() as pw:
+            b = pw.chromium.launch(**launch_opts(headless=True))
+            b.close()
+    except Exception as e:  # noqa: BLE001 —— 要把 Playwright 的原话转成人话
+        msg = str(e)
+        if "Executable doesn't exist" in msg or "playwright install" in msg.lower():
+            raise BrowserNotInstalledError(_browser_missing_message(msg)) from None
+        raise
+
+
+class BrowserNotInstalledError(RuntimeError):
+    """Playwright 浏览器缺失 / 版本对不上 ⇒ 拒绝硬跑（给一行修复命令后 exit 2）。"""
+
+
+def _browser_missing_message(raw: str) -> str:
+    """把 Playwright 的原始报错，翻成「缺什么 + 装哪条命令」的人话。"""
+    path = ""
+    for line in raw.splitlines():
+        if "Executable doesn't exist" in line:
+            path = line.split("at ", 1)[-1].strip().rstrip(";") if "at " in line else line.strip()
+            break
+    ver = ""
+    try:
+        import importlib.metadata as md
+        ver = md.version("playwright")
+    except Exception:  # noqa: BLE001
+        pass
+    lines = ["❌ 没找到 Playwright 的浏览器（chromium / chromium-headless-shell），框架需要它才能探测页面、跑用例。"]
+    if path:
+        lines.append(f"   期望位置：{path}")
+    if ver:
+        lines.append(f"   当前 playwright 版本：{ver}")
+    lines += [
+        "   一行修好（装完即可跑）：",
+        "       python -m playwright install chromium",
+        "   说明：这条命令会同时装 chromium 与无头模式用的 chromium-headless-shell；",
+        "         若刚升级过 playwright（报错里的 revision 号变了），用 --force 强制重下：",
+        "       python -m playwright install --force chromium",
+        "   只想补无头壳：",
+        "       python -m playwright install chromium-headless-shell",
+    ]
+    return "\n".join(lines)

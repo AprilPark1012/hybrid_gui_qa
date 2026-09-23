@@ -1003,6 +1003,18 @@ def main():
     cases = _arg_values(rest, "--case")
     slowmo = _slowmo_from(rest)
     allow_unmapped = "--allow-unmapped" in rest
+    # ★ 浏览器预检（2026-09-23，V8.2.2）：需要浏览器的命令先探一次，
+    #   缺浏览器 ⇒ 当场给「一行修复命令」+ exit 2（绝不让它到 Playwright 那层才炸原始栈）。
+    if cmd in ("probe", "generate", "explore", "run", "all"):
+        try:
+            from framework.tools.common.browser import BrowserNotInstalledError, ensure_browser_installed
+            ensure_browser_installed()
+        except BrowserNotInstalledError as e:
+            print(f"\n[cli] {e}", file=sys.stderr)
+            print("        （跳过这道检查：HYBRID_SKIP_BROWSER_CHECK=1；"
+                  "详见 docs/training.html 第 9 章「装环境三件事」）", file=sys.stderr)
+            raise SystemExit(2) from None
+
     if cmd == "probe":
         cmd_probe()
     elif cmd == "generate":

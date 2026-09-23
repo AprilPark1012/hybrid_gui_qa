@@ -56,11 +56,52 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.2.1"
-VERSION_DATE = "2026-09-22"
+VERSION = "8.2.2"
+VERSION_DATE = "2026-09-23"
 CHANGELOG = [
     dict(
-        version="8.2.1", date="2026-09-22", tag="当前版本",
+        version="8.2.2", date="2026-09-23", tag="当前版本",
+        theme="开箱即用：<b>浏览器预检</b>（缺了就给人话 + 一行修复命令）"
+              "· 培训页补「装环境三件事」",
+        summary="真机踩坑驱动的一版 —— 在新机器（Windows 首次部署）上跑 "
+                "<code>explore</code> / <code>generate</code> / <code>run</code>，"
+                "三条命令<b>各炸一次</b>，抛的都是 Playwright 原始异常栈："
+                "<code>BrowserType.launch: Executable doesn't exist at "
+                "…ms-playwright\\chromium_headless_shell-1243\\…</code>。"
+                "真因是<b>没装浏览器</b>（依赖装完 ≠ 浏览器装好），但报错完全不提「该跑哪条命令」。<br>"
+                "本版把这件事从“靠经验”变成“框架自己会说话”：<b>开跑前先探一次浏览器</b>，"
+                "缺了当场给<b>一行修复命令</b> + exit 2；培训页也把这一步写进必做三件事。",
+        added=[
+            "<b>浏览器预检</b>（<code>framework/tools/common/browser.py::ensure_browser_installed</code>）："
+            "<code>probe / generate / explore / run / all</code> 开跑前探一次 chromium —— "
+            "缺浏览器（或 playwright 升级后浏览器没跟着下）⇒ 打印<b>缺什么 + 期望路径 + 当前 playwright 版本 + "
+            "一行修复命令</b>，<b>exit 2</b>；绝不把 Playwright 的原始异常栈甩给用户",
+            "<b>可跳过</b>：<code>HYBRID_SKIP_BROWSER_CHECK=1</code>（已确认环境可用时用）",
+            "<b>培训页 9.0「装环境三件事」</b>：venv → 依赖 → <b>浏览器</b>（标注“最容易漏、漏了必报错”）+ "
+            "自检命令（<code>playwright install --list</code> / <code>cli probe</code>）",
+            "<b>培训页「报错 → 怎么办」对照表</b>：Executable doesn't exist / revision 号变了 / "
+            "ModuleNotFoundError / Target crashed（内存）/ Windows 控制台乱码，逐条给原因与改法",
+        ],
+        changed=[
+            "培训页 185.6 KB → <b>220.6 KB</b>（V8.2.1 加第 4 章 + 本版加 9.0 节与对照表）",
+            "<code>--version</code> / <code>--help</code> 不受预检影响（与浏览器无关，照常返回）",
+        ],
+        fixed=[
+            "<b>缺浏览器时的报错不友好</b>：原来三条命令各抛一次 Playwright 原始栈"
+            "（新人看不懂、搜不到该跑哪条命令）⇒ 现在统一由预检兜住，给可照抄的修复命令",
+        ],
+        notes=[
+            "<b>兼容性</b>：预检只在开跑前多一次“起/关一个 headless chromium”的探测（约 1 秒）；"
+            "CLI 参数、用例格式、报告形态、判据口径<b>全部不变</b>。",
+            "<b>revision 号说明</b>：报错里的 <code>chromium_headless_shell-1243</code> 这类编号由 "
+            "<b>playwright 版本</b>决定（本机实测：playwright 1.62.0 ⇒ revision 1234），不是框架写死的 —— "
+            "所以升级 playwright 后要重跑一次 <code>playwright install --force chromium</code>。",
+            "真值：一类 <b>426</b> passed / 0 red（新增 5 条预检判据，含负向与子进程端到端）· "
+            "预检实测：模拟缺浏览器 ⇒ 人话 + 一行修复命令 + <b>exit 2</b>。",
+        ],
+    ),
+    dict(
+        version="8.2.1", date="2026-09-22", tag="上一版本",
         theme="培训页新增第 4 章：<b>场景文件与用例文件怎么手搓</b>（两种业务场景）"
               "—— 把「团队约定」写成可教学的一章",
         summary="本版<b>零代码行为变化</b>，只补文档：培训页新开一章，讲清本框架支持的<b>两种业务场景</b>"
@@ -2394,6 +2435,52 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
 <section>
   <h2 class="sec-title"><span class="n">9</span>动手跑一遍</h2>
   <p class="sec-sub">先起被测应用，再跑链路。没 key 也能玩 mock。</p>
+  <h3 style="margin:24px 0 6px">9.0 装环境三件事（第一次跑之前必做 —— <b>漏第三步必报错</b>）</h3>
+  <table class="tbl">
+    <tr><th style="width:8%">#</th><th style="width:30%">做什么</th><th>命令</th></tr>
+    <tr><td>①</td><td>建虚拟环境（隔离依赖）</td>
+        <td><span class="code-inline">python -m venv .venv</span> → Windows: <span class="code-inline">.venv\Scripts\activate</span>
+            · Linux/macOS: <span class="code-inline">source .venv/bin/activate</span></td></tr>
+    <tr><td>②</td><td>装 Python 依赖</td>
+        <td><span class="code-inline">pip install -r requirements.txt</span>（要用 AI 探索再加 <span class="code-inline">requirements-ai.txt</span>）</td></tr>
+    <tr style="background:rgba(217,119,6,.08)"><td>③</td><td><b>装 Playwright 的浏览器</b><br>
+        <span style="color:var(--muted);font-size:.85rem">最容易漏的一步 —— 依赖装完<b>不等于</b>浏览器装好</span></td>
+        <td><span class="code-inline">python -m playwright install chromium</span><br>
+            <span style="color:var(--muted);font-size:.85rem">会同时装 chromium 与无头模式用的 <b>chromium-headless-shell</b>；
+            只想要无头壳：<span class="code-inline">python -m playwright install chromium-headless-shell</span></span></td></tr>
+  </table>
+  <pre class="tree"><span class="prompt">$</span> python -m venv .venv &amp;&amp; .venv\Scripts\activate      <span class="cmt"># Windows</span>
+<span class="prompt">$</span> pip install -r requirements.txt
+<span class="prompt">$</span> python -m playwright install chromium              <span class="cmt"># ★ 别漏这一步</span>
+<span class="prompt">$</span> python -m playwright install --list                 <span class="cmt"># 自检：能看到 chromium-&lt;rev&gt; + chromium_headless_shell-&lt;rev&gt; 就对了</span>
+<span class="prompt">$</span> python -m framework.cli probe                       <span class="cmt"># 复验：能吐出元素清单 = 通了</span>
+</pre>
+
+  <h4 style="margin:16px 0 4px">报错 → 怎么办（照着查）</h4>
+  <table class="tbl">
+    <tr><th style="width:44%">报错里的关键片段</th><th style="width:22%">真因</th><th>怎么办</th></tr>
+    <tr><td><span class="code-inline">BrowserType.launch: Executable doesn't exist at …ms-playwright\chromium_headless_shell-1243\…</span></td>
+        <td>③ 没做；或 playwright 升级后浏览器没跟着下</td>
+        <td><span class="code-inline">python -m playwright install chromium</span>；若刚升级过 playwright，用
+            <span class="code-inline">python -m playwright install --force chromium</span></td></tr>
+    <tr><td>报错里的 <b>revision 号变了</b>（如 <span class="code-inline">1234</span> → <span class="code-inline">1243</span>）</td>
+        <td><span class="code-inline">playwright</span> 包升级了，它期望新版本的浏览器</td>
+        <td>同上（<span class="code-inline">--force</span> 重下）—— <b>revision 号由 playwright 版本决定</b>，不是框架写死的</td></tr>
+    <tr><td><span class="code-inline">ModuleNotFoundError: No module named 'playwright'</span></td><td>② 没做</td>
+        <td><span class="code-inline">pip install -r requirements.txt</span></td></tr>
+    <tr><td><span class="code-inline">Target crashed</span> / 跑着跑着浏览器没了</td>
+        <td>内存不足（headless Chromium ≈ <b>515 MB / 实例</b>）</td>
+        <td>先关掉别的浏览器与重进程；别并发开多个；二类整体需要 <b>≥550MB</b> MemAvailable</td></tr>
+    <tr><td>Windows 控制台中文乱码 / <span class="code-inline">UnicodeEncodeError</span></td>
+        <td>控制台代码页不是 UTF-8（cp936）</td>
+        <td>框架已内置 UTF-8 转换（<span class="code-inline">force_stdio()</span>）；仍乱码时执行
+            <span class="code-inline">chcp 65001</span></td></tr>
+  </table>
+  <p style="margin-top:8px;padding:10px 12px;border-left:3px solid #0f8f6a;background:rgba(15,143,106,.07);border-radius:6px">
+    <b>V8.2.2 起有预检兜着</b>：<span class="code-inline">probe / generate / explore / run / all</span> 开跑前会先探一次浏览器 ——
+    缺了<b>当场</b>告诉你缺什么、该跑哪条命令（不再把它丢给 Playwright 抛原始异常栈）。
+    确认环境没问题时可用 <span class="code-inline">HYBRID_SKIP_BROWSER_CHECK=1</span> 跳过这道检查。
+  </p>
   <div class="card">
     <pre class="cmd"><span class="prompt">$</span> cd ~/hybrid_gui_qa && source .venv/bin/activate
 <span class="prompt">$</span> python -m demo.app            <span class="cmt"># 起被测合同管理页 (8000)</span>
