@@ -46,7 +46,7 @@ EXCLUDE_SUFFIX = {".zip", ".tar.gz", ".pyc", ".pyo"}
 # 包里必须有的东西（少一个说明包不完整）
 REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "framework/cli.py",
             "framework/tools/common/text_io.py", "scripts/test_cases.py", "scripts/conftest.py",
-            "cases", "frameworkTest", "featureTest", "demo", "scenarios")
+            "cases", "tests/frameworkTest", "tests/featureTest", "demo", "scenarios")
 # r9-legacy-block:begin —— 历史形态别名：审计**旧包**时按当时的路径形态认（有意保留旧路径）
 # 历史形态别名（2026-09-19）：**结构与文件位置变过，审计历史包不该因此误报**。
 # 先例：升级日志本来就「两种落点都认」（见下面 notes 那段）。这里收纳两次结构调整：
@@ -55,15 +55,15 @@ REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "fra
 #   framework/<模块>.py → framework/tools/<层>/<模块>.py （V8.0 业务流程分层重构）
 #   training.html → docs/training.html    （2026-09-19 归位 docs/）
 # ⚠️ 只影响**必需项审计**：新包一定按当前仓库布局打包 ⇒「两个位置都没有」时照样报缺项，
-#    别名绝不会放过真缺项（负向判据见 frameworkTest/test_pack_release.py）。
+#    别名绝不会放过真缺项（负向判据见 tests/frameworkTest/test_pack_release.py）。
 LEGACY_ALIASES = {
     # 键 = 当前 REQUIRED 路径；值 = 历史形态候选（结构变更前的包里可能是这些）
     "build_tools/build_html.py": ("tools/build_html.py", "build_html.py"),
     "framework/tools/common/text_io.py": ("framework/text_io.py",),
     "docs/training.html": ("training.html",),
-    #   tests/ → frameworkTest/ + featureTest/   （2026-09-23：R7 两类验证分目录）
-    "frameworkTest": ("tests",),
-    "featureTest": ("tests",),
+    #   tests/ 两大类 → tests/{frameworkTest,featureTest}/  （2026-09-23/24：R7 两类验证分目录，tests/ 作容器保留）
+    "tests/frameworkTest": ("tests",),
+    "tests/featureTest": ("tests",),
 }
 # r9-legacy-block:end
 
@@ -78,7 +78,7 @@ def _required_hit(req: str, rel) -> tuple[bool, str | None]:
     return False, None
 
 
-# 生成物必须带的接线（与 frameworkTest/test_artifacts_health.py 同口径）
+# 生成物必须带的接线（与 tests/frameworkTest/test_artifacts_health.py 同口径）
 REQUIRED_CONFTEST = ("_act", "_goto", "_reset_target_data", "_assert_text", "_assert_value")
 
 

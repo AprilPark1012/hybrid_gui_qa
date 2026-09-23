@@ -35,7 +35,7 @@ import pytest
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import expect as _expect
 
-BASE = Path(__file__).resolve().parent.parent
+BASE = Path(__file__).resolve().parent.parent.parent
 LOG_DIR = BASE / "log"
 
 # ---- 本次运行的日志目录（run-id 隔离）----
@@ -612,7 +612,7 @@ def ctx(request):
     import re
     node = request.node.name                       # test_<case_id> 或 test_<case_id>[<数据组>]
     # ⚠️ 必须切掉「[数据组]」后缀 —— L1 参数化后节点名带后缀，用 .+ 会把整串当 case_id，
-    #    于是找不到数据集（防复发判据见 frameworkTest/test_data_expand.py）
+    #    于是找不到数据集（防复发判据见 tests/frameworkTest/test_data_expand.py）
     m = re.match(r"test_([^\[]+)", node)
     case_id = m.group(1) if m else "run"
     param = getattr(request, "param", None)

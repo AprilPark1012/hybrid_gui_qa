@@ -23,7 +23,7 @@ from conftest import (_CURRENT_LOG, _log, _data, _act, _goto,
                       # 2026-09-17 跨 tab / 行内定位 / 首行断言用的辅助
                       # ⚠️ 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
                       #    （实测：new 的 _Tabs 漏了 → verify 里 30 步用例第一步就 NameError；
-                      #     防复发检查见 frameworkTest/test_artifacts_health.py::test_test_cases_imports_every_conftest_helper）
+                      #     防复发检查见 tests/frameworkTest/test_artifacts_health.py::test_test_cases_imports_every_conftest_helper）
                       _Tabs, _click_row_cell, _assert_first_row)
 # P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）
 from framework.tools.probe.scope_locate import drill as _drill

@@ -234,8 +234,8 @@
 │   ├── orders.html                  订单系统页(分页/新建订单弹层/跨 tab 入口)
 │   ├── order_detail.html            订单详情页
 │   └── todo.html                    旧版 Todo 演示页(保留)
-├── <b>frameworkTest/</b>             框架自验证：test_*（秒级、不需 demo/浏览器）
-├── <b>featureTest/</b>               特性自验证：verify_*（端到端、需 demo、含负向）
+├── <b>tests/frameworkTest/</b>             框架自验证：test_*（秒级、不需 demo/浏览器）
+├── <b>tests/featureTest/</b>               特性自验证：verify_*（端到端、需 demo、含负向）
 │   ├── run_verifications.py         ★ 二类(端到端特性验证)统一入口 — Python 唯一实现,Windows 通用
 │   ├── run_acceptance.py            ★ R7 四项验收一条命令(闸门→新鲜度→自测→E2E→特性)
 │   ├── test_*.py                    一类自测(秒级,不需 demo):CLI 契约/退出码/UTF-8/断言翻译/质量闸/打包/门禁解耦/README 结构
@@ -599,8 +599,8 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <tr>
       <td><b>⑥ 交付前自检</b></td>
       <td><span class="code-inline">python -m framework.cli generate</span>（必须 0 未映射）→
-          <span class="code-inline">python -m pytest frameworkTest/</span>（一类）→
-          <span class="code-inline">python featureTest/run_verifications.py</span>（二类）。
+          <span class="code-inline">python -m pytest tests/frameworkTest/</span>（一类）→
+          <span class="code-inline">python tests/featureTest/run_verifications.py</span>（二类）。
           三条全绿才算改完。</td>
     </tr>
   </table>
@@ -1164,12 +1164,12 @@ pytest 并发执行 → 逐用例 .log + report.html + 变量池(用例隔离)</
 
   <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
     <h4>先看全局：验证资产总览（真值，随代码增长）</h4>
-    <pre class="tree">一类「框架自验证」  frameworkTest/test_*.py      —— 秒级、<b>不依赖 demo 与浏览器</b>、可离线跑
-二类「特性自验证」  featureTest/verify_*.py      —— 端到端、<b>需 demo</b>、<b>必含负向证伪</b>
+    <pre class="tree">一类「框架自验证」  tests/frameworkTest/test_*.py      —— 秒级、<b>不依赖 demo 与浏览器</b>、可离线跑
+二类「特性自验证」  tests/featureTest/verify_*.py      —— 端到端、<b>需 demo</b>、<b>必含负向证伪</b>
 E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）· 场景2 手写用例驱动 · 场景3 录制回放验证
-统一入口          python featureTest/run_acceptance.py     ← R7 四项一条命令（便宜先跑 + fail fast；SKIP ≠ 通过）
-                  python featureTest/run_verifications.py  ← 二类全量（唯一实现；内存不足如实 SKIP 并 exit 3）</pre>
-    <p style="color:var(--muted);font-size:.88rem;margin-top:8px">下面每个特性都会列出<b>它自己的</b>判据文件与条数；条数以实跑输出为准（<code>pytest frameworkTest/ -q</code>、<code>run_acceptance.py</code>）。</p>
+统一入口          python tests/featureTest/run_acceptance.py     ← R7 四项一条命令（便宜先跑 + fail fast；SKIP ≠ 通过）
+                  python tests/featureTest/run_verifications.py  ← 二类全量（唯一实现；内存不足如实 SKIP 并 exit 3）</pre>
+    <p style="color:var(--muted);font-size:.88rem;margin-top:8px">下面每个特性都会列出<b>它自己的</b>判据文件与条数；条数以实跑输出为准（<code>pytest tests/frameworkTest/ -q</code>、<code>run_acceptance.py</code>）。</p>
   </div>
 
   <!-- ============ 特性 1 ============ -->
@@ -1189,8 +1189,8 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
     <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">frameworkTest/test_offline_chain_python.py</span>（9 条：离线链 Python 化，跨平台）· <span class="code-inline">frameworkTest/test_no_gate_coupling.py</span>（2 条：框架自测与 demo 解耦）</li>
-        <li><b>二类：</b><span class="code-inline">featureTest/verify_offline_delivery.py</span>（交付两件套形态）· <span class="code-inline">featureTest/verify_offline_chain_deps.py</span>（离线链依赖齐备）· <span class="code-inline">featureTest/verify_e2e_scenario3_replay.py</span>（<b>7 项，含 2 条负向证伪 + 归档零残留</b>）</li>
+        <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_offline_chain_python.py</span>（9 条：离线链 Python 化，跨平台）· <span class="code-inline">tests/frameworkTest/test_no_gate_coupling.py</span>（2 条：框架自测与 demo 解耦）</li>
+        <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_offline_delivery.py</span>（交付两件套形态）· <span class="code-inline">tests/featureTest/verify_offline_chain_deps.py</span>（离线链依赖齐备）· <span class="code-inline">tests/featureTest/verify_e2e_scenario3_replay.py</span>（<b>7 项，含 2 条负向证伪 + 归档零残留</b>）</li>
         <li><b>E2E：</b>场景1（自然语言→AI→cases→generate→run，日常走离线回放）· 场景2（手写用例驱动 <span class="code-inline">cli run</span>）</li>
       </ul>
     </div>
@@ -1216,8 +1216,8 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
     <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">frameworkTest/test_ready_and_locate.py</span>（13 条：ready 契约、_goto/_wait_ready 接线、误导性报错消失）· <span class="code-inline">frameworkTest/test_element_ambiguity_gate.py</span>（15 条）· <span class="code-inline">frameworkTest/test_name_alignment.py</span>（11 条：精确名优先 / 模糊命中留痕 / 歧义必须 fail loud / 严格模式拒绝近似）· <span class="code-inline">frameworkTest/test_import_targets.py</span>（4 条：内部 import 都能解析）</li>
-        <li><b>二类：</b><span class="code-inline">featureTest/verify_picker_layer.py</span>（弹层 picker 链回归）· <span class="code-inline">featureTest/verify_order_pages.py</span> / <span class="code-inline">featureTest/verify_order_pick_create.py</span>（真开浏览器点、真读页面与服务端状态，<b>不看「代码里写了」</b>）</li>
+        <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_ready_and_locate.py</span>（13 条：ready 契约、_goto/_wait_ready 接线、误导性报错消失）· <span class="code-inline">tests/frameworkTest/test_element_ambiguity_gate.py</span>（15 条）· <span class="code-inline">tests/frameworkTest/test_name_alignment.py</span>（11 条：精确名优先 / 模糊命中留痕 / 歧义必须 fail loud / 严格模式拒绝近似）· <span class="code-inline">tests/frameworkTest/test_import_targets.py</span>（4 条：内部 import 都能解析）</li>
+        <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_picker_layer.py</span>（弹层 picker 链回归）· <span class="code-inline">tests/featureTest/verify_order_pages.py</span> / <span class="code-inline">tests/featureTest/verify_order_pick_create.py</span>（真开浏览器点、真读页面与服务端状态，<b>不看「代码里写了」</b>）</li>
         <li><b>⚠️ 待补缺口（如实标注）：</b>Tier1 意图复验阈值（0.15）与 Tier2 MINGAP（0.12）目前<b>没有直接判据</b>——只有闸门层与命名层判据。阈值改动可能静默退化，建议补两条（复验不符必须降级 / 评分差距不足必须失败）。</li>
       </ul>
     </div>
@@ -1246,8 +1246,8 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
     <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">frameworkTest/test_element_ambiguity_gate.py</span>（15 条）· <span class="code-inline">frameworkTest/test_name_alignment.py</span>（11 条：<b>歧义裸名不许猜</b>、精确名优先、影子名要列出来）· <span class="code-inline">frameworkTest/test_llm_retry.py</span>（3 条：LLM 失败重试边界）</li>
-        <li><b>二类：</b><span class="code-inline">featureTest/verify_element_ambiguity.py</span>（<b>12 项，含负向</b>）· <span class="code-inline">featureTest/verify_cross_page.py</span>（跨页场景：<b>每条错误都必须失败</b>——防假绿铁律）</li>
+        <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_element_ambiguity_gate.py</span>（15 条）· <span class="code-inline">tests/frameworkTest/test_name_alignment.py</span>（11 条：<b>歧义裸名不许猜</b>、精确名优先、影子名要列出来）· <span class="code-inline">tests/frameworkTest/test_llm_retry.py</span>（3 条：LLM 失败重试边界）</li>
+        <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_element_ambiguity.py</span>（<b>12 项，含负向</b>）· <span class="code-inline">tests/featureTest/verify_cross_page.py</span>（跨页场景：<b>每条错误都必须失败</b>——防假绿铁律）</li>
         <li><b>E2E：</b>场景1 的离线链本身就覆盖「AI 挑名 → 定位 → 执行」整条路（含 2 条负向）。</li>
       </ul>
     </div>
@@ -1273,8 +1273,8 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
     <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">frameworkTest/test_data_expand.py</span>（16 条：占位符展开与固化）· <span class="code-inline">frameworkTest/test_assert_kinds_render.py</span>（25 条：11 种断言渲染正确）· <span class="code-inline">frameworkTest/test_case_quality_gate.py</span>（13 条：用例质量闸门）· <span class="code-inline">frameworkTest/test_generate_quality_gate.py</span>（4 条）</li>
-        <li><b>二类：</b><span class="code-inline">featureTest/verify_data_expand.py</span>（全真跑）· <span class="code-inline">featureTest/verify_assert_kinds.py</span>（<b>防假绿铁律：每条断言在「期望值写错」时必须 FAIL</b>）</li>
+        <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_data_expand.py</span>（16 条：占位符展开与固化）· <span class="code-inline">tests/frameworkTest/test_assert_kinds_render.py</span>（25 条：11 种断言渲染正确）· <span class="code-inline">tests/frameworkTest/test_case_quality_gate.py</span>（13 条：用例质量闸门）· <span class="code-inline">tests/frameworkTest/test_generate_quality_gate.py</span>（4 条）</li>
+        <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_data_expand.py</span>（全真跑）· <span class="code-inline">tests/featureTest/verify_assert_kinds.py</span>（<b>防假绿铁律：每条断言在「期望值写错」时必须 FAIL</b>）</li>
       </ul>
     </div>
   </div>
@@ -1330,8 +1330,8 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
     <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">frameworkTest/test_env_adaptation.py</span>（22 条：Windows / 非 git 目录 / 无 demo 下的降级路径）· <span class="code-inline">frameworkTest/test_utf8_io.py</span>（20 条：UTF-8 机理 + 真实默认编码路径）· <span class="code-inline">frameworkTest/test_retention_runs.py</span>（14 条：run-id 日志隔离与保留策略）· <span class="code-inline">frameworkTest/test_cli_exit_codes.py</span>（10 条：退出码契约，跳过 ≠ 通过）</li>
-        <li><b>二类：</b><span class="code-inline">featureTest/verify_retention_runs.py</span>（全真跑：日志保留）· <span class="code-inline">featureTest/verify_slow_target.py</span>（慢目标闸门：慢代理 300ms 下 6 条关键用例全绿；<b>内存不足如实 SKIP exit 3</b>）</li>
+        <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_env_adaptation.py</span>（22 条：Windows / 非 git 目录 / 无 demo 下的降级路径）· <span class="code-inline">tests/frameworkTest/test_utf8_io.py</span>（20 条：UTF-8 机理 + 真实默认编码路径）· <span class="code-inline">tests/frameworkTest/test_retention_runs.py</span>（14 条：run-id 日志隔离与保留策略）· <span class="code-inline">tests/frameworkTest/test_cli_exit_codes.py</span>（10 条：退出码契约，跳过 ≠ 通过）</li>
+        <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_retention_runs.py</span>（全真跑：日志保留）· <span class="code-inline">tests/featureTest/verify_slow_target.py</span>（慢目标闸门：慢代理 300ms 下 6 条关键用例全绿；<b>内存不足如实 SKIP exit 3</b>）</li>
         <li><b>⚠️ 待补缺口：</b><span class="code-inline">--debug</span> 两态（有/无图形显示）目前只有手工验证，<b>无自动化判据</b>——建议至少补「无 DISPLAY 时不许报错退出、且产物清单里必须有录像/截图」。</li>
       </ul>
     </div>
@@ -1358,8 +1358,8 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
     <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">frameworkTest/test_llm_cassette.py</span>（30 条：键计算 / 归一化 / 多键兼容 / <b>负向：键不匹配必须报「没有这一份」、坏录像文件不许毁掉整次回放</b>）· <span class="code-inline">frameworkTest/test_offline_chain_python.py</span>（9 条）· <span class="code-inline">frameworkTest/test_pack_release.py</span>（含出厂闸门 3 条：接线锁 / 覆盖不全必须拦 / 逃生口必须有效）</li>
-        <li><b>二类：</b><span class="code-inline">featureTest/verify_e2e_scenario3_replay.py</span>（场景1 离线端到端，<b>7 项含 2 条负向 + 归档零残留</b>）· <span class="code-inline">featureTest/verify_e2e_scenario3_cassette.py</span>（<b>场景3 = 录制回放验证</b>：覆盖体检 / 体检有效性负向 / 不匹配必须 fail loud / <span class="code-inline">--with-record</span> 时跑「录制→回放闭环」）</li>
+        <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_llm_cassette.py</span>（30 条：键计算 / 归一化 / 多键兼容 / <b>负向：键不匹配必须报「没有这一份」、坏录像文件不许毁掉整次回放</b>）· <span class="code-inline">tests/frameworkTest/test_offline_chain_python.py</span>（9 条）· <span class="code-inline">tests/frameworkTest/test_pack_release.py</span>（含出厂闸门 3 条：接线锁 / 覆盖不全必须拦 / 逃生口必须有效）</li>
+        <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_e2e_scenario3_replay.py</span>（场景1 离线端到端，<b>7 项含 2 条负向 + 归档零残留</b>）· <span class="code-inline">tests/featureTest/verify_e2e_scenario3_cassette.py</span>（<b>场景3 = 录制回放验证</b>：覆盖体检 / 体检有效性负向 / 不匹配必须 fail loud / <span class="code-inline">--with-record</span> 时跑「录制→回放闭环」）</li>
         <li><b>E2E：</b>场景3 就是为这个特性单独立项的（录像对不上 = 无网机器整段跑不了，以前只有现场才会发现）。</li>
       </ul>
     </div>
@@ -1377,16 +1377,16 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <li><b>录像包出厂闸门</b>：打包前强制体检，覆盖不全不产包。</li>
       <li><b>R7 四项验收 / SKIP ≠ 通过</b>：①框架自测 ②特性自测 ③新鲜度 ④E2E 三场景；任一段跳过 ⇒ 退出码 3（<b>跳过不算通过</b>）；新特性一律 <b>TDD 判据先行</b>（先落判据 → 留红态证据 → 再实现）。</li>
     </ul>
-    <pre class="tree">python featureTest/run_acceptance.py        ← 一条命令跑完 R7 四项（便宜先跑 + fail fast）
+    <pre class="tree">python tests/featureTest/run_acceptance.py        ← 一条命令跑完 R7 四项（便宜先跑 + fail fast）
   [0] 闸门自检（先验「闸门自己」）
   [1] ③ demo 新鲜度      [2] ① 框架自测 337 条     [3] ④ E2E 场景3→2→1     [4] ② 特性自测 15 脚本
   退出码: 0 通过 / 3 跳过(不算通过) / 其它失败 —— 任一项红就停手并报「哪一项」</pre>
-    <p><b>怎么用：</b><code>python featureTest/run_acceptance.py</code>（日常）· <code>--with-record</code>（发版前含录制闭环）· <code>python featureTest/run_verifications.py</code>（只跑二类）。</p>
+    <p><b>怎么用：</b><code>python tests/featureTest/run_acceptance.py</code>（日常）· <code>--with-record</code>（发版前含录制闭环）· <code>python tests/featureTest/run_verifications.py</code>（只跑二类）。</p>
     <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
       <b>🧪 测试验证用例设计（闸门自己也要被判据钉住）</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">frameworkTest/test_acceptance_entry.py</span>（8 条：入口步骤顺序即契约 / 三场景齐全 / 跳过必须标出 / SKIP ≠ 通过）· <span class="code-inline">frameworkTest/test_demo_freshness_gate.py</span>（21 条）· <span class="code-inline">frameworkTest/test_pack_release.py</span>（16 条）· <span class="code-inline">frameworkTest/test_artifacts_health.py</span>（7 条：产物健康，坏产物给人话诊断）· <span class="code-inline">frameworkTest/test_target_reachability.py</span>（7 条：连不上时统一给「先起 demo」指引）· <span class="code-inline">frameworkTest/test_case_quality_gate.py</span>（13 条）</li>
-        <li><b>二类：</b><span class="code-inline">featureTest/verify_demo_freshness.py</span>（<b>7 项含负向证伪 + 真重启 + 还原</b>：闸门自己也必须被证明「坏 demo 能抓、好 demo 不误伤」）· <span class="code-inline">featureTest/verify_slow_target.py</span> · <span class="code-inline">featureTest/verify_html_sync.py</span>（R8：培训页可复现 + 与代码逐字节一致）</li>
+        <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_acceptance_entry.py</span>（8 条：入口步骤顺序即契约 / 三场景齐全 / 跳过必须标出 / SKIP ≠ 通过）· <span class="code-inline">tests/frameworkTest/test_demo_freshness_gate.py</span>（21 条）· <span class="code-inline">tests/frameworkTest/test_pack_release.py</span>（16 条）· <span class="code-inline">tests/frameworkTest/test_artifacts_health.py</span>（7 条：产物健康，坏产物给人话诊断）· <span class="code-inline">tests/frameworkTest/test_target_reachability.py</span>（7 条：连不上时统一给「先起 demo」指引）· <span class="code-inline">tests/frameworkTest/test_case_quality_gate.py</span>（13 条）</li>
+        <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_demo_freshness.py</span>（<b>7 项含负向证伪 + 真重启 + 还原</b>：闸门自己也必须被证明「坏 demo 能抓、好 demo 不误伤」）· <span class="code-inline">tests/featureTest/verify_slow_target.py</span> · <span class="code-inline">tests/featureTest/verify_html_sync.py</span>（R8：培训页可复现 + 与代码逐字节一致）</li>
         <li><b>原则：</b>闸门类结论必须<b>先主动证伪</b>（实测漏洞 + 边界清单）再下结论；<b>宁漏不误伤</b>（误拦会诱发绕过工具）。</li>
       </ul>
     </div>
@@ -1433,7 +1433,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
          <b>规矩</b>：跨进程 / 落盘文本一律显式 UTF-8——
          收子进程输出用 <code>framework.tools.common.text_io.run_capture()</code>，
          给子进程注入口径用 <code>utf8_env()</code>，本进程 stdio 用 <code>force_stdio()</code>
-         （<code>cli.main()</code> 已经默认调了）。<code>frameworkTest/test_utf8_io.py</code> 会做 AST 全仓扫描，
+         （<code>cli.main()</code> 已经默认调了）。<code>tests/frameworkTest/test_utf8_io.py</code> 会做 AST 全仓扫描，
          再写出「靠默认编码」的写法直接测试失败。</p></div>
   </div>
 </section>
@@ -1521,8 +1521,8 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
   <pre class="tree"><span class="cmt"># ★ 升级规程（三步走完再交付）</span>
 <span class="prompt">$</span> <span class="cmt">①</span> 改 requirements.txt 里的 pin，例如 playwright==1.63.0 → 1.64.0
 <span class="prompt">$</span> <span class="cmt">②</span> python -m framework.cli setup --force-browser      <span class="cmt"># 按新版本重下浏览器</span>
-<span class="prompt">$</span> <span class="cmt">③</span> python -m pytest frameworkTest/ -q            <span class="cmt"># 一类判据</span>
-<span class="prompt">$</span>      python featureTest/run_verifications.py   <span class="cmt"># 二类特性验证</span>
+<span class="prompt">$</span> <span class="cmt">③</span> python -m pytest tests/frameworkTest/ -q            <span class="cmt"># 一类判据</span>
+<span class="prompt">$</span>      python tests/featureTest/run_verifications.py   <span class="cmt"># 二类特性验证</span>
 </pre>
   <p style="margin:4px 0 10px;color:var(--muted);font-size:.88rem">
     <span class="code-inline">python -m framework.cli setup</span> 会显示「锁定版本 vs 实际版本」；
@@ -1569,14 +1569,14 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
 <span class="prompt">$</span> python -m framework.cli explore --ai --scenario "输入1005点搜索确认出现HT-1005"
                                               <span class="cmt"># ④ AI 语义识别 → cases/ai_*.json（默认 --verify 立刻试跑）</span>
 <span class="prompt">$</span> python -m framework.cli prune --keep 20  <span class="cmt"># ⑤ 归档保留：快照各留最近 N 个</span>
-<span class="prompt">$</span> python -m pytest frameworkTest/ -q               <span class="cmt"># ⑥ 框架自测（一类）：秒级，不需要 demo / key</span></pre>
+<span class="prompt">$</span> python -m pytest tests/frameworkTest/ -q               <span class="cmt"># ⑥ 框架自测（一类）：秒级，不需要 demo / key</span></pre>
     <p style="margin-top:10px;color:var(--muted);font-size:.92rem">
       预期输出：<code>fill→在搜索框输入关键字</code>、<code>click→点击搜索按钮</code>、
       <code>断言→搜索完成 ✓ 全部通过</code>，<code>&lt;N&gt; passed</code>（<b>N 随 cases/ 里的用例数变化</b>，本文档写作时为 15 条：11 手写 + 4 AI），
       HTML 报告在 <code>log/&lt;run_id&gt;/report.html</code>（每次运行独立目录）。
     </p>
     <p style="margin-top:12px;color:var(--muted);font-size:.92rem;border-left:3px solid #999;padding-left:10px">
-      <b>框架自测（一类）的环境前提</b>（2026-09-22 实测口径）：上面那条 <code>pytest frameworkTest/ -q</code>
+      <b>框架自测（一类）的环境前提</b>（2026-09-22 实测口径）：上面那条 <code>pytest tests/frameworkTest/ -q</code>
       在 <b>Windows</b>、<b>非 git 目录（交付包解压目录）</b>、<b>demo 没起</b> 这三种情况下都要能跑 ——
       进程探测按平台取（Linux <code>/proc</code> · Windows PowerShell · 其它 <code>ps</code>）；
       文件清单在 git 不可用时降级为文件树扫描；<b>生成物缺失或为 0 字节</b>时直接告诉你
@@ -1585,14 +1585,14 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
     </p>
     <p style="margin-top:10px;color:var(--muted);font-size:.92rem">
       <b>二类（端到端特性验证）也用 Python 跑</b>（Windows / Linux 通用，Python 入口是唯一实现）：
-      <code>python featureTest/run_verifications.py</code>（全部）·
+      <code>python tests/featureTest/run_verifications.py</code>（全部）·
       <code>--only &lt;子串&gt;</code> 只跑一个 · <code>--list</code> 先看跑哪些 · <code>--no-demo</code> 不起 demo ·
       <code>--timeout-s 1200</code> 单脚本预算（默认 1200s）·
       <code>--jobs 2</code> 并发（浏览器脚本各自过内存闸，不够自动退回串行）·
       内存不足会<b>如实 SKIP 并 exit 3（不是通过）</b>。
     </p>
     <p style="margin-top:10px;color:var(--muted);font-size:.92rem">
-      <b>★ R7 四项验收：一条命令跑完</b> —— <code>python featureTest/run_acceptance.py</code>。<br>
+      <b>★ R7 四项验收：一条命令跑完</b> —— <code>python tests/featureTest/run_acceptance.py</code>。<br>
       执行顺序（<b>便宜先跑 + fail fast</b>，编号 ≠ 顺序）：
       闸门自检 → ③ demo 新鲜度 → ① 框架自测 → ④ E2E → ② 特性自测。<br>
       ④ E2E 有<b>三个场景</b>：场景1 = 自然语言 → <code>explore --ai</code> → <code>cases/ai_*.json</code>
@@ -1769,7 +1769,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <div class="cl-head"><span class="cl-ver">V8.2</span><span class="cl-date">2026-09-22</span><span class="cl-tag">上一版本</span><span class="cl-theme">口径 C 对齐生产：<b>只有顶层容器才允许埋点</b>（页面与弹层同一口径）· 零 testid 下的定位与下钻</span></div>
       <p class="cl-sum">把「埋点只顶层有」从<b>口头约定</b>变成<b>可执行判据</b>，并按这个口径改造 demo、补齐「没有埋点也能定位」的能力。演示站点撤掉 <b>115 处</b>控件级埋点（只留 <b>27 个顶层容器</b>），判据规则 <b>⑤⑥</b> 把「交互控件无论层级一律不许有 testid」和「弹层内部（非容器本身）一律不许」钉死；定位侧新增<b>字段步 / title 消歧 / 元素身份</b>，让零 testid 下依然能唯一定位并下钻。<br><b>这不是演示站点的洁癖，是生产口径对齐</b> —— 若两者口径不一致，框架在真实页面上的可用性、正确性、健壮性就都是空谈。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
-        <li><b>判据规则 ⑤⑥</b>（<code>frameworkTest/testid_policy.py</code>）：交互控件（<code>input/select/textarea/button/a/label/option</code>）<b>无论层级</b>一律不许有 <code>testid</code>；弹层<b>内部</b>（非容器本身）一律不许；<b>只有顶层容器</b>可保留埋点</li>
+        <li><b>判据规则 ⑤⑥</b>（<code>tests/frameworkTest/testid_policy.py</code>）：交互控件（<code>input/select/textarea/button/a/label/option</code>）<b>无论层级</b>一律不许有 <code>testid</code>；弹层<b>内部</b>（非容器本身）一律不许；<b>只有顶层容器</b>可保留埋点</li>
         <li><b>字段步定位</b>：工具栏「…」按钮这类<b>无文本、无埋点</b>的入口，用「同容器内相邻字段（输入框/下拉）的语义」作为定位信号，并能<b>下钻</b>到目标控件</li>
         <li><b><code>title</code> 消歧</b>：同名控件/裸图标按钮按 <code>title</code> 或邻近文本区分，歧义时<b>如实失败</b>（禁止按顺序猜第一个）</li>
         <li><b>元素身份</b>= 容器锚点 + 相对路径 + <code>title</code>/邻近文本；新增 <code>framework/tools/probe/semantic_locate.py</code>（语义定位）</li>
@@ -1830,7 +1830,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
         <li><b>打包器审计历史包的误报</b>按「升级日志两种落点都认」的先例加<b>历史形态别名</b>（命中如实标 <code>◐</code>、不拦；真缺项仍照拦）</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
-        <li>判据：一类 <code>pytest frameworkTest/ -q</code> <b>238 passed</b>（与重构前逐条一致）· 端到端 <code>cli run</code> 19 个节点<b>分批</b>跑 <b>19 passed / exit 0</b> · 二类 <code>bash featureTest/run_verifications.sh</code> 全部 verify_*.py（条数以 <code>--list</code> 输出为准）· <code>build_tools/pack_release.py --with-cassettes</code> 打包自检通过</li>
+        <li>判据：一类 <code>pytest tests/frameworkTest/ -q</code> <b>238 passed</b>（与重构前逐条一致）· 端到端 <code>cli run</code> 19 个节点<b>分批</b>跑 <b>19 passed / exit 0</b> · 二类 <code>bash tests/featureTest/run_verifications.sh</code> 全部 verify_*.py（条数以 <code>--list</code> 输出为准）· <code>build_tools/pack_release.py --with-cassettes</code> 打包自检通过</li>
         <li>⚠️ 本机内存红线（1.87G / 无 swap）：全量一次跑会触发 OOM（实测 Playwright 驱动崩溃 + 用例挂死），改用「每批 ≤5 条、独立进程、批间释放浏览器」；<b>SKIP 不等于通过</b>，内存不足要腾出来重跑</li>
         <li><b>升级须知（v7.x → v8.0）</b>：① <code>cases/</code> / <code>scenarios/</code> / demo 一个字都不用改；② 自写的调试脚本若 <code>import framework.xxx</code>，按映射表改一行路径；③ 重跑 <code>python -m framework.cli generate</code> 重建 <code>scripts/</code></li>
       </ul></div>
@@ -1841,7 +1841,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>一组数据 = 一条用例</b>：生成器对带 <code>data:</code> 的用例产出 <code>parametrize(indirect=True)</code>，报告里形如 <code>test_xxx[编号-1007]</code>，可按组单选（<code>-k "&lt;case_id&gt; and &lt;组名&gt;"</code>）</li>
         <li><b>组名口径</b>：优先用组里的 <code>id</code>，其次取该组第一个占位符的值，最后回落 <code>ds1/ds2…</code>；重名自动加序号、去掉方括号等字符（否则报告里分不清哪组）</li>
-        <li>两类判据：<code>frameworkTest/test_data_expand.py</code>（生成器契约，秒级 16 条）+ <code>featureTest/verify_data_expand.py</code>（端到端：3 组→3 passed · <b>坏组只红那一行</b> · 单组可跑），后者进 R7 统一入口</li>
+        <li>两类判据：<code>tests/frameworkTest/test_data_expand.py</code>（生成器契约，秒级 16 条）+ <code>tests/featureTest/verify_data_expand.py</code>（端到端：3 组→3 passed · <b>坏组只红那一行</b> · 单组可跑），后者进 R7 统一入口</li>
         <li><b>样板场景</b> <code>scenarios/contracts/contracts_search_by_no.yml</code> 改 3 组数据，照它写即可</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
@@ -1865,8 +1865,8 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <div class="cl-head"><span class="cl-ver">V7.7.1</span><span class="cl-date">2026-09-19</span><span class="cl-tag">上一版本</span><span class="cl-theme">结构归一与修复批次 · tools/ 目录 · 版本来源收敛 · 文档可复现性</span></div>
       <p class="cl-sum">本版<b>不加新能力</b>，只做三件事：把仓库结构按「框架代码 / 内部台账 / 门禁」三层分开；把散落在仓库根的工具收进 <code>tools/</code>，并把「版本号来源路径」收敛成<b>只定义一处</b>；修掉四处<b>静默退化</b>（培训页高亮器、打包审计、一条负向验证段、一条自测的环境依赖）—— 共同特征是「看着正常、其实没在干活」，正是本项目一直在打的假绿。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
-        <li><b>特性验证统一入口</b> <code>featureTest/run_verifications.sh</code>：逐个跑 <code>verify_*.py</code>、内存不足<b>如实 SKIP</b>（不硬跑、不当通过）、跑完出汇总表；支持 <code>--only</code> / <code>--list</code> / <code>--no-demo</code></li>
-        <li><b>R8 判据</b> <code>featureTest/verify_html_sync.py</code>：培训页必须①可复现（换哈希种子 md5 相同）②与代码<b>逐字节一致</b>③零畸形嵌套 —— 把「文档与代码同步」变成可验证的</li>
+        <li><b>特性验证统一入口</b> <code>tests/featureTest/run_verifications.sh</code>：逐个跑 <code>verify_*.py</code>、内存不足<b>如实 SKIP</b>（不硬跑、不当通过）、跑完出汇总表；支持 <code>--only</code> / <code>--list</code> / <code>--no-demo</code></li>
+        <li><b>R8 判据</b> <code>tests/featureTest/verify_html_sync.py</code>：培训页必须①可复现（换哈希种子 md5 相同）②与代码<b>逐字节一致</b>③零畸形嵌套 —— 把「文档与代码同步」变成可验证的</li>
         <li>判据补强：仓库与敏感词门禁<b>解耦</b>（仓库零引用门禁路径/词表）· <b>版本单一来源</b>（三读者同源，含「路径失效必须如实 unknown」负向）· 打包<b>历史形态</b>（含真缺项仍拦负向）· 培训页高亮器 9 条（含跨进程可复现性）</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
@@ -1917,7 +1917,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
         <li><b>首行断言</b>：新断言 kind <code>first_row</code>（<code>row_field</code> + 期望值）→ <code>_assert_first_row()</code>。为什么单列一种 kind：文本断言只证明「页面上有这个名字」，<b>证明不了它就是第一条</b>，而「新建后列表第一条就是它」是需求原文</li>
         <li><b>订单系统场景</b>：<code>scenarios/orders/orders_return_from_contract.yml</code>（3 页 / 30 步）+ AI 端到端产物 <code>cases/ai_orders_return_from_contract_*.json</code></li>
         <li><b>同字段·跨区域歧义披露</b>（<code>explorer._field_identity()</code> + <code>_same_field_pairs()</code>）：按 label 归一化（去 <code>*</code>、去结尾「（全模糊）」）找出「同一字段、不同区域、名字不同」的组合，<b>在提示词里显式列出</b>两个名字与各自区域，并加规则 2c 点明「选错不会报未映射、只会悄悄操作到别的控件」</li>
-        <li>回归：<code>frameworkTest/test_name_alignment.py</code> 11 条（含「提示词里必须真出现这段披露」的<b>接线判据</b>，防止函数单测绿而功能没接上）</li>
+        <li>回归：<code>tests/frameworkTest/test_name_alignment.py</code> 11 条（含「提示词里必须真出现这段披露」的<b>接线判据</b>，防止函数单测绿而功能没接上）</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
         <li><code>generate</code> 的跨页重名告警改为<b>按用例判定</b>：<code>_DUP_PAGES</code> 记「名字 → 出现过的页集合」，判据 = 「<b>本用例声明的页 ∩ 该名字出现的页 ≥ 2</b>」；<code>_render_assert(..., dup_raw=…)</code> 按用例透传（防别的用例带进来的重名误伤）</li>
@@ -1931,7 +1931,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
         <li>定位手法留档（比读日志猜快得多）：解失败那次的 <code>log/&lt;run&gt;/traces/&lt;case&gt;_trace.zip</code>，读 <code>trace.network</code> 的请求清单 —— 本次一眼看出<b>没有 POST /api/orders</b> ⇒ 提交根本没发出 ⇒ 前端必填校验没过 ⇒ 弹窗字段没填进去</li>
         <li>本机内存红线重申：跑浏览器前先看 <code>MemAvailable</code>（编辑 .py 后会被拉起的语言服务占 ~350MB，先关掉）。实测 OOM 会<b>连杀 chrome-headless 与 hermes 进程</b>，现象是「CLI 自己退出了」</li>
-        <li>回归口径：<code>pytest frameworkTest/ -q</code> <b>158 passed</b> · <code>cli run</code> <b>17 passed / exit 0</b> · <code>generate</code> 未映射 0</li>
+        <li>回归口径：<code>pytest tests/frameworkTest/ -q</code> <b>158 passed</b> · <code>cli run</code> <b>17 passed / exit 0</b> · <code>generate</code> 未映射 0</li>
       </ul></div>
     </div>
     <div class="card cl">
@@ -1940,21 +1940,21 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>换页证据红线闸</b>：<code>case_builder.case_errors()</code> 判定「换页证据必须只指向一页」——片段在用例声明的多页 URL 里都命中（典型 <code>localhost</code>），或跨页用例里只是 <code>host[:端口]</code> ⇒ <b>红线</b>；AI 落盘（<code>elementmap_to_cases_file</code>）与生成 （<code>generator._gate_false_green</code>）<b>两条路都 raise <code>CaseQualityError</code></b> ⇒ exit 2 + 人话（哪条用例、哪条断言、怎么改），<b>一个产物都不写</b>（口径同映射质量闸：产物永不允许带假绿）</li>
         <li><b>AI 提示词补规则（真根因）</b>：换页证据只准用<b>只出现在目标页</b>的片段；点明<b>禁止</b> <code>localhost</code> / <code>localhost:8000</code> / <code>127.0.0.1</code> 这类<b>每个页面都含</b>的片段；目标页没有独有片段（如列表页就是根路径 <code>/</code>）⇒ 改用<b>该页独有文案</b>做 <code>text</code> 断言</li>
-        <li><code>frameworkTest/test_case_quality_gate.py</code>（13 条，秒级不需 demo）：11 种断言 kind × 7 种期望值形态 × 4 种定位写法<b>都不许崩</b> · 弱证据必须被拦 · <b>真证据不许被误拦</b> · 仓库用例全量扫描无弱证据 · 两条产物路径的红线行为</li>
+        <li><code>tests/frameworkTest/test_case_quality_gate.py</code>（13 条，秒级不需 demo）：11 种断言 kind × 7 种期望值形态 × 4 种定位写法<b>都不许崩</b> · 弱证据必须被拦 · <b>真证据不许被误拦</b> · 仓库用例全量扫描无弱证据 · 两条产物路径的红线行为</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
         <li><code>cases/ai_contracts_cross_page_011030.json</code>：「确认已回到列表页」的 <code>expect_url</code> 从 <code>localhost</code> 换成<b>列表页独有文案</b> <code>新建合同</code>（<code>text</code> 断言；列表页 URL 是根路径、没有独有片段）</li>
         <li><b>F5 断言稳健化</b>：<code>cases/cross_page_detail.json</code> 的「列表恢复全量 20 行」（<code>count expect=20</code>）→「<b>预置基线行</b> <code>row-HT-1001</code> 在列表里」——与本次运行新建的数据无关，不会被顶掉，且「回到列表页」另有「新建合同按钮可见」作证</li>
-        <li><code>featureTest/verify_cross_page.py</code>：第二节新增「弱证据必被红线拦 + 真证据不许误拦」两条判据；负向段改走 <code>generate --allow-unmapped</code>（<b>并写清原因</b>：负向用例故意用不存在的元素名，映射质量闸会拦下整个 generate；产物只服务负向验证，收尾会重新生成干净产物）</li>
+        <li><code>tests/featureTest/verify_cross_page.py</code>：第二节新增「弱证据必被红线拦 + 真证据不许误拦」两条判据；负向段改走 <code>generate --allow-unmapped</code>（<b>并写清原因</b>：负向用例故意用不存在的元素名，映射质量闸会拦下整个 generate；产物只服务负向验证，收尾会重新生成干净产物）</li>
         <li><code>docs/BACKLOG-下一步优化.md</code> 基线/队列同步 + 新增〇-e 批次记录；<code>docs/P3-跨页面流程-设计.md</code> 状态由「待确认」改为<b>「已实施」</b>；<code>build_html.py</code> 文案同步</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
         <li><b>质量闸自身崩溃</b>（安静而致命）：<code>case_builder.case_warnings</code> 遇到非字符串期望值（<code>count</code> 的 <code>20</code>）直接 <code>TypeError: expected string or bytes-like object, got 'int'</code> —— 旧写法把期望值喂给正则与哈希集合比较，只按字符串设计 ⇒ 文本形态检查<b>只对字符串生效</b>、「断言回显输入」比较<b>全程走字符串口径</b>。教训：<b>守门人也要有守门人</b>（该函数此前只在 AI 链路跑过，一碰到手写 11 类断言用例就倒）</li>
-        <li><b>负向验证段静默失效</b>：<code>featureTest/verify_cross_page.py</code> 的负向段<b>自 V7.5.1 起就没跑起来</b>（负向用例④故意用不存在的元素名 ⇒ 被映射质量闸拦成 exit 2 ⇒ 脚本 return 2，「N 条负向必须 FAILED」长期未执行）。修正后实测<b>5 条负向全部 FAILED</b>，含新增「没回到列表页时，列表页独有文案断言必须失败」—— 证明替换后的证据<b>真的有牙</b>。教训：<b>一段验证只要没人真跑它，就会静默退化；复核清单必须「真跑」，不是「它存在」</b></li>
+        <li><b>负向验证段静默失效</b>：<code>tests/featureTest/verify_cross_page.py</code> 的负向段<b>自 V7.5.1 起就没跑起来</b>（负向用例④故意用不存在的元素名 ⇒ 被映射质量闸拦成 exit 2 ⇒ 脚本 return 2，「N 条负向必须 FAILED」长期未执行）。修正后实测<b>5 条负向全部 FAILED</b>，含新增「没回到列表页时，列表页独有文案断言必须失败」—— 证明替换后的证据<b>真的有牙</b>。教训：<b>一段验证只要没人真跑它，就会静默退化；复核清单必须「真跑」，不是「它存在」</b></li>
         <li><b>host 判定误判</b>：用「像域名的正则」判 host 会把 <code>index.html</code> 也判成 host ⇒ 改为两级判定：① 与已知页面 URL（<code>pages[].url</code> + <code>base_url</code>）的 <code>host[:端口]</code> / 裸主机名<b>精确比对</b>（主判据）；② 形态兜底只认「纯主机名或带端口」</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
-        <li><b>自测与端到端证据（都真跑）</b>：<code>pytest frameworkTest/ -q</code> → <b>143 passed</b>（130 + 13 新增）；<code>cli generate</code> → exit 0 · 未映射 <b>0</b> 处 · <code>_goto</code> 接线 32 处；<code>cli run --workers 1</code> → <b>16 passed / exit 0</b>；<code>verify_cross_page.py</code> → <b>exit 0</b>（三节判据 + 5 条负向全 FAILED）；两条改后的断言在逐用例日志里<b>真实执行</b>（不再空验）</li>
+        <li><b>自测与端到端证据（都真跑）</b>：<code>pytest tests/frameworkTest/ -q</code> → <b>143 passed</b>（130 + 13 新增）；<code>cli generate</code> → exit 0 · 未映射 <b>0</b> 处 · <code>_goto</code> 接线 32 处；<code>cli run --workers 1</code> → <b>16 passed / exit 0</b>；<code>verify_cross_page.py</code> → <b>exit 0</b>（三节判据 + 5 条负向全 FAILED）；两条改后的断言在逐用例日志里<b>真实执行</b>（不再空验）</li>
         <li><b>负向 CLI 证明</b>：喂一条 <code>expect = localhost</code> 的跨页用例 → <code>cli generate</code> <b>exit 2</b> + 人话，且产物 <code>sha256</code> <b>一字未改</b>（确实一个产物都没写）</li>
         <li><b>不做（诚实清单，2026-09-17 裁定）</b>：CI 落点（需重建带 workflow 权限的 token）与 Windows 侧并发隔离证据（本地已有两条真跑 CLI 的行为测试）—— 均按拍板从队列删除；<b>变异注入闸门</b>（量「断言有没有牙」）仍待做，排在下一项</li>
         <li>V7.5.1 包（未发出的过渡版，已被 V7.5.2 收敛替代）已按授权删除，原 sha256 留在 <code>releases/SHA256SUMS.txt</code> 注释里备查</li>
@@ -1977,7 +1977,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
         <li><b>对象级残留仍在（如实记档）</b>：2 个<b>已推送</b>历史里的旧 blob 仍含该缩写；彻底清零需重写历史 + 删仓重建（force-push 不足以让远端对象消失），单列一件事等定</li>
-        <li><b>自测证据</b>：<code>pytest frameworkTest/ -q</code> → 130 passed；<code>pack_release.py --check</code> 通过；复扫 tree 0 命中；<code>git ls-files … | grep -c '^releases/'</code> = 0（包库不进包）</li>
+        <li><b>自测证据</b>：<code>pytest tests/frameworkTest/ -q</code> → 130 passed；<code>pack_release.py --check</code> 通过；复扫 tree 0 命中；<code>git ls-files … | grep -c '^releases/'</code> = 0（包库不进包）</li>
       </ul></div>
     </div>
     <div class="card cl">
@@ -1986,12 +1986,12 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>映射质量闸（根因修复）</b>：<code>generate</code> 算完定位映射后仍有语义名对不上 ⇒ 抛 <code>UnmappedElementsError</code>、<b>一个文件都不写</b>、CLI <b>exit 2</b>，并打印「缺哪些 + 真因（可达性预检结论）+ 下一步」；调试逃生口 <code>--allow-unmapped</code>（显式声明才允许产出带存根的脚本，产物永不允许进交付）</li>
         <li><b>目标可达性预检</b>：<code>target_probe.reachability()</code> 把「连不上（带『先起 demo』动作）」「有响应但无 <code>/api/health</code>（老目标，算活）」「可达」分开；<code>cli probe</code> 预检不过就 <b>exit 2 + 人话</b>，不再甩一屏 Playwright traceback（旧行为：<code>net::ERR_CONNECTION_REFUSED</code> 长栈 + exit 1，看着像框架坏了）</li>
-        <li><b>交付前自检</b>：① <code>frameworkTest/test_artifacts_health.py</code>（未映射=0 · 无裸 <code>page.goto</code> · conftest 接线齐 · cases↔datasets 一一对应 · scripts/ 无杂物）；② <code>build_tools/pack_release.py</code> 打包并用 <b>标准库 zipfile</b> 复扫包内产物，不达标就删包 + exit 2（它也用来审计历史包：拿它验 V7.5 那个包，当场抓出 100 处未映射）</li>
-        <li><code>frameworkTest/test_generate_quality_gate.py</code> · <code>frameworkTest/test_target_reachability.py</code> · <code>frameworkTest/test_pack_release.py</code>：三个「测试的测试」（不启浏览器、秒级）</li>
+        <li><b>交付前自检</b>：① <code>tests/frameworkTest/test_artifacts_health.py</code>（未映射=0 · 无裸 <code>page.goto</code> · conftest 接线齐 · cases↔datasets 一一对应 · scripts/ 无杂物）；② <code>build_tools/pack_release.py</code> 打包并用 <b>标准库 zipfile</b> 复扫包内产物，不达标就删包 + exit 2（它也用来审计历史包：拿它验 V7.5 那个包，当场抓出 100 处未映射）</li>
+        <li><code>tests/frameworkTest/test_generate_quality_gate.py</code> · <code>tests/frameworkTest/test_target_reachability.py</code> · <code>tests/frameworkTest/test_pack_release.py</code>：三个「测试的测试」（不启浏览器、秒级）</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
         <li><b>跨平台 GBK guard</b>：旧判据用 POSIX 专有的 <code>locale -a</code>，Windows 上没有该命令 ⇒ 三条 GBK 精确复现用例在<b>中文 Windows（事故原发环境）上永远跳过</b>；现在 Windows 分支读系统 ANSI 代码页（中文系统 = 936），断言放宽成「GBK 家族」</li>
-        <li><code>featureTest/verify_slow_target.py</code> · <code>featureTest/verify_picker_layer.py</code> 补 <code>force_stdio()</code>：中文 Windows 控制台上中文曾显示成乱码（UTF-8 字节被 cp936 解释）</li>
+        <li><code>tests/featureTest/verify_slow_target.py</code> · <code>tests/featureTest/verify_picker_layer.py</code> 补 <code>force_stdio()</code>：中文 Windows 控制台上中文曾显示成乱码（UTF-8 字节被 cp936 解释）</li>
         <li>目标地址口径统一：<code>TARGET_URL</code> ⇄ <code>HYBRID_BASE_URL</code> 等效（以前只设后者会发现 probe 仍在打 <code>localhost:8000</code>）</li>
         <li>并发闸归因纠偏：<code>probe_partitioned</code> 不再把「目标连不上」说成「未声明可并发隔离」</li>
       </ul></div>
@@ -2002,7 +2002,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
         <li><b>验收基线要按平台念</b>：框架自测在本机（有 <code>zh_CN.gbk</code>）与受限环境下条数不同，差别就在那三条 GBK 复现用例；本版起 Windows 上不再跳过</li>
         <li>不可达的退出码 = <b>2</b>（与「参数/用法错误」同码，暂不新增独立码；CI 落点排期中）</li>
-        <li><b>自测证据（本机）</b>：<code>pytest frameworkTest/ -q</code> → <b>130 passed</b>；受限环境（无 <code>locale</code> / 无 <code>git</code>）→ 127 passed + 3 skipped；真实 CLI 反证：目标不可达时 <code>probe</code> 给人话 + exit 2、不启浏览器</li>
+        <li><b>自测证据（本机）</b>：<code>pytest tests/frameworkTest/ -q</code> → <b>130 passed</b>；受限环境（无 <code>locale</code> / 无 <code>git</code>）→ 127 passed + 3 skipped；真实 CLI 反证：目标不可达时 <code>probe</code> 给人话 + exit 2、不启浏览器</li>
         <li><b>⏳ 待办（未在 7.5.1 完成，如实记档）</b>：F5 —— <code>cases/cross_page_detail.json</code> 的「列表恢复全量 20 行」（<code>count expect=20</code>）还没换成与新增无关的基线断言。本条**需要被测目标在跑 + 真浏览器**才能改完并验证（本机内存不够、不硬跑），故排到下一版。</li>
       </ul></div>
     </div>
@@ -2014,9 +2014,9 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
         <li><b>定位有界等待（F2）</b>：<code>_act</code> / <code>_resolve</code> 的确定性主定位改成「等到 attached 再数」（<code>HYBRID_LOCATE_TIMEOUT</code> 默认 5s），不再用瞬时 <code>count()</code> 判生死；<code>count</code> 这类复数断言仍**瞬时**判定（「期望 0 个」是合法用例，等它只会白等一个超时）</li>
         <li><b>每 worker 数据分区（F6a）</b>：demo 的 <code>/api/*</code> 认 <code>?w=&lt;分区&gt;</code>，<code>/api/reset</code> 只清自己那份；conftest 给每个 worker 注入 <code>window.__HYBRID_W</code>，页面把它带进所有 API 调用 ⇒ 并发 worker 读写各自的数据，不再互相踩</li>
         <li><b>并发安全闸（F6b）</b>：<code>cli run</code> 探测目标 <code>/api/health</code> 是否声明 <code>partitioned</code>，<b>未声明就保守降级为 1 并发</b>并说明原因；确知目标已隔离可用 <code>--isolated-target</code> 显式放行</li>
-        <li><b>慢目标闸门 <code>featureTest/verify_slow_target.py</code></b>：自起 demo + 慢代理，用同一批生成脚本指向代理跑关键用例，必须全绿；内存不足时明确 SKIP（exit 3），<b>不报假绿</b></li>
+        <li><b>慢目标闸门 <code>tests/featureTest/verify_slow_target.py</code></b>：自起 demo + 慢代理，用同一批生成脚本指向代理跑关键用例，必须全绿；内存不足时明确 SKIP（exit 3），<b>不报假绿</b></li>
         <li><b><code>HYBRID_BASE_URL</code> 目标地址覆盖</b>：同一套用例可跑本机 / 慢代理 / 预发（闸门与多环境都靠它）</li>
-        <li><code>frameworkTest/test_ready_and_locate.py</code>：13 条契约锁（模板 ⇄ 生成物互锁 + CLI 降级行为实测，秒级不需浏览器）</li>
+        <li><code>tests/frameworkTest/test_ready_and_locate.py</code>：13 条契约锁（模板 ⇄ 生成物互锁 + CLI 降级行为实测，秒级不需浏览器）</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
         <li><b>报错信息纠偏（F3）</b>：<code>元素语义未找到</code> 现在给出「真因链 + 下一步」；原「断言 locator 失效且无语义兜底（该断言既没 selector 也没 element）」<b>自相矛盾</b>（那条断言其实有 selector）⇒ 改为「等了 N 秒仍是 0 个元素 + 常见原因 + 排查动作」</li>
@@ -2036,7 +2036,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
         <li>删除 4 个<b>已无任何使用者</b>的目录常量：<code>PLAN_DIR</code>(output/plans) · <code>GENERATED_TESTS_DIR</code>(generated_tests) · <code>TEST_SCENARIO_DIR</code>(testScenario) · <code>DATASETS_DIR</code>(datasets) —— 它们没有任何读写方，只被 <code>ensure_dirs()</code> 建目录</li>
         <li><code>ensure_dirs()</code> <b>收窄急切创建范围</b>：只建「入口扫描/写入前不会自建」的 <code>output/</code> · <code>output/element_maps/</code> · <code>log/</code> · <code>scripts/</code> · <code>cases/</code>；<code>TRACE_DIR</code>/<code>HEALS_DIR</code> 由写入方（<code>runner.record_trace</code> / <code>healer.dump</code>）<b>使用前显式 mkdir</b> ⇒ 不再常驻空目录</li>
-        <li><code>frameworkTest/test_utf8_io.py</code> 的 <code>SKIP_DIRS</code> 去掉已不存在的 <code>generated_tests</code>；README 目录树去掉 <code>plans/</code></li>
+        <li><code>tests/frameworkTest/test_utf8_io.py</code> 的 <code>SKIP_DIRS</code> 去掉已不存在的 <code>generated_tests</code>；README 目录树去掉 <code>plans/</code></li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
         <li>验证基线：框架自测 <b>87 passed</b>（原 86 + 1 条新增）｜端到端 <code>cli all</code> <b>16 Passed / 0 Failed / 0 Error</b>（pytest 退出码 0）｜运行后 <code>find -type d -empty</code> 复查为空</li>
@@ -2051,8 +2051,8 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
         <li><b>demo 数据 API</b>（demo/app.py）：<code>GET /api/customers</code>｜<code>GET /api/contracts</code>｜<code>GET /api/contract?no=</code>（404=未找到）｜<code>POST /api/contracts</code>（必填校验 + <b>编号由服务端分配</b>）｜<code>POST /api/reset</code>（复位成预置 20 条）；列表页与详情页都改成读 API 渲染</li>
         <li><b>用例间数据复位</b>：生成的 conftest 每条用例开始前 <code>POST /api/reset</code>（<code>HYBRID_RESET_URL</code> 可覆盖，设 off 关掉）—— 数据留在服务端后，不复位会让「列表恢复 20 行」这类断言被上一条用例的残留数据打乱（用例互相污染比用例失败更难查）</li>
         <li><b>用例级看门狗</b>：超时把<b>所有线程的调用栈</b>写进 <code>log/&lt;run_id&gt;/watchdog.txt</code> 再退出（<code>HYBRID_CASE_TIMEOUT</code> 默认 120s）—— 挂死比失败更糟，绝不允许</li>
-        <li><b>featureTest/verify_picker_layer.py</b>：弹层（picker）端到端回归 —— 弹层里 6 个同名「选择」按钮必须<b>按所在行命名</b>收集到、探完必须把层关掉、轮询必须第一轮就命中</li>
-        <li><b>featureTest/verify_cross_page.py 新增第四段</b>：UI 新建 → 详情页读到的客户必须等于弹层里选的那个；对不存在的编号必须如实报「未找到」</li>
+        <li><b>tests/featureTest/verify_picker_layer.py</b>：弹层（picker）端到端回归 —— 弹层里 6 个同名「选择」按钮必须<b>按所在行命名</b>收集到、探完必须把层关掉、轮询必须第一轮就命中</li>
+        <li><b>tests/featureTest/verify_cross_page.py 新增第四段</b>：UI 新建 → 详情页读到的客户必须等于弹层里选的那个；对不存在的编号必须如实报「未找到」</li>
         <li>跨页用例新增「客户跨页一致」断言：列表页 <code>td[data-field=customer][data-cust]=c5</code> ⇔ 详情页 <code>detail-cust[data-cust]=c5</code>（两页读同一条记录）</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
@@ -2079,7 +2079,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <p class="cl-sum">修掉一个「在中文 Windows 上必崩」的编码缺陷：`explore --ai` 默认带 --verify，而 --verify 里用 subprocess 收子进程输出时没指定编码 ⇒ 父进程按系统默认编码（中文 Windows = cp936/gbk）去解码子进程的 <b>UTF-8 中文输出</b>，报 `UnicodeDecodeError: 'gbk' codec can't decode byte 0xbb in position 13`（用例和脚本都生成了，偏偏校验这一步炸）。现在全链路显式 UTF-8，并且本机 <b>用 zh_CN.gbk locale 把原始报错复现到「同一个字节、同一个位置」</b>后再修，修完同一条命令实测通过。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>framework/tools/common/text_io.py</b>：跨平台文本口径的唯一入口 —— `utf8_env()`（给子进程注入 PYTHONUTF8/PYTHONIOENCODING）、`force_stdio()`（本进程 stdio 转 UTF-8 + Windows 控制台代码页切 65001）、`run_capture()`（收子进程输出，显式 UTF-8 解码 + errors=replace）</li>
-        <li><b>frameworkTest/test_utf8_io.py</b>（10 条）：含<b>用 zh_CN.gbk locale 精确复现AprilPark1012那条报错</b>（断言里就写着 `byte 0xbb in position 13`）+ <b>AST 全仓扫描</b>（谁再写出「靠系统默认编码」的 subprocess/read_text/open 就直接测试失败）</li>
+        <li><b>tests/frameworkTest/test_utf8_io.py</b>（10 条）：含<b>用 zh_CN.gbk locale 精确复现AprilPark1012那条报错</b>（断言里就写着 `byte 0xbb in position 13`）+ <b>AST 全仓扫描</b>（谁再写出「靠系统默认编码」的 subprocess/read_text/open 就直接测试失败）</li>
         <li>生成的 scripts/conftest.py 自带 UTF-8 自举：裸跑 pytest（不经 cli）也不会因中文/✓ 崩或乱码</li>
         <li>limits.py 在 Windows 上用 GlobalMemoryStatusEx 读可用内存（以前读不到 /proc 就恒判 1 并发）</li>
         <li>启动期<b>文件系统编码告警</b>：文件系统编码不是 UTF-8（中文 Windows / GBK locale）时 cli 会大声提示「中文文件名会落成 GBK 字节名，请用 PYTHONUTF8=1 重跑」——实测踩到过 scripts/datasets/ 里留下一个 GBK 字节名残留（连工具读文件名都会 surrogate 报错）</li>
@@ -2087,7 +2087,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
         <li><b>cli.py</b>：`_verify_cases` 的两处 subprocess 改用 `run_capture()`；`cmd_run` 给 pytest 子进程注入 UTF-8 口径（否则 cp936 控制台下 conftest 里的 ✓/⚠️ 会 UnicodeEncodeError，跑到一半崩）</li>
         <li>`cli.main()` 入口第一件事就是 `force_stdio()`：本进程 + 所有子进程 + 控制台一次性拉齐 UTF-8</li>
-        <li>featureTest/verify_assert_kinds.py、featureTest/verify_cross_page.py、frameworkTest/test_cli_flags.py 的跨进程调用同口径改造</li>
+        <li>tests/featureTest/verify_assert_kinds.py、tests/featureTest/verify_cross_page.py、tests/frameworkTest/test_cli_flags.py 的跨进程调用同口径改造</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
         <li><b>--verify 在中文 Windows 上必崩</b>（gbk 解码 UTF-8 子进程输出）—— 三入口（内联 / scenario 文件 / scenario 目录）全部修复并实测</li>
@@ -2108,7 +2108,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
         <li><b>断言 11 种 kind</b>：text / visible / hidden / count / attr / value / url / checked / unchecked / enabled / disabled（缺省 kind = text，老用例零改动）</li>
         <li>断言目标两种写法：<b>element</b>（probe 语义名 → 映射确定性 locator，AI 链路可用）与 <b>selector</b>（手写用例专用 CSS/Playwright 选择器，如 li:has-text('买牛奶')）</li>
         <li><b>tests/</b> 框架自测目录：CLI 参数契约 + 断言 kind→代码翻译契约（秒级，不需浏览器）</li>
-        <li><b>featureTest/verify_assert_kinds.py</b> 正/负向端到端脚本：11 种 kind + 4 类结构性错误全部实测</li>
+        <li><b>tests/featureTest/verify_assert_kinds.py</b> 正/负向端到端脚本：11 种 kind + 4 类结构性错误全部实测</li>
         <li>用例：cases/assert_kinds_*.json（search 全类型 / reset 验 value 清空 / modal 验 visible / todo 验 checked）</li>
         <li>demo 合同页加一个「导出（未接入）」禁用按钮 —— 让 enabled/disabled 断言有真页覆盖</li>
       </ul></div>
@@ -2135,7 +2135,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>--help / -h</b>：总览 + 子命令帮助（<b>直接取函数 docstring</b>，文档与代码同源，不会漂）</li>
         <li><b>--version / -V</b>：版本号读 build_tools/build_html.py（版本单一来源；读不到就如实说 unknown）</li>
-        <li><b>frameworkTest/test_cli_flags.py</b>：参数契约回归（约 3 秒，不需要 demo / 不需要 AI key）——合法参数不许误杀 + 非法参数必须 exit 2</li>
+        <li><b>tests/frameworkTest/test_cli_flags.py</b>：参数契约回归（约 3 秒，不需要 demo / 不需要 AI key）——合法参数不许误杀 + 非法参数必须 exit 2</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
         <li><b>参数契约单一定义</b>：cli.py 顶部 FLAG_SPECS（值语义 value / opt / 纯开关）+ CMD_FLAGS（每个子命令允许哪些），未知参数给拼写建议（difflib）</li>

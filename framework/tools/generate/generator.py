@@ -890,7 +890,7 @@ from conftest import (_CURRENT_LOG, _log, _data, _act, _goto,
                       # 2026-09-17 跨 tab / 行内定位 / 首行断言用的辅助
                       # ⚠️ 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
                       #    （实测：new 的 _Tabs 漏了 → verify 里 30 步用例第一步就 NameError；
-                      #     防复发检查见 frameworkTest/test_artifacts_health.py::test_test_cases_imports_every_conftest_helper）
+                      #     防复发检查见 tests/frameworkTest/test_artifacts_health.py::test_test_cases_imports_every_conftest_helper）
                       _Tabs, _click_row_cell, _assert_first_row)
 # P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）
 from framework.tools.probe.scope_locate import drill as _drill
@@ -938,7 +938,7 @@ import pytest
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import expect as _expect
 
-BASE = Path(__file__).resolve().parent.parent
+BASE = Path(__file__).resolve().parent.parent.parent
 LOG_DIR = BASE / "log"
 
 # ---- 本次运行的日志目录（run-id 隔离）----
@@ -1505,7 +1505,7 @@ def ctx(request):
     import re
     node = request.node.name                       # test_<case_id> 或 test_<case_id>[<数据组>]
     # ⚠️ 必须切掉「[数据组]」后缀 —— L1 参数化后节点名带后缀，用 .+ 会把整串当 case_id，
-    #    于是找不到数据集（防复发判据见 frameworkTest/test_data_expand.py）
+    #    于是找不到数据集（防复发判据见 tests/frameworkTest/test_data_expand.py）
     m = re.match(r"test_([^\\[]+)", node)
     case_id = m.group(1) if m else "run"
     param = getattr(request, "param", None)
