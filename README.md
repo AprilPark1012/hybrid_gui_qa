@@ -70,9 +70,9 @@ python -m framework.cli --help                # 参数写错一律报错 + exit 
 **两类验证**（改完东西跑这两条）：
 
 ```bash
-python -m pytest tests/ -q                    # ① 框架自测：秒级，不需要 demo / key
-python tests/run_verifications.py             # ② 端到端特性验证：需 demo（会自己起停；SKIP ≠ 通过）
-python tests/run_acceptance.py                # ③ 四项验收一条命令（闸门 → 新鲜度 → 自测 → E2E → 特性）
+python -m pytest frameworkTest/ -q                    # ① 框架自测：秒级，不需要 demo / key
+python featureTest/run_verifications.py             # ② 端到端特性验证：需 demo（会自己起停；SKIP ≠ 通过）
+python featureTest/run_acceptance.py                # ③ 四项验收一条命令（闸门 → 新鲜度 → 自测 → E2E → 特性）
 ```
 
 ### 3. 配 DeepSeek key（**只有 AI 链路需要**）
@@ -111,7 +111,8 @@ cases/        手写自然语言用例（源）· scenarios/  AI 场景库（一
 scripts/      generate 产物（可重建，别手改）· framework/  cli.py + tools/{common,probe,explore,generate,run}
 demo/         被测 demo（合同/订单列表页 + 详情页 + 数据 API）
 build_tools/  开发期工具：打包 · 培训页 · 录像体检/重录 · 离线链路
-tests/        框架自身回归：run_verifications.py / run_acceptance.py 两个入口 + test_* 一类 + verify_* 二类
+frameworkTest/  框架自验证：test_*（秒级、不需 demo/浏览器）+ 共享辅助
+featureTest/    特性自验证：verify_*（端到端、需 demo）+ run_verifications.py / run_acceptance.py 两个入口
 releases/     发行说明 RELEASE_NOTES_V*.md（变更日志的家）+ 交付包（包不入库）
 docs/         training.html 培训页（仓库里唯一的对外文档）
 output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 + report.html，可清理）
@@ -153,7 +154,7 @@ output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 
   8 常见坑 · 9 动手跑一遍（含**环境变量与运行开关**表）· 10 收尾
 - **发行说明 [`releases/RELEASE_NOTES_V*.md`](releases/)**：每版改了什么（**变更日志都在这里**，随交付包一并发出）
 - **字段契约**：`scenarios/README.md`（场景文件）+ 培训页第 4 章（用例文件）
-- **框架判据**：`tests/`（一类 `test_*` 秒级、不需要 demo；二类 `verify_*` 端到端且含**负向证伪**）
+- **框架判据**：`frameworkTest/`（框架自验证，`test_*` 秒级、不需要 demo）+ `featureTest/`（特性自验证，`verify_*` 端到端且含**负向证伪**）
 - 想动手扩展：模块 docstring 即接口说明，`framework/tools/` 按业务流程分层（probe → explore → generate → run）
 
 ## 许可

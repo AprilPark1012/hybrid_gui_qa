@@ -4,7 +4,7 @@
 （表格 / 弹层 / 工具栏 / 区块），要操作的子元素（行、单元格、行内链接按钮）没有埋点。
 框架 Tier1 第一级就是 `data-testid`，demo 又几乎每个控件都埋了 ⇒ 这条"下钻"能力**从没被真实触发**。
 
-**契约**（与 `tests/verify_scope_locate.py` 文件头逐字一致）：
+**契约**（与 `featureTest/verify_scope_locate.py` 文件头逐字一致）：
 
     scope_locate(page, anchor, path) -> {"ok", "locator", "locator_obj", "count", "strategy", "reason"}
       anchor = {"kind": "table|dialog|region|form", "by": "test_id|heading|aria_label|role", "value": ...}
@@ -15,7 +15,7 @@
 
 **分层**（本模块的设计要点）：
   ① **纯函数层**（无浏览器）：`anchor_expr` / `step_expr` / `path_expr` / `strategy_for` / `ambiguity_reason`
-     —— 表达式怎么拼、歧义怎么说，全部在这里，`tests/test_scope_locate_expr.py` 秒级钉住；
+     —— 表达式怎么拼、歧义怎么说，全部在这里，`frameworkTest/test_scope_locate_expr.py` 秒级钉住；
   ② **执行层**：`_anchor_locator` / `_apply_path` / `scope_locate` —— 只做"按上面拼好的表达式去问页面"。
 
 **红线（与项目铁律一致）**：

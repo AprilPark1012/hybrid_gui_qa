@@ -37,7 +37,7 @@ TARGET_URL = (os.environ.get("TARGET_URL")
 # ---- 版本号单一来源（2026-09-19 把 build_html.py 挪进 tools/ 时收敛）----
 # 培训页生成器 `build_tools/build_html.py` 顶部的 VERSION / VERSION_DATE 是**唯一**版本来源。
 # 路径只在这里定义一次；读版本一律走 read_version()（cli / llm_cassette / pack_release 共用）
-# ⇒ 以后再挪位置只改这一行；漏改会被 tests/test_cli_flags.py 的判据当场抓住（--version 不许变 unknown）。
+# ⇒ 以后再挪位置只改这一行；漏改会被 frameworkTest/test_cli_flags.py 的判据当场抓住（--version 不许变 unknown）。
 VERSION_SOURCE = BASE / "build_tools" / "build_html.py"
 
 
@@ -63,7 +63,7 @@ HEALS_DIR = OUTPUT_DIR / "heals"             # 自愈可审 diff：healer 用到
 #   PLAN_DIR(output/plans) / GENERATED_TESTS_DIR(generated_tests) /
 #   TEST_SCENARIO_DIR(testScenario) / DATASETS_DIR(datasets)
 # 四个旧概念常量**已无任何使用者**，唯一"效果"就是被 ensure_dirs() 每次启动建出来
-# ⇒ 凭空多出空目录。已整体删除；防复发见 tests/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs。
+# ⇒ 凭空多出空目录。已整体删除；防复发见 frameworkTest/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs。
 
 # ---- P5 数据驱动新增目录 ----
 LOG_DIR = BASE / "log"                       # 用例执行日志
@@ -126,7 +126,7 @@ def ensure_dirs():
     #   急切创建只保留「入口扫描/写入之前不会自建」的目录。
     #   TRACE_DIR / HEALS_DIR 的写入方（runner.record_trace / healer.dump）**使用前显式 mkdir**
     #   ⇒ 不是隐式依赖；在此急切创建只会让空目录常驻仓库。谁要写谁自建。
-    #   防复发：tests/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs
+    #   防复发：frameworkTest/test_cli_exit_codes.py::test_ensure_dirs_only_declares_used_dirs
     #   （此处声明的每个常量都必须在 config.py 之外有真实使用者，否则就是"为了建空目录而建"）。
     for d in (OUTPUT_DIR, ELEMENT_MAP_DIR, LOG_DIR, SCRIPTS_DIR, CASES_DIR):
         d.mkdir(parents=True, exist_ok=True)
