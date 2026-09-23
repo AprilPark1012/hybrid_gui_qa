@@ -371,7 +371,8 @@ def _ensure_demo_fresh(python: str) -> bool:
     口径：内容指纹优先（`demo_freshness.demo_fingerprint`，能抓 `git checkout` 那种"内容变了 mtime 没变"），
     stale ⇒ 真重启；unknown ⇒ **不擅自重启**、但如实喊出来（入口闸门已经拦过一次，这里不阻断整轮）。
     """
-    sys.path.insert(0, str(REPO / "featureTest"))
+    sys.path.insert(0, str(REPO / "featureTest"))     # 二类脚本自身
+    sys.path.insert(0, str(REPO / "frameworkTest"))   # ★ 共享辅助（demo_freshness / artifacts 等）住这里
     sys.path.insert(0, str(REPO))
     import demo_freshness as df
     ok, note = df.ensure_fresh(quiet=True)
