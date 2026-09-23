@@ -56,11 +56,48 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.2.3"
+VERSION = "8.2.4"
 VERSION_DATE = "2026-09-23"
 CHANGELOG = [
     dict(
-        version="8.2.3", date="2026-09-23", tag="当前版本",
+        version="8.2.4", date="2026-09-23", tag="当前版本",
+        theme="<b>锁定 playwright 版本</b>（可复现）+ 培训页补「离线部署」与「升级规程」",
+        summary="把「不管团队装哪个版本都能跑」这件事<b>收口</b>：框架本身<b>不挑版本</b>"
+                "（实测 1.45 / 1.62 / 1.63 三版真跑均通过；API 面全落在 1.45 之前；代码零写死路径），"
+                "但<b>不锁版本</b>会让各人机器的浏览器 revision 各不相同（实测 1.45⇒1124 · 1.62⇒1234 · 1.63⇒1243），"
+                "于是反复踩「playwright 升级了、浏览器没重下」。<br>"
+                "本版把 <code>requirements.txt</code> 的 <code>playwright&gt;=1.45</code> 改为 "
+                "<b><code>playwright==1.63.0</code></b>：锁的是<b>可复现</b>，不是能力 —— 升级依然可以，"
+                "只是一次性、有规程的动作（改 pin → <code>setup --force-browser</code> → 跑两类验证）。",
+        added=[
+            "<b>锁定版本</b>：<code>requirements.txt</code> 的 playwright 改为 <code>==1.63.0</code>，"
+            "并写明锁定理由与升级规程（注释就在 pin 上方）",
+            "<b><code>cli setup</code> 显示版本漂移</b>：打印「锁定 X · 环境 Y」——一致给 ✅，"
+            "不一致给 ⚠️ + <b>可照抄的对齐命令</b>（<b>只告警不拦</b>：新版未必不能用，目的是让漂移看得见）",
+            "<b>培训页「浏览器到底装在哪儿」</b>：三系统默认缓存目录 + <b>让工具自己报路径</b>"
+            "（<code>playwright install --list</code>，最准）",
+            "<b>培训页「离线 / 内网机器四步」</b>：同系统同架构机器先装 → 拷贝 "
+            "<code>ms-playwright</code> 目录（或 <code>PLAYWRIGHT_BROWSERS_PATH</code> 指共享目录）→ "
+            "自检 <code>setup --check</code>；并点明三个坑（跨系统不能混用 / 要连 revision 一起拷 / "
+            "换版本要重拷）与 <code>pip download</code> 的做法",
+            "<b>培训页「升级规程」三步</b>：改 pin → <code>setup --force-browser</code> → 两类验证",
+        ],
+        changed=[
+            "预检/文档口径统一为：框架<b>不挑版本</b>、团队<b>用同一版本</b>（锁 = 可复现，不是锁能力）",
+        ],
+        fixed=[],
+        notes=[
+            "为什么锁 <code>1.63.0</code>：这是团队（AprilPark1012本机）在用、且我已<b>两类验证都跑过</b>的版本。",
+            "<b>兼容性</b>：CLI 参数、用例格式、报告形态、判据口径不变；"
+            "已装 1.63.0 的环境<b>无需任何动作</b>（pin 只是把「大家一致」写下来）。",
+            "真值：一类 <b>463</b> passed / 0 red（新增 5 条版本判据：钉读得出 / 范围与注释不算锁 / "
+            "<b>repo 必须锁定</b>的回归 / 不一致必须告警且给命令 / 边界不炸）· "
+            "<code>setup --check</code> 真跑显示「锁定 1.63.0 · 环境 1.63.0 ✅ 一致」· 培训页 <b>243.3</b> KB · "
+            "<code>cli --version</code> → v8.2.4 (2026-09-23)",
+        ],
+    ),
+    dict(
+        version="8.2.3", date="2026-09-23", tag="上一版本",
         theme="一条命令搞定环境（<code>cli setup</code>）+ 修「分发丢弃返回值」导致的<b>退出码空转</b>",
         summary="接着 V8.2.2 的真机问题往下挖：新人会漏「装浏览器」这一步，光有友好报错还不够 —— "
                 "得让<b>根本没机会漏</b>。新增 <code>python -m framework.cli setup</code>："
@@ -1736,56 +1773,79 @@ def build() -> str:
   <div class="card">
   <pre class="tree"><b>hybrid_gui_qa/</b>
 ├── <b>cases/</b>                  ★ 自然语言用例(写死数据)
-│   ├── search_name_fuzzy.json       "搜索"用例模板(手写)
-│   ├── create_bu_a_c1.json           "新建"用例模板(含{{datetime}}动态占位)
+│   ├── search_*.json                手写用例(模糊搜索/混合搜索/客户筛选…)
+│   ├── create_bu_*.json             新建用例(含 {{datetime}} 动态占位；客户走弹层列表选择)
+│   ├── assert_kinds_*.json          11 种断言类型示例(search/reset/modal/todo)
+│   ├── cross_page_detail.json       跨页流程(列表→详情→返回，含换页证据断言)
 │   └── ai_*.json                    🤖 explore --ai 产出的 AI 用例(ai_ 前缀隔离,可批量清理)
 ├── <b>scenarios/</b>               ★ AI 场景库(一文件=一场景,YAML)
-│   └── contracts/*.yml             场景=自然语言动作流+领域上下文+断言护栏
-├── <b>scripts/</b>                 ★ generate 产物(可随时重建)
+│   ├── README.md                    字段契约与用法
+│   ├── contracts/*.yml              合同场景：按编号搜索 / 新建(弹层选客户) / 跨页流程
+│   └── orders/*.yml                 订单场景：跨 tab 端到端(新建退货订单 → 看详情)
+├── <b>scripts/</b>                 ★ generate 产物(可随时重建,别手改)
 │   ├── test_cases.py                生成的 pytest 用例(按操作类型翻译)
 │   ├── conftest.py                  会话级浏览器池/数据注入/变量池/断言辅助/日志
-│   └── datasets/                    ▲ 抽离出的数据(脚本⇄数据分离)
+│   └── datasets/*.json              ▲ 抽离出的数据(脚本⇄数据分离)
 ├── <b>framework/</b>                核心框架(V8.0: 只留入口 + 按业务流程分层的 tools/)
-│   ├── cli.py                       ⚙️ 命令行入口(explore/probe/generate/run/all/prune)
+│   ├── cli.py                       ⚙️ 命令行入口(probe/explore/generate/run/all/prune/setup)
 │   └── tools/                       ★ 运行期模块(区别于开发期的 build_tools/)
 │       ├── common/                   基建(零业务语义)
-│       │   ├── config.py             配置+目录常量+LLM选择(含 VERSION_SOURCE)
-│       │   ├── text_io.py            跨平台文本口径唯一入口(显式 UTF-8)
-│       │   ├── browser.py            ⚙️ Chromium 启动参数唯一来源(不降 RSS,保稳定)
-│       │   ├── limits.py             🧯 并发安全闸(按可用内存自动降级,防 OOM)
-│       │   ├── retention.py          🗄 归档保留:快照各留最近 N 个(cli prune)
-│       │   └── target_probe.py       目标可达性/并发安全预检
-│       ├── probe/                    ① 探测与定位
-│       │   ├── probe.py              ✅ [Playwright] 探测元素
-│       │   ├── element_map.py        数据契约(ElementRef/TestStep/ElementMap)
-│       │   └── locator_bridge.py     ✅ [Playwright] 语义→唯一locator(核心!)
-│       ├── explore/                  ② AI 语义识别
-│       │   ├── explorer.py           🤖 [AI] 语义识别(读场景→规划；失败即报错,不静默降级)
-│       │   └── llm_cassette.py       LLM 录像/回放(离线机器:不联网、不需 key)
-│       ├── generate/                 ③ 用例与脚本生成
-│       │   ├── generator.py          ✅ 按操作类型翻译+抽离数据→scripts/
-│       │   ├── case_builder.py       🤖 ElementMap→cases/ai_*.json 转换 + 用例质量校验(防假绿)
-│       │   ├── scenario.py           🗂 scenarios/*.yml 解析/校验/发现(需 PyYAML)
-│       │   └── data_driven.py        🧩 占位符替换+变量池+数据真展开
-│       └── run/                      ④ 执行与自愈
-│           ├── runner.py             ✅ ElementMap 场景执行引擎(集成自愈)
-│           └── healer.py             🩹 自愈闭环(再协商+业务断言兜底+可审 diff)
+│       │   ├── config.py              配置+目录常量+LLM选择(含 VERSION_SOURCE)
+│       │   ├── text_io.py             跨平台文本口径唯一入口(显式 UTF-8)
+│       │   ├── browser.py             ⚙️ Chromium 启动参数唯一来源 + 缺浏览器预检(人话报错)
+│       │   ├── limits.py              🧯 并发安全闸(按可用内存自动降级,防 OOM)
+│       │   ├── retention.py           🗄 归档保留：快照/run 分级清理(cli prune)
+│       │   └── target_probe.py        目标可达性/并发安全预检
+│       ├── probe/                     ① 探测与定位
+│       │   ├── probe.py               ✅ [Playwright] 探测元素(含行内列清单/新 tab 信号)
+│       │   ├── element_map.py         数据契约(ElementRef/TestStep/ElementMap)
+│       │   ├── locator_bridge.py      ✅ [Playwright] 语义→唯一locator(核心!)
+│       │   ├── anchor.py              📍 锚点+相对路径：把「顶层容器内下钻」表达成数据(P16)
+│       │   ├── scope_locate.py        📍 定位合成:锚点+路径 ⇒ 真实 locator(P16)
+│       │   └── semantic_locate.py     📍 语义定位入口(人写脚本的薄封装)
+│       ├── explore/                   ② AI 语义识别
+│       │   ├── explorer.py            🤖 [AI] 语义识别(读场景→规划；失败即报错,不静默降级)
+│       │   └── llm_cassette.py        LLM 录像/回放(离线机器:不联网、不需 key)
+│       ├── generate/                  ③ 用例与脚本生成
+│       │   ├── generator.py           ✅ 按操作类型翻译+抽离数据→scripts/
+│       │   ├── case_builder.py        🤖 ElementMap→cases/ai_*.json 转换 + 用例质量校验(防假绿)
+│       │   ├── scenario.py            🗂 scenarios/*.yml 解析/校验/发现(需 PyYAML)
+│       │   └── data_driven.py         🧩 占位符替换+变量池+数据真展开
+│       └── run/                       ④ 执行与自愈
+│           ├── runner.py              ✅ ElementMap 场景执行引擎(集成自愈)
+│           └── healer.py              🩹 自愈闭环(再协商+业务断言兜底+可审 diff)
 ├── <b>demo/</b>                      被测应用(靶子,8000端口)
-│   ├── app.py                       静态页面 + 内存数据 API(客户/合同/复位;/api/*)
-│   ├── contracts.html               合同管理系统页(列表/客户右模糊筛选/新建+客户弹层)
-│   └── contract_detail.html         合同详情页(读同一条真实记录;查不到的编号如实报"未找到")
+│   ├── app.py                       静态页面 + 内存数据 API(客户/合同/订单/复位;/api/*)
+│   ├── contracts.html               合同列表页(右模糊筛选/新建+客户弹层)
+│   ├── contract_detail.html         合同详情页(读同一条真实记录;查不到如实报「未找到」)
+│   ├── orders.html                  订单系统页(分页/新建订单弹层/跨 tab 入口)
+│   ├── order_detail.html            订单详情页
+│   └── todo.html                    旧版 Todo 演示页(保留)
 ├── <b>tests/</b>                     框架自身的回归测试(不是被测应用用例)
-│   ├── run_verifications.sh         二类验证统一入口(逐个跑 verify_*.py + 汇总表 + 内存闸)
-│   ├── test_*.py                    一类自测(秒级,不需 demo):CLI 契约 / UTF-8 / 断言翻译 / 质量闸 / 打包 / 门禁解耦
-│   └── verify_*.py                  二类验证(需 demo,含负向证伪):断言正负向 / 跨页 / 弹层 / 元素歧义 / 订单 / 慢目标 / 培训页同步
-├── <b>output/</b>                    ✅ 运行时证据(probe/plan/heal/trace,可清)
-├── <b>log/&lt;run_id&gt;/</b>             本次运行 逐用例 .log + report.html + traces(可清)
-├── README.md                       本框架文档
+│   ├── run_verifications.py         ★ 二类(端到端特性验证)统一入口 — Python 唯一实现,Windows 通用
+│   ├── run_acceptance.py            ★ R7 四项验收一条命令(闸门→新鲜度→自测→E2E→特性)
+│   ├── test_*.py                    一类自测(秒级,不需 demo):CLI 契约/退出码/UTF-8/断言翻译/质量闸/打包/门禁解耦/README 结构
+│   ├── verify_*.py                  二类验证(需 demo,含负向证伪):断言/跨页/弹层/订单/慢目标/录像/培训页同步
+│   ├── demo_freshness.py            demo 新鲜度闸门(改了 demo 必须重启,否则验证跑在旧页面上)
+│   ├── repo_files.py · artifacts.py 判据公共件:文件清单(非 git 环境降级) / 生成物读取(可行动诊断)
+│   ├── testid_policy.py             demo 埋点口径扫描器(只有顶层容器允许埋点,防回退)
+│   └── fixtures/*.html              夹具页(歧义页 / 零 testid 页)
 ├── <b>build_tools/</b>               ★ 开发期工具(不属于被测应用,也不进运行链)
-│   ├── pack_release.py             交付打包器: 组装 zip + 标准库自检包内产物(不达标不出包)
-│   ├── build_html.py               生成 docs/training.html 培训页(**版本号单一来源**)
-│   └── offline_explore_chain.py    离线一条命令: 录像回放 → generate → 试跑(无外网机器用)
-└── docs/training.html              ★ 这份培训文档（docs/ 里唯一的对外文档）</pre>
+│   ├── pack_release.py              交付打包器:组装 zip + 自检包内产物(不达标不出包；--with-cassettes 另打录像包)
+│   ├── build_html.py                生成 docs/training.html 培训页(**版本号单一来源**)
+│   ├── check_cassettes.py           录像体检(零成本:哪些场景没有可用录像 —— 不联网/不要 key)
+│   ├── record_cassettes.py          批量重录录像(需 key + 外网,发版前跑一次)
+│   └── offline_explore_chain.py     离线一条命令:录像回放 → generate → 试跑(无外网机器用)
+├── <b>releases/</b>                  ★ 发行说明(每版改了什么) + 交付包(包不入库)
+│   └── RELEASE_NOTES_V*.md           V7.0 起逐版:升级须知 / 改了什么 / 验证真值 / 已知遗留
+├── <b>output/</b>                    ✅ 运行时证据(element_maps/ · heals/ · traces/ · verify/;可清)
+├── <b>log/&lt;run_id&gt;/</b>             本次运行 逐用例 .log + report.html + traces(可清)
+├── <b>docs/</b>                      ★ 培训文档目录(仓库里唯一的对外文档)
+│   └── training.html                这份培训文档(由 build_tools/build_html.py 生成)
+├── README.md                        ★ 门面 + 快速上手(变更日志在 releases/)
+├── pyproject.toml · requirements.txt · requirements-ai.txt   项目配置与依赖
+├── .env.example                     LLM key 配置模板(DeepSeek)
+└── LICENSE                          MIT</pre>
   </div>
   <div style="margin-top:12px;">
     <div class="pt"><div class="ico">🧭</div><h4>新员工怎么用这份地图找东西</h4>
@@ -2510,6 +2570,61 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
 <span class="prompt">$</span> python -m framework.cli probe                       <span class="cmt"># 复验：能吐出元素清单 = 通了</span>
 </pre>
 
+  <h4 style="margin:18px 0 4px">浏览器到底装在哪儿？（离线 / 内网机器要用）</h4>
+  <table class="tbl">
+    <tr><th style="width:22%">系统</th><th>默认缓存目录</th></tr>
+    <tr><td>Windows</td><td><span class="code-inline">%USERPROFILE%\AppData\Local\ms-playwright</span>
+        <span style="color:var(--muted);font-size:.85rem">（例如 C:\\Users\\&lt;你&gt;\\AppData\\Local\\ms-playwright）</span></td></tr>
+    <tr><td>Linux</td><td><span class="code-inline">~/.cache/ms-playwright</span></td></tr>
+    <tr><td>macOS</td><td><span class="code-inline">~/Library/Caches/ms-playwright</span></td></tr>
+  </table>
+  <p style="margin:4px 0 10px;color:var(--muted);font-size:.88rem">
+    不确定就<b>让工具自己说</b>（最准）：<span class="code-inline">python -m playwright install --list</span>
+  </p>
+  <p style="margin:6px 0 10px;padding:10px 12px;border-left:3px solid #d97706;background:rgba(217,119,6,.07);border-radius:6px">
+    <b>离线 / 内网机器：四步搞定</b><br>
+    ① 找一台<b>能联网、且系统与架构相同</b>的机器，跑 <span class="code-inline">python -m playwright install chromium</span>；<br>
+    ② 把整个 <span class="code-inline">ms-playwright</span> 目录拷到目标机的同位置
+       （或放到共享目录，用 <span class="code-inline">PLAYWRIGHT_BROWSERS_PATH</span> 指过去）；<br>
+    ③ 若用了共享目录，在目标机设环境变量：<br>
+       <span class="code-inline">set PLAYWRIGHT_BROWSERS_PATH=\\server\share\ms-playwright</span>（Windows）/
+       <span class="code-inline">export PLAYWRIGHT_BROWSERS_PATH=/mnt/share/ms-playwright</span>（Linux）；<br>
+    ④ 自检：<span class="code-inline">python -m framework.cli setup --check</span> —— 报「✅ 可用（真启一次成功）」就成了。<br>
+    <span style="color:var(--muted);font-size:.88rem">
+      ⚠️ <b>三个坑</b>：Windows 与 Linux 的浏览器<b>不能混用</b>（不同构建，拷了也起不来）；
+      拷贝要<b>连 revision 号目录一起</b>拷（如 <span class="code-inline">chromium_headless_shell-1243</span>）；
+      换了 playwright 版本后，联网机器重跑 <span class="code-inline">setup --force-browser</span>、离线机器要<b>重新拷</b>对应 revision。
+    </span><br>
+    <span style="color:var(--muted);font-size:.88rem">
+      另外 <span class="code-inline">pip install</span> 本身也要联网 ⇒ 离线机器可用
+      <span class="code-inline">pip download -r requirements.txt -d wheels/</span> 预先下好 wheel，或走内网 PyPI 镜像。
+    </span>
+  </p>
+
+  <h4 style="margin:18px 0 4px">playwright 版本策略（V8.2.4 起<b>锁定</b>）</h4>
+  <table class="tbl">
+    <tr><th style="width:34%">问题</th><th>结论</th></tr>
+    <tr><td>框架挑版本吗？</td>
+        <td><b>不挑</b>。实测 1.45 / 1.62 / 1.63 三版真跑均通过；用到的 API 全部落在 1.45 之前
+            （最「新」的是 2022 年的 <span class="code-inline">get_by_role</span> / <span class="code-inline">get_by_test_id</span>）；
+            代码<b>零写死路径</b>（靠 <span class="code-inline">p.chromium.launch()</span>，路径由 playwright 自己解析）</td></tr>
+    <tr><td>那为什么锁定？</td>
+        <td>锁的是<b>可复现</b>，不是能力：不锁的话团队各装一个版本 ⇒ 期望的浏览器 revision 各不相同
+            （实测 1.45⇒1124 · 1.62⇒1234 · <b>1.63⇒1243</b>）⇒ 就会踩「包升级了、浏览器没重下」的坑。
+            锁定后大家的报错号、文档里的示例号永远对得上</td></tr>
+    <tr><td>锁死了还能升吗？</td>
+        <td>能，升级是<b>一次性、有意识的动作</b>（三步规程见下），而不是各人机器上悄悄漂移</td></tr>
+  </table>
+  <pre class="tree"><span class="cmt"># ★ 升级规程（三步走完再交付）</span>
+<span class="prompt">$</span> <span class="cmt">①</span> 改 requirements.txt 里的 pin，例如 playwright==1.63.0 → 1.64.0
+<span class="prompt">$</span> <span class="cmt">②</span> python -m framework.cli setup --force-browser      <span class="cmt"># 按新版本重下浏览器</span>
+<span class="prompt">$</span> <span class="cmt">③</span> python -m pytest tests/ -q            <span class="cmt"># 一类判据</span>
+<span class="prompt">$</span>      python tests/run_verifications.py   <span class="cmt"># 二类特性验证</span>
+</pre>
+  <p style="margin:4px 0 10px;color:var(--muted);font-size:.88rem">
+    <span class="code-inline">python -m framework.cli setup</span> 会显示「锁定版本 vs 实际版本」；
+    <b>不一致只告警不拦</b>（新版未必不能用，框架不挑版本）—— 目的是让漂移<b>看得见</b>，不是卡住你。
+  </p>
   <h4 style="margin:16px 0 4px">报错 → 怎么办（照着查）</h4>
   <table class="tbl">
     <tr><th style="width:44%">报错里的关键片段</th><th style="width:22%">真因</th><th>怎么办</th></tr>
@@ -2589,6 +2704,65 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       「每个场景都有可用录像」，<b>不过就不产包（exit 2）</b>并逐条列出缺哪个场景 + 修法命令 ——
       录像包不会再「发出去了才发现是废包」。调试绕过：<code>--allow-missing-cassettes</code>（交付永不用）。
     </p>
+
+  <h3 style="margin:26px 0 6px">9.1 环境变量与运行开关（需要时查，不设就用默认值）</h3>
+  <p style="margin:6px 0 10px;color:var(--muted);font-size:.9rem">
+    绝大多数场景<b>一个都不用改</b>。下表按「最可能用到的排前面」列全（默认值取自代码）；
+    <b>命令行参数优先于环境变量</b>（如 <span class="code-inline">--workers</span> / <span class="code-inline">--debug</span> / <span class="code-inline">--isolated-target</span>）。
+  </p>
+  <table class="tbl">
+    <tr><th style="width:36%">环境变量</th><th style="width:16%">默认</th><th>作用（什么时候用它）</th></tr>
+    <tr><td><span class="code-inline">HYBRID_BASE_URL</span></td><td>未设（用用例里的地址）</td>
+        <td><b>换目标</b>：同一套用例跑本机 / 慢代理 / 预发环境（生成脚本的 <span class="code-inline">goto</span> 统一走 <span class="code-inline">_goto()</span> 替换 scheme + host）</td></tr>
+    <tr><td><span class="code-inline">HYBRID_RESET_URL</span></td><td><span class="code-inline">http://localhost:8000/api/reset</span></td>
+        <td><b>用例间数据复位</b>（每条用例前 POST 一次）；<span class="code-inline">off</span> / <span class="code-inline">0</span> / 空 = 不复位</td></tr>
+    <tr><td><span class="code-inline">HYBRID_CASE_TIMEOUT</span></td><td><span class="code-inline">120</span></td>
+        <td><b>用例级看门狗</b>（秒）：超时把调用栈写进 <span class="code-inline">log/&lt;run_id&gt;/watchdog.txt</span> 并退出；<span class="code-inline">0</span> / <span class="code-inline">off</span> = 关</td></tr>
+    <tr><td><span class="code-inline">HYBRID_LOCATE_TIMEOUT</span></td><td><span class="code-inline">5000</span></td>
+        <td><b>定位有界等待</b>（毫秒）：主定位等「元素 attached」的上限，超时才降到语义兜底 / 自愈 —— <b>慢页面调大它</b></td></tr>
+    <tr><td><span class="code-inline">HYBRID_SELF_HEAL</span></td><td><span class="code-inline">1</span></td>
+        <td><span class="code-inline">0</span> = 关掉语义兜底与自愈 ⇒ <b>失败即报</b>（CI 想要严格语义时用）</td></tr>
+    <tr><td><span class="code-inline">HYBRID_STRICT_LOCATE</span></td><td>未设（关）</td>
+        <td><span class="code-inline">1</span> = 连「唯一候选」的模糊兜底也不要（更严；排查「到底兜了没」时开）</td></tr>
+    <tr><td><span class="code-inline">HYBRID_RUN_ID</span></td><td><span class="code-inline">latest</span>（cli 自动生成时间戳）</td>
+        <td>运行日志目录名：<span class="code-inline">log/&lt;run_id&gt;/</span></td></tr>
+    <tr><td><span class="code-inline">HYBRID_WAIT_READY</span></td><td><span class="code-inline">1</span></td>
+        <td><span class="code-inline">0</span> = 回滚到「goto 后不等就绪」的旧行为（排查用）</td></tr>
+    <tr><td><span class="code-inline">HYBRID_READY_TIMEOUT</span> · <span class="code-inline">HYBRID_READY_SELECTOR</span> · <span class="code-inline">HYBRID_READY_REQUIRED</span></td>
+        <td><span class="code-inline">15000</span> · 空 · <span class="code-inline">0</span></td>
+        <td>等页面就绪的上限（毫秒）· 页面<b>没有就绪契约</b>时用它当「数据已就绪」信号 · <span class="code-inline">1</span> = 就绪超时直接失败</td></tr>
+    <tr><td><span class="code-inline">HYBRID_MB_PER_WORKER</span> · <span class="code-inline">HYBRID_RESERVE_MB</span></td>
+        <td><span class="code-inline">550</span> · <span class="code-inline">450</span></td>
+        <td>并发裁定的预算公式（每 worker 预算 / 留给网关 + OS 的余量）—— 内存宽裕的机器可调大换速度</td></tr>
+    <tr><td><span class="code-inline">HYBRID_ISOLATED_TARGET</span> · <span class="code-inline">HYBRID_PARTITION</span></td>
+        <td><span class="code-inline">0</span> · worker 名</td>
+        <td><span class="code-inline">1</span> = 声明「目标已按 worker 隔离数据」⇒ <b>放行并发</b>（等价 <span class="code-inline">--isolated-target</span>）· 手动指定数据分区</td></tr>
+    <tr><td><span class="code-inline">HYBRID_JS_HEAP_MB</span></td><td>未设（不开）</td>
+        <td>限制渲染进程 V8 堆上限；重业务页压狠了会把 tab 顶崩，<b>非必要别开</b></td></tr>
+    <tr><td><span class="code-inline">HYBRID_TAB_TIMEOUT</span> · <span class="code-inline">HYBRID_TAB_CLOSE_STRICT</span></td>
+        <td><span class="code-inline">8000</span> · <span class="code-inline">1</span></td>
+        <td>跨 tab 场景：等新 tab 出现的上限（毫秒）· <span class="code-inline">0</span> = 不校验「tab 真的关掉了」</td></tr>
+    <tr><td><span class="code-inline">HYBRID_LLM_ATTEMPTS</span></td><td><span class="code-inline">3</span></td>
+        <td>LLM 调用退避重试次数（DeepSeek function calling 有间歇性 JSON 抖动）</td></tr>
+    <tr><td><span class="code-inline">HYBRID_LAYER_ROUNDS</span> · <span class="code-inline">HYBRID_LAYER_TRIES</span> · <span class="code-inline">HYBRID_LAYER_CLICKS</span></td>
+        <td><span class="code-inline">4</span> · <span class="code-inline">8</span> · <span class="code-inline">8</span></td>
+        <td>弹层探测预算：轮次 / 每轮尝试数 / 每轮点击上限（层级深的页面可调大，代价是 token 与时间）</td></tr>
+    <tr><td><span class="code-inline">HYBRID_KEEP_SNAPSHOTS</span></td><td><span class="code-inline">20</span></td>
+        <td><span class="code-inline">output/element_maps/</span> 的快照各留最近 N 个（explore / probe 结束自动静默清理）</td></tr>
+    <tr><td><span class="code-inline">HYBRID_KEEP_RUNS</span> · <span class="code-inline">HYBRID_KEEP_RUN_DAYS</span></td>
+        <td><span class="code-inline">30</span> · <span class="code-inline">7</span></td>
+        <td>归档保留口径：保留「最近 30 个 run ∪ 7 天」；超龄的<b>只有能证明成功才整删</b>，失败 / 历史只瘦身</td></tr>
+    <tr><td><span class="code-inline">HYBRID_MAX_DELETE_PER_PRUNE</span> · <span class="code-inline">HYBRID_MAX_FREE_MB</span></td>
+        <td><span class="code-inline">20</span> · <span class="code-inline">100</span></td>
+        <td>单次清理上限（个数 / 释放 MB）—— 防「策略写错一夜清空」</td></tr>
+    <tr><td><span class="code-inline">HYBRID_NO_AUTO_PRUNE</span></td><td>未设</td>
+        <td><span class="code-inline">1</span> = 关掉 run / generate 结束时的自动清理</td></tr>
+    <tr><td><span class="code-inline">HYBRID_SKIP_BROWSER_CHECK</span></td><td>未设</td>
+        <td><span class="code-inline">1</span> = 跳过启动前的浏览器预检（已确认环境没问题时）</td></tr>
+    <tr><td><span class="code-inline">HYBRID_HEADED</span> · <span class="code-inline">HYBRID_VIDEO</span> · <span class="code-inline">HYBRID_SHOTS</span> · <span class="code-inline">HYBRID_SLOWMO</span></td>
+        <td>未设</td>
+        <td>不用 cli 跑时的调试开关（等价 <span class="code-inline">--debug</span> / <span class="code-inline">--slowmo</span>）：<span class="code-inline">HYBRID_HEADED=1</span> 有头 · <span class="code-inline">VIDEO/SHOTS=1</span> 录像 + 逐步截图 · <span class="code-inline">SLOWMO=500</span> 放慢（<b>都别配 <span class="code-inline">-n</span></b>）</td></tr>
+  </table>
   </div>
 </section>
 

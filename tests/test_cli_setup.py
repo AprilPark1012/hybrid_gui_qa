@@ -82,3 +82,58 @@ def test_unknown_flag_still_rejected():
     rc, out = _run(["setup", "--check-browser"])
     assert rc == 2, f"乱写的参数必须报错退出 2（拿到 {rc}）"
     assert "不认识的参数" in out
+
+
+# ---------- V8.2.4：版本锁定与漂移可见性 ----------
+
+def _load_cli():
+    import importlib
+    import sys
+    sys.path.insert(0, str(REPO))
+    return importlib.import_module("framework.cli")
+
+
+def test_pinned_playwright_reads_exact_pin(tmp_path):
+    """能从 requirements.txt 读出 `playwright==X` 的锁定版本。"""
+    (tmp_path / "requirements.txt").write_text(
+        "# 注释\nplaywright==1.63.0\npytest>=8.0\n", encoding="utf-8")
+    assert _load_cli()._pinned_playwright(tmp_path) == "1.63.0"
+
+
+def test_pinned_playwright_ignores_range_and_missing(tmp_path):
+    """★边界：范围约束（>=/~/…）**不算**锁定；没有文件/被注释掉也不算（别把"没锁"误判成"锁了"）。"""
+    cli = _load_cli()
+    (tmp_path / "requirements.txt").write_text("playwright>=1.45\n", encoding="utf-8")
+    assert cli._pinned_playwright(tmp_path) is None, "范围约束不是锁定"
+    (tmp_path / "requirements.txt").write_text("# playwright==1.63.0\n", encoding="utf-8")
+    assert cli._pinned_playwright(tmp_path) is None, "注释掉的不算"
+    empty = tmp_path / "nodir"
+    empty.mkdir()
+    assert cli._pinned_playwright(empty) is None, "没有 requirements.txt 不该炸"
+
+
+def test_repo_requirements_pins_playwright():
+    """★回归：本项目 requirements.txt 必须**锁定** playwright（V8.2.4 的决定，别被改回范围）。"""
+    text = (REPO / "requirements.txt").read_text(encoding="utf-8")
+    active = [ln.split("#", 1)[0].strip() for ln in text.splitlines()]
+    pins = [ln for ln in active if ln.startswith("playwright==")]
+    assert pins, f"requirements.txt 里 playwright 没有锁定（应为 playwright==X）：{active[:6]}"
+
+
+def test_version_report_warns_on_mismatch():
+    """★核心：版本对不上必须**告警 + 给对齐命令**（且不能说成错误 —— 新版未必不能用）。"""
+    cli = _load_cli()
+    lines = "\n".join(cli._version_report("1.63.0", "1.64.0"))
+    assert "不一致" in lines, "版本漂移必须看得见"
+    assert "--force-browser" in lines, "必须给出可照抄的对齐命令"
+    assert "不是错" in lines, "不能把版本漂移说成错误（框架不挑版本）"
+    ok = "\n".join(cli._version_report("1.63.0", "1.63.0"))
+    assert "一致" in ok and "⚠️" not in ok
+
+
+def test_version_report_edge_cases():
+    """边界：只装没锁 / 只锁没装 / 都没有 —— 都不能炸。"""
+    cli = _load_cli()
+    assert "没锁" in "\n".join(cli._version_report(None, "1.63.0"))
+    assert "未装" in "\n".join(cli._version_report("1.63.0", None))
+    assert cli._version_report(None, None) == []

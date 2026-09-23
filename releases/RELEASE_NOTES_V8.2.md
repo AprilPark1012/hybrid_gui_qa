@@ -94,3 +94,34 @@ python tests/run_verifications.py --jobs 2 --timeout-s 1200
 - 二类需要 **≥550MB MemAvailable** 才能起 Chromium，低于则**整套 SKIP（≠ 通过）**；
   差几 MB 时**别改闸门值硬闯** —— 要么腾内存，要么如实记 SKIP。
 - 演示站点：`python demo/app.py`（默认 8000）。
+
+---
+
+## 八、附：同日先落地的一轮修复（本地验收环境适配 · 未单独发版）
+
+> **为什么附录在这里**：这一轮（2026-09-22 **上午**）先于 V8.2 落地、当时**未单独发版**，
+> 直接被 V8.2 吸收（V8.2 的 **421 passed** 已包含它新增的那批判据）。README 重排把「变更要点」
+> 章节归并进发行说明，故补记于此（2026-09-23）。
+
+**背景**：现场（**Windows + 交付包解压目录**）跑 `python -m pytest tests/ -q` = **19 failed / 258 passed**。
+逐条定位后：**19 红 = 4 类真 bug + 1 类现场状态** —— 其中 9 条「生成物缺接线」是那两个产物文件
+**为 0 字节**所致（包内产物经 `zipfile` 核对完好，不是框架问题）。
+
+| # | 根因（都有复现证据） | 修法 |
+|---|---|---|
+| ① | 生成物**为空 / 缺失**时，9 条契约判据各报一句「缺接线」/「没有 `_goto`」，完全看不出真因 | 新增 `tests/artifacts.py`：产物不存在或 0 字节 ⇒ 第一句就说清 + 给出下一步（`cli generate` / 重新解压） |
+| ② | 两条判据用 `git ls-files` 取文件清单 ⇒ **非 git 目录**（交付包解压目录）直接 exit 128 报红 | 新增 `tests/repo_files.py`：git 可用走 git 口径（**含未跟踪但不被忽略**），不可用**降级为文件树扫描**，判据照常判 |
+| ③ | `tests/demo_freshness.py` 只认 `/proc` ⇒ **Windows 上整条闸门不可用**（5 条红，`os.sysconf` 同样不存在） | 进程与启动时刻按平台取（Linux `/proc` · Windows PowerShell · 其它 `ps`）；**拿不到就报 `unknown`（退出码 5）** —— 既不当 fresh（假绿），也不当 no_process（那会诱导重启一个其实在跑的 demo） |
+| ④ | 「连不上目标」的文案只覆盖 `ConnectionRefused`；**Windows 抛 `TimeoutError`** ⇒ 恰好丢掉「先起 `python -m demo.app`」这唯一一句下一步 | 任何连不上（拒连 / 超时 / DNS / 泛 OSError）统一文案（`target_probe.unreachable_hint`），原因保留作括注 |
+| ⑤ | GBK 复现判据依赖「模拟出 GBK 默认编码」，在**真中文 Windows** 上反而「未复现」而自判失去意义 | 拆两条：**机理判据**（上游 UTF-8 + 下游 gbk ⇒ 必炸 `0xbb@13`，任何平台都跑、永不 SKIP）+ **真实默认编码路径**（Windows 上未复现时打印诊断、不红；POSIX 上仍必须复现） |
+
+| 项 | 结果 |
+|---|---|
+| 一类自测 | `pytest tests/ -q` **317 passed**（原 292 ⇒ +25 条判据，其中 12 条负向自证） |
+| 非 git 副本实测 | 模拟「交付包解压目录」：**315 passed / 2 skipped / exit 0**（两条 SKIP 各带明确原因） |
+| 环境前提 | 一类自测现在**要求**在 Windows / 非 git 目录 / demo 没起时都能跑；拿不到的如实标注，**SKIP ≠ 通过** |
+| Windows 真机验收 | ⚠️ 由使用者跑（我方只有 Linux，**不假装验过**）；Windows 分支逻辑已由「注入假命令输出」的判据覆盖 |
+
+**做法口径**：受限环境**降级为等效可用**、不报错退出；「读不到」不许当「通过」，也不许当「没有」——
+一律如实标注（SKIP 打印原因 / `unknown` 走独立退出码）。
+

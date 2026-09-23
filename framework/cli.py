@@ -1071,6 +1071,8 @@ def cmd_setup(argv: list[str]) -> int:
     print(f"\n[setup] 目标解释器：{py}")
     print(f"[setup] 模式：{'只体检（--check）' if check_only else '安装'}"
           f"{' · 浏览器强制重下（--force-browser）' if force else ''}")
+    for _ln in _version_report(_pinned_playwright(repo_root), _installed_playwright()):
+        print(_ln)
 
     ok = True
 
@@ -1142,6 +1144,49 @@ def cmd_setup(argv: list[str]) -> int:
         return 0
     print("\n[setup] ❌ 环境还没就绪（上面有原因）；修好后重跑 python -m framework.cli setup")
     return 2
+
+
+def _version_report(pin: str | None, inst: str | None) -> list[str]:
+    """给 `setup` 打印「锁定版本 vs 实际版本」这几行（抽成纯函数 ⇒ 好做负向判据）。
+
+    不一致时**只告警不拦**：新版 playwright 未必不能用（框架本身不挑版本），
+    但「包升了、浏览器没重下」是踩坑的头号原因（期望的 revision 号会变）——所以要让漂移**看得见**。
+    """
+    if pin and inst:
+        if pin == inst:
+            return [f"[setup] playwright 版本：锁定 {pin} · 环境 {inst}   ✅ 一致"]
+        return [
+            f"[setup] playwright 版本：锁定 {pin} · 环境 {inst}   ⚠️ 不一致",
+            "[setup]   不是错，但浏览器可能对不上（期望的 revision 号会变）；要对齐就：",
+            "[setup]       python -m framework.cli setup --force-browser",
+        ]
+    if inst:
+        return [f"[setup] playwright 版本：环境 {inst}（requirements.txt 里没锁）"]
+    if pin:
+        return [f"[setup] playwright 版本：锁定 {pin} · 环境未装（先跑 python -m framework.cli setup）"]
+    return []
+
+
+def _pinned_playwright(repo_root) -> str | None:
+    """从 `requirements.txt` 读 playwright 的锁定版本（`playwright==X`；没锁/读不到 ⇒ None）。"""
+    try:
+        text = (repo_root / "requirements.txt").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if line.startswith("playwright=="):
+            return line.split("==", 1)[1].strip() or None
+    return None
+
+
+def _installed_playwright() -> str | None:
+    """当前环境里 playwright 的实际版本（没装 ⇒ None）。"""
+    try:
+        import importlib.metadata as md
+        return md.version("playwright")
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _can_import(name: str) -> bool:

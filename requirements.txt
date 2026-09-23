@@ -1,6 +1,10 @@
 # 核心运行依赖：跑通 mock 全链路 + 回归执行 + 数据驱动并发用例
 # （browser-use 是 AI 探索【可选】，见 requirements-ai.txt）
-playwright>=1.45
+# ★ 锁定版本（2026-09-23，V8.2.4）：不锁的话团队各装一个版本 ⇒ 期望的浏览器 revision
+#   各不相同（实测：1.45⇒1124 / 1.62⇒1234 / 1.63⇒1243），踩“playwright 升级了、浏览器没重下”的坑。
+#   框架本身**不挑版本**（API 面全落在 1.45 之前、代码零写死路径），锁的是「可复现」不是「能力」。
+#   升级规程：① 改这里的版本 → ② python -m framework.cli setup --force-browser → ③ 跑两类验证（一类 + 二类）
+playwright==1.63.0
 python-dotenv>=1.0
 pytest>=8.0
 # P5 数据驱动 pytest 用例：并发执行 + 报告

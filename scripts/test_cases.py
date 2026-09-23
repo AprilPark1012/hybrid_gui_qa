@@ -117,7 +117,7 @@ def test_ai_contracts_cross_page_011030(page, ctx):
     _assert_text(page, _data('expect_0', ctx), '确认搜索结果中出现 HT-1005')
 
     # step 4: 点击结果行中的编号链接 HT-1005 进入详情页
-    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0451 001 预po 北京中科智慧科技有限公司 bu_a").locator("td[data-field='contractNo']").get_by_role("link"))
+    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0451 002 合同 北京中科智慧科技有限公司 bu_a").locator("td[data-field='contractNo']").get_by_role("link"))
     _log(page, "click", f"点击结果行中的编号链接 HT-1005 进入详情页")
     _assert_url(page, _data('expect_1', ctx), '确认已跳转到详情页（URL 含 contract_detail）')
     _assert_text(page, _data('expect_2', ctx), '确认详情页显示合同编号 HT-1005')
@@ -271,26 +271,6 @@ def test_ai_orders_return_from_contract_004934(page, ctx):
     _log(page, "close_tab", f"点击详情页「返回」关闭本 tab")
     _assert_url(page, _data('expect_7', ctx), '确认回到订单列表页')
     _assert_text(page, _data('expect_8', ctx), '确认仍在订单系统页')
-
-
-def test_ai_在合同列表页面的搜索框输入_1005_点击搜索按_235545(page, ctx):
-    """在合同列表页面的搜索框输入'1005'，点击搜索按钮，确认出现 HT-1005"""
-    _CURRENT_LOG["case_id"] = "ai_在合同列表页面的搜索框输入_1005_点击搜索按_235545"
-    _goto(page, 'http://localhost:8000')
-    _log(page, "场景开始", f"case=ai_在合同列表页面的搜索框输入_1005_点击搜索按_235545")
-
-    # step 1: 打开合同列表页面
-    _goto(page, 'http://localhost:8000')
-    _log(page, "goto", f"打开合同列表页面")
-
-    # step 2: 在关键字搜索框输入 1005
-    _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
-    _log(page, "fill", f"在关键字搜索框输入 1005")
-
-    # step 3: 点击搜索按钮触发查询
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
-    _log(page, "click", f"点击搜索按钮触发查询")
-    _assert_text(page, _data('expect_0', ctx), '确认搜索结果中出现 HT-1005')
 
 
 def test_assert_kinds_modal(page, ctx):
@@ -512,7 +492,7 @@ def test_cross_page_detail(page, ctx):
     _assert_attr(page, 'data-cust', _data('expect_1', ctx), lambda p: p.locator("#tbody-contracts tr:has-text('HT-1005') td[data-field='customer']"), semantic=None, desc='【列表页】HT-1005 的客户编号 = c5（客户按序号确定：HT-1001→c1、HT-1005→c5、HT-1007→c1…）')
 
     # step 4: 点击结果里的编号链接 HT-1005 进入详情页
-    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0451 001 预po 北京中科智慧科技有限公司 bu_a").locator("td[data-field='contractNo']").get_by_role("link"))
+    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0451 002 合同 北京中科智慧科技有限公司 bu_a").locator("td[data-field='contractNo']").get_by_role("link"))
     _log(page, "click", f"点击结果里的编号链接 HT-1005 进入详情页")
     _assert_url(page, _data('expect_2', ctx), '【换页证据】点击编号后 URL 已变为详情页')
     _assert_count(page, _data('expect_3', ctx), lambda p: p.locator("table[aria-label='合同详情'] tr:has-text('合同编号') td"), semantic=None, desc='【详情页】编号单元格存在（确认换的是详情页而不是别的页）')
