@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.2.2）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.2.3）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup>★</sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.2.2 · 2026-09-23　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.2.3 · 2026-09-23　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1419,6 +1419,16 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
   <h2 class="sec-title"><span class="n">9</span>动手跑一遍</h2>
   <p class="sec-sub">先起被测应用，再跑链路。没 key 也能玩 mock。</p>
   <h3 style="margin:24px 0 6px">9.0 装环境三件事（第一次跑之前必做 —— <b>漏第三步必报错</b>）</h3>
+  <p style="margin:6px 0 10px;padding:10px 12px;border-left:3px solid #0f8f6a;background:rgba(15,143,106,.07);border-radius:6px">
+    <b>省事做法：一条命令全搞定</b>
+    <span class="code-inline" style="margin-left:6px">python -m framework.cli setup</span><br>
+    <span style="color:var(--muted);font-size:.88rem">
+      它会按顺序做完下面三件事，最后<b>真启一次 chromium 自检</b>，就绪了才说 OK；
+      只想看环境缺什么不安装，加 <span class="code-inline">--check</span>；
+      playwright 包换过版本（报错里的 revision 号变了）加 <span class="code-inline">--force-browser</span>。
+      下面这三步是它做的事，理解原理用；<b>手工装也行，别漏第三步</b>。
+    </span>
+  </p>
   <table class="tbl">
     <tr><th style="width:8%">#</th><th style="width:30%">做什么</th><th>命令</th></tr>
     <tr><td>①</td><td>建虚拟环境（隔离依赖）</td>
@@ -1536,9 +1546,32 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.2.2</b>（2026-09-23）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.2.3</b>（2026-09-23）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.2.2</span><span class="cl-date">2026-09-23</span><span class="cl-tag">当前版本</span><span class="cl-theme">开箱即用：<b>浏览器预检</b>（缺了就给人话 + 一行修复命令）· 培训页补「装环境三件事」</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.2.3</span><span class="cl-date">2026-09-23</span><span class="cl-tag">当前版本</span><span class="cl-theme">一条命令搞定环境（<code>cli setup</code>）+ 修「分发丢弃返回值」导致的<b>退出码空转</b></span></div>
+      <p class="cl-sum">接着 V8.2.2 的真机问题往下挖：新人会漏「装浏览器」这一步，光有友好报错还不够 —— 得让<b>根本没机会漏</b>。新增 <code>python -m framework.cli setup</code>：按顺序装依赖 → 装浏览器 → <b>真启一次 chromium 自检</b>，缺什么当场说、失败即非 0 退出。<br>同时修掉一个<b>潜伏很久</b>的缺陷：<code>main()</code> 的分发是 8 个裸调用，<b>返回值被丢弃</b> ⇒ <code>cmd_generate</code> 里 <code>DanglingDatasetError</code> 的 <code>return 2</code> 是<b>空转</b>（报了错却告诉调用方成功）。同族另外三个错误（<code>_report_unmapped</code> / <code>_report_data_sets</code> / <code>_report_case_quality</code>）都是 <code>-> NoReturn</code> 直接 raise，只有那一条走 return。</p>
+      <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
+        <li><b><code>cli setup</code></b>：一条命令做完「装依赖 + 装浏览器 + 自检」，新人只要记这一条；就绪后直接提示下一条命令（<code>probe</code> / <code>all</code>）</li>
+        <li><b><code>setup --check</code></b>：只体检不安装（只读）—— 分段报告依赖 / 浏览器，坏在哪一目了然</li>
+        <li><b><code>setup --force-browser</code></b>：playwright 包换过版本时强制重下浏览器（<code>--force-workers</code> 是另一件事，故本参数专门起名避免混淆）</li>
+        <li><b><code>setup --with-ai</code></b>：连 AI 依赖（<code>requirements-ai.txt</code>）一起装</li>
+        <li>培训页 9.0 开头新增「省事做法：一条命令全搞定」提示块（手工三步保留，讲清原理）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
+        <li><b>⚠️ 行为变更（唯一一处）</b>：<b>子命令返回非 0 ⇒ 进程就非 0</b>。修前该值被丢弃；受影响的只有 <code>cmd_generate</code> 的 <code>DanglingDatasetError</code> 分支（L15 产物自洽闸）—— 它此前<b>声称</b> exit 2，实际 exit 0，现在名副其实。其余子命令不 return 非 0 值，退出码不变。</li>
+        <li>预检报错文案改为首推「一条命令」：<code>python -m framework.cli setup</code>（原来只给 <code>playwright install chromium</code>）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
+        <li><b>退出码空转</b>（潜伏缺陷）：「拒绝产出跑不通的产物」这条闸门报了错，调用方却收到 exit 0 ⇒ 自动化脚本会误判成功。现在分发层统一采纳返回值（根因修复，非贴膏药）。</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
+        <li><b>为什么在分发层修</b>：不只是让这一条生效 —— 以后任何子命令 return 非 0，调用方都看得见；而 <code>raise SystemExit</code> 的老写法继续有效（两者并存不冲突）。</li>
+        <li>真值：一类 <b>432</b> passed / 0 red（本版新增 5 条 <code>cli setup</code> 判据：正常 0 / 缺浏览器非 0 / <code>--check</code> 只读 / <code>--help</code> 已注册 / 乱写参数被拦）· <code>setup --check</code> 负向实测：缺浏览器 ⇒ 提示 + <b>exit 2</b> ✓ · <code>cli --version</code> → v8.2.3 · 培训页 <b>225.5</b> KB</li>
+        <li><b>版本策略</b>：<code>requirements.txt</code> 的 <code>playwright</code> 约束与 playwright revision 号的关系已实测清楚（1.45⇒1124 · 1.62⇒1234 · 1.63⇒1243），是否锁定待拍板（不影响本版功能）。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.2.2</span><span class="cl-date">2026-09-23</span><span class="cl-tag">上一版本</span><span class="cl-theme">开箱即用：<b>浏览器预检</b>（缺了就给人话 + 一行修复命令）· 培训页补「装环境三件事」</span></div>
       <p class="cl-sum">真机踩坑驱动的一版 —— 在新机器（Windows 首次部署）上跑 <code>explore</code> / <code>generate</code> / <code>run</code>，三条命令<b>各炸一次</b>，抛的都是 Playwright 原始异常栈：<code>BrowserType.launch: Executable doesn't exist at …ms-playwright\chromium_headless_shell-1243\…</code>。真因是<b>没装浏览器</b>（依赖装完 ≠ 浏览器装好），但报错完全不提「该跑哪条命令」。<br>本版把这件事从“靠经验”变成“框架自己会说话”：<b>开跑前先探一次浏览器</b>，缺了当场给<b>一行修复命令</b> + exit 2；培训页也把这一步写进必做三件事。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>浏览器预检</b>（<code>framework/tools/common/browser.py::ensure_browser_installed</code>）：<code>probe / generate / explore / run / all</code> 开跑前探一次 chromium —— 缺浏览器（或 playwright 升级后浏览器没跟着下）⇒ 打印<b>缺什么 + 期望路径 + 当前 playwright 版本 + 一行修复命令</b>，<b>exit 2</b>；绝不把 Playwright 的原始异常栈甩给用户</li>
@@ -2011,7 +2044,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.2.2</b>（2026-09-23）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.2.3</b>（2026-09-23）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>

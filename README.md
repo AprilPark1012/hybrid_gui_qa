@@ -1,8 +1,8 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.2.2**（2026-09-23 · 开箱即用：**浏览器预检**（缺了就给人话 + 一行修复命令）+ 培训页补「装环境三件事」）· 版本号单一来源：`build_tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
+> 当前版本 **V8.2.3**（2026-09-23 · 一条命令搞定环境 `cli setup`（装依赖 + 装浏览器 + 自检）+ 修「分发丢弃返回值」导致的退出码空转）· 版本号单一来源：`build_tools/build_html.py` 顶部 `VERSION`/`CHANGELOG`
 > （路径只在 `framework/tools/common/config.py::VERSION_SOURCE` 定义一次，cli / llm_cassette / 打包器共用）
-> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V8.2.2.md`（V8.2.1 见 `RELEASE_NOTES_V8.2.1.md`）
+> （`python -m framework.cli --version` 也读它）。本次变更见 `releases/RELEASE_NOTES_V8.2.3.md`（V8.2.2 见 `RELEASE_NOTES_V8.2.2.md`）
 > （**口径 C：只有顶层容器才允许埋点**，页面与弹层同一口径 · 零 testid 下的定位与下钻）；
 > ⚠️ **口径是硬判据**：页面里控件层若仍带 `testid`，判据会直接报违规（有意如此 —— 口径不一致时宁可报错）；
 > ⚠️ 上一版 **V8.0 是破坏性结构变更**（`framework/tools/{common,probe,explore,generate,run}/` 业务流程分层），
@@ -118,6 +118,29 @@ cases/用例.json(写死数据) ──┐                          ┌──▶ 
 > 需 DeepSeek key（AI 语义识别链路）：在项目根 `.env` 配 `DEEPSEEK_API_KEY`（见「快速上手·第4节」）。
 
 ---
+
+## 2026-09-23（第二次）变更要点 —— 一条命令搞定环境（V8.2.3）
+
+**一句话**：光有友好报错还不够，得让人**根本没机会漏**装浏览器这步 —— 新增
+`python -m framework.cli setup`（装依赖 → 装浏览器 → **真启一次 chromium 自检**）；
+同时修掉一个潜伏很久的**退出码空转**缺陷。
+
+**新增**
+- `cli setup`：一条命令做完三件事，就绪了才说 OK；失败即 exit 2 并打尾部输出。
+- `setup --check`：**只体检不安装**（只读）—— 分段报告依赖 / 浏览器。
+- `setup --force-browser`：playwright 包换过版本时强制重下浏览器（避开 `--force-workers` 的歧义）。
+- `setup --with-ai`：连 `requirements-ai.txt` 一起装。
+- 预检报错文案改为**首推这一条命令**。
+
+**修复（⚠️ 本版唯一行为变更）**
+- `main()` 的分发是 8 个裸调用、**丢弃返回值** ⇒ `cmd_generate` 里 `DanglingDatasetError`
+  的 `return 2` **空转**（L15 产物自洽闸"报了错却告诉调用方成功"）。
+  同族另三个错误都是 `-> NoReturn` 直接 raise，只有它走 return。
+- 修在**分发层**（根因）：子命令 `return` 非 0 ⇒ 进程非 0。其余子命令退出码不变。
+
+**真值**：一类 **432 passed / 0 red**（新增 5 条 `cli setup` 判据）· `setup --check` 缺浏览器
+⇒ **exit 2**（修前 exit 0）· `verify_html_sync` 逐字节 ✓ · 培训页 **225.5 KB** ·
+`cli --version` → **v8.2.3 (2026-09-23)**。
 
 ## 2026-09-23 变更要点 —— 浏览器预检 + 装环境三件事（V8.2.2）
 

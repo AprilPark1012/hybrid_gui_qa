@@ -123,7 +123,9 @@ def _browser_missing_message(raw: str) -> str:
     if ver:
         lines.append(f"   当前 playwright 版本：{ver}")
     lines += [
-        "   一行修好（装完即可跑）：",
+        "   一条命令搞定（推荐；会装依赖 + 浏览器，再自检一遍）：",
+        "       python -m framework.cli setup",
+        "   或只装浏览器：",
         "       python -m playwright install chromium",
         "   说明：这条命令会同时装 chromium 与无头模式用的 chromium-headless-shell；",
         "         若刚升级过 playwright（报错里的 revision 号变了），用 --force 强制重下：",

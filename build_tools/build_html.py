@@ -56,11 +56,55 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.2.2"
+VERSION = "8.2.3"
 VERSION_DATE = "2026-09-23"
 CHANGELOG = [
     dict(
-        version="8.2.2", date="2026-09-23", tag="当前版本",
+        version="8.2.3", date="2026-09-23", tag="当前版本",
+        theme="一条命令搞定环境（<code>cli setup</code>）+ 修「分发丢弃返回值」导致的<b>退出码空转</b>",
+        summary="接着 V8.2.2 的真机问题往下挖：新人会漏「装浏览器」这一步，光有友好报错还不够 —— "
+                "得让<b>根本没机会漏</b>。新增 <code>python -m framework.cli setup</code>："
+                "按顺序装依赖 → 装浏览器 → <b>真启一次 chromium 自检</b>，缺什么当场说、失败即非 0 退出。<br>"
+                "同时修掉一个<b>潜伏很久</b>的缺陷：<code>main()</code> 的分发是 8 个裸调用，"
+                "<b>返回值被丢弃</b> ⇒ <code>cmd_generate</code> 里 <code>DanglingDatasetError</code> 的 "
+                "<code>return 2</code> 是<b>空转</b>（报了错却告诉调用方成功）。"
+                "同族另外三个错误（<code>_report_unmapped</code> / <code>_report_data_sets</code> / "
+                "<code>_report_case_quality</code>）都是 <code>-> NoReturn</code> 直接 raise，只有那一条走 return。",
+        added=[
+            "<b><code>cli setup</code></b>：一条命令做完「装依赖 + 装浏览器 + 自检」，"
+            "新人只要记这一条；就绪后直接提示下一条命令（<code>probe</code> / <code>all</code>）",
+            "<b><code>setup --check</code></b>：只体检不安装（只读）—— 分段报告依赖 / 浏览器，坏在哪一目了然",
+            "<b><code>setup --force-browser</code></b>：playwright 包换过版本时强制重下浏览器"
+            "（<code>--force-workers</code> 是另一件事，故本参数专门起名避免混淆）",
+            "<b><code>setup --with-ai</code></b>：连 AI 依赖（<code>requirements-ai.txt</code>）一起装",
+            "培训页 9.0 开头新增「省事做法：一条命令全搞定」提示块（手工三步保留，讲清原理）",
+        ],
+        changed=[
+            "<b>⚠️ 行为变更（唯一一处）</b>：<b>子命令返回非 0 ⇒ 进程就非 0</b>。"
+            "修前该值被丢弃；受影响的只有 <code>cmd_generate</code> 的 <code>DanglingDatasetError</code> 分支"
+            "（L15 产物自洽闸）—— 它此前<b>声称</b> exit 2，实际 exit 0，现在名副其实。"
+            "其余子命令不 return 非 0 值，退出码不变。",
+            "预检报错文案改为首推「一条命令」：<code>python -m framework.cli setup</code>"
+            "（原来只给 <code>playwright install chromium</code>）",
+        ],
+        fixed=[
+            "<b>退出码空转</b>（潜伏缺陷）：「拒绝产出跑不通的产物」这条闸门报了错，"
+            "调用方却收到 exit 0 ⇒ 自动化脚本会误判成功。现在分发层统一采纳返回值（根因修复，非贴膏药）。",
+        ],
+        notes=[
+            "<b>为什么在分发层修</b>：不只是让这一条生效 —— 以后任何子命令 return 非 0，调用方都看得见；"
+            "而 <code>raise SystemExit</code> 的老写法继续有效（两者并存不冲突）。",
+            "真值：一类 <b>432</b> passed / 0 red（本版新增 5 条 <code>cli setup</code> 判据："
+            "正常 0 / 缺浏览器非 0 / <code>--check</code> 只读 / <code>--help</code> 已注册 / 乱写参数被拦）· "
+            "<code>setup --check</code> 负向实测：缺浏览器 ⇒ 提示 + <b>exit 2</b> ✓ · "
+            "<code>cli --version</code> → v8.2.3 · 培训页 <b>225.5</b> KB",
+            "<b>版本策略</b>：<code>requirements.txt</code> 的 <code>playwright</code> 约束与 "
+            "playwright revision 号的关系已实测清楚（1.45⇒1124 · 1.62⇒1234 · 1.63⇒1243），"
+            "是否锁定待拍板（不影响本版功能）。",
+        ],
+    ),
+    dict(
+        version="8.2.2", date="2026-09-23", tag="上一版本",
         theme="开箱即用：<b>浏览器预检</b>（缺了就给人话 + 一行修复命令）"
               "· 培训页补「装环境三件事」",
         summary="真机踩坑驱动的一版 —— 在新机器（Windows 首次部署）上跑 "
@@ -2436,6 +2480,16 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
   <h2 class="sec-title"><span class="n">9</span>动手跑一遍</h2>
   <p class="sec-sub">先起被测应用，再跑链路。没 key 也能玩 mock。</p>
   <h3 style="margin:24px 0 6px">9.0 装环境三件事（第一次跑之前必做 —— <b>漏第三步必报错</b>）</h3>
+  <p style="margin:6px 0 10px;padding:10px 12px;border-left:3px solid #0f8f6a;background:rgba(15,143,106,.07);border-radius:6px">
+    <b>省事做法：一条命令全搞定</b>
+    <span class="code-inline" style="margin-left:6px">python -m framework.cli setup</span><br>
+    <span style="color:var(--muted);font-size:.88rem">
+      它会按顺序做完下面三件事，最后<b>真启一次 chromium 自检</b>，就绪了才说 OK；
+      只想看环境缺什么不安装，加 <span class="code-inline">--check</span>；
+      playwright 包换过版本（报错里的 revision 号变了）加 <span class="code-inline">--force-browser</span>。
+      下面这三步是它做的事，理解原理用；<b>手工装也行，别漏第三步</b>。
+    </span>
+  </p>
   <table class="tbl">
     <tr><th style="width:8%">#</th><th style="width:30%">做什么</th><th>命令</th></tr>
     <tr><td>①</td><td>建虚拟环境（隔离依赖）</td>

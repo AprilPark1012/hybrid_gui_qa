@@ -1,6 +1,7 @@
 """hybrid_gui_qa 命令行入口 —— 一键流水线。
 
 典型用法（先起被测应用：python -m demo.app）:
+    python -m framework.cli setup            # 0) 第一次跑先执行它：装依赖 + 装浏览器 + 自检
     python -m framework.cli probe            # 1) 探测页面交互元素
     python -m framework.cli generate         # 2) 读 cases/*.json → 生成 scripts/（按操作类型翻译 + 抽离数据）
     python -m framework.cli run --workers 2  # 3) pytest 并发执行用例 + 日志整合 + 报告
@@ -859,6 +860,8 @@ FLAG_SPECS: dict[str, str | None] = {
     # LLM 录像录制 / 回放（2026-09-18）：opt = 值可省（省了就用默认目录 output/llm_cassettes）
     "--llm-cassette": "opt", "--llm-record": "opt", "--llm-cassette-strict": None,
     "--keep": "value", "--dry-run": None,
+    # setup 子命令的开关（2026-09-23，V8.2.3）
+    "--check": None, "--force-browser": None, "--with-ai": None,
     # L5 归档保留（2026-09-22）：run / verify 目录
     "--all": None, "--runs": None,
     "--keep-runs": "value", "--keep-days": "value", "--max-delete": "value",
@@ -876,6 +879,7 @@ CMD_FLAGS: dict[str, set[str]] = {
     "all": set(_COMMON_FLAGS) | {"--allow-unmapped"},
     "prune": {"--keep", "--dry-run", "--all", "--runs",
               "--keep-runs", "--keep-days", "--max-delete"},
+    "setup": {"--check", "--force-browser", "--with-ai"},
 }
 # 已移除的参数：给"为什么没了 + 该用什么"，而不是笼统的"不认识"
 REMOVED_FLAGS = {
@@ -1015,23 +1019,185 @@ def main():
                   "详见 docs/training.html 第 9 章「装环境三件事」）", file=sys.stderr)
             raise SystemExit(2) from None
 
+    # ★ 分发必须**采纳**子命令的返回值（2026-09-23，V8.2.3 修）：
+    #   原来这里是 8 个裸调用，返回值被丢弃 ⇒ cmd_generate 里 DanglingDatasetError 的
+    #   `return 2` 变成**空转**（"报了错却告诉调用方成功" exit 0）。同族另外三个错误
+    #   （_report_unmapped / _report_data_sets / _report_case_quality）都是 -> NoReturn 直接 raise，
+    #   只有这一条走 return ⇒ 典型的不一致。修在分发层 = 根因修复：以后任何子命令
+    #   只要 return 非 0，调用方都看得见。
     if cmd == "probe":
-        cmd_probe()
+        rc = cmd_probe()
     elif cmd == "generate":
-        cmd_generate(rest, allow_unmapped=allow_unmapped)
+        rc = cmd_generate(rest, allow_unmapped=allow_unmapped)
     elif cmd == "explore":
-        cmd_explore(rest)
+        rc = cmd_explore(rest)
     elif cmd == "run":
-        cmd_run(workers, headed, force_workers, cases=cases, slowmo=slowmo, isolated_target=isolated)
+        rc = cmd_run(workers, headed, force_workers, cases=cases, slowmo=slowmo,
+                     isolated_target=isolated)
     elif cmd == "all":
-        cmd_all(workers, headed, force_workers, cases=cases, slowmo=slowmo, isolated_target=isolated,
-                allow_unmapped=allow_unmapped)
+        rc = cmd_all(workers, headed, force_workers, cases=cases, slowmo=slowmo,
+                     isolated_target=isolated, allow_unmapped=allow_unmapped)
+    elif cmd == "setup":
+        rc = cmd_setup(rest)
     elif cmd == "prune":
-        cmd_prune(rest)
+        rc = cmd_prune(rest)
+    if isinstance(rc, int) and rc != 0:
+        raise SystemExit(rc)
+
+
+def cmd_setup(argv: list[str]) -> int:
+    """一条命令搞定环境：装依赖 + 装浏览器（第一次跑之前执行它）。
+
+    为什么有这条命令（2026-09-23，V8.2.3）：新机器上最容易漏的是「装浏览器」这一步
+    —— `pip install -r requirements.txt` **不会**顺带装 Playwright 的浏览器，
+    漏了就报 `BrowserType.launch: Executable doesn't exist at …ms-playwright\…`。
+    有了它，新人只要记一条命令，第三步不可能再被漏。
+
+    参数：
+        --check    只体检，不安装（看清到底缺什么，只读）
+        --force-browser  浏览器强制重下（playwright 包换过版本就用它，避免 revision 对不上）
+        --with-ai  连 AI 依赖（requirements-ai.txt）一起装
+
+    顺序：① 依赖 → ② 浏览器 → ③ 自检（真启一次 chromium 验证能干活）。
+    任一步失败即退出码 2，并把原始输出尾部打出来（不静默）。
+    """
+    import subprocess
+    from pathlib import Path as _Path
+    repo_root = _Path(__file__).resolve().parents[1]
+    check_only = "--check" in argv
+    force = "--force-browser" in argv
+    with_ai = "--with-ai" in argv
+    py = sys.executable
+    print(f"\n[setup] 目标解释器：{py}")
+    print(f"[setup] 模式：{'只体检（--check）' if check_only else '安装'}"
+          f"{' · 浏览器强制重下（--force-browser）' if force else ''}")
+
+    ok = True
+
+    # ---- ① 依赖 ----
+    reqs = ["requirements.txt"] + (["requirements-ai.txt"] if with_ai else [])
+    have_reqs = [r for r in reqs if (repo_root / r).exists()]
+    if check_only:
+        missing = [m for m in ("playwright", "pytest", "yaml") if not _can_import(m)]
+        if missing:
+            ok = False
+            print(f"\n[setup] ① 依赖：❌ 缺 {missing}")
+        else:
+            print("\n[setup] ① 依赖：✅ 关键包都在（playwright / pytest / yaml）")
+    elif not have_reqs:
+        print("\n[setup] ① 依赖：⚠️ 没找到 requirements.txt，跳过（解压不完整？）")
+    else:
+        print(f"\n[setup] ① 装依赖：{', '.join(have_reqs)}")
+        cmd, kind = _pip_install_cmd(py, have_reqs)
+        if cmd is None:
+            ok = False
+            print("[setup]    ❌ 本环境既没有 pip 也没有 uv ⇒ 请先装一个：")
+            print("            python -m ensurepip --upgrade      # 自带 pip")
+        else:
+            print(f"[setup]    用 {kind} 安装 …")
+            r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=900)
+            if r.returncode != 0:
+                ok = False
+                print(f"[setup]    ❌ 装依赖失败（exit {r.returncode}），尾部输出：")
+                print(_tail(r.stdout, r.stderr))
+            else:
+                print("[setup]    ✅ 依赖就绪")
+
+    # ---- ② 浏览器 ----
+    if check_only:
+        ok_b, why = _browser_state()
+        print(f"\n[setup] ② 浏览器：{'✅ 可用（真启一次成功）' if ok_b else '❌ 不可用 —— ' + why}")
+        ok = ok and ok_b
+    else:
+        print("\n[setup] ② 装浏览器（chromium + 无头用的 chromium-headless-shell）")
+        cmd = [py, "-m", "playwright", "install", "chromium"] + (["--force"] if force else [])
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=1800)
+        except Exception as e:  # noqa: BLE001
+            r = None
+            print(f"[setup]    ❌ 起不来：{e}")
+            ok = False
+        if r is not None:
+            if r.returncode != 0:
+                ok = False
+                print(f"[setup]    ❌ 装浏览器失败（exit {r.returncode}），尾部输出：")
+                print(_tail(r.stdout, r.stderr))
+                print("[setup]    提示：若机器不能联网，请在能联网的机器上装好后拷 "
+                      "ms-playwright 缓存目录（见培训页 9.0）")
+            else:
+                print("[setup]    ✅ 浏览器就绪")
+
+    # ---- ③ 自检（真启一次）----
+    if not check_only and ok:
+        ok_b, why = _browser_state()
+        print(f"\n[setup] ③ 自检：{'✅ 真启 chromium 成功' if ok_b else '❌ ' + why}")
+        ok = ok and ok_b
+
+    if ok:
+        print("\n[setup] ✅ 环境就绪，可以跑了：")
+        print("            python -m framework.cli probe     # 探测页面元素")
+        print("            python -m framework.cli all       # 探测→生成→执行 全链路")
+        return 0
+    print("\n[setup] ❌ 环境还没就绪（上面有原因）；修好后重跑 python -m framework.cli setup")
+    return 2
+
+
+def _can_import(name: str) -> bool:
+    """能不能导入某个包（不打印任何东西）。"""
+    try:
+        __import__(name)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _pip_install_cmd(py: str, reqs: list[str]) -> tuple[list[str] | None, str]:
+    """选装依赖的方式：优先 pip，没有再退 uv（本机实测 .venv 可能没带 pip）。"""
+    import importlib.util as iu
+    import shutil
+    if iu.find_spec("pip") is not None:
+        return [py, "-m", "pip", "install", "-r", reqs[0]] + _extra_r(reqs), "pip"
+    if shutil.which("uv"):
+        return ["uv", "pip", "install", "--python", py] + _req_flags(reqs), "uv"
+    return None, ""
+
+
+def _req_flags(reqs: list[str]) -> list[str]:
+    out: list[str] = []
+    for r in reqs:
+        out += ["-r", r]
+    return out
+
+
+def _extra_r(reqs: list[str]) -> list[str]:
+    return _req_flags(reqs[1:])
+
+
+def _tail(stdout: str, stderr: str, n: int = 12) -> str:
+    """失败时给出尾部输出（人要看的是最后那几行，不是全部）。"""
+    text = ((stdout or "") + "\n" + (stderr or "")).strip().splitlines()
+    return "\n".join("            " + ln for ln in text[-n:])
+
+
+def _browser_state() -> tuple[bool, str]:
+    """真启一次 chromium 判断环境是否可用（不写死路径、不看版本）。"""
+    try:
+        from framework.tools.common.browser import ensure_browser_installed, BrowserNotInstalledError
+    except Exception as e:  # noqa: BLE001
+        return False, f"框架自身导入失败：{e}"
+    try:
+        ensure_browser_installed()
+        return True, ""
+    except BrowserNotInstalledError as e:
+        return False, str(e)
+    except Exception as e:  # noqa: BLE001
+        return False, f"启动失败：{e}"
 
 
 _CMD_FUNCS = {"probe": cmd_probe, "generate": cmd_generate, "explore": cmd_explore,
-              "run": cmd_run, "all": cmd_all, "prune": cmd_prune}
+              "run": cmd_run, "all": cmd_all, "prune": cmd_prune, "setup": cmd_setup}
 
 
 if __name__ == "__main__":

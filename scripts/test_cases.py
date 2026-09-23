@@ -117,7 +117,7 @@ def test_ai_contracts_cross_page_011030(page, ctx):
     _assert_text(page, _data('expect_0', ctx), '确认搜索结果中出现 HT-1005')
 
     # step 4: 点击结果行中的编号链接 HT-1005 进入详情页
-    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0021 001 合同 北京中科智慧科技有限公司 bu_b").locator("td[data-field='contractNo']").get_by_role("link"))
+    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0451 001 预po 北京中科智慧科技有限公司 bu_a").locator("td[data-field='contractNo']").get_by_role("link"))
     _log(page, "click", f"点击结果行中的编号链接 HT-1005 进入详情页")
     _assert_url(page, _data('expect_1', ctx), '确认已跳转到详情页（URL 含 contract_detail）')
     _assert_text(page, _data('expect_2', ctx), '确认详情页显示合同编号 HT-1005')
@@ -512,7 +512,7 @@ def test_cross_page_detail(page, ctx):
     _assert_attr(page, 'data-cust', _data('expect_1', ctx), lambda p: p.locator("#tbody-contracts tr:has-text('HT-1005') td[data-field='customer']"), semantic=None, desc='【列表页】HT-1005 的客户编号 = c5（客户按序号确定：HT-1001→c1、HT-1005→c5、HT-1007→c1…）')
 
     # step 4: 点击结果里的编号链接 HT-1005 进入详情页
-    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0021 001 合同 北京中科智慧科技有限公司 bu_b").locator("td[data-field='contractNo']").get_by_role("link"))
+    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0451 001 预po 北京中科智慧科技有限公司 bu_a").locator("td[data-field='contractNo']").get_by_role("link"))
     _log(page, "click", f"点击结果里的编号链接 HT-1005 进入详情页")
     _assert_url(page, _data('expect_2', ctx), '【换页证据】点击编号后 URL 已变为详情页')
     _assert_count(page, _data('expect_3', ctx), lambda p: p.locator("table[aria-label='合同详情'] tr:has-text('合同编号') td"), semantic=None, desc='【详情页】编号单元格存在（确认换的是详情页而不是别的页）')
