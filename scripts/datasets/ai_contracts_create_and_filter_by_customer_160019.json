@@ -5,6 +5,6 @@
   "select_3": "合同",
   "select_4": "bu_a",
   "fill_5": "北京华信",
-  "expect_0": "已新增合同",
-  "expect_1": "北京华信科技有限公司"
+  "expect_0": "合同_{datetime}",
+  "expect_1": "合同_{datetime}"
 }

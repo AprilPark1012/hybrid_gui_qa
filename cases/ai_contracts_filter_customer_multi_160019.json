@@ -1,0 +1,34 @@
+{
+  "case_id": "ai_contracts_filter_customer_multi_160019",
+  "name": "在合同列表页的「客户名称」输入框里输入 '{客户关键词}'，点击搜索按钮，\n确认结果表格里出现了客户为「{期望客户}」的合同记录。",
+  "base_url": "http://localhost:8000/",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开合同列表页",
+      "url": "http://localhost:8000/"
+    },
+    {
+      "op": "fill",
+      "desc": "在客户名称输入框输入客户关键词",
+      "element": "客户名称_右模糊_前缀匹配",
+      "value": "{客户关键词}"
+    },
+    {
+      "op": "click",
+      "desc": "点击搜索按钮",
+      "element": "搜索"
+    }
+  ],
+  "asserts": [
+    {
+      "desc": "确认结果表格中出现目标客户的合同记录",
+      "expect": "{期望客户}",
+      "after_step": 3
+    }
+  ],
+  "scenario_id": "contracts_filter_customer_multi",
+  "source_scenario": "scenarios/contracts/contracts_filter_customer_multi.yml",
+  "scenario_fingerprint": "2f5a610ba45c1a8f",
+  "llm_source": "cassette:a266e0cf3ffce50a"
+}

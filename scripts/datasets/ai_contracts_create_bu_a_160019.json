@@ -1,0 +1,8 @@
+{
+  "fill_0": "合同_{datetime}",
+  "select_1": "0021",
+  "select_2": "001",
+  "select_3": "合同",
+  "select_4": "bu_a",
+  "expect_0": "合同_{datetime}"
+}

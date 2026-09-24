@@ -1,0 +1,43 @@
+# D5 · 2026-09-24 新增（项目负责人要求：补 AI 场景与关联 AI 用例）—— 一个文件 = 一个场景
+id: contracts_detail_multi
+title: 合同详情页 · 按编号核对详情字段（多套数据）
+description: |
+  打开合同详情页（带 ?no= 参数）→ 确认页面显示的合同编号与客户与预置数据一致。
+  数据参数化：一组数据 = 一条用例。
+tags: [合同, 详情页, 多套数据, p0]
+priority: P0
+owner: AprilPark1012
+updated: 2026-09-24
+
+target:
+  url: http://localhost:8000/contract_detail.html?no=HT-1005
+  page: 合同详情页（七个字段 + 返回列表 + 按编号搜索其他合同）
+  preconditions:
+    - demo 已启动：python -m demo.app
+
+scenario: |
+  打开合同详情页 {详情地址}，确认页面显示的合同编号是 {期望编号}、客户是 {期望客户}。
+
+data:
+  - {id: "详情-HT-1005", 详情地址: "http://localhost:8000/contract_detail.html?no=HT-1005",
+     期望编号: "HT-1005", 期望客户: "北京中科智慧科技有限公司"}
+  - {id: "详情-HT-1007", 详情地址: "http://localhost:8000/contract_detail.html?no=HT-1007",
+     期望编号: "HT-1007", 期望客户: "北京华信科技有限公司"}
+  - {id: "详情-HT-1020", 详情地址: "http://localhost:8000/contract_detail.html?no=HT-1020",
+     期望编号: "HT-1020", 期望客户: "上海远东贸易有限公司"}
+
+business_context: |
+  · 详情页七个字段来自服务端 /api/contract?no= 的同一条记录 ⇒ 与列表页天然一致；
+  · 客户按序号确定：HT-1001→c1、HT-1002→c2、…、HT-1006→c6、HT-1007→c1、…（20 条循环）
+    ⇒ HT-1005→c5 北京中科智慧科技有限公司 · HT-1007→c1 北京华信科技有限公司 · HT-1020→c2 上海远东贸易有限公司；
+  · 编号不存在时页面如实显示「未找到该合同」——本场景只用存在的编号。
+
+assert_guard:
+  must_contain:
+    - "{期望编号}"
+    - "{期望客户}"
+  forbidden:
+    - "未找到该合同"
+
+notes: |
+  详情页是最"独立"的入口（可直接带 url 打开）；多套数据覆盖三档编号，防止只对某一条成立。

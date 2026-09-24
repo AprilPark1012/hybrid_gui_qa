@@ -28,6 +28,8 @@
 """
 from __future__ import annotations
 
+import re
+
 import argparse
 import os
 import subprocess
@@ -59,7 +61,9 @@ LOG_DIR = REPO / "log" / "verify_logs"
 #   实测基线：一类 ~24s · 二类 ~33min（--jobs 2）。逼近上限 ⇒ **先清无效用例再加新用例**
 #   （目的：不白白增加测试时间、不影响打包/开发效率）。
 BUDGET_FRAMEWORK_S = 60
-BUDGET_FEATURE_MIN = 90
+# D6（2026-09-24 项目负责人定）：二类**控制在 40 分钟以内**。手段：并发度 + 用例合并。
+# 现状：真 AI 的场景1 已自声明不进日常（`HYBRID_DAILY_SKIP`）⇒ 日常脚本耗时之和 ~34 分钟。
+BUDGET_FEATURE_MIN = 40
 
 
 def _script_log_path(script: Path) -> Path:
@@ -174,9 +178,23 @@ def start_demo(python: str, base: str, log_path: Path = DEMO_LOG) -> subprocess.
 
 # ---------------- 收集与执行 ----------------
 
-def list_scripts(repo: Path = REPO, only: str = "") -> list[Path]:
-    """自动收录 `tests/featureTest/verify_*.py`（**不许手写清单**，所以不会漏新脚本）。"""
+def list_scripts(repo: Path = REPO, only: str = "", include_daily_skip: bool = False) -> list[Path]:
+    """自动收录 `tests/featureTest/verify_*.py`（**不许手写清单**，所以不会漏新脚本）。
+
+    例外（D2 · 2026-09-24）：脚本可在**自己文件头部**声明 `# HYBRID_DAILY_SKIP: <原因>`
+    ⇒ 日常不收（如真调 LLM 的场景1，单轮 ~8-10 分钟）；`--full` 时照收。
+    仍会把它们**列出来**（附原因），免得"看不见 = 忘了"。
+    """
     items = sorted(repo.glob("tests/featureTest/verify_*.py"))
+    if not include_daily_skip:
+        keep = []
+        for p in items:
+            why = daily_skip_reason(p)
+            if why:
+                print(f"  ⏭️  {p.name} 不进日常：{why}")
+            else:
+                keep.append(p)
+        items = keep
     if only:
         items = [p for p in items if only in p.name]
     return items
@@ -246,6 +264,22 @@ _SPAWN_HINTS = ("subprocess", "Popen")
 # 实测事故：并发那次 `verify_data_expand.py` 报「generate 失败（exit 2）」，**单独跑**却是 exit 0 全过
 # —— generate 会重写 `scripts/`（含 test_cases.py）与 element_map，和并发脚本撞了。
 # 这是并发模式**自己引入的假红** ⇒ 自己判掉（宁漏不误伤：宁可少并，绝不误报）。
+# ★「不进日常」自声明（D2 · 2026-09-24 他定）：脚本在**自己文件头部**声明被排除，
+# 而不是维护一份中心化清单 —— 保持「自动收录、绝不漏新脚本」这个好性质。
+# 口径：`# HYBRID_DAILY_SKIP: <原因>`；`--full` 时照跑（发版前 / 手工验真 AI 用）。
+_DAILY_SKIP_MARKER = "HYBRID_DAILY_SKIP:"
+
+
+def daily_skip_reason(path: Path) -> str | None:
+    """脚本是否自声明「不在日常跑」⇒ 返回原因（None = 日常要跑）。"""
+    try:
+        head = "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[:40])
+    except OSError:
+        return None
+    m = re.search(re.escape(_DAILY_SKIP_MARKER) + r"\s*(.+)", head)
+    return m.group(1).strip() if m else None
+
+
 _EXCLUSIVE_MARKERS = (
     "framework.cli",      # generate / run：重写 scripts/ 与 element_map
     "build_tools/",       # 打包、渲染培训页
@@ -353,6 +387,8 @@ def _parse(argv: list[str]) -> argparse.Namespace:
                     help="只跑文件名里含该子串的验证脚本（例：--only ambiguity）")
     ap.add_argument("--no-demo", action="store_true", help="不起 demo，只跑自包含的验证")
     ap.add_argument("--list", action="store_true", help="只列出会跑哪些脚本，不执行")
+    ap.add_argument("--full", action="store_true",
+                    help="连自声明「不进日常」的脚本一起跑（如真调 LLM 的场景1；发版前或手工验真 AI 时用）")
     ap.add_argument("--stream", action="store_true", help="实时打印子进程输出（默认只在结束时打尾部摘要）")
     ap.add_argument("--min-mem", type=int, default=int(os.environ.get("VERIFY_MIN_MEM_MB", DEFAULT_MIN_MEM_MB)),
                     metavar="MB", help=f"内存阈值（默认 {DEFAULT_MIN_MEM_MB}MB，低于它整体 SKIP 并 exit 3）")
@@ -398,6 +434,7 @@ def run_parallel(python: str, scripts: list[Path], *, jobs: int, timeout_s: floa
     _excl = {s: is_exclusive_script(s) for s in scripts}
     running: dict[subprocess.Popen, tuple[Path, bool, float]] = {}
     results: list[tuple[str, int]] = []
+    durations: list[float] = []
     state: dict[str, str] = {"last_hold": ""}        # 供"同一原因不重复刷屏"用
     while pending or running:
         started = False
@@ -439,6 +476,7 @@ def run_parallel(python: str, scripts: list[Path], *, jobs: int, timeout_s: floa
                     running.pop(proc)
                     print(f"\n———— {script.name} ————\n   ⏱️ 超时 {timeout_s:.0f}s ⇒ 已杀（不计通过）")
                     results.append((script.name, 124))
+                    durations.append(float(timeout_s))
                 continue
             script, _b, t0 = running.pop(proc)
             dur = time.monotonic() - t0
@@ -470,7 +508,7 @@ def main(argv: list[str]) -> int:
     args = _parse(argv)
     python = _venv_python()
     base = os.environ.get("HYBRID_BASE_URL") or "http://127.0.0.1:8000"
-    scripts = list_scripts(REPO, args.only)
+    scripts = list_scripts(REPO, args.only, args.full)
     mb = mem_available_mb()
 
     print("==================================================================")
@@ -517,6 +555,7 @@ def main(argv: list[str]) -> int:
                 return 2
             print(f"· demo 就绪（pid {started_demo.pid}）")
     results: list[tuple[str, int]] = []
+    durations: list[float] = []      # 每脚本耗时（D6 的 40 分钟预算对账用）
     try:
         if args.jobs > 1 and len(scripts) > 1:
             print(f"· 并发模式 jobs={args.jobs}（浏览器脚本各自过内存闸，内存不够自动退回串行；"
@@ -524,6 +563,7 @@ def main(argv: list[str]) -> int:
             if not args.no_demo:
                 _ensure_demo_fresh(python)
             results = run_parallel(python, scripts, jobs=args.jobs, timeout_s=args.timeout_s)
+            durations = []
         else:
             for i, script in enumerate(scripts, 1):
                 if not args.no_demo:
@@ -533,6 +573,7 @@ def main(argv: list[str]) -> int:
                 for line in tail:
                     print(f"   {line}")
                 results.append((script.name, rc))
+                durations.append(dur)
                 verdict = {"ok": "✅ exit 0", "skip": "⏭️  exit 3 跳过（不是通过）",
                            "fail": f"❌ exit {rc}"}[classify(rc)]
                 print(f"  {verdict}（{dur:.0f}s）")
@@ -545,7 +586,12 @@ def main(argv: list[str]) -> int:
     skip = sum(1 for _, rc in results if classify(rc) == "skip")
     fail = sum(1 for _, rc in results if classify(rc) == "fail")
     print("\n==================================================================")
-    print(f" 汇总（通过 {ok} · 跳过 {skip} · 失败 {fail}）")
+    _elapsed_min = sum(durations) / 60.0
+    print(f" 汇总（通过 {ok} · 跳过 {skip} · 失败 {fail}）· 脚本耗时 {_elapsed_min:.1f} 分钟"
+          f"（预算 {BUDGET_FEATURE_MIN} 分钟 · D6）")
+    if _elapsed_min > BUDGET_FEATURE_MIN:
+        print(f"⚠️ 超出 R7-d / D6 预算：{_elapsed_min:.1f} > {BUDGET_FEATURE_MIN} 分钟 ⇒ "
+              "按「先清后加」处理（合并用例 / 提并发 / 把重活移出日常）")
     for name, rc in results:
         print(f"   {name:<40} exit {rc}")
     print("==================================================================")

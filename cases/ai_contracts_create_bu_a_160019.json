@@ -1,0 +1,75 @@
+{
+  "case_id": "ai_contracts_create_bu_a_160019",
+  "name": "点击“新建合同”按钮打开弹窗；\n填写合同名称“合同_{datetime}”，管理单元选 0021，帐套选 001，合同类型选 合同；\n点击“选择客户”按钮，在弹出的客户列表里选「北京华信科技有限公司」那一行（点该行的“选择”按钮）；\n业务单元选 bu_a；\n点击“提交”按钮；\n确认列表中出现刚填写的合同名称“合同_{datetime}”。",
+  "base_url": "http://localhost:8000",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开 http://localhost:8000",
+      "url": "http://localhost:8000"
+    },
+    {
+      "op": "click",
+      "desc": "点击“+ 新建合同”按钮打开新建合同弹窗",
+      "element": "新建合同"
+    },
+    {
+      "op": "fill",
+      "desc": "在弹窗中填写合同名称",
+      "element": "请输入合同名称",
+      "value": "合同_{datetime}"
+    },
+    {
+      "op": "select",
+      "desc": "选择管理单元 0021",
+      "element": "管理单元",
+      "value": "0021"
+    },
+    {
+      "op": "select",
+      "desc": "选择帐套 001",
+      "element": "帐套",
+      "value": "001"
+    },
+    {
+      "op": "select",
+      "desc": "选择合同类型 合同",
+      "element": "合同类型",
+      "value": "合同"
+    },
+    {
+      "op": "click",
+      "desc": "点击“选择客户”按钮打开客户列表弹层",
+      "element": "选择客户"
+    },
+    {
+      "op": "click",
+      "desc": "在客户列表中选择「北京华信科技有限公司」那一行的“选择”按钮",
+      "element": "选择@北京华信科技有限公司"
+    },
+    {
+      "op": "select",
+      "desc": "选择业务单元 bu_a",
+      "element": "业务单元",
+      "value": "bu_a"
+    },
+    {
+      "op": "click",
+      "desc": "点击“提交”按钮提交新建合同",
+      "element": "提交"
+    }
+  ],
+  "asserts": [
+    {
+      "kind": "first_row",
+      "row_field": "contractName",
+      "desc": "确认列表第一行出现刚填写的合同名称",
+      "expect": "合同_{datetime}",
+      "after_step": 10
+    }
+  ],
+  "scenario_id": "contracts_create_bu_a",
+  "source_scenario": "scenarios/contracts/contracts_create_bu_a.yml",
+  "scenario_fingerprint": "795eadb76b3b05ad",
+  "llm_source": "cassette:0b662d73d12eb693"
+}

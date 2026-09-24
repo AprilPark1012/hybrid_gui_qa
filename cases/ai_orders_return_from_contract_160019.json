@@ -1,5 +1,5 @@
 {
-  "case_id": "ai_orders_return_from_contract_004934",
+  "case_id": "ai_orders_return_from_contract_160019",
   "name": "打开合同列表页，点击右上角的「查看订单」，系统会**新开一个 tab** 打开订单系统页面（订单列表页）；\n在该页点击「+ 新建订单」按钮，弹出「新建订单」弹窗：\n填写订单名称（用「退货订单-{datetime}」这个值）；\n点击「选择合同」打开合同弹层，选第一行（HT-1001）的「选择」；\n点击业务单元旁的「...」按钮打开弹层选第一行，同样方式给管理单元、帐套各选第一行；\n订单类型下拉选「退货订单」；\n点击「选择客户」选第一个客户，点击「选择销售员」选第一个销售员；\n在订单备注里填「AI 端到端自动化用例」；\n点击「提交」，弹窗关闭、订单列表刷新，确认**列表第一行的订单名称**就是我们刚填的那个订单名称；\n然后在订单列表里点击这一行的「合同编号」链接，它会**新开一个 tab** 打开该合同的详情页，\n确认新 tab 的 URL 是合同详情页且页面显示合同编号 HT-1001、合同名称 合同1；\n最后点击该详情页的「返回」按钮，这个 tab 被关闭，回到订单列表页面（确认还在订单列表页）。",
   "base_url": "http://localhost:8000/",
   "steps": [
@@ -31,7 +31,7 @@
     },
     {
       "op": "click",
-      "desc": "选中合同弹层第一行 HT-1001",
+      "desc": "选第一行合同 HT-1001",
       "element": "选择@HT_1001"
     },
     {
@@ -41,7 +41,7 @@
     },
     {
       "op": "click",
-      "desc": "选中业务单元第一行 bu_a",
+      "desc": "选业务单元第一行 bu_a",
       "element": "选择@bu_a"
     },
     {
@@ -51,7 +51,7 @@
     },
     {
       "op": "click",
-      "desc": "选中管理单元第一行 0021",
+      "desc": "选管理单元第一行 0021",
       "element": "选择@0021"
     },
     {
@@ -61,13 +61,13 @@
     },
     {
       "op": "click",
-      "desc": "选中帐套第一行 001",
+      "desc": "选帐套第一行 001",
       "element": "选择@001"
     },
     {
       "op": "select",
       "desc": "订单类型下拉选「退货订单」",
-      "element": "请选择_标准销售订单_退货订单_服务订单_电商订单",
+      "element": "订单类型",
       "value": "退货订单"
     },
     {
@@ -77,7 +77,7 @@
     },
     {
       "op": "click",
-      "desc": "选中第一个客户",
+      "desc": "选第一个客户",
       "element": "选择@北京华信科技有限公司@订单系统"
     },
     {
@@ -87,7 +87,7 @@
     },
     {
       "op": "click",
-      "desc": "选中第一个销售员",
+      "desc": "选第一个销售员",
       "element": "选择@张伟"
     },
     {
@@ -103,20 +103,20 @@
     },
     {
       "op": "click_new_tab",
-      "desc": "点击该行合同编号链接，新开 tab 打开合同详情页",
+      "desc": "点该行合同编号链接，新开 tab 打开合同详情页",
       "row_text": "退货订单-{datetime}",
       "cell_field": "contractNo"
     },
     {
       "op": "close_tab",
-      "desc": "点击详情页「返回」关闭本 tab",
+      "desc": "点击详情页「返回」，关闭本 tab",
       "element": "返回"
     }
   ],
   "asserts": [
     {
-      "desc": "确认合同列表页已加载（右上角查看订单链接）",
-      "expect": "查看订单",
+      "desc": "确认合同列表页已加载（表头合同编号）",
+      "expect": "合同编号",
       "after_step": 1
     },
     {
@@ -126,8 +126,8 @@
       "after_step": 2
     },
     {
-      "desc": "确认订单系统页独有文案",
-      "expect": "合同管理",
+      "desc": "确认订单列表已加载（表头订单编号）",
+      "expect": "订单编号",
       "after_step": 2
     },
     {
@@ -160,13 +160,14 @@
       "after_step": 21
     },
     {
-      "desc": "确认仍在订单系统页",
-      "expect": "合同管理",
+      "desc": "确认仍在订单列表页（表头订单编号）",
+      "expect": "订单编号",
       "after_step": 21
     }
   ],
   "scenario_id": "orders_return_from_contract",
   "source_scenario": "scenarios/orders/orders_return_from_contract.yml",
+  "scenario_fingerprint": "2db1fd3fa96e324d",
   "pages": [
     {
       "name": "合同列表页",
@@ -183,5 +184,6 @@
       "url": "http://localhost:8000/contract_detail.html?no=HT-1001&from=order",
       "page": "合同详情页：显示合同编号/名称/管理单元/帐套/合同类型/客户/业务单元（来自服务端\n/api/contract?no= 的同一条记录）。\n⚠️ 带 `from=order` 进来时（=从订单页点合同编号打开的那个 tab），底部按钮文案是「返回」，\n点它是**关闭本 tab**（回到订单系统页面），不是跳转。\n"
     }
-  ]
+  ],
+  "llm_source": "cassette:ff58fbca715e3f4b"
 }

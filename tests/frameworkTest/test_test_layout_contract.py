@@ -30,9 +30,9 @@ FRAMEWORK_TESTS = TESTS_DIR / "frameworkTest"
 FEATURE_TESTS = TESTS_DIR / "featureTest"
 RUNNER = FEATURE_TESTS / "run_verifications.py"
 
-# R7-d 的预算（实测基线：一类 ~24s · 二类 ~33min（jobs=2））
+# R7-d / D6 的预算（实测基线：一类 ~25s · 二类日常 ~34min（真 AI 场景已移出日常））
 BUDGET_FRAMEWORK_S = 60
-BUDGET_FEATURE_MIN = 90
+BUDGET_FEATURE_MIN = 40     # D6（2026-09-24）：二类控制在 40 分钟以内
 
 
 # ---------------- 纯函数层（负向自证直接钉这几个）----------------

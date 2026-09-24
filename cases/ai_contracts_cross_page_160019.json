@@ -1,5 +1,5 @@
 {
-  "case_id": "ai_contracts_cross_page_011030",
+  "case_id": "ai_contracts_cross_page_160019",
   "name": "打开合同列表页，在关键字搜索框输入 1005 并点击搜索；\n点击结果行里的编号链接 HT-1005 进入合同详情页，确认已经换页（URL 含 contract_detail）\n且详情页显示了编号 HT-1005 与名称 合同5；\n然后点击「返回列表」回到列表页，再在关键字搜索框输入 1005 并点击搜索，确认列表里仍有 HT-1005。",
   "base_url": "http://localhost:8000/",
   "steps": [
@@ -21,12 +21,12 @@
     },
     {
       "op": "click",
-      "desc": "点击结果行中的编号链接 HT-1005 进入详情页",
+      "desc": "点击结果行里的编号链接 HT-1005 进入详情页",
       "element": "HT_1005"
     },
     {
       "op": "click",
-      "desc": "点击返回列表链接回到列表页",
+      "desc": "点击返回列表回到列表页",
       "element": "返回列表"
     },
     {
@@ -43,29 +43,29 @@
   ],
   "asserts": [
     {
-      "desc": "确认搜索结果中出现 HT-1005",
+      "desc": "确认搜索结果里出现 HT-1005",
       "expect": "HT-1005",
       "after_step": 3
     },
     {
       "kind": "url",
-      "desc": "确认已跳转到详情页（URL 含 contract_detail）",
+      "desc": "确认已换页到合同详情页",
       "expect": "contract_detail",
       "after_step": 4
     },
     {
-      "desc": "确认详情页显示合同编号 HT-1005",
+      "desc": "确认详情页显示编号 HT-1005",
       "expect": "HT-1005",
       "after_step": 4
     },
     {
-      "desc": "确认详情页显示合同名称 合同5",
+      "desc": "确认详情页显示名称 合同5",
       "expect": "合同5",
       "after_step": 4
     },
     {
-      "desc": "确认已回到列表页（列表页独有的「新建合同」按钮文案 —— 列表页 URL 是根路径、没有独有片段，按弱 url 断言闸口径改用 text 断言做到达证据）",
-      "expect": "新建合同",
+      "desc": "确认已回到列表页（表头出现）",
+      "expect": "合同编号",
       "after_step": 5
     },
     {
@@ -76,6 +76,7 @@
   ],
   "scenario_id": "contracts_cross_page",
   "source_scenario": "scenarios/contracts/contracts_cross_page.yml",
+  "scenario_fingerprint": "3f3681d5af3aee20",
   "pages": [
     {
       "name": "列表页",
@@ -87,5 +88,6 @@
       "url": "http://localhost:8000/contract_detail.html?no=HT-1005",
       "page": "合同详情页：显示合同编号/名称/管理单元/帐套/合同类型/客户/业务单元 —— 这七个字段都来自\n**服务端 /api/contract?no= 的同一条记录**（与列表页天然一致）；\n底部有「返回列表」链接与「编辑（未接入）」按钮；另有一个按编号搜索其他合同的输入框+搜索按钮。\n编号不存在时如实显示「未找到该合同」且单元格保持「—」。\n"
     }
-  ]
+  ],
+  "llm_source": "cassette:ffbe325f16f049d3"
 }

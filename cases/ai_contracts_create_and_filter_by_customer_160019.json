@@ -1,56 +1,56 @@
 {
-  "case_id": "ai_contracts_create_and_filter_by_customer_004651",
+  "case_id": "ai_contracts_create_and_filter_by_customer_160019",
   "name": "点击“新建合同”按钮打开弹窗；\n填写合同名称“合同_{datetime}”，管理单元选 0021，帐套选 001，合同类型选 合同；\n点击“选择客户”按钮，在弹出的客户列表里选择「北京华信科技有限公司」那一行（点该行的“选择”按钮）；\n业务单元选 bu_a；\n点击“提交”按钮；\n确认列表中出现刚填写的合同名称“合同_{datetime}”；\n然后在本页的客户筛选输入框里输入“北京华信”，点击“搜索”按钮，\n确认搜索结果里仍然有刚填写的合同名称“合同_{datetime}”。",
   "base_url": "http://localhost:8000",
   "steps": [
     {
       "op": "goto",
-      "desc": "打开合同列表页",
+      "desc": "打开 http://localhost:8000",
       "url": "http://localhost:8000"
     },
     {
       "op": "click",
-      "desc": "点击“+ 新建合同”按钮打开新建弹窗",
+      "desc": "点击“+ 新建合同”按钮打开新建合同弹窗",
       "element": "新建合同"
     },
     {
       "op": "fill",
-      "desc": "在弹窗中填写合同名称",
+      "desc": "在新建合同弹窗中填写合同名称",
       "element": "请输入合同名称",
       "value": "合同_{datetime}"
     },
     {
       "op": "select",
-      "desc": "管理单元选择 0021",
-      "element": "请选择_0021_0451_1031",
+      "desc": "选择管理单元 0021",
+      "element": "管理单元",
       "value": "0021"
     },
     {
       "op": "select",
-      "desc": "帐套选择 001",
-      "element": "请选择_001_002_003",
+      "desc": "选择帐套 001",
+      "element": "帐套",
       "value": "001"
     },
     {
       "op": "select",
-      "desc": "合同类型选择 合同",
-      "element": "请选择_合同_po_预po",
+      "desc": "选择合同类型 合同",
+      "element": "合同类型",
       "value": "合同"
     },
     {
       "op": "click",
-      "desc": "点击“选择客户”按钮弹出客户列表层",
+      "desc": "点击“选择客户”按钮打开客户列表弹层",
       "element": "选择客户"
     },
     {
       "op": "click",
-      "desc": "在客户列表中选择北京华信科技有限公司那一行的“选择”按钮",
+      "desc": "在客户列表中选择「北京华信科技有限公司」那一行的“选择”按钮",
       "element": "选择@北京华信科技有限公司"
     },
     {
       "op": "select",
-      "desc": "业务单元选择 bu_a",
-      "element": "请选择_bu_a_bu_b_bu_c",
+      "desc": "选择业务单元 bu_a",
+      "element": "业务单元",
       "value": "bu_a"
     },
     {
@@ -60,28 +60,32 @@
     },
     {
       "op": "fill",
-      "desc": "在列表页客户筛选输入框输入“北京华信”",
+      "desc": "在本页客户筛选输入框输入“北京华信”",
       "element": "客户名称_右模糊_前缀匹配",
       "value": "北京华信"
     },
     {
       "op": "click",
-      "desc": "点击“搜索”按钮执行客户右模糊筛选",
+      "desc": "点击“搜索”按钮执行筛选",
       "element": "搜索"
     }
   ],
   "asserts": [
     {
-      "desc": "确认提交后页面出现“已新增合同”提示",
-      "expect": "已新增合同",
+      "kind": "first_row",
+      "row_field": "contractName",
+      "desc": "确认列表第一条出现刚填写的合同名称",
+      "expect": "合同_{datetime}",
       "after_step": 10
     },
     {
-      "desc": "确认搜索结果中仍包含北京华信科技有限公司相关记录",
-      "expect": "北京华信科技有限公司",
+      "desc": "确认搜索结果里仍然有刚填写的合同名称",
+      "expect": "合同_{datetime}",
       "after_step": 12
     }
   ],
   "scenario_id": "contracts_create_and_filter_by_customer",
-  "source_scenario": "scenarios/contracts/contracts_create_and_filter_by_customer.yml"
+  "source_scenario": "scenarios/contracts/contracts_create_and_filter_by_customer.yml",
+  "scenario_fingerprint": "417524c4a83bb367",
+  "llm_source": "cassette:d825b43b445f951f"
 }

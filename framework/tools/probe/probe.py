@@ -114,10 +114,21 @@ def _visible(page: Page, locator) -> bool:
 
 
 def _accessible_name(locator) -> str:
-    """优先 aria-label，其次可见文本 / value。"""
+    """优先 aria-label，其次可见文本。
+
+    ⚠️ 2026-09-24 事故④（真实系统也会踩）：**`<select>` 的 inner_text 是它全部 `<option>` 的拼接**，
+    不是它的可访问名。demo 的 `<select id="sel-mu">` 因此被叫成
+    `"请选择\n0021\n0451\n1031"`（换行连接）⇒ 拿这个名字去 `get_by_role(name=…)`
+    **永远匹配不到**（实测 `RuntimeError: 元素定位失败且自愈未成功: 请选择_0021_0451_1031`）。
+    浏览器口径：`<select>` 的可访问名只来自 aria-label/aria-labelledby/关联 `<label>`，与选项文本无关
+    ⇒ 这里对 select **不看 inner_text**，返回空 ⇒ 上游自然回落到 label/placeholder 走「容器锚点 + 下钻」。
+    """
     try:
         if locator.get_attribute("aria-label"):
             return locator.get_attribute("aria-label").strip()
+        tag = (locator.evaluate("e => e.tagName.toLowerCase()") or "")
+        if tag == "select":
+            return ""
         if locator.inner_text():
             return locator.inner_text().strip()
     except Exception:

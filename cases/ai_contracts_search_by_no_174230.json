@@ -1,0 +1,34 @@
+{
+  "case_id": "ai_contracts_search_by_no_174230",
+  "name": "在合同列表页面的搜索框输入 '{关键词}'，点击搜索按钮，\n确认结果列表里出现编号为 {期望编号} 的合同记录。",
+  "base_url": "http://localhost:8000",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开合同列表页",
+      "url": "http://localhost:8000"
+    },
+    {
+      "op": "fill",
+      "desc": "在关键字搜索框输入 {关键词}",
+      "element": "合同编号_名称_管理单元_合同类型_帐套",
+      "value": "{关键词}"
+    },
+    {
+      "op": "click",
+      "desc": "点击搜索按钮",
+      "element": "搜索"
+    }
+  ],
+  "asserts": [
+    {
+      "desc": "确认结果列表里出现编号为 {期望编号} 的合同记录",
+      "expect": "{期望编号}",
+      "after_step": 3
+    }
+  ],
+  "scenario_id": "contracts_search_by_no",
+  "source_scenario": "scenarios/contracts/contracts_search_by_no.yml",
+  "scenario_fingerprint": "dcbdd307fe60d2b1",
+  "llm_source": "cassette:631d2cca7c2f5bb9"
+}

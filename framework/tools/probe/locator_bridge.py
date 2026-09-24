@@ -26,6 +26,7 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from playwright.sync_api import Page
 from framework.tools.probe.element_map import ElementRef
+from framework.tools.common.textutil import collapse_ws  # 事故②：accessible name 口径归一化
 
 # ---------------- Tier1：语义精确（按稳定性从高到低） ----------------
 # data-testid 是 component contract，不随视觉改版变，业界公认最稳 → 置顶。
@@ -83,8 +84,10 @@ def _try_test_id(page: Page, el: ElementRef):
 
 def _try_role(page: Page, el: ElementRef):
     if el.role and el.name:
-        loc = page.get_by_role(el.role, name=el.name)
-        return loc, f'page.get_by_role("{el.role}", name="{el.name}")', loc.count()
+        # 事故②：name 里的换行/多余空白要按 accessible name 口径归一化（否则永远匹配不到）
+        _nm = collapse_ws(el.name)
+        loc = page.get_by_role(el.role, name=_nm)
+        return loc, f'page.get_by_role("{el.role}", name="{_nm}")', loc.count()
     return None
 
 
@@ -231,8 +234,9 @@ def _locator_for_candidate(page: Page, cand: dict):
         loc = page.get_by_test_id(cand["test_id"])
         return loc, f'page.get_by_test_id("{cand["test_id"]}")'
     if cand.get("role") and cand.get("name"):
-        loc = page.get_by_role(cand["role"], name=cand.get("name"))
-        return loc, f'page.get_by_role("{cand["role"]}", name="{cand.get("name")}")'
+        _nm = collapse_ws(cand.get("name"))
+        loc = page.get_by_role(cand["role"], name=_nm)
+        return loc, f'page.get_by_role("{cand["role"]}", name="{_nm}")'
     if cand.get("placeholder"):
         loc = page.get_by_placeholder(cand["placeholder"])
         return loc, f'page.get_by_placeholder("{cand["placeholder"]}")'

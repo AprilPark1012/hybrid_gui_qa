@@ -22,19 +22,19 @@
     {
       "op": "select",
       "desc": "选择管理单元0021",
-      "element": "请选择_0021_0451_1031",
+      "element": "管理单元",
       "value": "0021"
     },
     {
       "op": "select",
       "desc": "选择帐套001",
-      "element": "请选择_001_002_003",
+      "element": "帐套",
       "value": "001"
     },
     {
       "op": "select",
       "desc": "选择合同类型'合同'",
-      "element": "请选择_合同_po_预po",
+      "element": "合同类型",
       "value": "合同"
     },
     {
@@ -50,7 +50,7 @@
     {
       "op": "select",
       "desc": "选择业务单元bu_a",
-      "element": "请选择_bu_a_bu_b_bu_c",
+      "element": "业务单元",
       "value": "bu_a"
     },
     {

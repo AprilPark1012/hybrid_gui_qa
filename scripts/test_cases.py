@@ -30,7 +30,7 @@ from framework.tools.probe.scope_locate import drill as _drill
 import pytest
 from playwright.sync_api import expect as _pw_expect
 
-def test_ai_contracts_create_and_filter_by_customer_004651(page, ctx):
+def test_ai_contracts_create_and_filter_by_customer_160019(page, ctx):
     """点击“新建合同”按钮打开弹窗；
 填写合同名称“合同_{datetime}”，管理单元选 0021，帐套选 001，合同类型选 合同；
 点击“选择客户”按钮，在弹出的客户列表里选择「北京华信科技有限公司」那一行（点该行的“选择”按钮）；
@@ -39,69 +39,122 @@ def test_ai_contracts_create_and_filter_by_customer_004651(page, ctx):
 确认列表中出现刚填写的合同名称“合同_{datetime}”；
 然后在本页的客户筛选输入框里输入“北京华信”，点击“搜索”按钮，
 确认搜索结果里仍然有刚填写的合同名称“合同_{datetime}”。"""
-    _CURRENT_LOG["case_id"] = "ai_contracts_create_and_filter_by_customer_004651"
+    _CURRENT_LOG["case_id"] = "ai_contracts_create_and_filter_by_customer_160019"
     _goto(page, 'http://localhost:8000')
-    _log(page, "场景开始", f"case=ai_contracts_create_and_filter_by_customer_004651")
+    _log(page, "场景开始", f"case=ai_contracts_create_and_filter_by_customer_160019")
 
-    # step 1: 打开合同列表页
+    # step 1: 打开 http://localhost:8000
     _goto(page, 'http://localhost:8000')
-    _log(page, "goto", f"打开合同列表页")
+    _log(page, "goto", f"打开 http://localhost:8000")
 
-    # step 2: 点击“+ 新建合同”按钮打开新建弹窗
+    # step 2: 点击“+ 新建合同”按钮打开新建合同弹窗
     _act(page, "click", semantic='新建合同', primary=lambda p: p.get_by_role("button", name="+ 新建合同"))
-    _log(page, "click", f"点击“+ 新建合同”按钮打开新建弹窗")
+    _log(page, "click", f"点击“+ 新建合同”按钮打开新建合同弹窗")
+
+    # step 3: 在新建合同弹窗中填写合同名称
+    _act(page, "fill", semantic='请输入合同名称', primary=lambda p: p.get_by_test_id("modal-new").get_by_placeholder("请输入合同名称"), value=_data('fill_0', ctx))
+    _log(page, "fill", f"在新建合同弹窗中填写合同名称")
+
+    # step 4: 选择管理单元 0021
+    _act(page, "select", semantic='管理单元', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '管理单元'}]), value=_data('select_1', ctx))
+    _log(page, "select", f"选择管理单元 0021")
+
+    # step 5: 选择帐套 001
+    _act(page, "select", semantic='帐套', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '帐套'}]), value=_data('select_2', ctx))
+    _log(page, "select", f"选择帐套 001")
+
+    # step 6: 选择合同类型 合同
+    _act(page, "select", semantic='合同类型', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '合同类型'}]), value=_data('select_3', ctx))
+    _log(page, "select", f"选择合同类型 合同")
+
+    # step 7: 点击“选择客户”按钮打开客户列表弹层
+    _act(page, "click", semantic='选择客户', primary=lambda p: p.get_by_test_id("modal-new").get_by_text("选择客户", exact=True))
+    _log(page, "click", f"点击“选择客户”按钮打开客户列表弹层")
+
+    # step 8: 在客户列表中选择「北京华信科技有限公司」那一行的“选择”按钮
+    _act(page, "click", semantic='选择@北京华信科技有限公司', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-customer'}, [{'axis': 'row', 'by': 'text', 'value': '北京华信科技有限公司 北京市朝阳区建国路88号 选择'}, {'axis': 'col', 'by': 'header', 'value': '操作'}, {'axis': 'target', 'by': 'role', 'value': 'button'}]))
+    _log(page, "click", f"在客户列表中选择「北京华信科技有限公司」那一行的“选择”按钮")
+
+    # step 9: 选择业务单元 bu_a
+    _act(page, "select", semantic='业务单元', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '业务单元'}]), value=_data('select_4', ctx))
+    _log(page, "select", f"选择业务单元 bu_a")
+
+    # step 10: 点击“提交”按钮提交新建合同
+    _act(page, "click", semantic='提交', primary=lambda p: p.get_by_test_id("modal-new").get_by_text("提交", exact=True))
+    _log(page, "click", f"点击“提交”按钮提交新建合同")
+    _assert_first_row(page, 'contractName', _data('expect_0', ctx), '确认列表第一条出现刚填写的合同名称')
+
+    # step 11: 在本页客户筛选输入框输入“北京华信”
+    _act(page, "fill", semantic='客户名称_右模糊_前缀匹配', primary=lambda p: p.get_by_placeholder("客户名称（右模糊：前缀匹配）"), value=_data('fill_5', ctx))
+    _log(page, "fill", f"在本页客户筛选输入框输入“北京华信”")
+
+    # step 12: 点击“搜索”按钮执行筛选
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
+    _log(page, "click", f"点击“搜索”按钮执行筛选")
+    _assert_text(page, _data('expect_1', ctx), '确认搜索结果里仍然有刚填写的合同名称')
+
+
+def test_ai_contracts_create_bu_a_160019(page, ctx):
+    """点击“新建合同”按钮打开弹窗；
+填写合同名称“合同_{datetime}”，管理单元选 0021，帐套选 001，合同类型选 合同；
+点击“选择客户”按钮，在弹出的客户列表里选「北京华信科技有限公司」那一行（点该行的“选择”按钮）；
+业务单元选 bu_a；
+点击“提交”按钮；
+确认列表中出现刚填写的合同名称“合同_{datetime}”。"""
+    _CURRENT_LOG["case_id"] = "ai_contracts_create_bu_a_160019"
+    _goto(page, 'http://localhost:8000')
+    _log(page, "场景开始", f"case=ai_contracts_create_bu_a_160019")
+
+    # step 1: 打开 http://localhost:8000
+    _goto(page, 'http://localhost:8000')
+    _log(page, "goto", f"打开 http://localhost:8000")
+
+    # step 2: 点击“+ 新建合同”按钮打开新建合同弹窗
+    _act(page, "click", semantic='新建合同', primary=lambda p: p.get_by_role("button", name="+ 新建合同"))
+    _log(page, "click", f"点击“+ 新建合同”按钮打开新建合同弹窗")
 
     # step 3: 在弹窗中填写合同名称
     _act(page, "fill", semantic='请输入合同名称', primary=lambda p: p.get_by_test_id("modal-new").get_by_placeholder("请输入合同名称"), value=_data('fill_0', ctx))
     _log(page, "fill", f"在弹窗中填写合同名称")
 
-    # step 4: 管理单元选择 0021
-    _act(page, "select", semantic='请选择_0021_0451_1031', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '管理单元'}]), value=_data('select_1', ctx))
-    _log(page, "select", f"管理单元选择 0021")
+    # step 4: 选择管理单元 0021
+    _act(page, "select", semantic='管理单元', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '管理单元'}]), value=_data('select_1', ctx))
+    _log(page, "select", f"选择管理单元 0021")
 
-    # step 5: 帐套选择 001
-    _act(page, "select", semantic='请选择_001_002_003', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '帐套'}]), value=_data('select_2', ctx))
-    _log(page, "select", f"帐套选择 001")
+    # step 5: 选择帐套 001
+    _act(page, "select", semantic='帐套', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '帐套'}]), value=_data('select_2', ctx))
+    _log(page, "select", f"选择帐套 001")
 
-    # step 6: 合同类型选择 合同
-    _act(page, "select", semantic='请选择_合同_po_预po', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '合同类型'}]), value=_data('select_3', ctx))
-    _log(page, "select", f"合同类型选择 合同")
+    # step 6: 选择合同类型 合同
+    _act(page, "select", semantic='合同类型', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '合同类型'}]), value=_data('select_3', ctx))
+    _log(page, "select", f"选择合同类型 合同")
 
-    # step 7: 点击“选择客户”按钮弹出客户列表层
+    # step 7: 点击“选择客户”按钮打开客户列表弹层
     _act(page, "click", semantic='选择客户', primary=lambda p: p.get_by_test_id("modal-new").get_by_text("选择客户", exact=True))
-    _log(page, "click", f"点击“选择客户”按钮弹出客户列表层")
+    _log(page, "click", f"点击“选择客户”按钮打开客户列表弹层")
 
-    # step 8: 在客户列表中选择北京华信科技有限公司那一行的“选择”按钮
+    # step 8: 在客户列表中选择「北京华信科技有限公司」那一行的“选择”按钮
     _act(page, "click", semantic='选择@北京华信科技有限公司', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-customer'}, [{'axis': 'row', 'by': 'text', 'value': '北京华信科技有限公司 北京市朝阳区建国路88号 选择'}, {'axis': 'col', 'by': 'header', 'value': '操作'}, {'axis': 'target', 'by': 'role', 'value': 'button'}]))
-    _log(page, "click", f"在客户列表中选择北京华信科技有限公司那一行的“选择”按钮")
+    _log(page, "click", f"在客户列表中选择「北京华信科技有限公司」那一行的“选择”按钮")
 
-    # step 9: 业务单元选择 bu_a
-    _act(page, "select", semantic='请选择_bu_a_bu_b_bu_c', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '业务单元'}]), value=_data('select_4', ctx))
-    _log(page, "select", f"业务单元选择 bu_a")
+    # step 9: 选择业务单元 bu_a
+    _act(page, "select", semantic='业务单元', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '业务单元'}]), value=_data('select_4', ctx))
+    _log(page, "select", f"选择业务单元 bu_a")
 
     # step 10: 点击“提交”按钮提交新建合同
     _act(page, "click", semantic='提交', primary=lambda p: p.get_by_test_id("modal-new").get_by_text("提交", exact=True))
     _log(page, "click", f"点击“提交”按钮提交新建合同")
-    _assert_text(page, _data('expect_0', ctx), '确认提交后页面出现“已新增合同”提示')
-
-    # step 11: 在列表页客户筛选输入框输入“北京华信”
-    _act(page, "fill", semantic='客户名称_右模糊_前缀匹配', primary=lambda p: p.get_by_placeholder("客户名称（右模糊：前缀匹配）"), value=_data('fill_5', ctx))
-    _log(page, "fill", f"在列表页客户筛选输入框输入“北京华信”")
-
-    # step 12: 点击“搜索”按钮执行客户右模糊筛选
-    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
-    _log(page, "click", f"点击“搜索”按钮执行客户右模糊筛选")
-    _assert_text(page, _data('expect_1', ctx), '确认搜索结果中仍包含北京华信科技有限公司相关记录')
+    _assert_first_row(page, 'contractName', _data('expect_0', ctx), '确认列表第一行出现刚填写的合同名称')
 
 
-def test_ai_contracts_cross_page_011030(page, ctx):
+def test_ai_contracts_cross_page_160019(page, ctx):
     """打开合同列表页，在关键字搜索框输入 1005 并点击搜索；
 点击结果行里的编号链接 HT-1005 进入合同详情页，确认已经换页（URL 含 contract_detail）
 且详情页显示了编号 HT-1005 与名称 合同5；
 然后点击「返回列表」回到列表页，再在关键字搜索框输入 1005 并点击搜索，确认列表里仍有 HT-1005。"""
-    _CURRENT_LOG["case_id"] = "ai_contracts_cross_page_011030"
+    _CURRENT_LOG["case_id"] = "ai_contracts_cross_page_160019"
     _goto(page, 'http://localhost:8000/')
-    _log(page, "场景开始", f"case=ai_contracts_cross_page_011030")
+    _log(page, "场景开始", f"case=ai_contracts_cross_page_160019")
 
     # step 1: 打开合同列表页
     _goto(page, 'http://localhost:8000/')
@@ -114,19 +167,19 @@ def test_ai_contracts_cross_page_011030(page, ctx):
     # step 3: 点击列表页搜索按钮
     _act(page, "click", semantic='搜索@列表页', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"点击列表页搜索按钮")
-    _assert_text(page, _data('expect_0', ctx), '确认搜索结果中出现 HT-1005')
+    _assert_text(page, _data('expect_0', ctx), '确认搜索结果里出现 HT-1005')
 
-    # step 4: 点击结果行中的编号链接 HT-1005 进入详情页
-    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0021 003 po 北京中科智慧科技有限公司 bu_b").locator("td[data-field='contractNo']").get_by_role("link"))
-    _log(page, "click", f"点击结果行中的编号链接 HT-1005 进入详情页")
-    _assert_url(page, _data('expect_1', ctx), '确认已跳转到详情页（URL 含 contract_detail）')
-    _assert_text(page, _data('expect_2', ctx), '确认详情页显示合同编号 HT-1005')
-    _assert_text(page, _data('expect_3', ctx), '确认详情页显示合同名称 合同5')
+    # step 4: 点击结果行里的编号链接 HT-1005 进入详情页
+    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 1031 003 预po 北京中科智慧科技有限公司 bu_c").locator("td[data-field='contractNo']").get_by_role("link"))
+    _log(page, "click", f"点击结果行里的编号链接 HT-1005 进入详情页")
+    _assert_url(page, _data('expect_1', ctx), '确认已换页到合同详情页')
+    _assert_text(page, _data('expect_2', ctx), '确认详情页显示编号 HT-1005')
+    _assert_text(page, _data('expect_3', ctx), '确认详情页显示名称 合同5')
 
-    # step 5: 点击返回列表链接回到列表页
+    # step 5: 点击返回列表回到列表页
     _act(page, "click", semantic='返回列表', primary=lambda p: p.get_by_role("link", name="返回列表"))
-    _log(page, "click", f"点击返回列表链接回到列表页")
-    _assert_text(page, _data('expect_4', ctx), '确认已回到列表页（列表页独有的「新建合同」按钮文案 —— 列表页 URL 是根路径、没有独有片段，按弱 url 断言闸口径改用 text 断言做到达证据）')
+    _log(page, "click", f"点击返回列表回到列表页")
+    _assert_text(page, _data('expect_4', ctx), '确认已回到列表页（表头出现）')
 
     # step 6: 再次在关键字搜索框输入 1005
     _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_1', ctx))
@@ -138,30 +191,121 @@ def test_ai_contracts_cross_page_011030(page, ctx):
     _assert_text(page, _data('expect_5', ctx), '确认列表里仍有 HT-1005')
 
 
-@pytest.mark.parametrize("ctx", _ds_params('ai_contracts_search_by_no_000813'), ids=_ds_ids('ai_contracts_search_by_no_000813'), indirect=True)
-def test_ai_contracts_search_by_no_000813(page, ctx):
-    """在合同列表页面的搜索框输入 '{关键词}'，点击搜索按钮，
-确认结果列表里出现编号为 {期望编号} 的合同记录。
-（数据驱动 · L1：本用例由场景 data: 的 3 组数据展开成 3 条独立用例）"""
-    _CURRENT_LOG["case_id"] = "ai_contracts_search_by_no_000813"
-    _goto(page, 'http://localhost:8000')
-    _log(page, "场景开始", f"case=ai_contracts_search_by_no_000813")
+@pytest.mark.parametrize("ctx", _ds_params('ai_contracts_detail_multi_160019'), ids=_ds_ids('ai_contracts_detail_multi_160019'), indirect=True)
+def test_ai_contracts_detail_multi_160019(page, ctx):
+    """打开合同详情页 {详情地址}，确认页面显示的合同编号是 {期望编号}、客户是 {期望客户}。"""
+    _CURRENT_LOG["case_id"] = "ai_contracts_detail_multi_160019"
+    _goto(page, 'http://localhost:8000/contract_detail.html?no=HT-1005')
+    _log(page, "场景开始", f"case=ai_contracts_detail_multi_160019")
 
-    # step 1: 打开合同列表页面
+    # step 1: 打开合同详情页 {详情地址}
+    _goto(page, _data('goto_0', ctx))
+    _log(page, "goto", f"打开合同详情页 {{详情地址}}")
+    _assert_text(page, _data('expect_0', ctx), '确认页面显示的合同编号是 {期望编号}')
+    _assert_text(page, _data('expect_1', ctx), '确认页面显示的客户是 {期望客户}')
+
+
+@pytest.mark.parametrize("ctx", _ds_params('ai_contracts_filter_customer_multi_160019'), ids=_ds_ids('ai_contracts_filter_customer_multi_160019'), indirect=True)
+def test_ai_contracts_filter_customer_multi_160019(page, ctx):
+    """在合同列表页的「客户名称」输入框里输入 '{客户关键词}'，点击搜索按钮，
+确认结果表格里出现了客户为「{期望客户}」的合同记录。"""
+    _CURRENT_LOG["case_id"] = "ai_contracts_filter_customer_multi_160019"
+    _goto(page, 'http://localhost:8000/')
+    _log(page, "场景开始", f"case=ai_contracts_filter_customer_multi_160019")
+
+    # step 1: 打开合同列表页
+    _goto(page, 'http://localhost:8000/')
+    _log(page, "goto", f"打开合同列表页")
+
+    # step 2: 在客户名称输入框输入客户关键词
+    _act(page, "fill", semantic='客户名称_右模糊_前缀匹配', primary=lambda p: p.get_by_placeholder("客户名称（右模糊：前缀匹配）"), value=_data('fill_0', ctx))
+    _log(page, "fill", f"在客户名称输入框输入客户关键词")
+
+    # step 3: 点击搜索按钮
+    _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
+    _log(page, "click", f"点击搜索按钮")
+    _assert_text(page, _data('expect_0', ctx), '确认结果表格中出现目标客户的合同记录')
+
+
+@pytest.mark.parametrize("ctx", _ds_params('ai_contracts_modal_pick_customer_164351'), ids=_ds_ids('ai_contracts_modal_pick_customer_164351'), indirect=True)
+def test_ai_contracts_modal_pick_customer_164351(page, ctx):
+    """在合同列表页点击「+ 新建合同」按钮，打开「新建合同」弹窗；
+在新建弹窗里点击「选择客户」按钮，打开客户列表弹层；
+在客户列表弹层里点击客户「{客户名称}」所在的那一行，把它选中；
+确认新建弹窗里的客户输入框已经回填为该客户名称。"""
+    _CURRENT_LOG["case_id"] = "ai_contracts_modal_pick_customer_164351"
+    _goto(page, 'http://localhost:8000/')
+    _log(page, "场景开始", f"case=ai_contracts_modal_pick_customer_164351")
+
+    # step 1: 打开 http://localhost:8000/
+    _goto(page, 'http://localhost:8000/')
+    _log(page, "goto", f"打开 http://localhost:8000/")
+
+    # step 2: 在合同列表页点击「+ 新建合同」按钮，打开新建合同弹窗
+    _act(page, "click", semantic='新建合同', primary=lambda p: p.get_by_role("button", name="+ 新建合同"))
+    _log(page, "click", f"在合同列表页点击「+ 新建合同」按钮，打开新建合同弹窗")
+
+    # step 3: 在新建弹窗里点击「选择客户」按钮，打开客户列表弹层
+    _act(page, "click", semantic='选择客户', primary=lambda p: p.get_by_test_id("modal-new").get_by_text("选择客户", exact=True))
+    _log(page, "click", f"在新建弹窗里点击「选择客户」按钮，打开客户列表弹层")
+
+    # step 4: 在客户列表弹层里点击客户「{客户名称}」所在的那一行，把它选中
+    _click_row_cell(page, row_text=_data('row_text_0', ctx), cell_field='custName', tabs=None)
+    _log(page, "click", f"在客户列表弹层里点击客户「{{客户名称}}」所在的那一行，把它选中")
+    _assert_text(page, _data('expect_0', ctx), '确认新建弹窗里的客户输入框已回填为该客户名称')
+
+
+@pytest.mark.parametrize("ctx", _ds_params('ai_contracts_search_by_no_174230'), ids=_ds_ids('ai_contracts_search_by_no_174230'), indirect=True)
+def test_ai_contracts_search_by_no_174230(page, ctx):
+    """在合同列表页面的搜索框输入 '{关键词}'，点击搜索按钮，
+确认结果列表里出现编号为 {期望编号} 的合同记录。"""
+    _CURRENT_LOG["case_id"] = "ai_contracts_search_by_no_174230"
     _goto(page, 'http://localhost:8000')
-    _log(page, "goto", f"打开合同列表页面")
+    _log(page, "场景开始", f"case=ai_contracts_search_by_no_174230")
+
+    # step 1: 打开合同列表页
+    _goto(page, 'http://localhost:8000')
+    _log(page, "goto", f"打开合同列表页")
 
     # step 2: 在关键字搜索框输入 {关键词}
     _act(page, "fill", semantic='合同编号_名称_管理单元_合同类型_帐套', primary=lambda p: p.get_by_placeholder("合同编号/名称/管理单元/合同类型/帐套"), value=_data('fill_0', ctx))
     _log(page, "fill", f"在关键字搜索框输入 {{关键词}}")
 
-    # step 3: 点击搜索按钮触发查询
+    # step 3: 点击搜索按钮
     _act(page, "click", semantic='搜索', primary=lambda p: p.get_by_role("button", name="搜索"))
-    _log(page, "click", f"点击搜索按钮触发查询")
-    _assert_text(page, _data('expect_0', ctx), '确认结果列表中出现编号为 {期望编号} 的合同记录')
+    _log(page, "click", f"点击搜索按钮")
+    _assert_text(page, _data('expect_0', ctx), '确认结果列表里出现编号为 {期望编号} 的合同记录')
 
 
-def test_ai_orders_return_from_contract_004934(page, ctx):
+@pytest.mark.parametrize("ctx", _ds_params('ai_orders_modal_pick_contract_164412'), ids=_ds_ids('ai_orders_modal_pick_contract_164412'), indirect=True)
+def test_ai_orders_modal_pick_contract_164412(page, ctx):
+    """在订单列表页点击「+ 新建订单」按钮，打开「新建订单」弹窗；
+在弹窗里点击挑合同的按钮，打开合同选择弹层；
+在合同选择弹层里点击合同编号为 {合同编号} 的那一行，把它选中；
+确认新建订单弹窗里已经回填了该合同的编号。"""
+    _CURRENT_LOG["case_id"] = "ai_orders_modal_pick_contract_164412"
+    _goto(page, 'http://localhost:8000/orders.html')
+    _log(page, "场景开始", f"case=ai_orders_modal_pick_contract_164412")
+
+    # step 1: 打开订单列表页
+    _goto(page, 'http://localhost:8000/orders.html')
+    _log(page, "goto", f"打开订单列表页")
+
+    # step 2: 点击「+ 新建订单」按钮，打开新建订单弹窗
+    _act(page, "click", semantic='新建订单', primary=lambda p: p.get_by_role("button", name="+ 新建订单"))
+    _log(page, "click", f"点击「+ 新建订单」按钮，打开新建订单弹窗")
+
+    # step 3: 在新建订单弹窗里点击挑合同按钮，打开合同选择弹层
+    _act(page, "click", semantic='选择合同', primary=lambda p: p.get_by_test_id("modal-new-order").get_by_text("选择合同", exact=True))
+    _log(page, "click", f"在新建订单弹窗里点击挑合同按钮，打开合同选择弹层")
+
+    # step 4: 在合同选择弹层里点击合同编号为 {合同编号} 的那一行，把它选中
+    _click_row_cell(page, row_text=_data('row_text_0', ctx), cell_field='contractNo', tabs=None)
+    _log(page, "click", f"在合同选择弹层里点击合同编号为 {{合同编号}} 的那一行，把它选中")
+    _assert_text(page, _data('expect_0', ctx), '确认新建订单弹窗里已回填该合同编号')
+
+
+def test_ai_orders_return_from_contract_160019(page, ctx):
     """打开合同列表页，点击右上角的「查看订单」，系统会**新开一个 tab** 打开订单系统页面（订单列表页）；
 在该页点击「+ 新建订单」按钮，弹出「新建订单」弹窗：
 填写订单名称（用「退货订单-{datetime}」这个值）；
@@ -174,21 +318,21 @@ def test_ai_orders_return_from_contract_004934(page, ctx):
 然后在订单列表里点击这一行的「合同编号」链接，它会**新开一个 tab** 打开该合同的详情页，
 确认新 tab 的 URL 是合同详情页且页面显示合同编号 HT-1001、合同名称 合同1；
 最后点击该详情页的「返回」按钮，这个 tab 被关闭，回到订单列表页面（确认还在订单列表页）。"""
-    _CURRENT_LOG["case_id"] = "ai_orders_return_from_contract_004934"
+    _CURRENT_LOG["case_id"] = "ai_orders_return_from_contract_160019"
     _t = _Tabs(page)          # 多 tab：点了会开新 tab 的控件后 page 会被重新绑定到新 tab
     _goto(page, 'http://localhost:8000/')
-    _log(page, "场景开始", f"case=ai_orders_return_from_contract_004934")
+    _log(page, "场景开始", f"case=ai_orders_return_from_contract_160019")
 
     # step 1: 打开合同列表页
     _goto(page, 'http://localhost:8000/')
     _log(page, "goto", f"打开合同列表页")
-    _assert_text(page, _data('expect_0', ctx), '确认合同列表页已加载（右上角查看订单链接）')
+    _assert_text(page, _data('expect_0', ctx), '确认合同列表页已加载（表头合同编号）')
 
     # step 2: 点击右上角「查看订单」，新开 tab 打开订单系统
     page = _t.open_new(lambda: _act(page, "click", semantic='查看订单', primary=lambda p: p.get_by_role("link", name="查看订单")))
     _log(page, "click_new_tab", f"点击右上角「查看订单」，新开 tab 打开订单系统")
     _assert_url(page, _data('expect_1', ctx), '确认新 tab 是订单系统页')
-    _assert_text(page, _data('expect_2', ctx), '确认订单系统页独有文案')
+    _assert_text(page, _data('expect_2', ctx), '确认订单列表已加载（表头订单编号）')
 
     # step 3: 点击「+ 新建订单」打开弹窗
     _act(page, "click", semantic='新建订单', primary=lambda p: p.get_by_role("button", name="+ 新建订单"))
@@ -202,53 +346,53 @@ def test_ai_orders_return_from_contract_004934(page, ctx):
     _act(page, "click", semantic='选择合同', primary=lambda p: p.get_by_test_id("modal-new-order").get_by_text("选择合同", exact=True))
     _log(page, "click", f"打开选择合同弹层")
 
-    # step 6: 选中合同弹层第一行 HT-1001
+    # step 6: 选第一行合同 HT-1001
     _act(page, "click", semantic='选择@HT_1001', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-pick-contract'}, [{'axis': 'row', 'by': 'text', 'value': 'HT-1001 合同1 北京华信科技有限公司 选择'}, {'axis': 'col', 'by': 'header', 'value': '操作'}, {'axis': 'target', 'by': 'role', 'value': 'button'}]))
-    _log(page, "click", f"选中合同弹层第一行 HT-1001")
+    _log(page, "click", f"选第一行合同 HT-1001")
 
     # step 7: 打开业务单元弹层
     _act(page, "click", semantic='选择业务单元', primary=lambda p: p.get_by_test_id("modal-new-order").get_by_title("选择业务单元"))
     _log(page, "click", f"打开业务单元弹层")
 
-    # step 8: 选中业务单元第一行 bu_a
+    # step 8: 选业务单元第一行 bu_a
     _act(page, "click", semantic='选择@bu_a', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-pick-bu'}, [{'axis': 'row', 'by': 'text', 'value': 'bu_a选择'}, {'axis': 'col', 'by': 'header', 'value': '操作'}, {'axis': 'target', 'by': 'role', 'value': 'button'}]))
-    _log(page, "click", f"选中业务单元第一行 bu_a")
+    _log(page, "click", f"选业务单元第一行 bu_a")
 
     # step 9: 打开管理单元弹层
     _act(page, "click", semantic='选择管理单元', primary=lambda p: p.get_by_test_id("modal-new-order").get_by_title("选择管理单元"))
     _log(page, "click", f"打开管理单元弹层")
 
-    # step 10: 选中管理单元第一行 0021
+    # step 10: 选管理单元第一行 0021
     _act(page, "click", semantic='选择@0021', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-pick-mu'}, [{'axis': 'row', 'by': 'text', 'value': '0021选择'}, {'axis': 'col', 'by': 'header', 'value': '操作'}, {'axis': 'target', 'by': 'role', 'value': 'button'}]))
-    _log(page, "click", f"选中管理单元第一行 0021")
+    _log(page, "click", f"选管理单元第一行 0021")
 
     # step 11: 打开帐套弹层
     _act(page, "click", semantic='选择帐套', primary=lambda p: p.get_by_test_id("modal-new-order").get_by_title("选择帐套"))
     _log(page, "click", f"打开帐套弹层")
 
-    # step 12: 选中帐套第一行 001
+    # step 12: 选帐套第一行 001
     _act(page, "click", semantic='选择@001', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-pick-file'}, [{'axis': 'row', 'by': 'text', 'value': '001选择'}, {'axis': 'col', 'by': 'header', 'value': '操作'}, {'axis': 'target', 'by': 'role', 'value': 'button'}]))
-    _log(page, "click", f"选中帐套第一行 001")
+    _log(page, "click", f"选帐套第一行 001")
 
     # step 13: 订单类型下拉选「退货订单」
-    _act(page, "select", semantic='请选择_标准销售订单_退货订单_服务订单_电商订单', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new-order'}, [{'axis': 'target', 'by': 'label', 'value': '订单类型 *'}]), value=_data('select_1', ctx))
+    _act(page, "select", semantic='订单类型', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new-order'}, [{'axis': 'target', 'by': 'label', 'value': '订单类型 *'}]), value=_data('select_1', ctx))
     _log(page, "select", f"订单类型下拉选「退货订单」")
 
     # step 14: 打开选择客户弹层
     _act(page, "click", semantic='选择客户@订单系统', primary=lambda p: p.get_by_test_id("modal-new-order").get_by_text("选择客户", exact=True))
     _log(page, "click", f"打开选择客户弹层")
 
-    # step 15: 选中第一个客户
+    # step 15: 选第一个客户
     _act(page, "click", semantic='选择@北京华信科技有限公司@订单系统', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-pick-cust'}, [{'axis': 'row', 'by': 'text', 'value': '北京华信科技有限公司 北京市朝阳区建国路88号 选择'}, {'axis': 'col', 'by': 'header', 'value': '操作'}, {'axis': 'target', 'by': 'role', 'value': 'button'}]))
-    _log(page, "click", f"选中第一个客户")
+    _log(page, "click", f"选第一个客户")
 
     # step 16: 打开选择销售员弹层
     _act(page, "click", semantic='选择销售员', primary=lambda p: p.get_by_test_id("modal-new-order").get_by_text("选择销售员", exact=True))
     _log(page, "click", f"打开选择销售员弹层")
 
-    # step 17: 选中第一个销售员
+    # step 17: 选第一个销售员
     _act(page, "click", semantic='选择@张伟', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-pick-salesman'}, [{'axis': 'row', 'by': 'text', 'value': '张伟选择'}, {'axis': 'col', 'by': 'header', 'value': '操作'}, {'axis': 'target', 'by': 'role', 'value': 'button'}]))
-    _log(page, "click", f"选中第一个销售员")
+    _log(page, "click", f"选第一个销售员")
 
     # step 18: 填写订单备注
     _act(page, "fill", semantic='订单备注_可不填', primary=lambda p: p.get_by_test_id("modal-new-order").get_by_placeholder("订单备注（可不填）"), value=_data('fill_2', ctx))
@@ -259,18 +403,18 @@ def test_ai_orders_return_from_contract_004934(page, ctx):
     _log(page, "click", f"提交新建订单")
     _assert_first_row(page, 'orderName', _data('expect_3', ctx), '确认列表第一行订单名称就是刚填的值')
 
-    # step 20: 点击该行合同编号链接，新开 tab 打开合同详情页
+    # step 20: 点该行合同编号链接，新开 tab 打开合同详情页
     page = _click_row_cell(page, row_text=_data('row_text_3', ctx), cell_field='contractNo', tabs=_t)
-    _log(page, "click_new_tab", f"点击该行合同编号链接，新开 tab 打开合同详情页")
+    _log(page, "click_new_tab", f"点该行合同编号链接，新开 tab 打开合同详情页")
     _assert_url(page, _data('expect_4', ctx), '确认新 tab 是合同详情页')
     _assert_text(page, _data('expect_5', ctx), '确认详情页显示合同编号 HT-1001')
     _assert_text(page, _data('expect_6', ctx), '确认详情页显示合同名称 合同1')
 
-    # step 21: 点击详情页「返回」关闭本 tab
+    # step 21: 点击详情页「返回」，关闭本 tab
     page = _t.close_current(lambda: _act(page, "click", semantic='返回', primary=lambda p: p.get_by_role("link", name="返回")))
-    _log(page, "close_tab", f"点击详情页「返回」关闭本 tab")
+    _log(page, "close_tab", f"点击详情页「返回」，关闭本 tab")
     _assert_url(page, _data('expect_7', ctx), '确认回到订单列表页')
-    _assert_text(page, _data('expect_8', ctx), '确认仍在订单系统页')
+    _assert_text(page, _data('expect_8', ctx), '确认仍在订单列表页（表头订单编号）')
 
 
 def test_assert_kinds_modal(page, ctx):
@@ -388,15 +532,15 @@ def test_create_bu_a_c1(page, ctx):
     _log(page, "fill", f"在合同名称输入框输入名称")
 
     # step 4: 选择管理单元0021
-    _act(page, "select", semantic='请选择_0021_0451_1031', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '管理单元'}]), value=_data('select_1', ctx))
+    _act(page, "select", semantic='管理单元', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '管理单元'}]), value=_data('select_1', ctx))
     _log(page, "select", f"选择管理单元0021")
 
     # step 5: 选择帐套001
-    _act(page, "select", semantic='请选择_001_002_003', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '帐套'}]), value=_data('select_2', ctx))
+    _act(page, "select", semantic='帐套', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '帐套'}]), value=_data('select_2', ctx))
     _log(page, "select", f"选择帐套001")
 
     # step 6: 选择合同类型'合同'
-    _act(page, "select", semantic='请选择_合同_po_预po', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '合同类型'}]), value=_data('select_3', ctx))
+    _act(page, "select", semantic='合同类型', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '合同类型'}]), value=_data('select_3', ctx))
     _log(page, "select", f"选择合同类型'合同'")
 
     # step 7: 点『选择客户』打开客户列表弹层
@@ -408,7 +552,7 @@ def test_create_bu_a_c1(page, ctx):
     _log(page, "click", f"在客户列表里选『北京华信科技有限公司』那一行")
 
     # step 9: 选择业务单元bu_a
-    _act(page, "select", semantic='请选择_bu_a_bu_b_bu_c', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '业务单元'}]), value=_data('select_4', ctx))
+    _act(page, "select", semantic='业务单元', primary=lambda p: _drill(p, {'kind': 'dialog', 'by': 'test_id', 'value': 'modal-new'}, [{'axis': 'target', 'by': 'label', 'value': '业务单元'}]), value=_data('select_4', ctx))
     _log(page, "select", f"选择业务单元bu_a")
 
     # step 10: 点击提交按钮
@@ -441,7 +585,7 @@ def test_cross_page_detail(page, ctx):
     _assert_attr(page, 'data-cust', _data('expect_1', ctx), lambda p: p.locator("#tbody-contracts tr:has-text('HT-1005') td[data-field='customer']"), semantic=None, desc='【列表页】HT-1005 的客户编号 = c5（客户按序号确定：HT-1001→c1、HT-1005→c5、HT-1007→c1…）')
 
     # step 4: 点击结果里的编号链接 HT-1005 进入详情页
-    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 0021 003 po 北京中科智慧科技有限公司 bu_b").locator("td[data-field='contractNo']").get_by_role("link"))
+    _act(page, "click", semantic='HT_1005', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1005 合同5 1031 003 预po 北京中科智慧科技有限公司 bu_c").locator("td[data-field='contractNo']").get_by_role("link"))
     _log(page, "click", f"点击结果里的编号链接 HT-1005 进入详情页")
     _assert_url(page, _data('expect_2', ctx), '【换页证据】点击编号后 URL 已变为详情页')
     _assert_count(page, _data('expect_3', ctx), lambda p: p.locator("table[aria-label='合同详情'] tr:has-text('合同编号') td"), semantic=None, desc='【详情页】编号单元格存在（确认换的是详情页而不是别的页）')

@@ -1,0 +1,39 @@
+{
+  "case_id": "ai_contracts_modal_pick_customer_164351",
+  "name": "在合同列表页点击「+ 新建合同」按钮，打开「新建合同」弹窗；\n在新建弹窗里点击「选择客户」按钮，打开客户列表弹层；\n在客户列表弹层里点击客户「{客户名称}」所在的那一行，把它选中；\n确认新建弹窗里的客户输入框已经回填为该客户名称。",
+  "base_url": "http://localhost:8000/",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开 http://localhost:8000/",
+      "url": "http://localhost:8000/"
+    },
+    {
+      "op": "click",
+      "desc": "在合同列表页点击「+ 新建合同」按钮，打开新建合同弹窗",
+      "element": "新建合同"
+    },
+    {
+      "op": "click",
+      "desc": "在新建弹窗里点击「选择客户」按钮，打开客户列表弹层",
+      "element": "选择客户"
+    },
+    {
+      "op": "click",
+      "desc": "在客户列表弹层里点击客户「{客户名称}」所在的那一行，把它选中",
+      "row_text": "{客户名称}",
+      "cell_field": "custName"
+    }
+  ],
+  "asserts": [
+    {
+      "desc": "确认新建弹窗里的客户输入框已回填为该客户名称",
+      "expect": "{客户名称}",
+      "after_step": 4
+    }
+  ],
+  "scenario_id": "contracts_modal_pick_customer",
+  "source_scenario": "scenarios/contracts/contracts_modal_pick_customer.yml",
+  "scenario_fingerprint": "9578a11348e59f75",
+  "llm_source": "cassette:6301684868f5af69"
+}

@@ -194,12 +194,23 @@ def _run_runner(args):
 
 
 def test_runner_lists_exactly_the_repo_verify_scripts():
-    """★ `--list` 必须与仓库里的 verify_*.py 完全一致（**自动收录、不许手写清单** ⇒ 新增脚本不会漏跑）。"""
+    """★ `--list` 必须与仓库里的 verify_*.py 对得上（**自动收录、不许手写清单** ⇒ 新增脚本不会漏跑）。
+
+    例外（D2 · 2026-09-24）：脚本可在自己文件头部声明 `HYBRID_DAILY_SKIP: <原因>`⇒不日常跑
+    （如真调 LLM 的场景1）—— 这类**必须**出现在 `--full` 的列表里，且日常列表里要有它的"不进日常"提示。
+    """
     r = _run_runner(["--list"])
     assert r.returncode == 0, r.stderr
     listed = sorted(ln.strip() for ln in r.stdout.splitlines() if ln.strip().endswith(".py"))
+    rf = _run_runner(["--list", "--full"])
+    assert rf.returncode == 0, rf.stderr
+    listed_full = sorted(ln.strip() for ln in rf.stdout.splitlines() if ln.strip().endswith(".py"))
     expected = sorted(p.name for p in (REPO / "tests" / "featureTest").glob("verify_*.py"))
-    assert listed == expected, f"\n--list 给的: {listed}\n仓库实际有: {expected}"
+    assert listed_full == expected, f"\n--full 给的: {listed_full}\n仓库实际有: {expected}"
+    missing = [n for n in expected if n not in listed]
+    assert missing, "没有自声明排除的脚本时，日常列表应与 --full 一致（本判据要能反映差异）" if len(listed) == len(expected) else True
+    for n in missing:
+        assert "不进日常" in r.stdout, f"{n} 不在日常列表里，但没给出原因 ⇒ 不许悄悄消失"
 
 
 def test_runner_only_filter_and_unknown_flag():

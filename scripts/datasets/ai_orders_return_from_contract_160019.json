@@ -3,13 +3,13 @@
   "select_1": "退货订单",
   "fill_2": "AI 端到端自动化用例",
   "row_text_3": "退货订单-{datetime}",
-  "expect_0": "查看订单",
+  "expect_0": "合同编号",
   "expect_1": "orders.html",
-  "expect_2": "合同管理",
+  "expect_2": "订单编号",
   "expect_3": "退货订单-{datetime}",
   "expect_4": "contract_detail",
   "expect_5": "HT-1001",
   "expect_6": "合同1",
   "expect_7": "orders.html",
-  "expect_8": "合同管理"
+  "expect_8": "订单编号"
 }

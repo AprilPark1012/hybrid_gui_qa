@@ -32,7 +32,21 @@ MIN_MEM_MB = 550                      # 与 run_verifications.sh 同口径（一
 
 TMP_CID = "zz_verify_data_expand_tmp"
 TMP_CASE = BASE / "cases" / f"{TMP_CID}.json"
-SAMPLE_CASE = BASE / "cases" / "ai_contracts_search_by_no_000813.json"
+def _discover_sample_case() -> Path:
+    """按**前缀**发现样例用例（2026-09-24 D3/R10：用例名含生成时间戳，会被重新生成 ⇒ 不许硬编码）。
+
+    口径（R10 触发源②）：用例一变/一换代，引用它的东西必须跟着走 ⇒ 这里用发现而不是写死；
+    找不到就直接红，绝不用"随便拿一个"糊过去。
+    """
+    hits = sorted((BASE / "cases").glob("ai_contracts_search_by_no_*.json"))
+    if not hits:
+        raise SystemExit(f"❌ 找不到样例用例 ai_contracts_search_by_no_*.json（R10：用例换代号了？"
+                         f"请先 `python -m framework.cli explore --ai --scenario-file "
+                         f"scenarios/contracts/contracts_search_by_no.yml --llm-cassette`）")
+    return hits[-1]
+
+
+SAMPLE_CASE = _discover_sample_case()
 SETS = BASE / "scripts" / "datasets" / f"{TMP_CID}.sets.json"
 
 
@@ -91,6 +105,15 @@ def cleanup() -> list[str]:
     r = run([PY, "-m", "framework.cli", "generate"])
     if r.returncode != 0:
         leftovers.append(f"generate 复原失败（exit {r.returncode}）")
+    # ★再删一次（2026-09-24）：上面那次 generate 若因任何原因出错，产物可能被它按旧快照重建；
+    #   临时产物**绝不能留在仓库里** —— 一类的产物健康判据会看到它（没 dataset / 有未映射存根）
+    #   ⇒ 报出一串看不懂的失败，把下一个人引到错误方向（今天就是这么被带偏的 ✗）。
+    for p in (TMP_CASE, SETS, BASE / "scripts" / "datasets" / f"{TMP_CID}.json"):
+        if p.exists():
+            try:
+                p.unlink()
+            except OSError:
+                pass
     for p in (TMP_CASE, SETS, BASE / "scripts" / "datasets" / f"{TMP_CID}.json"):
         if p.exists():
             leftovers.append(f"残留 {p.relative_to(BASE)}")

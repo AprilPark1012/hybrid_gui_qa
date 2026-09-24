@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from framework.tools.common.textutil import collapse_ws  # 事故②：accessible name 口径归一化
 
 _CACHE: dict[int, dict[str, dict]] = {}
 
@@ -55,7 +56,7 @@ def locate(page, name: str, *, refresh: bool = False):
             return loc
         raise RuntimeError(f"{name!r} 用 test_id 命中 {loc.count()} 个（要求唯一）")
     if it.get("role") and it.get("name"):
-        loc = page.get_by_role(it["role"], name=it["name"])
+        loc = page.get_by_role(it["role"], name=collapse_ws(it["name"]))  # 事故②：accessible name 口径
         if loc.count() == 1:
             return loc
         if loc.count() == 0:

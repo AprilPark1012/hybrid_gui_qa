@@ -61,6 +61,11 @@ def _extract_data(case: dict) -> dict:
         if st.get("value"):
             data[f"{st['op']}_{idx}"] = st["value"]
             idx += 1
+        # goto 的 url：多套数据场景常需要"同一场景、不同详情页地址"（2026-09-24 detail_multi）
+        # ⇒ url 里带 {占位符} 时也走同一套抽离 + 参数化（不带占位符的照旧原样渲染，零影响）。
+        if st.get("op") == "goto" and isinstance(st.get("url"), str) and "{" in st["url"]:
+            data[f"goto_{idx}"] = st["url"]
+            idx += 1
         # 行内定位的行锚文本（row_text）：它常含 {datetime} 这类动态占位符，必须走同一套抽离 + 解析
         if st.get("row_text"):
             data[f"row_text_{idx}"] = st["row_text"]
@@ -80,6 +85,9 @@ def _add_payload_refs(case: dict) -> dict:
     for st in case.get("steps", []):
         if st.get("value"):
             st["_payload_ref"] = f"{st['op']}_{idx}"
+            idx += 1
+        if st.get("op") == "goto" and isinstance(st.get("url"), str) and "{" in st["url"]:
+            st["_payload_ref"] = f"goto_{idx}"
             idx += 1
         if st.get("row_text"):
             st["_row_ref"] = f"row_text_{idx}"
@@ -200,6 +208,26 @@ def _primary_lambda(expr: str) -> str:
     return f"lambda p: p.{expr}"
 
 
+def _py_str(value) -> str:
+    r"""把任意文本渲染成**安全的 Python 字符串字面量**（双引号风格；含引号/换行也能过）。
+
+    2026-09-24 事故：demo 下拉 `<option>` 的文本里带**换行**，生成器原来用
+    `f'… name="{it["name"]}"'` 原样塞进生成物 ⇒ `scripts/test_cases.py` 里字符串没闭合
+    ⇒ 产物 `py_compile` 失败。json.dumps 的转义（\" \\ \n \uXXXX）在 Python 字面量里同样合法，
+    统一用它 ⇒ 「数据里有什么字符」不再决定「生成物是否合法」。
+    """
+    return json.dumps("" if value is None else str(value), ensure_ascii=False)
+
+
+def _collapse_ws(value) -> str:
+    r"""把任意文本的空白序列压成单个空格（Playwright accessible name 的匹配口径）。
+
+    只用于 `role+name` 定位：demo 里 `<option>` 的文本可能带换行/多空格，
+    浏览器算 accessible name 时会把连续空白归一化为一个空格 ⇒ needle 不归一化就匹配不到。
+    """
+    return " ".join(str("" if value is None else value).split())
+
+
 def _semantic_to_locator_expr(it: dict) -> str:
     """probe 元素字典 → Playwright 定位表达式（确定性，Tier1 顺序）。
 
@@ -221,16 +249,20 @@ def _semantic_to_locator_expr(it: dict) -> str:
         # 在多行表里**必然歧义**的定位（实测就是这么错的），属于假通过。
         return f"_drill(p, {it['anchor']!r}, {it['path']!r})"
     if it.get("test_id"):
-        return f'get_by_test_id("{it["test_id"]}")'
+        return f"get_by_test_id({_py_str(it['test_id'])})"
     if it.get("role") and it.get("name"):
-        return f'get_by_role("{it["role"]}", name="{it["name"]}")'
+        # 2026-09-24 事故②：demo 的 <option> 文本带**换行**（"请选择管理单元\n0021\n0451\n1031"），
+        # 原样当 needle 会**匹配不到**（实测 RuntimeError：元素定位失败且自愈未成功）。
+        # Playwright 的 accessible name 匹配是**空白归一化**的 ⇒ needle 也必须归一化（多空白→单空格）。
+        # 只对 name 这么做：get_by_text(exact=True)/placeholder 是精确匹配，归一化会改变语义。
+        return f"get_by_role({_py_str(it['role'])}, name={_py_str(_collapse_ws(it['name']))})"
     if it.get("placeholder"):
-        return f'get_by_placeholder("{it["placeholder"]}")'
+        return f"get_by_placeholder({_py_str(it['placeholder'])})"
     if it.get("text"):
-        return f'get_by_text("{it["text"]}", exact=True)'
+        return f"get_by_text({_py_str(it['text'])}, exact=True)"
     # 上下文锚点
     if it.get("nearby_text") and it.get("role"):
-        return f'locator("li").filter(has_text="{it["nearby_text"]}").get_by_role("{it["role"]}")'
+        return f"locator(\"li\").filter(has_text={_py_str(it['nearby_text'])}).get_by_role({_py_str(it['role'])})"
     raise RuntimeError(f"元素 {it.get('semantic_name')} 无可用定位语义")
 
 
@@ -289,7 +321,14 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
         desc = st.get("desc", "")
         lines.append(f'    # step {i+1}: {desc}')
         if op == "goto":
-            lines.append(f"    _goto(page, {st.get('url', case.get('base_url'))!r})")
+            _gref = st.get("_payload_ref")
+            if _gref:
+                # url 里带 {占位符} ⇒ 必须取参数化后的值（2026-09-24：原来原样渲染 ⇒ 浏览器收到
+                # 字面 "{详情地址}"，多套数据场景直接跑错；同时 _extract_data 没抽它 ⇒ 数据组校验
+                # 判"组值没被用到" ⇒ generate exit 2。三处一起补才是完整的 ✓）
+                lines.append(f"    _goto(page, _data({_gref!r}, ctx))")
+            else:
+                lines.append(f"    _goto(page, {st.get('url', case.get('base_url'))!r})")
         elif st.get("row_text") and st.get("cell_field"):
             # ---- 行内定位步骤（按行内容锚行 + 取该行某列）----
             # 为什么需要：新建记录的编号是**服务端动态分配**的 ⇒ AI 无法按语义名引用那一条，
@@ -790,6 +829,18 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     # 为什么必须在这里拦（而不是靠运行时的 pytest.fail 存根兜底）：存根只是「万一」的保险，
     # 而「探测拿不到」是**生成期的已知错误**。让它继续落盘 = 产出一份看着合法的垃圾产物，
     # 且 generate 自己 exit 0 ⇒ 会被提交/打包/交付（2026-09-15 V7.5 交付事故就是这个）。
+    # ★2026-09-24 补闸门漏洞：`element` 为空的**必定位步骤**（click/fill/select/…）同样是
+    #   「生成期已知错误」—— 它会被渲染成 pytest.fail 存根落进产物（看着合法、实为垃圾）✗
+    #   原来只拦「名字映射不上」（still_missing），**空名字**从这条缝里漏过去（今天实测漏了 4 处）。
+    _empty_elem = [
+        (str(c.get("case_id")), f"step{i + 1} {st.get('op')}（{str(st.get('desc'))[:40]}）没有 element")
+        for c in cases for i, st in enumerate(c.get("steps") or [])
+        if st.get("op") in ("click", "click_new_tab", "fill", "select", "check", "uncheck")
+        and not st.get("element") and not (st.get("row_text") and st.get("cell_field"))
+    ]
+    if _empty_elem and not allow_unmapped:
+        raise UnmappedElementsError(_empty_elem, locator_sources,
+                                    probe_error="用例里这些步骤根本没给 element")
     if still_missing and not allow_unmapped:
         raise UnmappedElementsError(still_missing, locator_sources, probe_error=probe_error,
                                    conflicts=_CONFLICT_BASES)

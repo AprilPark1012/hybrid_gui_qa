@@ -22,6 +22,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import re
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -438,18 +439,104 @@ def elementmap_warnings(m: ElementMap) -> list[str]:
     return warns
 
 
-def write_case(case: dict, cases_dir: Path | None = None) -> Path:
-    """把用例写入 cases/<case_id>.json（同名自动加 -2/-3 后缀，不覆盖已有文件）。"""
+def write_case(case: dict, cases_dir: Path | None = None, prune_previous: bool = True) -> Path:
+    """把用例写入 cases/<case_id>.json（同名自动加 -2/-3 后缀，不覆盖已有文件）。
+
+    **D3（2026-09-24 他定）：同一个场景只保留一条当前用例。**
+    带 `scenario_id` 的用例（AI 用例都是）在写入后会把**同场景的更早用例连同它的 dataset 一起清掉**——
+    因为「场景变了要刷新，保证同步」这件事只对"当前那一条"成立：留着历史旧件，它们必然与现场景不同步，
+    只会让 `cases/` 越长越脏、让一类判据永久发红。不带 scenario_id 的用例（手搓/临时）一律不动。
+    """
     cases_dir = Path(cases_dir or CASES_DIR)
     cases_dir.mkdir(parents=True, exist_ok=True)
     cid = case["case_id"]
+    # ★2026-09-24 事故②（真凶，由判据当场抓出）：同名冲突时落成 `xxx-2.json`，
+    #   而清理逻辑按"路径比对"跳过的是 `-2` 那份 ⇒ **原版被删** ✗
+    # ⇒ AI 用例是"幂等重生成"的产物（同一 case_id 就该是同一份）⇒ **直接覆盖**，不搞 `-2`；
+    #   只有**非 AI**（手搓/临时）用例才保留 `-2` 递增（避免覆盖用户手工产物）。
+    _strict_for_path = bool(re.fullmatch(r"ai_.+_\d{6}", str(cid or "")))
     path = cases_dir / f"{cid}.json"
-    n = 2
-    while path.exists():
-        path = cases_dir / f"{cid}-{n}.json"
-        n += 1
+    if not _strict_for_path:
+        n = 2
+        while path.exists():
+            path = cases_dir / f"{cid}-{n}.json"
+            n += 1
     path.write_text(json.dumps(case, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    sid = str(case.get("scenario_id") or "").strip()
+    # ⚠️ 2026-09-24 事故（我引入的静默删数据 bug）：临时/手搓用例常**继承**样板场景的 scenario_id
+    #   （例如 verify_data_expand 造的 `zz_verify_data_expand_tmp` 就是从真用例复制的，scenario_id 仍是
+    #    `contracts_search_by_no`）⇒ 若按 scenario_id 一律清理，就会把**真用例删掉** ✗✗
+    # ⇒ 清理只允许由 **AI 用例**（case_id 形如 `ai_<scenario_id>_<ts>`）触发；其余一律不碰。
+    # ⚠️ 2026-09-24 事故（静默删数据，两轮才收干净）：临时/手搓用例会**继承**样板场景的 scenario_id，
+    #   而"以 ai_ 开头"这种宽松守卫挡不住（迟早有 `ai_..._tmp` 这类 id）⇒ 改用**严格形态**：
+    #   只有 `case_id == f"ai_{sid}_<6位数字>"`（= 本框架 AI 用例的唯一合法形态）才允许触发清理。
+    _strict_ai = bool(re.fullmatch(rf"ai_{re.escape(sid)}_\d{{6}}", str(cid or ""))) if sid else False
+    if prune_previous and sid and _strict_ai:
+        ds_dir = Path(cases_dir).parent / "scripts" / "datasets"
+        for old in sorted(Path(cases_dir).glob(f"ai_{sid}_*.json")):
+            # ★只删"同场景的旧 AI 用例"，且**绝不删刚落盘的这一份**（按 case_id 精确比对，
+            #   不是按路径 —— 路径可能因重名变成 xxx-2.json，那样老件就会被误杀）。
+            if old.stem == cid:
+                continue
+            try:
+                old.unlink()
+            except OSError:
+                continue
+            old_ds = ds_dir / old.name
+            if old_ds.exists():
+                try:
+                    old_ds.unlink()
+                except OSError:
+                    pass
     return path
+
+
+def restore_data_placeholders(case: dict, sets: list[dict]) -> list[str]:
+    """把用例文案里**被 AI 解析掉的组值**还原成 `{占位符}`（确定性还原，不靠 AI 自觉）。
+
+    2026-09-24 事故（数据驱动特性静默失效）：场景 `data:` 写的是 `{关键词}` / `{期望编号}`，
+    但 AI 输出的用例文案把占位符**解析成了第 1 组的值**（"在搜索框输入 1005"）⇒ `generate`
+    判定「没用占位符」⇒ **不做参数化**（组数 0）⇒ 3 组数据只跑 1 条，而这一路**只告警不报错** ✗
+    ⇒ 二类 `verify_data_expand` 当场红（它是对的）。
+
+    做法：拿场景 `data:` 的组值建**反向映射**（值 → 占位符名），按**长值优先**替换，
+    作用到 step 的 `desc`/`value` 与 assert 的 `desc`/`expect`（长值优先 ⇒ `HT-1005` 先于 `1005`，
+    不会把 `{期望编号}` 里的 `1005` 误还原）。
+    `id` 是这组数据的标签、不是参数 ⇒ **不参与**映射。
+    """
+    rev: dict[str, str] = {}
+    for st in (sets or []):
+        for k, v in (st or {}).items():
+            if k == "id" or v is None:
+                continue
+            s = str(v)
+            if s:
+                rev.setdefault(s, str(k))
+    if not rev:
+        return []
+    keys = sorted(rev, key=len, reverse=True)          # 长值优先
+    fixed: list[str] = []
+
+    def _fix(s: str | None, where: str) -> str | None:
+        if not isinstance(s, str) or not s:
+            return s
+        out = s
+        for val in keys:
+            if val in out:
+                out = out.replace(val, "{" + rev[val] + "}")
+                fixed.append(f"{where}: {val} → {{{rev[val]}}}")
+        return out
+
+    for i, st in enumerate(case.get("steps") or [], 1):
+        for fld in ("desc", "value"):
+            if fld in st:
+                st[fld] = _fix(st.get(fld), f"step{i}.{fld}")
+    for i, a in enumerate(case.get("asserts") or [], 1):
+        for fld in ("desc", "expect"):
+            if fld in a:
+                a[fld] = _fix(a.get(fld), f"assert{i}.{fld}")
+    return fixed
 
 
 def elementmap_to_cases_file(
@@ -462,6 +549,22 @@ def elementmap_to_cases_file(
     guard：场景护栏（assert_guard），参与落盘质量校验
     """
     case = elementmap_to_case(m, case_id=case_id, extra=extra)
+    # ★数据驱动还原（2026-09-24 事故）：AI 会把场景文案里的 `{占位符}` 解析成"第 1 组的值"
+    #   （"在搜索框输入 1005"）⇒ 生成侧判定「没用占位符」⇒ 不做参数化（组数 0）
+    #   ⇒ 数据驱动特性**静默失效**，而这一路只告警不报错。这里按场景 data: 做**确定性还原**，
+    #   把控制权从"AI 自觉"夺回框架；还原动作逐条进 warns，看得见。
+    sid = str((extra or {}).get("scenario_id") or "").strip()
+    if sid:
+        try:
+            from framework.tools.generate.scenario import discover_scenarios
+            for _sc in discover_scenarios():
+                if _sc.id == sid and getattr(_sc, "data", None):
+                    for _fx in restore_data_placeholders(case, _sc.data):
+                        print(f"          ↻ 数据驱动还原: {_fx}")
+                    break
+        except Exception as _e:      # 兜底必须留痕：静默 except 会把自己写错也吞掉（2026-09-24 教训）
+            print(f"⚠️ [case_builder] 数据驱动占位符还原失败（{type(_e).__name__}: {_e}）",
+                  file=sys.stderr)
     red = case_errors(case, guard=guard)
     if red:
         # 红线（假绿）⇒ **拒绝落盘**：产物永不允许带假绿（与生成侧映射质量闸同一口径）

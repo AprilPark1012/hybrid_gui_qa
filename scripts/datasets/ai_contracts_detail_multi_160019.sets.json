@@ -1,0 +1,20 @@
+[
+  {
+    "id": "详情-HT-1005",
+    "详情地址": "http://localhost:8000/contract_detail.html?no=HT-1005",
+    "期望编号": "HT-1005",
+    "期望客户": "北京中科智慧科技有限公司"
+  },
+  {
+    "id": "详情-HT-1007",
+    "详情地址": "http://localhost:8000/contract_detail.html?no=HT-1007",
+    "期望编号": "HT-1007",
+    "期望客户": "北京华信科技有限公司"
+  },
+  {
+    "id": "详情-HT-1020",
+    "详情地址": "http://localhost:8000/contract_detail.html?no=HT-1020",
+    "期望编号": "HT-1020",
+    "期望客户": "上海远东贸易有限公司"
+  }
+]

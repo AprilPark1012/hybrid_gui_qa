@@ -41,7 +41,15 @@ BASE = Path(__file__).resolve().parents[2]
 PY = sys.executable
 OK, FAIL, USAGE, SKIP = 0, 1, 2, 3
 MIN_MEM_MB = 550                      # 与 run_verifications.sh 同口径（一个 headless Chromium ≈ 515MB）
-CASE = "ai_contracts_search_by_no_000813"      # 单条用例（秒级，够验证 run 目录与 summary）
+def _discover_case() -> str:
+    """按前缀发现单条用例（2026-09-24 D3/R10：用例名含时间戳，重新生成后会变 ⇒ 不许硬编码）。"""
+    hits = sorted((BASE / "cases").glob("ai_contracts_search_by_no_*.json"))
+    if not hits:
+        raise SystemExit("❌ 找不到 ai_contracts_search_by_no_*.json（R10：用例换代号了？）")
+    return hits[-1].stem
+
+
+CASE = _discover_case()      # 单条用例（秒级，够验证 run 目录与 summary）
 sys.path.insert(0, str(BASE))
 
 from framework.tools.common.config import LOG_DIR                                  # noqa: E402

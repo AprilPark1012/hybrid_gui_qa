@@ -1,0 +1,39 @@
+{
+  "case_id": "ai_orders_modal_pick_contract_164412",
+  "name": "在订单列表页点击「+ 新建订单」按钮，打开「新建订单」弹窗；\n在弹窗里点击挑合同的按钮，打开合同选择弹层；\n在合同选择弹层里点击合同编号为 {合同编号} 的那一行，把它选中；\n确认新建订单弹窗里已经回填了该合同的编号。",
+  "base_url": "http://localhost:8000/orders.html",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开订单列表页",
+      "url": "http://localhost:8000/orders.html"
+    },
+    {
+      "op": "click",
+      "desc": "点击「+ 新建订单」按钮，打开新建订单弹窗",
+      "element": "新建订单"
+    },
+    {
+      "op": "click",
+      "desc": "在新建订单弹窗里点击挑合同按钮，打开合同选择弹层",
+      "element": "选择合同"
+    },
+    {
+      "op": "click",
+      "desc": "在合同选择弹层里点击合同编号为 {合同编号} 的那一行，把它选中",
+      "row_text": "{合同编号}",
+      "cell_field": "contractNo"
+    }
+  ],
+  "asserts": [
+    {
+      "desc": "确认新建订单弹窗里已回填该合同编号",
+      "expect": "{合同编号}",
+      "after_step": 4
+    }
+  ],
+  "scenario_id": "orders_modal_pick_contract",
+  "source_scenario": "scenarios/orders/orders_modal_pick_contract.yml",
+  "scenario_fingerprint": "2e6c2b1e8d4facf0",
+  "llm_source": "cassette:5a9623552edf9964"
+}

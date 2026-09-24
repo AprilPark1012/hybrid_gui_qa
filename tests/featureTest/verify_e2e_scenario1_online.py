@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# HYBRID_DAILY_SKIP: 真调 LLM，单场景 250s、整轮约 8~10 分钟 ⇒ 不进日常二类（D2 · 2026-09-24 项目负责人定）。
+#   发版前 / 手工验真 AI 时跑：run_acceptance.py 会显式调用它；或 `--full` 让二类带上它。
 """E2E 场景1（真 AI 链路）—— AI 读 `scenarios/*.yml` 语义识别 → 生成 cases + 脚本 → 跑通。
 
 **R7-e 场景1**（他 2026-09-23 定，口径**选 3 = 两条都要**）：
@@ -21,6 +23,7 @@
 
 ⚠️ 本脚本会**真的调用 LLM**（花 token、联网）。默认 `--quick` 只跑一个场景。
 """
+
 from __future__ import annotations
 
 import argparse

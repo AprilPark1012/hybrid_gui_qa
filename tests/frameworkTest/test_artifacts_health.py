@@ -155,3 +155,21 @@ def test_generated_artifacts_are_syntactically_valid():
     for name in ("conftest.py", "test_cases.py"):
         p = SCRIPTS / name
         ast.parse(p.read_text(encoding="utf-8"), filename=str(p))
+
+def test_no_transient_temp_artifacts_left_behind():
+    """★临时产物绝不许留在仓库里（2026-09-24 被它带偏过一次）。
+
+    `verify_data_expand` 会造 `cases/zz_verify_data_expand_tmp.json` + 对应 dataset 来验证
+    "多套数据真展开"，跑完必须清干净。一旦残留：
+      · 一类 test_generated_test_cases_has_no_unmapped_stubs 会因它报"有未映射存根"
+      · test_case_ids_and_datasets_are_one_to_one 会因它报"用例与数据集对不上"
+    ⇒ 两条失败都**指不到真因**（真因是"上次 data_expand 没清干净" ✗）
+    ⇒ 这里单列一条，把信号说清楚：看到它就知道去清临时产物，而不是去查产物生成器。
+    """
+    import glob
+    leftovers = sorted(glob.glob(str(REPO / "cases" / "zz_*.json"))) + \
+                sorted(glob.glob(str(REPO / "scripts" / "datasets" / "zz_*.json")))
+    assert not leftovers, (
+        "✗ 仓库里有临时产物残留 ⇒ 多半是上次 verify_data_expand 中途失败没清干净。\n"
+        "   清掉它们再重跑（rm cases/zz_*.json scripts/datasets/zz_*.json），不要把它们当正常产物。\n"
+        + "\n".join("   " + p for p in leftovers))

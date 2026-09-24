@@ -89,8 +89,16 @@ def run_explore(extra: list[str], *, timeout: int = 420, need_key: bool = False)
     env = _env()
     if not need_key:
         env["DEEPSEEK_BASE_URL"] = "http://127.0.0.1:9"      # 回放路径必须不联网（可证伪）
+    # ★严格级（2026-09-24 项目负责人定稿，两级分工）：
+    #   ① 日常二类：**不设**本开关 ⇒ 用"结构键回退 + 大声告警"（页面数据的值漂移不该让整轮变红，
+    #      否则成"狼来了"、人会开始无视红色 —— 本项目原则：宁漏不误伤）；
+    #   ② 发版门：`run_acceptance.py` 会设 HYBRID_CASSETTE_STRICT=1 ⇒ 回放**只认逐字一致**
+    #      （要发出去的东西，不接受"结构像、数据不同"的将就）。
+    args = [PY, "-m", "framework.cli", "explore", "--ai", *extra]
+    if os.environ.get("HYBRID_CASSETTE_STRICT") == "1":
+        args.append("--llm-cassette-strict")
     try:
-        p = subprocess.run([PY, "-m", "framework.cli", "explore", "--ai", *extra],
+        p = subprocess.run(args,
                            cwd=str(REPO), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                            text=True, encoding="utf-8", errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -112,6 +113,15 @@ class Scenario:
         except Exception:
             rel = str(self.path)
         extra = {"scenario_id": self.id, "source_scenario": rel}
+        # D3（2026-09-24 他定）：记下**当时场景文件的内容指纹**。
+        # 场景一改（指纹变）⇒ 判据当场红 ⇒ 必须重新生成，保证用例与场景同步。
+        try:
+            _raw = self.path.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n")
+            extra["scenario_fingerprint"] = hashlib.sha256(_raw.encode("utf-8")).hexdigest()[:16]
+        except Exception as _e:  # 绝不静默：指纹写不进去 = D3 的同步判据会失效
+            import sys as _sys
+            print(f"  ⚠️ [scenario] 场景指纹计算失败（{type(_e).__name__}: {_e}）"
+                  f"⇒ D3 同步判据将失效，必须修", file=_sys.stderr)
         if self.pages:                      # P3 跨页：把页面清单带进用例（质量闸与溯源都用）
             extra["pages"] = [p.to_dict() for p in self.pages]
         return extra

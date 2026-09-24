@@ -1,0 +1,28 @@
+{
+  "case_id": "ai_contracts_detail_multi_160019",
+  "name": "打开合同详情页 {详情地址}，确认页面显示的合同编号是 {期望编号}、客户是 {期望客户}。",
+  "base_url": "http://localhost:8000/contract_detail.html?no=HT-1005",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开合同详情页 {详情地址}",
+      "url": "{详情地址}"
+    }
+  ],
+  "asserts": [
+    {
+      "desc": "确认页面显示的合同编号是 {期望编号}",
+      "expect": "{期望编号}",
+      "after_step": 1
+    },
+    {
+      "desc": "确认页面显示的客户是 {期望客户}",
+      "expect": "{期望客户}",
+      "after_step": 1
+    }
+  ],
+  "scenario_id": "contracts_detail_multi",
+  "source_scenario": "scenarios/contracts/contracts_detail_multi.yml",
+  "scenario_fingerprint": "7179ab13c4c6785a",
+  "llm_source": "cassette:a0490b3c26e1724d"
+}

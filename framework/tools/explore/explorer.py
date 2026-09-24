@@ -25,6 +25,7 @@ import time             # 2026-09-14：弹层/弹窗探测改成「有界轮询�
 from pydantic import BaseModel, Field
 from framework.tools.probe.element_map import ElementMap, TestStep, ElementRef
 from framework.tools.common.browser import launch_opts
+from framework.tools.common.textutil import collapse_ws  # 事故②：accessible name 口径归一化
 
 
 # 交给 ChatDeepSeek(ainvoke output_format) 的结构化步骤 schema
@@ -52,7 +53,13 @@ class _PlanModel(BaseModel):
 
 # 规划用的 system 提示（**唯一出处**）：主路径与文本兜底路径必须用同一份，
 # 否则录像键 sha256(system + prompt) 会因两条路径不同而对不上。
-_PLANNER_SYSTEM = "你是 GUI 自动化测试规划师。只输出 JSON。"
+_PLANNER_SYSTEM = (
+    "你是 GUI 自动化测试规划师。只输出 JSON。"
+    "★铁律：场景文案里出现的 {占位符}（例如 {关键词}、{期望编号}、{客户名称}、{详情地址}）"
+    "必须**逐字原样保留**在你输出的 desc / value / expect 里，一个字都不许改。"
+    "绝对不要把占位符替换成具体值，更不要自己编一个数据值 —— 因为该场景的 data: 会提供多组值，"
+    "框架靠这些占位符把用例展开成多条；一旦被替换或编造，多组数据就会静默退化成只跑一组。"
+)
 
 
 def _norm_name(s: str) -> str:
@@ -900,7 +907,7 @@ def _try_collect_modal_items(pg, base_items: list[dict]) -> list[dict]:
                        and any(h in (it.get("name") or "") for h in _MODAL_BUTTON_HINTS)), None)
         if opener is None:
             return []
-        btn = pg.get_by_role("button", name=opener.get("name"))
+        btn = pg.get_by_role("button", name=collapse_ws(opener.get("name")))  # 事故②
         if btn.count() != 1:
             return []
         btn.first.click()
@@ -968,7 +975,7 @@ def _close_open_modal(pg) -> bool:
             if not pg.locator(".modal.show").count():
                 return True
             for label in ("取消", "关闭", "×", "✕"):
-                btn = pg.locator(".modal.show").get_by_role("button", name=label)
+                btn = pg.locator(".modal.show").get_by_role("button", name=collapse_ws(label))  # 事故②
                 if btn.count():
                     btn.first.click(timeout=3000)
                     pg.wait_for_timeout(150)
@@ -1088,7 +1095,7 @@ def _open_layer_and_collect(pg, cand: dict, absorb, collected: list | None = Non
     role, name, test_id = cand.get("role"), cand.get("name") or "", cand.get("test_id") or ""
     shown = _one_line(name)
     try:
-        loc = pg.get_by_test_id(test_id) if test_id else pg.get_by_role(role, name=name)
+        loc = pg.get_by_test_id(test_id) if test_id else pg.get_by_role(role, name=collapse_ws(name))  # 事故②
         n = loc.count()
         # ★2026-09-22（口径 C 实测）：图标按钮（文字就是 "..."，靠 title 表明用途）在页面上往往**同名多个**
         # ⇒ 按 name 取必然 count>1 被跳过（订单页 6 个挑选入口里 3 个正是这种，实测只探到 3 层）。
@@ -1176,7 +1183,7 @@ def _close_layer_by_item(pg, items: list[dict]) -> None:
                 if r.get("ok"):
                     loc = r["locator_obj"].first
             if loc is None:                                # 旧兜底：整页只有一个「选择」才敢点
-                cand = pg.get_by_role("button", name="选择")
+                cand = pg.get_by_role("button", name=collapse_ws("选择"))
                 if cand.count() == 1:
                     loc = cand.first
             if loc is not None and loc.is_visible():

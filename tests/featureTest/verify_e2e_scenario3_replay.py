@@ -148,6 +148,41 @@ def _regen() -> tuple[int, str]:
     return p.returncode, (p.stdout or "")
 
 
+def _snapshot() -> tuple[dict, dict]:
+    """快照 `cases/ai_*.json` 与它们的数据集（内容级，不走 git）。
+
+    ⚠️ 为什么必须快照（2026-09-24 二分实验定位到本脚本）：
+    本脚本会**重新 explore 一遍场景**，而框架有一条正当规则「同一场景只保留一条当前 AI 用例」✗
+    ⇒ 回放时会**清掉该场景的旧用例**、再写入一条新的；可本脚本的"零残留"只归档**新增**的那条
+    ⇒ 结果：旧件被清 ✗ + 新件被归档 ✗ ⇒ 该场景**净剩 0 条** ✗✗
+    ⇒ 后面的 `verify_retention_runs` 就报"找不到样例用例"（0 秒红 ✓ 现场就是这么来的）
+    ⇒ 口径：**跑前快照、跑后被清掉的必须还原**（与"产物复原"同一性质：自己造的副作用自己收）。
+    """
+    cases = {p.name: p.read_bytes() for p in _CASES.glob("ai_*.json")}
+    ds: dict = {}
+    for name in cases:
+        stem = name[:-5]
+        for suffix in (".json", ".sets.json"):
+            d = _DATASETS / f"{stem}{suffix}"
+            if d.exists():
+                ds[d.name] = d.read_bytes()
+    return cases, ds
+
+
+def _restore_missing(snap_cases: dict, snap_ds: dict) -> list[str]:
+    """把"跑前有、跑后没了"的用例与数据集写回去；返回还原清单。"""
+    restored: list[str] = []
+    for name, blob in snap_cases.items():
+        if not (_CASES / name).exists():
+            (_CASES / name).write_bytes(blob)
+            restored.append(name)
+    for name, blob in snap_ds.items():
+        if not (_DATASETS / name).exists():
+            (_DATASETS / name).write_bytes(blob)
+            restored.append(name)
+    return restored
+
+
 def _archive_new(new: set[str]) -> int:
     """把本次新增的用例与数据集归档到 output/archived_cases_<日期>/（仓库零残留）。"""
     ARCHIVE.mkdir(parents=True, exist_ok=True)
@@ -197,6 +232,7 @@ def main() -> int:
     # 3) 正向：跑通整条链
     print("\n—— 正向：跑通整条链 ——")
     before = ai_cases()
+    snap_cases, snap_ds = _snapshot()          # ★跑前快照（回放可能清掉同场景的旧用例）
     rc, out = run_chain()
     print(_tail(out, 14))
     if rc != 0:
@@ -218,7 +254,15 @@ def main() -> int:
     if rest:
         bad(f"归档后仍有残留：{sorted(rest)}（用例库应回到跑前状态）")
         return FAIL
-    ok(f"零残留：{moved} 条新增用例已归档到 {ARCHIVE.relative_to(REPO)}（用例库回到跑前状态）")
+    ok(f"零残留：{moved} 条新增用例已归档到 {ARCHIVE.relative_to(REPO)}（新增部分已清）")
+
+    # ★还原因"同场景只留一条"被清掉的旧件（2026-09-24：不许把别的场景的用例带走 ✗）
+    restored = _restore_missing(snap_cases, snap_ds)
+    if restored:
+        ok(f"旧件还原：回放时被「同场景只留一条」清掉的 {len(restored)} 个文件已写回 —— "
+           f"{sorted(restored)[:3]}{'…' if len(restored) > 3 else ''}")
+    else:
+        ok("旧件还原：本次回放没有清掉任何已有用例 ✓")
 
     # 5-b) ★产物复原（2026-09-22 实测补）：归档用例后**必须重跑 generate**。
     # 事故：链里 generate 出来的 `scripts/test_cases.py` 带着那条 AI 用例；用例归档后产物**没刷新**
