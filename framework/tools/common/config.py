@@ -72,6 +72,7 @@ SCENARIOS_DIR = BASE / "scenarios"           # 用例编排表(index.json)
 # ---- 重构后的目录 ----
 CASES_DIR = BASE / "cases"                   # ★ 手写的自然语言用例文件（写死数据）
 SCRIPTS_DIR = BASE / "scripts"               # ★ generate 产物（playwright 脚本 + datasets 抽离）
+GENERATED_DIR = SCRIPTS_DIR / "generated"     # ★P20 生成脚本目录（<scenario_id>/<case_id>.py + index.json）
 
 # ---- Browser Use 探索阶段需要 LLM ----
 # 负责"智能理解"：读懂自然语言测试意图、规划步骤、挑元素、写 plan。

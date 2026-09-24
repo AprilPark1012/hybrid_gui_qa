@@ -38,7 +38,7 @@ def _discover_sample_case() -> Path:
     口径（R10 触发源②）：用例一变/一换代，引用它的东西必须跟着走 ⇒ 这里用发现而不是写死；
     找不到就直接红，绝不用"随便拿一个"糊过去。
     """
-    hits = sorted((BASE / "cases").glob("ai_contracts_search_by_no_*.json"))
+    hits = sorted((BASE / "cases").rglob("ai_contracts_search_by_no_*.json"))   # P20：用例按场景分目录
     if not hits:
         raise SystemExit(f"❌ 找不到样例用例 ai_contracts_search_by_no_*.json（R10：用例换代号了？"
                          f"请先 `python -m framework.cli explore --ai --scenario-file "
@@ -80,7 +80,7 @@ def run(cmd: list[str]) -> subprocess.CompletedProcess:
 
 def pytest_run(expr: str) -> tuple[int, list[str], list[str]]:
     """跑 -k 表达式，返回 (returncode, passed 用例名, failed 用例名)。"""
-    r = run([PY, "-m", "pytest", "scripts/test_cases.py", "-k", expr, "-v", "--no-header",
+    r = run([PY, "-m", "pytest", "scripts/generated", "-k", expr, "-v", "--no-header",
              "-p", "no:cacheprovider"])
     out = (r.stdout or "") + (r.stderr or "")
     passed = [ln.split("::", 1)[1].split(" ")[0] for ln in out.splitlines() if " PASSED" in ln]
@@ -117,8 +117,9 @@ def cleanup() -> list[str]:
     for p in (TMP_CASE, SETS, BASE / "scripts" / "datasets" / f"{TMP_CID}.json"):
         if p.exists():
             leftovers.append(f"残留 {p.relative_to(BASE)}")
-    if TMP_CID in (BASE / "scripts" / "test_cases.py").read_text(encoding="utf-8"):
-        leftovers.append("test_cases.py 里仍残留临时用例")
+    from _gen_layout import load_index                      # P20：查索引而不是扒单文件
+    if TMP_CID in load_index():
+        leftovers.append("index.json 里仍残留临时用例")
     return leftovers
 
 
@@ -150,7 +151,8 @@ def main() -> int:
             return FAIL
         sets = json.loads(SETS.read_text(encoding="utf-8")) if SETS.exists() else []
         print(f"  {'✅' if len(sets) == 3 else '❌'} ① 场景 data 落到 {SETS.name}：{len(sets)} 组")
-        generated = (BASE / "scripts" / "test_cases.py").read_text(encoding="utf-8")
+        generated = "\n".join(_p.read_text(encoding="utf-8")
+                              for _p in (BASE / "scripts" / "generated").rglob("*.py"))
         has_deco = f'@pytest.mark.parametrize("ctx", _ds_params({TMP_CID!r})' in generated
         print(f"  {'✅' if has_deco else '❌'} ① 生成的用例带 parametrize(indirect)")
         if len(sets) != 3 or not has_deco:

@@ -273,6 +273,10 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
       --live-probe          强制现场重新 probe（忽略快照，最准但最慢）
       --allow-unmapped      【调试用】放行「有语义名映射不上」的情况，仍然产出产物（含 pytest.fail 存根）；
                             默认**拒绝落盘并 exit 2**（防止产出/交付一份全是 fail 存根的假脚本）
+      --changed             【默认】只重写**变了**的用例脚本（三指纹：用例 / 场景 / 探测结果）——
+                            P20 起的增量生成：一个用例一个文件，没变的不动字节
+      --force               全量重写所有用例脚本（发版/核对用；不看指纹）
+      --only <id[,id...]>   只重生成指定的用例（其余一动不动，连 index 条目都保留）
 
     无法获得定位时**不产出产物**：宁可生成阶段就红，也不给出一份「看着合法、跑起来 50 条失败」的东西。
     """
@@ -287,9 +291,19 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
         i = rest.index("--element-map")
         if i + 1 < len(rest):
             map_path = _P(rest[i + 1])
+    only_ids: list[str] = []
+    if "--only" in rest:
+        _i = rest.index("--only")
+        if _i + 1 < len(rest):
+            only_ids = [x.strip() for x in rest[_i + 1].split(",") if x.strip()]
+        if not only_ids:
+            print("❌ --only 后面要跟用例 id（逗号分隔，可多个）", file=sys.stderr)
+            return 2
     try:
         res = generate_scripts(element_map_path=map_path, live_probe="--live-probe" in rest,
-                               allow_unmapped=allow_unmapped or ("--allow-unmapped" in rest))
+                               allow_unmapped=allow_unmapped or ("--allow-unmapped" in rest),
+                               changed_only="--force" not in rest,
+                               only=only_ids or None)
     except CaseQualityError as e:
         _report_case_quality(e)
     except DanglingDatasetError as e:
@@ -573,7 +587,7 @@ def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
 
     if not entries:
         return None
-    tests = SCRIPTS_DIR / "test_cases.py"
+    gen_dir = SCRIPTS_DIR / "generated"
     print(f"[explore] --verify：先 generate 一次，再逐条试跑 {len(entries)} 条新用例…")
     # ⚠️ 必须用 run_capture（显式 UTF-8 解码）：以前是裸 `subprocess.run(..., text=True)`，
     # 父进程按系统默认编码（中文 Windows = cp936/gbk）解码子进程的 UTF-8 中文输出 ⇒
@@ -590,7 +604,14 @@ def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
     vdir.mkdir(parents=True, exist_ok=True)
     all_ok = True
     for label, name in entries:
-        node = f"{tests}::test_{name}"
+        # P20：一个用例一个脚本 ⇒ 用 index.json（case_id → script_path）拿 node id
+        try:
+            _idx = json.loads((gen_dir / "index.json").read_text(encoding="utf-8"))
+            _script = config.BASE / _idx[name]["script_path"]
+        except Exception as _e:
+            print(f"      ⚠️ 取不到 {name} 的脚本路径（index.json 里没有？）：{_e}")
+            continue
+        node = f"{_script}::test_{name}"
         r = run_capture([sys.executable, "-m", "pytest", node, "-v", "-s"],
                         cwd=str(config.BASE))
         text = (r.stdout or "") + (r.stderr or "")
@@ -710,9 +731,10 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
     import os
     import subprocess
     from framework.tools.common.config import SCRIPTS_DIR
-    tests = SCRIPTS_DIR / "test_cases.py"
-    if not tests.exists():
-        print("[run] ❌ scripts/test_cases.py 不存在 → 没有可跑的东西（先跑 generate）")
+    # P20：产物改成 scripts/generated/<场景>/<用例>.py（一个用例一个文件）⇒ 直接跑目录
+    tests = SCRIPTS_DIR / "generated"
+    if not (tests / "index.json").exists():
+        print("[run] ❌ scripts/generated/index.json 不存在 → 没有可跑的东西（先跑 generate）")
         print("      （2026-09-13 修：这里以前只提示一句就 return，**exit 0** —— "
               "CI/脚本调用方会把\"什么都没跑\"误判成成功）")
         raise SystemExit(2)
@@ -853,6 +875,7 @@ FLAG_SPECS: dict[str, str | None] = {
     "--case": "value", "--slowmo": "value",
     "--element-map": "value", "--live-probe": None,
     "--allow-unmapped": None,
+    "--only": "value", "--changed": None, "--force": None,
     "--ai": None, "--mock-fallback": None, "--no-cases": None,
     "--verify": None, "--no-verify": None,
     "--scenario": "value", "--scenario-file": "value", "--scenario-dir": "value",
@@ -871,7 +894,8 @@ _COMMON_FLAGS = {"--workers", "--debug", "--headed", "--force-workers", "--isola
                 "--case", "--slowmo"}
 CMD_FLAGS: dict[str, set[str]] = {
     "probe": set(),
-    "generate": {"--element-map", "--live-probe", "--allow-unmapped"},
+    "generate": {"--element-map", "--live-probe", "--allow-unmapped",
+                  "--only", "--changed", "--force"},
     "explore": {"--ai", "--mock-fallback", "--no-cases", "--no-verify", "--verify",
                 "--scenario", "--scenario-file", "--scenario-dir", "--tag", "--limit",
                 "--llm-cassette", "--llm-record", "--llm-cassette-strict"},

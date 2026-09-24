@@ -28,6 +28,8 @@
 """
 from __future__ import annotations
 
+import json
+
 import re
 
 import argparse
@@ -256,7 +258,9 @@ def run_one(python: str, script: Path, *, stream: bool = False,
 #   ② 间接起：脚本自己不起，但**shell 出去跑生成用例**（真正起浏览器的是子进程）——
 #      实测 verify_assert_kinds.py 就是这么漏判成「纯离线」的（当时只认 ①）。
 _BROWSER_DIRECT = ("sync_playwright",)
-_BROWSER_INDIRECT = ("test_cases.py", "framework.cli")
+# P20：间接起浏览器的标志物从"拼 test_cases.py"改成"跑 scripts/generated"（
+# 「test_cases.py」现在只出现在注释里 ⇒ 拿它当标志会靠注释碰巧命中，太脆 ✗）
+_BROWSER_INDIRECT = ("scripts/generated", "generated/", "framework.cli")
 _SPAWN_HINTS = ("subprocess", "Popen")
 
 
@@ -302,13 +306,21 @@ def artifacts_are_consistent() -> list[str]:
     """
     import re as _re
     scripts = REPO / "scripts"
+    # P20：产物改成「一个用例一个文件」⇒ case_id 的权威来源是 index.json（不再从单文件里扒 def test_*）。
+    # 语义不变：仍然检查「脚本里引用的 dataset 必须真实存在」（死引用会被后续脚本当成环境问题误判 ✗）
     try:
-        tc = (scripts / "test_cases.py").read_text(encoding="utf-8")
-        cf = (scripts / "conftest.py").read_text(encoding="utf-8")
-    except OSError:
+        index = json.loads((scripts / "generated" / "index.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return []
-    used: set[str] = set(_re.findall(r"^def test_([A-Za-z0-9_]+)\(", tc, _re.M))
-    used |= set(_re.findall(r"_ds_params\(\s*[\"\']([A-Za-z0-9_]+)[\"\']", cf + tc))
+    blobs = [f"{meta.get('script_path', '')}" + "\n" for meta in index.values()]
+    for _f in (scripts / "generated").rglob("*.py"):
+        try:
+            blobs.append(_f.read_text(encoding="utf-8"))
+        except OSError:
+            pass
+    allsrc = "\n".join(blobs)
+    used: set[str] = set(index)
+    used |= set(_re.findall(r"_ds_params\(\s*[\"\']([A-Za-z0-9_]+)[\"\']", allsrc))
     return sorted(c for c in used if not (scripts / "datasets" / f"{c}.json").exists())
 
 

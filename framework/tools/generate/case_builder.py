@@ -450,16 +450,26 @@ def write_case(case: dict, cases_dir: Path | None = None, prune_previous: bool =
     cases_dir = Path(cases_dir or CASES_DIR)
     cases_dir.mkdir(parents=True, exist_ok=True)
     cid = case["case_id"]
+    # ★P20（2026-09-24 项目负责人定，口径①）：用例落盘改成「一个场景一个目录」
+    #   AI 用例（case_id 形如 ai_<scenario_id>_<6位数字>）⇒ cases/<scenario_id>/<case_id>.json
+    #   手搓/临时用例 ⇒ cases/manual/<case_id>.json
+    #   ⚠️ 判定用 **case_id 的合法形态**，不用「有没有 scenario_id」——临时用例常**继承**样板
+    #      场景的 scenario_id（今天静默删数据的真凶就在这），按后者会把它误当 AI 用例 ✗
+    #   ⚠️ cases_dir 仍保持指向 cases/ 根（下游 ds_dir 用它的 parent 推算 scripts/datasets）
+    _sid_dir = str(case.get("scenario_id") or "").strip()
+    _is_ai_case = bool(re.fullmatch(r"ai_.+_\d{6}", str(cid or "")))
+    _target = (cases_dir / _sid_dir) if (_is_ai_case and _sid_dir) else (cases_dir / "manual")
+    _target.mkdir(parents=True, exist_ok=True)
     # ★2026-09-24 事故②（真凶，由判据当场抓出）：同名冲突时落成 `xxx-2.json`，
     #   而清理逻辑按"路径比对"跳过的是 `-2` 那份 ⇒ **原版被删** ✗
     # ⇒ AI 用例是"幂等重生成"的产物（同一 case_id 就该是同一份）⇒ **直接覆盖**，不搞 `-2`；
     #   只有**非 AI**（手搓/临时）用例才保留 `-2` 递增（避免覆盖用户手工产物）。
     _strict_for_path = bool(re.fullmatch(r"ai_.+_\d{6}", str(cid or "")))
-    path = cases_dir / f"{cid}.json"
+    path = _target / f"{cid}.json"
     if not _strict_for_path:
         n = 2
         while path.exists():
-            path = cases_dir / f"{cid}-{n}.json"
+            path = _target / f"{cid}-{n}.json"
             n += 1
     path.write_text(json.dumps(case, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -474,7 +484,7 @@ def write_case(case: dict, cases_dir: Path | None = None, prune_previous: bool =
     _strict_ai = bool(re.fullmatch(rf"ai_{re.escape(sid)}_\d{{6}}", str(cid or ""))) if sid else False
     if prune_previous and sid and _strict_ai:
         ds_dir = Path(cases_dir).parent / "scripts" / "datasets"
-        for old in sorted(Path(cases_dir).glob(f"ai_{sid}_*.json")):
+        for old in sorted(_target.glob("*.json")):
             # ★只删"同场景的旧 AI 用例"，且**绝不删刚落盘的这一份**（按 case_id 精确比对，
             #   不是按路径 —— 路径可能因重名变成 xxx-2.json，那样老件就会被误杀）。
             if old.stem == cid:

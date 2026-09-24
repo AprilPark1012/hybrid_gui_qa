@@ -181,7 +181,7 @@ def test_repo_cases_have_no_weak_evidence():
     —— 它躲过了当时所有告警，一路跑到报告里。
     """
     bad: list[str] = []
-    for f in sorted(CASES.glob("*.json")):
+    for f in sorted(CASES.rglob("*.json")):
         case = json.loads(f.read_text(encoding="utf-8"))
         bad += [f"{f.name}: {m}" for m in case_errors(case)]
     assert bad == [], f"以下用例带弱换页证据（假绿）：{bad}"

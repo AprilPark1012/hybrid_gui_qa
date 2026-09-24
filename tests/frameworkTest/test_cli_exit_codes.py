@@ -25,7 +25,7 @@ from framework.tools.generate import generator
 
 
 def test_run_without_generated_scripts_exits_2(monkeypatch, tmp_path):
-    """scripts/test_cases.py 不存在 → 明确失败(2)，不能 exit 0。"""
+    """scripts/generated/index.json 不存在 → 明确失败(2)，不能 exit 0（P20 产物形态）。"""
     monkeypatch.setattr(config, "SCRIPTS_DIR", tmp_path)          # 空目录，没有 test_cases.py
     with pytest.raises(SystemExit) as e:
         cli.cmd_run(1)
@@ -35,7 +35,9 @@ def test_run_without_generated_scripts_exits_2(monkeypatch, tmp_path):
 @pytest.mark.parametrize("returncode", [1, 2, 5])
 def test_run_propagates_pytest_exit_code(monkeypatch, tmp_path, returncode):
     """pytest 非 0 → cli 必须返回同一个退出码（CI 判成败就靠它）。"""
-    (tmp_path / "test_cases.py").write_text("", encoding="utf-8")
+    # P20：产物是 scripts/generated/<场景>/<用例>.py ⇒ 运行器按 index.json 判断"有没有可跑的东西"
+    (tmp_path / "generated").mkdir(exist_ok=True)
+    (tmp_path / "generated" / "index.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(config, "SCRIPTS_DIR", tmp_path)
     monkeypatch.setattr(cli, "LOG_DIR", tmp_path / "log")         # 别把测试产物写进真 log/
 
@@ -52,7 +54,9 @@ def test_run_propagates_pytest_exit_code(monkeypatch, tmp_path, returncode):
 
 def test_run_success_still_exits_zero(monkeypatch, tmp_path):
     """pytest 全绿 → cli 正常返回（不抛 SystemExit），别把成功路径也改坏。"""
-    (tmp_path / "test_cases.py").write_text("", encoding="utf-8")
+    # P20：产物是 scripts/generated/<场景>/<用例>.py ⇒ 运行器按 index.json 判断"有没有可跑的东西"
+    (tmp_path / "generated").mkdir(exist_ok=True)
+    (tmp_path / "generated" / "index.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(config, "SCRIPTS_DIR", tmp_path)
     monkeypatch.setattr(cli, "LOG_DIR", tmp_path / "log")
 

@@ -45,7 +45,7 @@ def test_ai_cases_with_scenario_data_use_placeholders():
     sd = _scenarios_with_data()
     assert sd, "前置：应当存在带 data: 的场景（否则本判据无意义）"
     bad: list[str] = []
-    for f in sorted(CASES.glob("ai_*.json")):
+    for f in sorted(CASES.rglob("ai_*.json")):
         case = json.loads(f.read_text(encoding="utf-8"))
         sid = case.get("scenario_id") or ""
         if sid not in sd:

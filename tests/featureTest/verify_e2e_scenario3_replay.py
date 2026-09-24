@@ -26,6 +26,8 @@
 """
 from __future__ import annotations
 
+import json
+
 import os
 import shutil
 import subprocess
@@ -81,7 +83,7 @@ def demo_up() -> bool:
 
 def ai_cases() -> set[str]:
     """当前 `cases/ai_*.json` 的文件名集合（用于「新增了哪条」与「零残留」判定）。"""
-    return {p.name for p in _CASES.glob("ai_*.json")}
+    return {p.name for p in _CASES.rglob("ai_*.json")}
 
 
 def ensure_cassettes() -> tuple[bool, str]:
@@ -158,7 +160,7 @@ def _snapshot() -> tuple[dict, dict]:
     ⇒ 后面的 `verify_retention_runs` 就报"找不到样例用例"（0 秒红 ✓ 现场就是这么来的）
     ⇒ 口径：**跑前快照、跑后被清掉的必须还原**（与"产物复原"同一性质：自己造的副作用自己收）。
     """
-    cases = {p.name: p.read_bytes() for p in _CASES.glob("ai_*.json")}
+    cases = {p.name: p.read_bytes() for p in _CASES.rglob("ai_*.json")}
     ds: dict = {}
     for name in cases:
         stem = name[:-5]
@@ -173,9 +175,20 @@ def _restore_missing(snap_cases: dict, snap_ds: dict) -> list[str]:
     """把"跑前有、跑后没了"的用例与数据集写回去；返回还原清单。"""
     restored: list[str] = []
     for name, blob in snap_cases.items():
-        if not (_CASES / name).exists():
-            (_CASES / name).write_bytes(blob)
-            restored.append(name)
+        if any(_CASES.rglob(name)):          # 已存在（任一层）⇒ 不用还原
+            continue
+        # ⚠️ 2026-09-24 实测事故（本轮 2 条红就是它）：以前直接写回 `_CASES / name`（**平铺**）✗
+        #   而 P20 后用例在 `cases/<scenario_id>/` 下 ⇒ 还原写成平铺 ⇒ "看着还原了、位置错了"
+        #   ⇒ 之后任何按场景目录找用例的脚本都找不到 ⇒ 且平铺件还会被当成残留清掉 ✗
+        #   ⇒ 按用例自己的 scenario_id（快照内容里就有）还原到正确目录。
+        try:
+            sid = str(json.loads(blob).get("scenario_id") or "").strip()
+        except (ValueError, AttributeError):
+            sid = ""
+        dst = (_CASES / sid / name) if sid else (_CASES / "manual" / name)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(blob)
+        restored.append(str(dst.relative_to(_CASES)))
     for name, blob in snap_ds.items():
         if not (_DATASETS / name).exists():
             (_DATASETS / name).write_bytes(blob)
@@ -188,7 +201,10 @@ def _archive_new(new: set[str]) -> int:
     ARCHIVE.mkdir(parents=True, exist_ok=True)
     moved = 0
     for name in new:
-        src = _CASES / name
+        # P20：用例落盘改成 cases/<scenario_id>/<case_id>.json ⇒ 不能再用 _CASES/name 直连，
+        #   否则 exists()=False ⇒ **静默不归档** ⇒ 留下残留把后续脚本全弄红（本次实测的真凶 ✗）
+        _hit = next((p for p in _CASES.rglob(name)), None)
+        src = _hit if _hit is not None else (_CASES / name)
         if src.exists():
             shutil.move(str(src), str(ARCHIVE / name))
             moved += 1

@@ -182,7 +182,7 @@ def main() -> int:
             "HYBRID_RUN_ID": f"slowgate_{time.strftime('%Y%m%d_%H%M%S')}",
         })
         (ROOT / "log" / run_env["HYBRID_RUN_ID"]).mkdir(parents=True, exist_ok=True)   # pytest-html 不建父目录
-        cmd = [PY, "-m", "pytest", "scripts/test_cases.py", "-q", "-p", "no:cacheprovider",
+        cmd = [PY, "-m", "pytest", "scripts/generated", "-q", "-p", "no:cacheprovider",
                f"--html=log/{run_env['HYBRID_RUN_ID']}/report.html"] + selection
         print(f"[gate] 执行：{' '.join(cmd)}")
         t0 = time.time()

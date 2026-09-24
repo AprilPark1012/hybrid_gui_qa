@@ -82,7 +82,7 @@ def health(base_url):
 
 
 def newest_ai_case(repo):
-    items = sorted((repo / "cases").glob("ai_*.json"), key=lambda p: p.stat().st_mtime)
+    items = sorted((repo / "cases").rglob("ai_*.json"), key=lambda p: p.stat().st_mtime)  # P20：分目录
     return items[-1] if items else None
 
 
@@ -263,14 +263,18 @@ def main():
     head("三、generate 生成用例脚本（普通 generate，不带开关）")
     rc, out = run([*py, "-m", "framework.cli", "generate"], repo)
     tail(out, 8)
-    script = repo / "scripts" / "test_cases.py"
-    unmapped = script.read_text(encoding="utf-8", errors="replace").count("元素未映射") if script.exists() else -1
+    # P20：产物 = scripts/generated/<场景>/<用例>.py + index.json（一个用例一个文件）
+    gen_dir = repo / "scripts" / "generated"
+    index_p = gen_dir / "index.json"
+    _blob = "\n".join(f.read_text(encoding="utf-8", errors="replace") for f in gen_dir.rglob("*.py")) \
+        if gen_dir.is_dir() else ""
+    unmapped = _blob.count("元素未映射") if index_p.exists() else -1
     if rc != 0 or unmapped != 0:
         bad("generate 失败（退出码 %s / 未映射 %s）" % (rc, unmapped))
         return 1
-    ok("脚本已生成：scripts/test_cases.py（未映射 0）")
+    ok("脚本已生成：scripts/generated/**（未映射 0）")
     info("新增用例是否进脚本：%s"
-         % ("是" if case and case.stem in script.read_text(encoding="utf-8", errors="replace") else "否"))
+         % ("是" if case and case.stem in index_p.read_text(encoding="utf-8", errors="replace") else "否"))
 
     # ---------- 四、（可选）run 试跑 ----------
     if args.run and case is not None:

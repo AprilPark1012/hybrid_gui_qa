@@ -127,8 +127,12 @@ def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
         "pkg/docs/training.html": "<html></html>",
         "pkg/framework/cli.py": "\n",
         "pkg/framework/tools/common/text_io.py": "\n",
-        "pkg/scripts/test_cases.py": tests_src + unmapped_extra,
-        "pkg/scripts/conftest.py": GOOD_CONFTEST,
+        # P20：产物 = scripts/generated/<场景>/<用例>.py（一个用例一个文件）
+        #   ⇒ "坏产物"注入点仍在"用例脚本"这一层（产物检查拼读全部生成模块）
+        "pkg/scripts/generated/demo/x.py": tests_src + unmapped_extra,
+        "pkg/scripts/generated/_harness.py": GOOD_CONFTEST,
+        "pkg/scripts/generated/conftest.py": "from _harness import *\n",
+        "pkg/scripts/generated/index.json": '{"x": {}}',
         "pkg/tests/frameworkTest/test_x.py": "\n",
         "pkg/tests/featureTest/verify_x.py": "import sys\n",
         "pkg/demo/x.py": "\n",
@@ -219,7 +223,7 @@ def test_case_count_mismatch_is_caught(tmp_path):
     """包内 cases 数量与仓库不一致 ⇒ 报出来（打包漏文件/多余文件）。"""
     zp = _make_zip(tmp_path, GOOD_TESTS, skip_case=True)
     problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9")
-    assert any("cases/*.json 数量" in p or "没有任何 cases" in p for p in problems), problems
+    assert any("cases/**/*.json 数量" in p or "没有任何 cases" in p for p in problems), problems
 
 
 def test_cassette_pack_contains_recordings_readme_and_helper(tmp_path, monkeypatch):
@@ -302,7 +306,7 @@ def test_collect_files_keeps_sources_and_drops_runtime_cruft():
     """打包收集：源代码/用例/生成物要进包，运行时证据与虚拟环境不得进包。"""
     rel = {p.relative_to(REPO).as_posix() for p in pack_release.collect_files()}
     for must in ("README.md", "build_tools/build_html.py", "framework/cli.py", "framework/tools/common/text_io.py",
-                 "scripts/test_cases.py", "scripts/conftest.py", "demo/app.py",
+                 "scripts/generated", "scripts/generated/index.json", "demo/app.py",
                  "tests/frameworkTest/test_artifacts_health.py", "tests/featureTest/verify_html_sync.py", "cases", "scenarios"):
         assert any(r == must or r.startswith(must + "/") for r in rel), f"漏了 {must}"
     bad = [r for r in rel if r.startswith(("output/", "log/", ".venv/"))

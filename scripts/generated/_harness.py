@@ -35,7 +35,8 @@ import pytest
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import expect as _expect
 
-BASE = Path(__file__).resolve().parent.parent
+# P20：产物位置变了 —— 本文件在 scripts/generated/_harness.py ⇒ 仓库根 = parents[3]
+BASE = Path(__file__).resolve().parent.parent.parent
 LOG_DIR = BASE / "log"
 
 # ---- 本次运行的日志目录（run-id 隔离）----
@@ -120,7 +121,7 @@ def _data(key, ctx):
 
 def _load_data(case_id):
     import json
-    p = Path(__file__).resolve().parent / "datasets" / f"{case_id}.json"
+    p = Path(__file__).resolve().parent.parent / "datasets" / f"{case_id}.json"   # scripts/datasets/ ✓
     return json.loads(p.read_text(encoding="utf-8"))
 
 
@@ -128,7 +129,7 @@ def _load_data(case_id):
 def _load_sets(case_id):
     """多组数据（可选）：<case_id>.sets.json。没有该文件 ⇒ []（= 保持单组行为）。"""
     import json
-    p = Path(__file__).resolve().parent / "datasets" / f"{case_id}.sets.json"
+    p = Path(__file__).resolve().parent.parent / "datasets" / f"{case_id}.sets.json"
     if not p.exists():
         return []
     return json.loads(p.read_text(encoding="utf-8"))

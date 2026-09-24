@@ -30,7 +30,9 @@ PY = sys.executable
 CASES = REPO / "cases"
 SCRIPTS = REPO / "scripts"
 DATASETS = SCRIPTS / "datasets"
-TEST_CASES = SCRIPTS / "test_cases.py"
+# P20：产物 = scripts/generated/<场景>/<用例>.py（一个用例一个文件）
+GEN_DIR = SCRIPTS / "generated"
+INDEX = GEN_DIR / "index.json"
 
 sys.path.insert(0, str(REPO))
 
@@ -67,7 +69,7 @@ def run(cmd: list[str], timeout: int = 900) -> subprocess.CompletedProcess:
 
 def hand_cases() -> list[str]:
     """手搓用例 = `cases/` 下非 `ai_*` 的用例 id（AI 用例归场景1/3 验收）。"""
-    return sorted(p.stem for p in CASES.glob("*.json") if not p.name.startswith("ai_"))
+    return sorted(p.stem for p in CASES.rglob("*.json") if not p.name.startswith("ai_"))
 
 
 def gen_funcs(text: str) -> set[str]:
@@ -79,10 +81,13 @@ def gen_funcs(text: str) -> set[str]:
 
 def step_cover(cases: list[str]) -> None:
     print("\n① 覆盖：每条手搓用例都有对应测试函数")
-    if not TEST_CASES.is_file():
-        bad(f"缺 {TEST_CASES.relative_to(REPO)}（先跑 framework.cli generate）")
+    if not INDEX.is_file():
+        bad(f"缺 {INDEX.relative_to(REPO)}（先跑 framework.cli generate）")
         return
-    funcs = gen_funcs(TEST_CASES.read_text(encoding="utf-8", errors="replace"))
+    # P20：函数名现在分散在多个模块里 ⇒ 拼起来再扫（gen_funcs 的语义完全不变 ✓）
+    _src = "\n".join(_f.read_text(encoding="utf-8", errors="replace")
+                      for _f in GEN_DIR.rglob("*.py"))
+    funcs = gen_funcs(_src)
     missing = [c for c in cases if c not in funcs]
     if missing:
         bad(f"这些手搓用例没有对应测试函数（generate 漏了？）：{missing[:6]}")
@@ -145,7 +150,7 @@ def step_no_residue(before: dict[str, set[str]]) -> None:
 
 def snapshot() -> dict[str, set[str]]:
     return {
-        "cases": {p.name for p in CASES.glob("*.json")},
+        "cases": {p.name for p in CASES.rglob("*.json")},
         "datasets": {p.name for p in DATASETS.glob("*.json")},
         "scenarios": {p.name for p in (REPO / "scenarios").rglob("*.yml")},
     }

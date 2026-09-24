@@ -45,7 +45,10 @@ RELEASE_NOTES_GLOB = "RELEASE_NOTES_*.md"
 EXCLUDE_SUFFIX = {".zip", ".tar.gz", ".pyc", ".pyo"}
 # 包里必须有的东西（少一个说明包不完整）
 REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "framework/cli.py",
-            "framework/tools/common/text_io.py", "scripts/test_cases.py", "scripts/conftest.py",
+            "framework/tools/common/text_io.py",
+            # P20（2026-09-24）：产物改成 scripts/generated/<场景>/<用例>.py（一个用例一个文件）
+            "scripts/generated", "scripts/generated/index.json", "scripts/generated/_harness.py",
+            "scripts/generated/conftest.py",
             "cases", "tests/frameworkTest", "tests/featureTest", "demo", "scenarios")
 # r9-legacy-block:begin —— 历史形态别名：审计**旧包**时按当时的路径形态认（有意保留旧路径）
 # 历史形态别名（2026-09-19）：**结构与文件位置变过，审计历史包不该因此误报**。
@@ -64,6 +67,12 @@ LEGACY_ALIASES = {
     #   tests/ 两大类 → tests/{frameworkTest,featureTest}/  （2026-09-23/24：R7 两类验证分目录，tests/ 作容器保留）
     "tests/frameworkTest": ("tests",),
     "tests/featureTest": ("tests",),
+    #   scripts/generated/** → scripts/test_cases.py + scripts/conftest.py
+    #   （2026-09-24 P20：产物从"单个 test_cases.py"改成"按 id 分文件"⇒ 审计旧包按旧形态认 ✓）
+    "scripts/generated": ("scripts/test_cases.py", "scripts/conftest.py"),
+    "scripts/generated/index.json": ("scripts/test_cases.py",),
+    "scripts/generated/_harness.py": ("scripts/conftest.py",),
+    "scripts/generated/conftest.py": ("scripts/conftest.py",),
 }
 # r9-legacy-block:end
 
@@ -163,27 +172,36 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
             n = rel.get(key)
             return z.read(n).decode("utf-8", "replace") if n else ""
 
-        tc = read("scripts/test_cases.py")
-        if tc:
+        # P20：产物是"一个用例一个文件"⇒ 把所有生成模块拼起来做同样的检查
+        #（语义不变：不许有 pytest.fail 存根 / 必须走就绪契约 _goto / 不许裸 page.goto）
+        _mods = sorted(k for k in rel
+                       if k.startswith("scripts/generated/") and k.endswith(".py")
+                       and not k.endswith(("_harness.py", "conftest.py")))
+        tc = "\n".join(read(k) for k in _mods)
+        if not _mods:
+            problems.append("包里没有任何生成模块（scripts/generated/**/*.py）")
+        elif tc:
             n = tc.count("元素未映射")
             if n:
-                problems.append(f"scripts/test_cases.py 含 {n} 处「元素未映射」存根 "
+                problems.append(f"生成模块含 {n} 处「元素未映射」存根 "
                                 f"（探测失败时落盘的垃圾产物，正是 V7.5 交付事故本体）")
             if "_goto(" not in tc:
-                problems.append("scripts/test_cases.py 没走就绪契约 _goto（F1）")
+                problems.append("生成模块没走就绪契约 _goto（F1）")
             if "page.goto(" in tc:
-                problems.append("scripts/test_cases.py 里有裸 page.goto（绕过就绪契约）")
-        cf = read("scripts/conftest.py")
+                problems.append("生成模块里有裸 page.goto（绕过就绪契约）")
+        cf = read("scripts/generated/_harness.py")
         if cf:
             miss = [f"def {n}" for n in REQUIRED_CONFTEST if f"def {n}" not in cf]
             if miss:
-                problems.append(f"scripts/conftest.py 缺接线：{miss}")
+                problems.append(f"scripts/generated/_harness.py 缺接线：{miss}")
+        else:
+            problems.append("包里没有 scripts/generated/_harness.py（共享运行时缺失 ⇒ 跑不起来）")
 
         n_cases = sum(1 for k in rel if k.startswith("cases/") and k.endswith(".json"))
         if expect_cases is not None and n_cases != expect_cases:
-            problems.append(f"cases/*.json 数量 {n_cases} ≠ 仓库的 {expect_cases}")
+            problems.append(f"cases/**/*.json 数量 {n_cases} ≠ 仓库的 {expect_cases}")
         if n_cases == 0:
-            problems.append("包内没有任何 cases/*.json")
+            problems.append("包内没有任何 cases/**/*.json")
 
         bad = [k for k in rel if k.startswith(("output/", "log/", ".venv/"))
                or k.endswith(".env") or "__pycache__" in k]
@@ -417,7 +435,7 @@ def main() -> int:
                          "正常情形请先跑 record_cassettes.py --missing-only 补齐再打）")
     a = ap.parse_args()
 
-    repo_cases = len(list((REPO / "cases").glob("*.json")))
+    repo_cases = len(list((REPO / "cases").rglob("*.json")))   # P20：用例按场景分目录
     repo_notes = repo_release_notes()
 
     if a.check:

@@ -43,7 +43,7 @@ OK, FAIL, USAGE, SKIP = 0, 1, 2, 3
 MIN_MEM_MB = 550                      # 与 run_verifications.sh 同口径（一个 headless Chromium ≈ 515MB）
 def _discover_case() -> str:
     """按前缀发现单条用例（2026-09-24 D3/R10：用例名含时间戳，重新生成后会变 ⇒ 不许硬编码）。"""
-    hits = sorted((BASE / "cases").glob("ai_contracts_search_by_no_*.json"))
+    hits = sorted((BASE / "cases").rglob("ai_contracts_search_by_no_*.json"))   # P20：用例按场景分目录
     if not hits:
         raise SystemExit("❌ 找不到 ai_contracts_search_by_no_*.json（R10：用例换代号了？）")
     return hits[-1].stem

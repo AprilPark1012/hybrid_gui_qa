@@ -140,7 +140,7 @@ def test_negative_placeholder_and_runtime_paths_are_ignored():
 #   否则测不到「版本史附录该被跳过」这件事。它只作为字符串出现在测试里、不渲染进任何对外产物。
 def test_negative_changelog_area_is_excluded():
     """版本史附录里的旧文档引用（冻结历史）不该让判据变红。"""
-    body = '<h2>正文</h2><p>见 <code>cases/search_mixed.json</code></p>'
+    body = '<h2>正文</h2><p>见 <code>cases/manual/search_mixed.json</code></p>'
     hist = '<span class="n">A</span>版本与更新记录</h2><p>见 <code>docs/P4-慢目标与并发-修复方案.md</code></p>'
     assert missing_paths(live_body(body + hist)) == []
 # r9-legacy-block:end

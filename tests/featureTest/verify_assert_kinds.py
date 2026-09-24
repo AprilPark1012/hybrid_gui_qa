@@ -153,7 +153,10 @@ def _run_node(cid: str):
     env = {"HYBRID_RUN_ID": "verify_assert_kinds"}
     import os
     e = dict(os.environ, **env)
-    node = f"scripts/test_cases.py::test_{cid}"
+    from _gen_layout import node_of          # P20：case_id → 新布局脚本（查 index.json）
+    node = node_of(cid)
+    if node is None:
+        return 2, f"✗ index.json 里没有 {cid}（用例换代号了？先跑 generate）"
     r = subprocess.run([sys.executable, "-m", "pytest", node, "-q", "--no-header", "-x"],
                        cwd=BASE, capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env={**e, **UTF8_ENV})
@@ -169,7 +172,7 @@ def main() -> int:
 
     print("===== 一、正向：4 条 assert_kinds_* 必须 PASSED =====")
     expr = " or ".join(f"test_{c}" for c in POSITIVE)
-    r = subprocess.run([sys.executable, "-m", "pytest", "scripts/test_cases.py", "-q", "-k", expr],
+    r = subprocess.run([sys.executable, "-m", "pytest", "scripts/generated", "-q", "-k", expr],
                        cwd=BASE, capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env=_U8)
     pos_ok = r.returncode == 0 and "4 passed" in (r.stdout or "")

@@ -146,14 +146,17 @@ def test_record_conflict_bases_only_records_real_groups():
 # 口径（与 F1/F2/F6 契约锁一致）：改的是模板，运行的是生成物 —— 所以这里把模板渲染出来、
 # 落到临时文件里 exec，直接调它的 `_item_for()`。这样既不依赖 demo/浏览器，也不依赖
 # 仓库里那份生成物的当前内容（但另有互锁判据保证生成物与模板同步，见本文件最后一条）。
+# P20（2026-09-24）产物布局变了：辅助函数（含 `_item_for`）从 `scripts/conftest.py`
+# 搬到 `scripts/generated/_harness.py`，模板仍是 `_CONFTEST_TEMPLATE`，渲染函数叫
+# `_render_harness()` —— 判据语义不变，只是「模板 → 生成物」的落点换了名字/路径。
 
-def _materialize_conftest(tmp_path):
-    """把 conftest 模板渲染成真文件并加载 —— 得到「生成物里那份」`_item_for`。"""
+def _materialize_harness(tmp_path):
+    """把共享辅助（_harness）模板渲染成真文件并加载 —— 得到「生成物里那份」`_item_for`。"""
     import importlib.util
     import framework.tools.generate.generator as g
-    path = tmp_path / "conftest_generated.py"
-    path.write_text(g._render_conftest(), encoding="utf-8")
-    spec = importlib.util.spec_from_file_location("conftest_generated", str(path))
+    path = tmp_path / "_harness_generated.py"
+    path.write_text(g._render_harness(), encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("_harness_generated", str(path))
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -166,7 +169,7 @@ def _gen_with_index(tmp_path, monkeypatch, index, strict=None):
     if strict is not None:
         monkeypatch.setenv("HYBRID_STRICT_LOCATE", strict)
     monkeypatch.setattr("framework.tools.probe.probe.probe_page", lambda page: [])   # 不启浏览器
-    mod = _materialize_conftest(tmp_path)
+    mod = _materialize_harness(tmp_path)
     mod._INDEX.update(index)
     return mod
 
@@ -213,19 +216,32 @@ def test_generated_item_for_strict_mode_refuses_even_a_single_near_hit(tmp_path,
 
 
 def test_s3_wiring_is_locked_between_template_and_artifact():
-    """互锁判据：模板与仓库里的生成物**必须同时**具备 S3 接线，且旧的一行式静默挑法绝迹。"""
+    """互锁判据：模板与仓库里的生成物**必须同时**具备 S3 接线，且旧的一行式静默挑法绝迹。
+
+    P20（2026-09-24）产物布局变更后，「模板 ↔ 生成物」的对账口径：
+      模板 = `generator._render_harness()`（`_CONFTEST_TEMPLATE` 换掉 chromium 参数格式后的成品）
+      生成物 = `scripts/generated/_harness.py`
+    ⇒ 两者**逐字节**必须一致：模板改了而生成物没重生成 ⇒ 当场红（原来只查关键字，漏得掉这种情况）。
+    """
     import sys
     from pathlib import Path
+
+    import framework.tools.generate.generator as g
 
     root = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(Path(__file__).resolve().parent))     # 同目录测试工具
     import artifacts                                             # noqa: E402
 
-    template_src = (root / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
-    artifact_src = artifacts.read_artifact(root / "scripts" / "conftest.py",
-                                           role="生成物 scripts/conftest.py")
+    template_src = g._render_harness()
+    artifact_src = artifacts.read_artifact(root / "scripts" / "generated" / "_harness.py",
+                                           role="生成物 scripts/generated/_harness.py")
+    assert artifact_src == template_src, (
+        "生成物 scripts/generated/_harness.py 与模板渲染结果不一致（逐字节）⇒ "
+        "模板改了但生成物没同步重新生成。跑 `python -m framework.cli generate` 重生成产物。"
+    )
     old_silent = "if k and (hint in k or k in hint):"
-    for label, src in (("模板(generator.py)", template_src), ("生成物(scripts/conftest.py)", artifact_src)):
+    for label, src in (("模板(_CONFTEST_TEMPLATE → _render_harness())", template_src),
+                       ("生成物(scripts/generated/_harness.py)", artifact_src)):
         assert "_fuzzy_lookup" in src, f"{label} 缺 S3 接线：_fuzzy_lookup"
         assert "HYBRID_STRICT_LOCATE" in src, f"{label} 缺 S3 接线：严格开关"
         assert old_silent not in src, f"{label} 仍留着旧的静默模糊挑法（会静默点错控件）"

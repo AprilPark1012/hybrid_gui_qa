@@ -39,7 +39,7 @@ def load_case(path: Path) -> dict:
 
 
 def iter_cases(cases_dir: Path):
-    for p in sorted(cases_dir.glob("*.json")):
+    for p in sorted(cases_dir.rglob("*.json")):
         yield p, load_case(p)
 
 

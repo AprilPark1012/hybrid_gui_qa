@@ -2,7 +2,7 @@
 
 **事故**：D3 要求「同一场景只保留一条当前用例」，我实现成"写入时按 `scenario_id` 清掉同场景更早的用例"。
 但**临时/手搓用例往往会继承样板场景的 `scenario_id`** —— 例如此时 `verify_data_expand` 造的
-`cases/zz_verify_data_expand_tmp.json` 就是从真用例复制来的，`case_id` 改了、`scenario_id` 没改。
+`cases/manual/zz_verify_data_expand_tmp.json` 就是从真用例复制来的，`case_id` 改了、`scenario_id` 没改。
 ⇒ 于是写这条临时用例时，真用例 `ai_contracts_search_by_no_*.json` 被当成"旧件"**删掉了** ✗✗
 ⇒ 后果：二类里 `verify_data_expand` / `verify_retention_runs` 同时红（找不到样例用例），
    而且这是**静默删数据** —— 没有报错，只有"文件不见了"。
@@ -39,10 +39,10 @@ def test_temp_case_write_does_not_delete_ai_case(tmp_path):
     """★事故本体：写"继承了 scenario_id 的临时用例"绝不能删掉同场景的 AI 用例。"""
     cases = _mk(tmp_path)
     write_case(_case("ai_demo_000001", "demo"), cases_dir=cases)
-    assert (cases / "ai_demo_000001.json").exists()
+    assert (cases / "demo" / "ai_demo_000001.json").exists()
 
     write_case(_case("zz_tmp_probe", "demo"), cases_dir=cases)     # 临时用例（继承 scenario_id）
-    assert (cases / "ai_demo_000001.json").exists(), (
+    assert (cases / "demo" / "ai_demo_000001.json").exists(), (
         "✗ 临时用例把真 AI 用例删掉了 —— 这就是 2026-09-24 的静默删数据事故")
 
 
@@ -54,9 +54,9 @@ def test_ai_case_replacement_still_prunes_old_ai_case_and_dataset(tmp_path):
     (ds / "ai_demo_000001.json").write_text("{}", encoding="utf-8")
 
     write_case(_case("ai_demo_000002", "demo"), cases_dir=cases)
-    assert not (cases / "ai_demo_000001.json").exists(), "AI 用例换代应清掉旧件（D3）"
+    assert not (cases / "demo" / "ai_demo_000001.json").exists(), "AI 用例换代应清掉旧件（D3）"
     assert not (ds / "ai_demo_000001.json").exists(), "旧件的 dataset 也应一起清（D3）"
-    assert (cases / "ai_demo_000002.json").exists()
+    assert (cases / "demo" / "ai_demo_000002.json").exists()
 
 
 def test_ai_case_write_does_not_touch_temp_or_manual_cases(tmp_path):
@@ -67,8 +67,8 @@ def test_ai_case_write_does_not_touch_temp_or_manual_cases(tmp_path):
 
     write_case(_case("ai_demo_000001", "demo"), cases_dir=cases)
     write_case(_case("ai_demo_000002", "demo"), cases_dir=cases)
-    assert (cases / "zz_tmp_probe.json").exists(), "临时用例被 AI 用例的清理误伤了"
-    assert (cases / "手搓_冒烟.json").exists(), "手搓用例被 AI 用例的清理误伤了"
+    assert (cases / "manual" / "zz_tmp_probe.json").exists(), "临时用例被 AI 用例的清理误伤了"
+    assert (cases / "manual" / "手搓_冒烟.json").exists(), "手搓用例被 AI 用例的清理误伤了"
 
 
 def test_write_case_without_scenario_id_never_prunes(tmp_path):
@@ -76,7 +76,7 @@ def test_write_case_without_scenario_id_never_prunes(tmp_path):
     cases = _mk(tmp_path)
     write_case(_case("ai_demo_000001", "demo"), cases_dir=cases)
     write_case({"case_id": "ai_orphan_000009", "steps": [], "asserts": []}, cases_dir=cases)
-    assert (cases / "ai_demo_000001.json").exists(), "无 scenario_id 的写入不该触发清理"
+    assert (cases / "demo" / "ai_demo_000001.json").exists(), "无 scenario_id 的写入不该触发清理"
 
 
 def test_ai_prefixed_temp_case_does_not_prune(tmp_path):
@@ -89,10 +89,10 @@ def test_ai_prefixed_temp_case_does_not_prune(tmp_path):
     write_case(_case("ai_demo_000001", "demo"), cases_dir=cases)
     for bogus in ("ai_demo_000001_tmp", "ai_demo_tmp", "ai_demo_000001-2", "ai_demo_99"):
         write_case(_case(bogus, "demo"), cases_dir=cases)
-        assert (cases / "ai_demo_000001.json").exists(), f"✗ {bogus} 触发了清理（守卫太宽松）"
+        assert (cases / "demo" / "ai_demo_000001.json").exists(), f"✗ {bogus} 触发了清理（守卫太宽松）"
     # 严格形态的**新 AI 用例**才允许清掉旧的
     write_case(_case("ai_demo_000002", "demo"), cases_dir=cases)
-    assert not (cases / "ai_demo_000001.json").exists(), "严格形态的新 AI 用例应清掉旧件（D3）"
+    assert not (cases / "demo" / "ai_demo_000001.json").exists(), "严格形态的新 AI 用例应清掉旧件（D3）"
 
 
 def test_prune_never_deletes_the_just_written_file_even_on_name_collision(tmp_path):
@@ -101,5 +101,5 @@ def test_prune_never_deletes_the_just_written_file_even_on_name_collision(tmp_pa
     write_case(_case("ai_demo_000001", "demo"), cases_dir=cases)
     # 同 id 再写一次 ⇒ AI 用例**直接覆盖**（不落 -2）⇒ 既不丢原版、也不留孤儿
     write_case(_case("ai_demo_000001", "demo"), cases_dir=cases)
-    assert (cases / "ai_demo_000001.json").exists(), "✗ 同 id 重写把原版弄丢了"
-    assert not (cases / "ai_demo_000001-2.json").exists(), "✗ AI 用例不该落成 -2（会引发误删原版）"
+    assert (cases / "demo" / "ai_demo_000001.json").exists(), "✗ 同 id 重写把原版弄丢了"
+    assert not (cases / "demo" / "ai_demo_000001-2.json").exists(), "✗ AI 用例不该落成 -2（会引发误删原版）"

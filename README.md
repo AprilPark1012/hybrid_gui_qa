@@ -1,6 +1,6 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.2.4**（2026-09-23）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
+> 当前版本 **V8.2.5**（2026-09-24）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
 > · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/) · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
 
 **一句话**：把 **Browser Use（AI 智能探索）** 和 **Playwright（确定性执行）** 组合成一套混合测试框架 ——
@@ -62,7 +62,7 @@ python -m framework.cli all --workers 2       # probe → generate → run 一�
 python -m framework.cli run --debug           # 调试开关：有屏幕弹浏览器；没屏幕录视频 + 逐步截图
 python -m framework.cli run --case search_mixed        # 只跑指定用例（--case 可重复）
 python -m framework.cli explore --ai --scenario "在搜索框输入'1005'点搜索，确认出现 HT-1005"
-                                              # AI 链路：自然语言 → cases/ai_*.json（落盘后默认试跑）
+                                              # AI 链路：自然语言 → cases/<场景id>/ai_*.json（落盘后默认试跑）
 python -m framework.cli prune --dry-run       # 归档保留（log/ 与 output/verify/ 按 30 个 ∪ 7 天清理）
 python -m framework.cli --help                # 参数写错一律报错 + exit 2，绝不静默忽略
 ```
@@ -90,25 +90,26 @@ DEEPSEEK_MODEL=deepseek-chat
 ## 项目结构与链路
 
 ```
-cases/*.json（自然语言用例）──generate──▶ scripts/test_cases.py + scripts/datasets/*.json
-   ▲ 手写                                        │
-   └── explore --ai ◀── AI 语义识别（场景/自然语言）  ▼
+cases/（自然语言用例：manual/ 手写 · <场景id>/ AI）──generate──▶ scripts/generated/ + scripts/datasets/
+   ▲ 手写（cases/manual/）                              │
+   └── explore --ai ◀── AI 语义识别（场景/自然语言）      ▼
                                      cli run → pytest 并发 + web-first 断言
                                               + Tier1→Tier2 定位 + Healer 自愈
 ```
 
-**两条链路**（汇合点 = `cases/*.json` —— AI 产的用例和你手搓的用例，跑的是同一条确定性执行链）：
+**两条链路**（汇合点 = `cases/` 下的用例文件 —— AI 产的用例和你手搓的用例，跑的是同一条确定性执行链）：
 
 | # | 场景 | 入口 | 花 token |
 |---|---|---|---|
 | ① | 自然语言场景 → AI 语义识别 → 产出用例 | `explore --ai --scenario` / `--scenario-file` / `--scenario-dir` | ✅ |
-| ② | 手搓 `cases/*.json` → 生成脚本 + 数据分离 → 执行 | `generate` / `run` / `all` | ❌ 零 token |
+| ② | 手搓 `cases/manual/*.json` → 生成脚本 + 数据分离 → 执行 | `generate` / `run` / `all` | ❌ 零 token |
 
 **目录职责**（逐文件说明见培训页第 2 章）：
 
 ```
-cases/        手写自然语言用例（源）· scenarios/  AI 场景库（一个 yml = 一个场景）
-scripts/      generate 产物（可重建，别手改）· framework/  cli.py + tools/{common,probe,explore,generate,run}
+cases/        手写自然语言用例（源）：manual/ 手写 · <场景id>/ AI 用例 · scenarios/  AI 场景库（一个 yml = 一个场景）
+scripts/      generate 产物（可重建，别手改）：generated/（<场景id>/<用例id>.py + manual/ + _harness.py + conftest.py + index.json）· datasets/（抽离数据）
+framework/    cli.py + tools/{common,probe,explore,generate,run}
 demo/         被测 demo（合同/订单列表页 + 详情页 + 数据 API）
 build_tools/  开发期工具：打包 · 培训页 · 录像体检/重录 · 离线链路
 tests/frameworkTest/  框架自验证：test_*（秒级、不需 demo/浏览器）+ 共享辅助
@@ -120,7 +121,7 @@ output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 
 
 **断言 11 种**（`asserts[].kind`，缺省 = `text`）：`text` · `visible`/`hidden` · `count` · `attr` ·
 `value` · `url` · `checked`/`unchecked` · `enabled`/`disabled`。定位用 `element`（探测语义名）或
-`selector`（手写用例专用，**AI 链路禁用**）。契约与示例见培训页第 4 章 + `cases/assert_kinds_*.json`。
+`selector`（手写用例专用，**AI 链路禁用**）。契约与示例见培训页第 4 章 + `cases/manual/assert_kinds_*.json`。
 
 ## 常见坑
 
@@ -134,7 +135,7 @@ output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 
 5. **未映射元素 = 显式失败**：`element` 必须是 `cli probe` 探到的语义名；映射不到会 `pytest.fail`，
    绝不静默跳过（少验一步还报绿 = 假绿）。
 6. **别并发跑浏览器**（内存红线）：跑前确认 `MemAvailable ≥ 550MB`，不够就降并发，别用 `--force-workers` 硬闯。
-7. **生成物别手改**：`scripts/` 是 `generate` 的产物；改了模板要重跑 `generate`（模板是唯一来源）。
+7. **生成物别手改**：`scripts/generated/` 是 `generate` 的产物；改了模板要重跑 `generate`（模板是唯一来源）。
 8. **跨进程/落盘文本一律显式 UTF-8**（中文 Windows 默认 gbk，出过交付事故）。
 
 **报错 → 怎么办**：

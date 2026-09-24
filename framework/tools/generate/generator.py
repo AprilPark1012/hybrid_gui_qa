@@ -11,6 +11,7 @@
 ✔ 本文件不含 LLM 调用 —— 纯确定性生成。AI 语义识别(explore)在之前已完成元素映射。
 """
 from __future__ import annotations
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -43,9 +44,53 @@ def _chromium_args_literal() -> str:
     return "[\n" + body + "\n]"
 
 
-def _render_conftest() -> str:
-    """渲染 conftest 模板（把 __CHROMIUM_ARGS__ 占位符替换为当前参数）。"""
+def _render_harness() -> str:
+    """渲染**共享运行时** `scripts/generated/_harness.py`（内容 = 原 conftest 模板，零改动搬过来）。
+
+    P20（2026-09-24）§9.5：用例脚本改成"一个用例一个文件、放在 `generated/<场景>/`"之后，
+    若继续把这一大堆辅助函数放在 conftest 里、让用例写 `from conftest import …`，
+    则 pytest 下**两个 conftest**（`scripts/conftest.py` 与 `scripts/generated/conftest.py`）
+    会让这个 import 解析到哪一个取决于 sys.path/rootdir ⇒ 可能**静默取错** ✗
+    ⇒ 拆开：辅助函数放这里（普通模块，显式 import 无歧义），夹具留给 conftest。
+    """
     return _CONFTEST_TEMPLATE.replace("__CHROMIUM_ARGS__", _chromium_args_literal())
+
+
+_GENERATED_FIXTURES = ("_case_watchdog", "_reset_target_data", "_dump_heals_at_session_end",
+                       "_pool", "page", "ctx")
+
+
+def _render_generated_conftest() -> str:
+    """渲染 `scripts/generated/conftest.py`：**只做转发**（把夹具暴露给 pytest）。
+
+    ① 先把 `generated/` 放进 sys.path —— 这样各用例模块可以干净地 `from _harness import …`
+       （不依赖 pytest 的 rootdir/path 插入策略；裸跑 python 与 Windows 下同样成立 ✓）
+    ② 再 `from _harness import *` + 显式列出夹具名 —— pytest 在 conftest 的模块命名空间里找夹具 ✓
+    """
+    names = "".join(f"    {n},\n" for n in _GENERATED_FIXTURES)
+    return (
+        '"""scripts/generated 的 conftest —— 只做转发（P20：消除两个 conftest 的 import 歧义）。\n\n'
+        "辅助函数都在同目录的 _harness.py 里；这里只负责把夹具暴露给 pytest。\n"
+        '"""\n'
+        "import sys as _sys\n"
+        "from pathlib import Path as _Path\n\n"
+        "# 让同目录的 _harness 可被各用例模块显式 import（不依赖 pytest 的路径插入策略）\n"
+        "_sys.path.insert(0, str(_Path(__file__).resolve().parent))\n\n"
+        "from _harness import *  # noqa: F401,F403  —— 夹具靠它暴露\n"
+        "from _harness import (  # noqa: F401  —— 显式列名，防止 import * 漏掉下划线名\n"
+        f"{names}"
+        ")\n"
+        "\n"
+        "\n"
+        "# P20：用例模块按 **case_id 命名**（ai_xxx_160019.py / assert_kinds_todo.py），\n"
+        "# 不匹配 pytest 默认的 test_*.py ⇒ 必须有这个钩子，否则「一条都收集不到」✗\n"
+        "# （这正是 P20 判据 test_generated_pytest_discovery 当场抓出来的问题）\n"
+        "def pytest_collect_file(file_path, parent):\n"
+        "    import pytest as _pt\n"
+        "    if file_path.suffix == \".py\" and file_path.name not in (\"conftest.py\", \"_harness.py\"):\n"
+        "        return _pt.Module.from_parent(parent, path=file_path)\n"
+        "    return None\n"
+    )
 
 
 # ---------------- 数据抽离 ----------------
@@ -703,7 +748,8 @@ class DanglingDatasetError(RuntimeError):
 
 def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = None,
                      element_map_path: Path | None = None, live_probe: bool = False,
-                     allow_unmapped: bool = False) -> dict:
+                     allow_unmapped: bool = False,
+                       changed_only: bool = True, only: list[str] | None = None) -> dict:
     """读 cases/*.json → 生成 scripts/test_cases.py + scripts/conftest.py + scripts/datasets/<case_id>.json。
 
     定位来源（Req2：**消费 probe 生成的 element.map**，而不是每次自己现场重探）：
@@ -731,7 +777,9 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     datasets_dir.mkdir(parents=True, exist_ok=True)
     scripts_dir.mkdir(parents=True, exist_ok=True)
 
-    case_files = sorted(cases_dir.glob("*.json"))
+    # ★P20（2026-09-24）用例布局改为 cases/<scenario_id>/<case_id>.json（手搓用例在 cases/manual/）
+    #   ⇒ 这里必须**递归**扫（向后兼容：老的平铺文件照样能找到，不会出现"扫到 0 条"的断链 ✗）
+    case_files = sorted(p for p in cases_dir.rglob("*.json") if p.is_file())
     cases = [json.loads(f.read_text(encoding="utf-8")) for f in case_files]
     # 假绿红线闸：在读用例之后、算映射之前拦（有问题就一个产物都不写）
     _gate_false_green(cases)
@@ -877,21 +925,126 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             stale.unlink()
             print(f"[generate] 清掉过期数据组文件：{stale.name}（该用例当前没有 data: 组）")
 
-    # 2) 生成 pytest 用例函数（locator 内联）
+    # 2) 逐个用例渲染成**独立模块**（P20：一个用例一个文件 + index.json + 增量重生成）
+    #    触发源模型（项目负责人 2026-09-24 定）：
+    #      ① 场景变了 ⇒ 用例 + 脚本都要重做（"重新问 AI"由录像键拦住 ✓）
+    #      ② 用例变了 ⇒ **只**重做脚本    ③ demo/页面变了 ⇒ 受影响范围内核对
+    #    这里落的是 ②：三指纹（用例 / 场景 / 探测结果）任一不同 ⇒ 才重写这个模块。
     rewritten = [_add_payload_refs(c) for c in cases]
     for _c in rewritten:                      # 只给渲染器的内部标记，不落盘
         _c["_data_sets"] = sets_by_case.get(_c["case_id"], [])
-    funcs = "\n\n".join(_render_pytest_case(c, loc_map) for c in rewritten)
 
-    (scripts_dir / "test_cases.py").write_text(_TEST_FILE_HEADER + funcs + "\n", encoding="utf-8")
-    (scripts_dir / "conftest.py").write_text(_render_conftest(), encoding="utf-8")
+    gen_dir = scripts_dir / "generated"
+    gen_dir.mkdir(parents=True, exist_ok=True)
+    index_path = gen_dir / "index.json"
 
-    # ---- 产物自洽闸（2026-09-22）：引用的 dataset 必须真实存在，否则**当场报错**、不落盘 ----
-    # 见 DanglingDatasetError 的事故经过。「产物看着合法但跑不通」是本项目吃过事故的那类垃圾，
-    # 必须在**生成期**拦住（运行期的 FileNotFoundError 会被当成环境问题，实测误判成 flaky）。
+    if only:
+        _known = {str(c["case_id"]) for c in rewritten}
+        _unknown = sorted(set(only) - _known)
+        if _unknown:
+            raise ValueError(f"--only 指定的用例不存在：{_unknown}（当前共 {len(_known)} 条）")
+
+    # 2-a) 共享运行时 + 转发 conftest：内容只由代码版本决定 ⇒ 内容比对决定要不要重写
+    _harness_txt = _render_harness()
+    _conftest_txt = _render_generated_conftest()
+    _shared_rewritten: list[str] = []
+    for _p, _t in ((gen_dir / "_harness.py", _harness_txt),
+                   (gen_dir / "conftest.py", _conftest_txt)):
+        _old_txt = _p.read_text(encoding="utf-8") if _p.exists() else None
+        if _old_txt != _t:
+            _p.write_text(_t, encoding="utf-8")
+            _shared_rewritten.append(_p.name)
+
+    # 2-b) 探测结果指纹：定位来源 + 未映射 + 命中数（探到的东西变了 ⇒ locator 就该重算）
+    _probe_fp = hashlib.sha256(
+        (locator_sources + "|" + (probe_error or "") + "|" + str(len(loc_map))).encode("utf-8")
+    ).hexdigest()[:16]
+    # 渲染器（模块头模板）指纹：**改了模板就必须重写全部模块** ——
+    # 否则"改了生成逻辑、产物却不刷新"会静默不生效（今天实测的教训：docstring 修好了、
+    # 增量却因为用例没变而全部跳过 ✗）
+    _tpl_fp = hashlib.sha256(_MODULE_HEADER.encode("utf-8")).hexdigest()[:16]
+
+    old_index: dict = {}
+    if index_path.exists():
+        try:
+            old_index = json.loads(index_path.read_text(encoding="utf-8"))
+        except Exception as _e:               # 坏 index 不该毁掉生成，但要出声（不许静默 ✗）
+            print(f"[generate] ⚠️ index.json 读不了，按全新生成处理：{type(_e).__name__}: {_e}")
+            old_index = {}
+
+    new_index: dict[str, dict] = {}
+    changed: list[str] = []
+    skipped: list[str] = []
+    for c in rewritten:
+        cid = str(c["case_id"])
+        sid = str(c.get("scenario_id") or "").strip() or "manual"
+        mod = gen_dir / sid / f"{cid}.py"
+        _case_fp = hashlib.sha256(
+            json.dumps({k: v for k, v in c.items() if k != "_data_sets"},
+                       ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()[:16]
+        _scen_fp = str(c.get("scenario_fingerprint") or "")[:16]
+        # 脚本路径：能相对仓库就存相对（便于迁移/审阅），不能（判据的临时沙箱）就存绝对 ——
+        # 硬用 relative_to 会在沙箱路径上抛 ValueError（判据当场抓出来的 ✗）
+        try:
+            _mod_path = str(mod.relative_to(BASE))
+        except ValueError:
+            _mod_path = str(mod)
+        _meta = {
+            "script_path": _mod_path,
+            "scenario_id": sid,
+            "case_fingerprint": _case_fp,
+            "scenario_fingerprint": _scen_fp,
+            "probe_fingerprint": _probe_fp,
+            "template_fingerprint": _tpl_fp,
+        }
+        if only and cid not in only:          # --only：其余原样不动（index 条目也照旧保留）
+            new_index[cid] = old_index.get(cid, _meta)
+            continue
+        new_index[cid] = _meta
+        _prev = old_index.get(cid) or {}
+        _unchanged = (
+            changed_only
+            and _prev.get("case_fingerprint") == _case_fp
+            and _prev.get("scenario_fingerprint") == _scen_fp
+            and _prev.get("probe_fingerprint") == _probe_fp
+            and _prev.get("template_fingerprint") == _tpl_fp
+            and mod.exists()
+        )
+        if _unchanged:
+            skipped.append(cid)
+            continue
+        mod.parent.mkdir(parents=True, exist_ok=True)
+        mod.write_text(_MODULE_HEADER.format(cid=cid, sid=sid)
+                       + _render_pytest_case(c, loc_map) + "\n", encoding="utf-8")
+        changed.append(cid)
+
+    # 2-c) 三目录新陈代谢（R7-f）：index 不认识的脚本清掉（孤儿直接红，不留垃圾）
+    _removed: list[str] = []
+    for _p in sorted(gen_dir.rglob("*.py")):
+        if _p.name in ("conftest.py", "_harness.py"):
+            continue
+        if _p.stem not in new_index:
+            _p.unlink()
+            _removed.append(str(_p.relative_to(gen_dir)))
+    for _d in sorted((x for x in gen_dir.iterdir() if x.is_dir()), reverse=True):
+        try:
+            if not any(_d.iterdir()):
+                _d.rmdir()
+        except OSError:
+            pass
+
+    # index.json **最后**写（先脚本后索引 ⇒ 中途挂掉也不会出现"索引指向不存在的脚本"）
+    index_path.write_text(json.dumps(new_index, ensure_ascii=False, indent=2, sort_keys=True),
+                          encoding="utf-8")
+
+    # ---- 产物自洽闸（2026-09-22；P20 扩到分模块产物）：引用的 dataset 必须真实存在 ----
+    # 见 DanglingDatasetError 的事故经过：「产物看着合法但跑不通」必须在**生成期**拦住
+    # （运行期的 FileNotFoundError 会被当成环境问题，实测被误判成 flaky）。
     _refs: set[str] = set()
-    for _f in (scripts_dir / "test_cases.py", scripts_dir / "conftest.py"):
-        _refs |= set(re.findall(r"datasets/([A-Za-z0-9_.\-]+\.json)", _f.read_text(encoding="utf-8")))
+    for _f in sorted(gen_dir.rglob("*.py")):
+        _refs |= set(re.findall(r"datasets/([A-Za-z0-9_.\-]+\.json)",
+                                _f.read_text(encoding="utf-8")))
     _dead = sorted(r for r in _refs if not (datasets_dir / r).exists())
     if _dead:
         raise DanglingDatasetError(_dead)
@@ -905,34 +1058,51 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
         print(f"[generate] 🧹 清掉 {len(_stale)} 个陈旧数据集（对应用例已不存在）：{_stale[:5]}"
               f"{'…' if len(_stale) > 5 else ''}")
 
+    if _shared_rewritten:
+        print(f"[generate] 🔁 共享运行时重写：{_shared_rewritten}")
+    if _removed:
+        print(f"[generate] 🧹 清掉 {len(_removed)} 个孤儿脚本：{_removed[:5]}"
+              f"{'…' if len(_removed) > 5 else ''}")
+    print(f"[generate] ✅ 用例模块 {len(cases)} 个：重写 {len(changed)} · "
+          f"跳过（无变化）{len(skipped)}"
+          + (f" · 重写清单 {changed[:6]}{'…' if len(changed) > 6 else ''}" if changed else ""))
+
     return {
         "scripts_dir": str(scripts_dir),
-        "tests": [str(scripts_dir / "test_cases.py")],
+        "generated_dir": str(gen_dir),
+        "tests": [str(BASE / new_index[str(c["case_id"])]["script_path"]) for c in cases],
         "datasets": [str(datasets_dir / f"{c['case_id']}.json") for c in cases],
         "count": len(cases),
+        "changed": changed,
+        "skipped": skipped,
+        "shared_rewritten": _shared_rewritten,
+        "removed_orphans": _removed,
+        "index": str(index_path),
         "locator_sources": locator_sources,
         "unmapped": sorted(still_missing),
         "probe_error": probe_error,
     }
 
 
-_TEST_FILE_HEADER = '''"""hybrid_gui_qa 数据驱动测试用例 —— 由 cases/*.json 自动生成。
-数据抽离到 scripts/datasets/<case_id>.json；脚本与数据分离。
-运行（推荐走 cli：自带资源预检 + run-id 隔离的日志/报告）:
-  cd hybrid_gui_qa
-  python -m framework.cli run --workers 2             # 资源预检：内存不足自动降并发
-  python -m framework.cli run --debug                 # 调试开关：有屏幕弹浏览器；没屏幕录视频+逐步截图
-  python -m framework.cli run --debug --case <case_id>          # 只调试一条用例
-  python -m framework.cli run --debug --slowmo 500 --case <case_id>  # 放慢 500ms/动作，肉眼跟步
 
-裸跑 pytest（未设 HYBRID_RUN_ID 时日志落 log/latest/，会话开始清空）:
-  pytest scripts/test_cases.py -v
-  pytest scripts/test_cases.py -n 1 --html=log/latest/report.html
+# P20：一个用例一个文件 ⇒ 每个文件都要一份自己的头（import 列表与原单文件版**逐字一致**，
+# 少一个就是运行时 NameError —— 用 test_artifacts_health 的"imports 齐不齐"判据兜着）。
+_MODULE_HEADER = '''"""hybrid_gui_qa 用例模块：{cid}（场景 {sid}）—— 由 cases/{sid}/{cid}.json 自动生成。
+
+**不要手改本文件**：改用例后重跑 generate 会覆盖它。要改行为 → 改用例 json / 场景 yml。
+数据抽离在 scripts/datasets/{cid}.json（脚本与数据分离）。
+一个用例一个文件（P20）：便于按 id 管理、按变化增量重生成。
+
+运行（推荐走 cli：自带资源预检 + run-id 隔离的日志/报告）:
+  python -m framework.cli run --workers 2                 # 全量
+  python -m framework.cli run --debug --case {cid}        # 只调试这一条
+裸跑 pytest（未设 HYBRID_RUN_ID 时日志落 log/latest/）:
+  pytest scripts/generated/{sid}/{cid}.py -v
 """
-from conftest import (_CURRENT_LOG, _log, _data, _act, _goto,
-                        # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
-                        # ⚠️ 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
-                        _ds_params, _ds_ids,
+from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
+                      # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
+                      # ⚠️ 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
+                      _ds_params, _ds_ids,
                       _assert_text, _assert_url,
                       _assert_visible, _assert_hidden, _assert_count,
                       _assert_attr, _assert_value,
@@ -940,8 +1110,6 @@ from conftest import (_CURRENT_LOG, _log, _data, _act, _goto,
                       _assert_enabled, _assert_disabled,
                       # 2026-09-17 跨 tab / 行内定位 / 首行断言用的辅助
                       # ⚠️ 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
-                      #    （实测：new 的 _Tabs 漏了 → verify 里 30 步用例第一步就 NameError；
-                      #     防复发检查见 tests/frameworkTest/test_artifacts_health.py::test_test_cases_imports_every_conftest_helper）
                       _Tabs, _click_row_cell, _assert_first_row)
 # P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）
 from framework.tools.probe.scope_locate import drill as _drill
@@ -989,7 +1157,8 @@ import pytest
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import expect as _expect
 
-BASE = Path(__file__).resolve().parent.parent
+# P20：产物位置变了 —— 本文件在 scripts/generated/_harness.py ⇒ 仓库根 = parents[3]
+BASE = Path(__file__).resolve().parent.parent.parent
 LOG_DIR = BASE / "log"
 
 # ---- 本次运行的日志目录（run-id 隔离）----
@@ -1064,7 +1233,7 @@ def _data(key, ctx):
 
 def _load_data(case_id):
     import json
-    p = Path(__file__).resolve().parent / "datasets" / f"{case_id}.json"
+    p = Path(__file__).resolve().parent.parent / "datasets" / f"{case_id}.json"   # scripts/datasets/ ✓
     return json.loads(p.read_text(encoding="utf-8"))
 
 
@@ -1072,7 +1241,7 @@ def _load_data(case_id):
 def _load_sets(case_id):
     """多组数据（可选）：<case_id>.sets.json。没有该文件 ⇒ []（= 保持单组行为）。"""
     import json
-    p = Path(__file__).resolve().parent / "datasets" / f"{case_id}.sets.json"
+    p = Path(__file__).resolve().parent.parent / "datasets" / f"{case_id}.sets.json"
     if not p.exists():
         return []
     return json.loads(p.read_text(encoding="utf-8"))

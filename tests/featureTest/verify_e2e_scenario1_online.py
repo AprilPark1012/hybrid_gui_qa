@@ -79,7 +79,7 @@ def run(cmd: list[str], timeout: int = 1800, env_extra: dict | None = None) -> s
 
 
 def ai_cases() -> set[str]:
-    return {p.stem for p in CASES.glob("ai_*.json")}
+    return {p.stem for p in CASES.rglob("ai_*.json")}
 
 
 def scenario_ids() -> set[str]:

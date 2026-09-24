@@ -20,6 +20,9 @@ import json
 import os
 import subprocess
 import sys
+
+from _gen_layout import (node_of as _node_of)  # noqa: E402  P20 布局助手
+import _gen_layout  # noqa: E402
 import urllib.request
 from pathlib import Path
 
@@ -148,7 +151,7 @@ def _gen():
 
 def _run_node(cid: str):
     e = dict(os.environ, HYBRID_RUN_ID="verify_cross_page")
-    r = subprocess.run([sys.executable, "-m", "pytest", f"scripts/test_cases.py::test_{cid}",
+    r = subprocess.run([sys.executable, "-m", "pytest", _gen_layout.node_of(cid) or "scripts/generated",
                         "-q", "--no-header"],
                        cwd=BASE, capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env={**e, **UTF8_ENV})
@@ -237,7 +240,7 @@ def main() -> int:
     print("===== 一、正向：跨页手写用例必须 PASSED（含换页 url 断言）=====")
     e = dict(os.environ, HYBRID_RUN_ID="verify_cross_page")
     r = subprocess.run([sys.executable, "-m", "pytest",
-                        "scripts/test_cases.py::test_cross_page_detail", "-q", "--no-header"],
+                        _gen_layout.node_of("cross_page_detail") or "scripts/generated", "-q", "--no-header"],
                        cwd=BASE, capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env={**e, **UTF8_ENV})
     pos_ok = r.returncode == 0

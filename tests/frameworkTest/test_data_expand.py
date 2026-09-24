@@ -180,9 +180,11 @@ def test_generated_conftest_strips_param_suffix():
     判据打在**渲染出的产物**上，不打模板源码 —— 模板是普通字符串、里头的反斜杠是写双的，
     按源码文本去查会假红（2026-09-21 实测踩到）；
     **功能层面的证明**在二类 `tests/featureTest/verify_data_expand.py`（真按参数名跑单组）。
+    P20（2026-09-24）：这两处 fixture 在共享辅助里，渲染函数由 `_render_conftest()` 改名为
+    `_render_harness()`（→ 生成物 `scripts/generated/_harness.py`）—— 判据内容一个字没改。
     """
     from framework.tools.generate import generator as G
-    text = G._render_conftest()
+    text = G._render_harness()
     bad = text.count('re.search(r"test_(.+)"') + text.count('_re.search(r"test_(.+)"')
     assert bad == 0, f"还有 {bad} 处用 re.search(\'test_(.+)\') ⇒ 参数化后会把 [组名] 当 case_id 的一部分"
     assert text.count('r"test_([^\\[]+)"') >= 2, "ctx / page 两处都要用 re.match 切掉参数后缀"

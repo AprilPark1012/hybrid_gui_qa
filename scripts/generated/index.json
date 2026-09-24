@@ -1,0 +1,154 @@
+{
+  "ai_contracts_create_and_filter_by_customer_160019": {
+    "case_fingerprint": "1658341e7f3cc333",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "417524c4a83bb367",
+    "scenario_id": "contracts_create_and_filter_by_customer",
+    "script_path": "scripts/generated/contracts_create_and_filter_by_customer/ai_contracts_create_and_filter_by_customer_160019.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "ai_contracts_create_bu_a_160019": {
+    "case_fingerprint": "09f209b0bed23eb2",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "795eadb76b3b05ad",
+    "scenario_id": "contracts_create_bu_a",
+    "script_path": "scripts/generated/contracts_create_bu_a/ai_contracts_create_bu_a_160019.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "ai_contracts_cross_page_160019": {
+    "case_fingerprint": "085b7aa739a50571",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "3f3681d5af3aee20",
+    "scenario_id": "contracts_cross_page",
+    "script_path": "scripts/generated/contracts_cross_page/ai_contracts_cross_page_160019.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "ai_contracts_detail_multi_160019": {
+    "case_fingerprint": "e4a27a9d5d258e08",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "7179ab13c4c6785a",
+    "scenario_id": "contracts_detail_multi",
+    "script_path": "scripts/generated/contracts_detail_multi/ai_contracts_detail_multi_160019.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "ai_contracts_filter_customer_multi_160019": {
+    "case_fingerprint": "464edb3714a4c3e2",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "2f5a610ba45c1a8f",
+    "scenario_id": "contracts_filter_customer_multi",
+    "script_path": "scripts/generated/contracts_filter_customer_multi/ai_contracts_filter_customer_multi_160019.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "ai_contracts_modal_pick_customer_164351": {
+    "case_fingerprint": "c8f22023cf69c87c",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "9578a11348e59f75",
+    "scenario_id": "contracts_modal_pick_customer",
+    "script_path": "scripts/generated/contracts_modal_pick_customer/ai_contracts_modal_pick_customer_164351.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "ai_contracts_search_by_no_215642": {
+    "case_fingerprint": "011494efbfc27cd4",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "dcbdd307fe60d2b1",
+    "scenario_id": "contracts_search_by_no",
+    "script_path": "scripts/generated/contracts_search_by_no/ai_contracts_search_by_no_215642.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "ai_orders_modal_pick_contract_164412": {
+    "case_fingerprint": "fd5ce3d5da3d9eb6",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "2e6c2b1e8d4facf0",
+    "scenario_id": "orders_modal_pick_contract",
+    "script_path": "scripts/generated/orders_modal_pick_contract/ai_orders_modal_pick_contract_164412.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "ai_orders_return_from_contract_160019": {
+    "case_fingerprint": "65b57a4a57a285cc",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "2db1fd3fa96e324d",
+    "scenario_id": "orders_return_from_contract",
+    "script_path": "scripts/generated/orders_return_from_contract/ai_orders_return_from_contract_160019.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "assert_kinds_modal": {
+    "case_fingerprint": "606e365c13395a9c",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/assert_kinds_modal.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "assert_kinds_reset": {
+    "case_fingerprint": "fb12a120f3ebe1af",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/assert_kinds_reset.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "assert_kinds_search": {
+    "case_fingerprint": "f52988d3c254db03",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/assert_kinds_search.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "assert_kinds_todo": {
+    "case_fingerprint": "9cf15400d486e43b",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/assert_kinds_todo.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "create_bu_a_c1": {
+    "case_fingerprint": "ed565a1621692320",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/create_bu_a_c1.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "cross_page_detail": {
+    "case_fingerprint": "d223eabe116babb4",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/cross_page_detail.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "hand_enter_search": {
+    "case_fingerprint": "f79c4ff4c97e26db",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/hand_enter_search.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "search_customer_fuzzy": {
+    "case_fingerprint": "1e9c71075e774690",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/search_customer_fuzzy.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "search_customer_fuzzy_negative": {
+    "case_fingerprint": "a0590950678399bc",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/search_customer_fuzzy_negative.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  },
+  "search_mixed": {
+    "case_fingerprint": "e278bdb8215c4722",
+    "probe_fingerprint": "46a2764ed9431e3d",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/search_mixed.py",
+    "template_fingerprint": "9331dc2dd8c4b008"
+  }
+}

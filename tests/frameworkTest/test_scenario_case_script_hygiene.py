@@ -40,7 +40,7 @@ def orphan_ai_cases(scen_dir: Path = SCENARIOS, cases_dir: Path = CASES) -> list
     """返回「scenario_id 指向不存在场景」的 AI 用例（`<case>:<sid>` 形式）。"""
     ids = scenario_ids(scen_dir)
     out: list[str] = []
-    for p in sorted(cases_dir.glob("ai_*.json")):
+    for p in sorted(cases_dir.rglob("ai_*.json")):
         try:
             sid = str(case_payload(p).get("scenario_id", "")).strip()
         except Exception:  # noqa: BLE001
@@ -57,7 +57,7 @@ def uncovered_scenarios(scen_dir: Path = SCENARIOS, cases_dir: Path = CASES) -> 
     """场景中**既没有 AI 用例、也没有手搓用例点名**的那些（告警用，不拦）。"""
     ids = scenario_ids(scen_dir)
     covered: set[str] = set()
-    for p in cases_dir.glob("*.json"):
+    for p in cases_dir.rglob("*.json"):
         try:
             payload = case_payload(p)
         except Exception:  # noqa: BLE001
@@ -96,7 +96,7 @@ def test_scenarios_are_covered_by_some_case():
 def test_scenario_and_case_dirs_are_nonempty():
     """空目录也算「新陈代谢」失灵（场景/用例都没了 ⇒ 后面的对账全变空转）。"""
     assert scenario_ids(), "scenarios/ 下一个场景都没有 ⇒ 判据会空转"
-    assert list(CASES.glob("*.json")), "cases/ 下一条用例都没有 ⇒ 判据会空转"
+    assert list(CASES.rglob("*.json")), "cases/ 下一条用例都没有 ⇒ 判据会空转"
 
 
 # ---------------- 负向自证 ----------------

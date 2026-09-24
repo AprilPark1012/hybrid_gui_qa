@@ -110,9 +110,11 @@ def test_artifacts_check_catches_dangling_case_id(tmp_path, monkeypatch):
     """★负向：产物嵌了一个没有数据集的 case_id ⇒ 必须报出来（这是 L15 事故的核心判据）。"""
     import run_verifications as rv
     (tmp_path / "scripts" / "datasets").mkdir(parents=True)
-    (tmp_path / "scripts" / "test_cases.py").write_text(
-        "def test_ghost_case_999999(page):\n    pass\n", encoding="utf-8")
-    (tmp_path / "scripts" / "conftest.py").write_text("# empty\n", encoding="utf-8")
+    # P20：产物是一个用例一个文件 ⇒ case_id 的权威来源是 scripts/generated/index.json
+    (tmp_path / "scripts" / "generated").mkdir(parents=True)
+    (tmp_path / "scripts" / "generated" / "index.json").write_text(
+        '{"ghost_case_999999": {"script_path": "scripts/generated/manual/ghost_case_999999.py"}}',
+        encoding="utf-8")
     monkeypatch.setattr(rv, "REPO", tmp_path)
     assert rv.artifacts_are_consistent() == ["ghost_case_999999"]
 
@@ -122,9 +124,10 @@ def test_artifacts_check_passes_when_dataset_exists(tmp_path, monkeypatch):
     import run_verifications as rv
     d = tmp_path / "scripts" / "datasets"
     d.mkdir(parents=True)
-    (tmp_path / "scripts" / "test_cases.py").write_text(
-        "def test_ok_case_000001(page):\n    pass\n", encoding="utf-8")
-    (tmp_path / "scripts" / "conftest.py").write_text("# empty\n", encoding="utf-8")
+    (tmp_path / "scripts" / "generated").mkdir(parents=True)
+    (tmp_path / "scripts" / "generated" / "index.json").write_text(
+        '{"ok_case_000001": {"script_path": "scripts/generated/manual/ok_case_000001.py"}}',
+        encoding="utf-8")
     (d / "ok_case_000001.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(rv, "REPO", tmp_path)
     assert rv.artifacts_are_consistent() == []

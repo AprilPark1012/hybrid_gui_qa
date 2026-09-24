@@ -47,8 +47,27 @@ def probe_down(monkeypatch):
     return fake
 
 
+def _generated_modules(root: Path) -> list[Path]:
+    """「落盘的产物」= 生成出来的**用例模块**（P20：`scripts/generated/<场景>/<case_id>.py`）。
+
+    旧口径数的是单个 `scripts/test_cases.py`；布局改成"一个用例一个文件"后，
+    「有没有产出测试脚本」就等价于「generated/ 下有没有用例模块」（一字不差地守住
+    「拿不到定位就一个产物都不许落盘」这条红线）。
+    共享运行时 `_harness.py` 与转发用的 `conftest.py` **不算**用例产物（它们没有用例内容）。
+    """
+    gen = root / "generated"
+    if not gen.exists():
+        return []
+    return sorted(p for p in gen.rglob("*.py") if p.name not in ("conftest.py", "_harness.py"))
+
+
+def _read_generated(root: Path) -> str:
+    """读出**全部**用例模块的源码（判「产物里有没有存根」要看整体，不是某一个文件）。"""
+    return "\n".join(p.read_text(encoding="utf-8") for p in _generated_modules(root))
+
+
 def test_generate_refuses_to_write_when_probe_unavailable(probe_down, tmp_path):
-    """探测不可用 ⇒ 抛 UnmappedElementsError，且 **test_cases.py / conftest.py 一个都不许落盘**。"""
+    """探测不可用 ⇒ 抛 UnmappedElementsError，且 **一个用例模块都不许落盘**。"""
     out = tmp_path / "scripts"
     with pytest.raises(UnmappedElementsError) as ei:
         generate_scripts(cases_dir=CASES, scripts_dir=out)
@@ -56,8 +75,11 @@ def test_generate_refuses_to_write_when_probe_unavailable(probe_down, tmp_path):
     assert ei.value.missing, "闸门必须带上「缺了哪些语义名」的清单"
     assert ei.value.probe_error and "RuntimeError" in ei.value.probe_error, \
         "闸门必须带上现场 probe 的失败原因（否则排查又要靠猜）"
-    assert not (out / "test_cases.py").exists(), "拿不到定位时绝不允许产出测试脚本"
+    landed = _generated_modules(out)
+    assert landed == [], f"拿不到定位时绝不允许产出测试脚本，实际落盘：{landed}"
     assert not (out / "conftest.py").exists()
+    # 「一个产物都不许落盘」也包含数据集（scripts/datasets/<case_id>.json）
+    assert not list((out / "datasets").glob("*.json")), "拿不到定位时连数据集也不该落盘"
 
 
 def test_allow_unmapped_still_writes_with_stubs(probe_down, tmp_path):
@@ -65,7 +87,9 @@ def test_allow_unmapped_still_writes_with_stubs(probe_down, tmp_path):
     out = tmp_path / "scripts"
     res = generate_scripts(cases_dir=CASES, scripts_dir=out, allow_unmapped=True)
 
-    tc = (out / "test_cases.py").read_text(encoding="utf-8")
+    mods = _generated_modules(out)
+    assert mods, "allow_unmapped=True 时必须真的落盘用例模块（拒绝产物的闸门已放行）"
+    tc = _read_generated(out)
     assert tc.count("元素未映射") > 0
     assert res["unmapped"], "结果里必须带上未映射清单（调用方可据此告警）"
     assert res["probe_error"] and "RuntimeError" in res["probe_error"]
@@ -91,7 +115,9 @@ def test_normal_run_reports_zero_unmapped(probe_down, tmp_path, monkeypatch):
     res = generate_scripts(cases_dir=CASES, scripts_dir=out, element_map_path=snap)
 
     assert res["unmapped"] == []
-    assert (out / "test_cases.py").exists()
+    mods = _generated_modules(out)
+    assert len(mods) == res["count"], \
+        f"每条用例都要有自己的模块（P20 一个用例一个文件），实际 {len(mods)}/{res['count']}：{mods}"
 
 
 def test_cli_generate_exits_2_with_actionable_message(probe_down, tmp_path, monkeypatch, capsys):
@@ -114,12 +140,13 @@ def test_cli_generate_exits_2_with_actionable_message(probe_down, tmp_path, monk
     assert "映射质量闸" in out
     assert "demo.app" in out, "要给出下一步动作，不能只说『失败了』"
     assert "--allow-unmapped" in out, "要告诉用户逃生口叫什么"
-    assert not (tmp_path / "scripts" / "test_cases.py").exists()
+    assert _generated_modules(tmp_path / "scripts") == [], \
+        "拿不到定位时绝不允许产出测试脚本（一个用例模块都不行）"
 
 
 def _load_cases():
     import json
-    return [json.loads(f.read_text(encoding="utf-8")) for f in sorted(CASES.glob("*.json"))]
+    return [json.loads(f.read_text(encoding="utf-8")) for f in sorted(CASES.rglob("*.json"))]
 
 
 def _element_map_json(names) -> str:

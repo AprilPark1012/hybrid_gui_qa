@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.2.4）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.2.5）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup>★</sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.2.4 · 2026-09-23　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.2.5 · 2026-09-24　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -185,19 +185,21 @@
   <p class="sec-sub">第一眼看这个，就知道该到哪个目录找什么。✅=确定性代码，🤖=AI 智能层。</p>
   <div class="card">
   <pre class="tree"><b>hybrid_gui_qa/</b>
-├── <b>cases/</b>                  ★ 自然语言用例(写死数据)
-│   ├── search_*.json                手写用例(模糊搜索/混合搜索/客户筛选…)
-│   ├── create_bu_*.json             新建用例(含 {datetime} 动态占位；客户走弹层列表选择)
-│   ├── assert_kinds_*.json          11 种断言类型示例(search/reset/modal/todo)
-│   ├── cross_page_detail.json       跨页流程(列表→详情→返回，含换页证据断言)
-│   └── ai_*.json                    🤖 explore --ai 产出的 AI 用例(ai_ 前缀隔离,可批量清理)
+├── <b>cases/</b>                  ★ 自然语言用例(写死数据;按 id 分文件,一个用例一个 json)
+│   ├── manual/                      手写用例(search_*.json 模糊/混合搜索 · create_bu_*.json 新建
+│   │                                · assert_kinds_*.json 11 种断言 · cross_page_detail.json 跨页)
+│   └── &lt;场景id&gt;/                    🤖 explore --ai 产出的 AI 用例(ai_*.json,按场景分目录,可批量清理)
 ├── <b>scenarios/</b>               ★ AI 场景库(一文件=一场景,YAML)
 │   ├── README.md                    字段契约与用法
 │   ├── contracts/*.yml              合同场景：按编号搜索 / 新建(弹层选客户) / 跨页流程
 │   └── orders/*.yml                 订单场景：跨 tab 端到端(新建退货订单 → 看详情)
 ├── <b>scripts/</b>                 ★ generate 产物(可随时重建,别手改)
-│   ├── test_cases.py                生成的 pytest 用例(按操作类型翻译)
-│   ├── conftest.py                  会话级浏览器池/数据注入/变量池/断言辅助/日志
+│   ├── generated/                   ★P20 脚本根:一个用例一个文件(便于按 id 管理与增量重生成)
+│   │   ├── &lt;场景id&gt;/&lt;用例id&gt;.py       AI 用例脚本(对应 cases/&lt;场景id&gt;/&lt;用例id&gt;.json)
+│   │   ├── manual/&lt;用例id&gt;.py         手搓用例脚本(对应 cases/manual/&lt;用例id&gt;.json)
+│   │   ├── _harness.py              会话级浏览器池/数据注入/变量池/断言辅助/日志(共享辅助)
+│   │   ├── conftest.py              只转发夹具(把 _harness 暴露给 pytest)
+│   │   └── index.json               case_id → {script_path, 三种指纹, template_fingerprint}
 │   └── datasets/*.json              ▲ 抽离出的数据(脚本⇄数据分离)
 ├── <b>framework/</b>                核心框架(V8.0: 只留入口 + 按业务流程分层的 tools/)
 │   ├── cli.py                       ⚙️ 命令行入口(probe/explore/generate/run/all/prune/setup)
@@ -264,8 +266,8 @@
   <div style="margin-top:12px;">
     <div class="pt"><div class="ico">🧭</div><h4>新员工怎么用这份地图找东西</h4>
       <p>① 想知道某步跑什么逻辑 → 看 <span class="code-inline">framework/</span> 对应模块；<br>
-         ② 想改测试数据 → 改 <span class="code-inline">cases/*.json</span>（再跑 generate 重建 scripts/）；<br>
-         ③ 想看脚本长啥样 / 数据在哪 → <span class="code-inline">scripts/</span>；<br>
+         ② 想改测试数据 → 改 <span class="code-inline">cases/</span> 下的用例 json（再跑 generate 重建 scripts/）；<br>
+         ③ 想看脚本长啥样 / 数据在哪 → <span class="code-inline">scripts/generated/</span> + <span class="code-inline">scripts/datasets/</span>；<br>
          ④ 想确认这次跑的结果 → <span class="code-inline">output/</span>(证据) + <span class="code-inline">log/</span>(报告)。</p></div>
   </div>
 </section>
@@ -287,7 +289,7 @@
       <div class="tag">Step 2 · 生成</div>
       <h4>generate</h4>
       <p>读 cases/*.json → probe 映射确定性 locator + 按操作类型翻译 + 抽离数据。</p>
-      <p style="margin-top:6px;font-size:.8rem;color:#94a3b8">→ scripts/test_cases.py + datasets/</p>
+      <p style="margin-top:6px;font-size:.8rem;color:#94a3b8">→ scripts/generated/ + datasets/</p>
     </div>
     <div class="flow-step">
       <span class="bdge" style="background:#0f8f6a">✅ Playwright</span>
@@ -320,7 +322,7 @@
       <td><b>你手搓的文件</b></td>
       <td><span class="code-inline">scenarios/&lt;模块&gt;/&lt;场景id&gt;.yml</span><br>
           自然语言动作流（人话）</td>
-      <td><span class="code-inline">cases/&lt;用例id&gt;.json</span><br>
+      <td><span class="code-inline">cases/manual/&lt;用例id&gt;.json</span><br>
           结构化步骤 + 断言（机器话）</td>
     </tr>
     <tr>
@@ -330,8 +332,8 @@
     </tr>
     <tr>
       <td><b>产出</b></td>
-      <td><span class="code-inline">cases/ai_&lt;场景id&gt;_&lt;HHMMSS&gt;.json</span>（AI 写的用例）</td>
-      <td>直接进 <span class="code-inline">scripts/test_cases.py</span>（无中间产物）</td>
+      <td><span class="code-inline">cases/&lt;场景id&gt;/ai_&lt;场景id&gt;_&lt;HHMMSS&gt;.json</span>（AI 写的用例，按场景分目录）</td>
+      <td>直接进 <span class="code-inline">scripts/generated/&lt;场景id&gt;/&lt;用例id&gt;.py</span>（无中间产物）</td>
     </tr>
     <tr>
       <td><b>花不花 token</b></td>
@@ -532,8 +534,8 @@ ls log/&lt;run_id&gt;/                          # 用例日志 / 报告 / trace
   <pre class="tree"># ① 跑 probe，拿到目标控件的语义名
 python -m framework.cli probe
 
-# ② 抄一个最像的现成用例改（手搓样例：cases/hand_enter_search.json）
-cp cases/hand_enter_search.json cases/&lt;你的用例id&gt;.json
+# ② 抄一个最像的现成用例改（手搓样例：cases/manual/hand_enter_search.json）
+cp cases/manual/hand_enter_search.json cases/manual/&lt;你的用例id&gt;.json
 #    必改：case_id 与文件名一致 · name 给人看 · steps 换成你的动作 · asserts 换成你的判定
 
 # ③ 生成脚本（幂等，可反复跑）
@@ -541,7 +543,7 @@ python -m framework.cli generate
 #    ⚠️ 映射不到语义名 → 会打印 "⚠️ 仍未映射" 并让那一步 pytest.fail（绝不静默跳过）
 
 # ④ 只跑你这一条（按 case_id 过滤）
-python -m pytest scripts/test_cases.py -q -k &lt;你的用例id&gt;
+python -m pytest scripts/generated/ -q -k &lt;你的用例id&gt;
 
 # ⑤ 看报告与证据
 ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
@@ -574,7 +576,9 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <tr><th style="width:30%">约定</th><th>为什么 / 怎么做</th></tr>
     <tr>
       <td><b>① 只改源头，不改产物</b></td>
-      <td><span class="code-inline">scripts/test_cases.py</span>、<span class="code-inline">scripts/conftest.py</span>、
+      <td><span class="code-inline">scripts/generated/</span>（一个用例一个脚本：
+          <span class="code-inline">&lt;场景id&gt;/&lt;用例id&gt;.py</span> + <span class="code-inline">manual/</span> +
+          <span class="code-inline">_harness.py</span> + <span class="code-inline">conftest.py</span> + <span class="code-inline">index.json</span>）、
           <span class="code-inline">scripts/datasets/*.json</span> 都是 <span class="code-inline">generate</span> 的<b>产物</b>，
           手改会被下一次 generate 覆盖。要改行为 → 改 <span class="code-inline">cases/*.json</span> 或 <span class="code-inline">scenarios/*.yml</span>，然后重新 generate。</td>
     </tr>
@@ -617,7 +621,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <tr><td>一组数据跑多条用例</td><td>场景文件的 <span class="code-inline">data:</span> 段</td>
         <td><span class="code-inline">cli explore --ai …</span>（每组一条用例）</td></tr>
     <tr><td>查某个控件叫什么</td><td>—</td><td><span class="code-inline">cli probe</span> → <span class="code-inline">output/element_maps/probe_*.json</span></td></tr>
-    <tr><td>只跑我刚写的那条</td><td>—</td><td><span class="code-inline">pytest scripts/test_cases.py -q -k &lt;case_id&gt;</span></td></tr>
+    <tr><td>只跑我刚写的那条</td><td>—</td><td><span class="code-inline">pytest scripts/generated -q -k &lt;case_id&gt;</span></td></tr>
     <tr><td>跑不通，想确认是环境还是用例</td><td>—</td><td>看 <span class="code-inline">log/&lt;run_id&gt;/</span> 里该用例日志 + <span class="code-inline">report.html</span> + trace</td></tr>
   </table>
 </section>
@@ -649,7 +653,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 │       ├─ 按操作类型翻译 Playwright 代码（goto/click/fill/select/check/press_enter）
 │       └─ 抽离字面值 → scripts/datasets/&lt;case_id&gt;.json（脚本⇄数据分离）
 │
-└── <b>cmd_run</b>        → pytest scripts/test_cases.py -n N     [✅ Playwright]
+└── <b>cmd_run</b>        → pytest scripts/generated -n N     [✅ Playwright]
         ├─ conftest.page fixture：启动浏览器(headless开关)
         ├─ _data() 从 datasets 取运行时值 → data_driven 占位符替换+变量池
         └─ 每动作 resolve_locator(Tier1→Tier2) + ③意图复验 + web-first断言 + 逐用例日志
@@ -752,7 +756,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 <circle cx="35" cy="497" r="11.5" fill="#0f8f6a"/>
 <text x="35" y="501.5" fill="#fff" font-size="12.5" font-weight="700" text-anchor="middle">1</text>
 <text x="54" y="502" fill="#0f172a" font-size="14" font-weight="700">输入：手写用例</text>
-<text x="30" y="520.5" fill="#64748b" font-size="11.5">cases/&lt;case_id&gt;.json</text>
+<text x="30" y="520.5" fill="#64748b" font-size="11.5">cases/manual/&lt;case_id&gt;.json</text>
 <text x="30" y="536.0" fill="#64748b" font-size="11.5">element 写 semantic_name</text>
 <text x="30" y="551.5" fill="#64748b" font-size="11.5">value 可写 {datetime}</text>
 <text x="30" y="567.0" fill="#64748b" font-size="11.5">（格式与 AI 用例一致）</text>
@@ -762,7 +766,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 <text x="350" y="502" fill="#0f172a" font-size="14" font-weight="700">读用例</text>
 <text x="326" y="520.5" fill="#64748b" font-size="11.5">cli.cmd_generate()</text>
 <text x="326" y="536.0" fill="#64748b" font-size="11.5">generator.generate_scripts()</text>
-<text x="326" y="551.5" fill="#64748b" font-size="11.5">glob cases/*.json</text>
+<text x="326" y="551.5" fill="#64748b" font-size="11.5">glob cases/**/*.json</text>
 <text x="326" y="567.0" fill="#64748b" font-size="11.5">needed = 全部 element</text>
 <rect x="610" y="478" width="276" height="120" rx="10" fill="#ecfdf5" stroke="#0f8f6a" stroke-width="1.5"/>
 <circle cx="627" cy="497" r="11.5" fill="#0f8f6a"/>
@@ -795,9 +799,9 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 <circle cx="627" cy="643" r="11.5" fill="#0f8f6a"/>
 <text x="627" y="647.5" fill="#fff" font-size="12.5" font-weight="700" text-anchor="middle">6</text>
 <text x="646" y="648" fill="#0f172a" font-size="14" font-weight="700">生成产物</text>
-<text x="622" y="666.5" fill="#64748b" font-size="11.5">scripts/test_cases.py（脚本）</text>
+<text x="622" y="666.5" fill="#64748b" font-size="11.5">scripts/generated/（脚本）</text>
 <text x="622" y="682.0" fill="#64748b" font-size="11.5">datasets/*.json（数据）</text>
-<text x="622" y="697.5" fill="#64748b" font-size="11.5">conftest.py（运行期)</text>
+<text x="622" y="697.5" fill="#64748b" font-size="11.5">_harness.py + conftest.py</text>
 <text x="622" y="713.0" fill="#64748b" font-size="11.5">零 token，可进 CI；断言 11 种 kind</text>
 <rect x="314" y="624" width="276" height="120" rx="10" fill="#ecfdf5" stroke="#0f8f6a" stroke-width="1.5"/>
 <circle cx="331" cy="643" r="11.5" fill="#0f8f6a"/>
@@ -925,13 +929,15 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       ├─ generator.<b>_render_pytest_case(case, loc_map)</b>  按 op 翻译 _act(page, "fill", semantic=…, value=_data(…))
       │      映射不到 → 打印「⚠️ 仍未映射 [...]」+ 该步生成 <b>pytest.fail</b>（绝不静默跳过）
       ├─ generator.<b>_extract_data(case)</b> → scripts/datasets/&lt;case_id&gt;.json   （fill_0/select_1/expect_0…）
-      └─ generator.<b>_render_conftest()</b> → scripts/conftest.py（会话级浏览器池/数据注入/变量池/断言辅助/日志/自愈）
-            产物: <b>scripts/test_cases.py（脚本） + scripts/datasets/*.json（数据）</b>
+      ├─ generator.<b>_render_harness()</b> → scripts/generated/_harness.py（会话级浏览器池/数据注入/变量池/断言辅助/日志/自愈）
+      ├─ generator.<b>_render_generated_conftest()</b> → scripts/generated/conftest.py（只把夹具转发给 pytest）
+      └─ 写索引 → scripts/generated/index.json（case_id → script_path + 三种指纹，供增量重生成）
+            产物: <b>scripts/generated/（脚本） + scripts/datasets/*.json（数据）</b>
 
  <b>④ 执行（零 token、可进 CI）</b>
       └─ cli.py::main() → <b>cli.cmd_run(workers, headed, force)</b>
            ├─ limits.<b>safe_workers()</b>  按 MemAvailable 自动降并发（防 OOM 杀 hermes 网关）
-           └─ subprocess: pytest scripts/test_cases.py -n N --html=log/&lt;run_id&gt;/report.html
+           └─ subprocess: pytest scripts/generated -n N --html=log/&lt;run_id&gt;/report.html
                  conftest.page fixture → conftest.<b>_act()</b> → locator_bridge.<b>resolve_locator()</b>
                        Tier1 语义精确/唯一命中 → Tier2 指纹+上下文加权 → 意图复验
                        仍失败 → healer.<b>try_heal()</b>（业务后置断言兜底；判真 bug 绝不掩盖）
@@ -1010,7 +1016,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     唯一命中(count==1) 才采用; 否则诚实报错
     └─ 产物: 一条唯一、稳定的 Playwright locator
              ▼
-【阶段4】生成 Playwright 脚本                      → scripts/test_cases.py + datasets/
+【阶段4】生成 Playwright 脚本                      → scripts/generated/ + datasets/
     generator: 按操作类型(goto/click/fill/select/assert)翻译
     + 优先吃 element_map 快照建 semantic→locator 映射(缺项才现场 probe) + 抽离字面值
     └─ 产物: 确定性脚本(零token) + 脚本⇄数据分离
@@ -1264,9 +1270,9 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <li><b>动态占位符</b>：<span class="code-inline">{datetime}</span> / <span class="code-inline">{date}</span> / <span class="code-inline">{uuid}</span> 运行时解析固化（填表名 == 断言名，反复重跑不重名）。</li>
       <li><b>用例级变量池</b> <span class="code-inline">case.vars</span>：存过程数据（新建名称/系统返回编号），function-scope 隔离；检查点主判据用「输入值一致性」，系统编号仅作增强项（没有也照样通过）。</li>
     </ul>
-    <pre class="tree">cases/xxx.json  ──generate──▶  scripts/test_cases.py   （逻辑：操作类型 → Playwright 调用）
-  (自然语言 + 数据)                scripts/conftest.py      （夹具：_goto/_wait_ready/_act…）
-                                scripts/datasets/xxx.json（数据：字面值抽离 + 占位符）
+    <pre class="tree">cases/…/xxx.json ──generate──▶  scripts/generated/…/xxx.py（逻辑：操作类型 → Playwright 调用）
+  (自然语言 + 数据)                scripts/generated/_harness.py（夹具：_goto/_wait_ready/_act…）
+                                scripts/datasets/xxx.json  （数据：字面值抽离 + 占位符）
                                         │
                                         └─ run ─▶ 逐用例 .log + report.html + 变量池隔离</pre>
     <p><b>怎么用：</b><code>python -m framework.cli generate</code> 后看 <code>scripts/datasets/&lt;case_id&gt;.json</code>；改数据只动 datasets（或改 cases 重生成）。</p>
@@ -1558,7 +1564,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
 <span class="prompt">$</span> python -m demo.app            <span class="cmt"># 起被测合同管理页 (8000)</span>
 
 <span class="prompt">$</span> python -m framework.cli probe          <span class="cmt"># ① 探测页面交互元素</span>
-<span class="prompt">$</span> python -m framework.cli generate       <span class="cmt"># ② 读 cases/*.json → 生成 scripts/(脚本+数据抽离)</span>
+<span class="prompt">$</span> python -m framework.cli generate       <span class="cmt"># ② 读 cases/ 用例 → 生成 scripts/generated/(脚本) + datasets/(数据抽离)</span>
 <span class="prompt">$</span> python -m framework.cli run --workers 2 <span class="cmt"># ③ 并发执行 + 资源预检(内存不够自动降级)</span>
 
 <span class="prompt">$</span> python -m framework.cli run --debug  <span class="cmt"># ③' 调试开关：有屏幕弹浏览器；没屏幕录视频(webm)+逐步截图</span>
@@ -1567,7 +1573,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
 <span class="prompt">$</span> python -m framework.cli run --force-workers <span class="cmt"># ③'' 无视资源预检(有 OOM 风险,慎用)</span>
 
 <span class="prompt">$</span> python -m framework.cli explore --ai --scenario "输入1005点搜索确认出现HT-1005"
-                                              <span class="cmt"># ④ AI 语义识别 → cases/ai_*.json（默认 --verify 立刻试跑）</span>
+                                              <span class="cmt"># ④ AI 语义识别 → cases/&lt;场景id&gt;/ai_*.json（默认 --verify 立刻试跑）</span>
 <span class="prompt">$</span> python -m framework.cli prune --keep 20  <span class="cmt"># ⑤ 归档保留：快照各留最近 N 个</span>
 <span class="prompt">$</span> python -m pytest tests/frameworkTest/ -q               <span class="cmt"># ⑥ 框架自测（一类）：秒级，不需要 demo / key</span></pre>
     <p style="margin-top:10px;color:var(--muted);font-size:.92rem">
@@ -1684,9 +1690,34 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.2.4</b>（2026-09-23）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.2.5</b>（2026-09-24）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.2.4</span><span class="cl-date">2026-09-23</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>锁定 playwright 版本</b>（可复现）+ 培训页补「离线部署」与「升级规程」</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.2.5</span><span class="cl-date">2026-09-24</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>生成物按 id 分文件</b>（一个场景一个目录 · 一个用例一个脚本）+ <b>增量重生成</b></span></div>
+      <p class="cl-sum">把「一个 <code>test_cases.py</code> 装全部用例」这件事改掉：生产上会有大量专属用例与场景，塞在同一个文件里既难管理、又让每次 generate 都得全量重做。<br>本版改成 <code>scripts/generated/&lt;scenario_id&gt;/&lt;case_id&gt;.py</code>，并用 <code>index.json</code> 把 <code>scenario_id → case_id → 脚本 → 数据集</code> 串起来；generate 用<b>四指纹</b>（用例 / 场景 / 探测结果 / 渲染模板）判定 <b>只重做「变了」的那些</b> —— 无变化时零重写（实测：重写 0 · 跳过 19）。</p>
+      <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
+        <li><b>按 id 分文件的产物</b>：<code>scripts/generated/&lt;场景&gt;/&lt;用例&gt;.py</code>（手搓用例在 <code>generated/manual/</code>）；<code>cases/</code> 同步按场景分目录</li>
+        <li><b><code>index.json</code> 索引</b>：case_id → 脚本路径 + 四指纹，是增量判定与产物对账的唯一依据</li>
+        <li><b>增量开关</b>：generate 默认 <code>--changed</code>，另有 <code>--force</code>（全量）与 <code>--only &lt;case_id,...&gt;</code>（只重做指定用例，其余一动不动）</li>
+        <li><b>共享运行时拆分</b>：<code>generated/_harness.py</code>（辅助函数）+ <code>generated/conftest.py</code>（只转发夹具）—— 消除「两个 conftest」的 import 歧义</li>
+        <li><b>二类共享助手</b>：<code>tests/featureTest/_gen_layout.py</code>（case_id → 新脚本路径）</li>
+        <li><b>新判据</b>：布局契约（唯一脚本 / index↔磁盘双向一致 / 四指纹齐 / 无平铺残留）、pytest 真收集对账、增量只重写变化项、打包必需项覆盖新目录</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
+        <li><code>cli run</code> 直接跑 <code>scripts/generated/</code>；<code>explore --verify</code> 用 <code>index.json</code> 取 node id（不再拼 <code>test_cases.py::test_x</code>）</li>
+        <li><code>build_tools/pack_release.py</code>：必需项与产物检查改指分模块产物（三条语义不变：无 pytest.fail 存根 / 走就绪契约 <code>_goto</code> / 无裸 <code>page.goto</code>）</li>
+        <li>全部判据按新布局读产物（语义未变，另加严数处：逐模块判就绪契约、数据集也不许落盘、模板↔产物逐字节互锁）；判据数 508 → 537</li>
+        <li>README 与 <code>docs/training.html</code> 的<b>当前结构</b>描述同步（历史变更记录未动）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
+        <li><b>产物文件名不匹配 pytest 默认收集模式</b> ⇒ 一条都收不到 ⇒ 补 <code>pytest_collect_file</code> 钩子（新判据当场抓出）</li>
+        <li><b>指纹缺「模板」维度</b> ⇒ 改了生成逻辑产物却不刷新（静默不生效）⇒ 补第四指纹</li>
+        <li><code>_harness.py</code> 的相对路径按新位置推导（<code>BASE</code> 与 <code>datasets/</code>）</li>
+        <li>二类若干脚本仍按平铺路径找用例（归档 / 保留策略 / 数据组 / 离线链工具 / 打包计数）⇒ 全部改递归</li>
+        <li>replay 的「还原」曾写回<b>平铺</b>位置（看着还原了、位置错了）⇒ 改按用例自己的 <code>scenario_id</code> 写回正确目录</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.2.4</span><span class="cl-date">2026-09-23</span><span class="cl-tag">上一版本</span><span class="cl-theme"><b>锁定 playwright 版本</b>（可复现）+ 培训页补「离线部署」与「升级规程」</span></div>
       <p class="cl-sum">把「不管团队装哪个版本都能跑」这件事<b>收口</b>：框架本身<b>不挑版本</b>（实测 1.45 / 1.62 / 1.63 三版真跑均通过；API 面全落在 1.45 之前；代码零写死路径），但<b>不锁版本</b>会让各人机器的浏览器 revision 各不相同（实测 1.45⇒1124 · 1.62⇒1234 · 1.63⇒1243），于是反复踩「playwright 升级了、浏览器没重下」。<br>本版把 <code>requirements.txt</code> 的 <code>playwright&gt;=1.45</code> 改为 <b><code>playwright==1.63.0</code></b>：锁的是<b>可复现</b>，不是能力 —— 升级依然可以，只是一次性、有规程的动作（改 pin → <code>setup --force-browser</code> → 跑两类验证）。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>锁定版本</b>：<code>requirements.txt</code> 的 playwright 改为 <code>==1.63.0</code>，并写明锁定理由与升级规程（注释就在 pin 上方）</li>
@@ -2201,7 +2232,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.2.4</b>（2026-09-23）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.2.5</b>（2026-09-24）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>

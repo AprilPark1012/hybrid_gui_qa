@@ -37,7 +37,7 @@ def fingerprint(path: Path) -> str:
 
 def ai_cases() -> list[tuple[Path, dict]]:
     out = []
-    for p in sorted(CASES.glob("ai_*.json")):
+    for p in sorted(CASES.rglob("ai_*.json")):
         try:
             out.append((p, json.loads(p.read_text(encoding="utf-8", errors="replace"))))
         except Exception:  # noqa: BLE001
