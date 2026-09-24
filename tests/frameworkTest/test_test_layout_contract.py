@@ -159,7 +159,6 @@ def test_budget_declared_once_and_used():
 # ---------------- ⑦ 负向自证（判据必须抓得住坏输入）----------------
 
 def test_negative_find_modules_ignores_noise(tmp_path):
-    (tmp_path / "frameworkTest").mkdir()
     (tmp_path / "tests" / "frameworkTest").mkdir(parents=True)
     (tmp_path / "tests" / "frameworkTest" / "test_ok.py").write_text("def test_x():\n    assert 1\n", encoding="utf-8")
     (tmp_path / "__pycache__").mkdir()

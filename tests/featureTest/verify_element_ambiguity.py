@@ -33,7 +33,7 @@ from framework.tools.common.browser import launch_opts                  # noqa: 
 from framework.tools.probe.probe import probe_page, assign_semantic_names   # noqa: E402
 from framework.tools.explore.explorer import _try_collect_modal_items, _merge_items   # noqa: E402
 
-FIXTURE = BASE / "featureTest" / "fixtures" / "ambiguous_page.html"
+FIXTURE = BASE / "tests" / "featureTest" / "fixtures" / "ambiguous_page.html"
 MIN_MEM_MB = 550          # 一个 headless Chromium ≈515MB；不够就 SKIP，不硬跑（本机 OOM 会连杀网关）
 
 fails: list[str] = []
