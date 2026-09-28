@@ -64,7 +64,8 @@ python -m framework.cli run --case search_mixed        # 只跑指定用例（--
 python -m framework.cli explore --ai --scenario "在搜索框输入'1005'点搜索，确认出现 HT-1005"
                                               # AI 链路：自然语言 → cases/<场景id>/ai_*.json（落盘后默认试跑）
 python -m framework.cli prune --dry-run       # 归档保留（log/ 与 output/verify/ 按 30 个 ∪ 7 天清理）
-python -m framework.cli --help                # 参数写错一律报错 + exit 2，绝不静默忽略
+python -m framework.cli --help                # 总览 = 子命令 + 每个子命令的全部参数（由代码注册表生成，不手写第二份）
+                                              # 参数写错一律报错 + exit 2，绝不静默忽略；<子命令> --help 看详细用法
 ```
 
 **两类验证**（改完东西跑这两条）：

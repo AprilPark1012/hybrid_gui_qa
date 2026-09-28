@@ -1385,7 +1385,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
     </ul>
     <pre class="tree">python tests/featureTest/run_acceptance.py        ← 一条命令跑完 R7 四项（便宜先跑 + fail fast）
   [0] 闸门自检（先验「闸门自己」）
-  [1] ③ demo 新鲜度      [2] ① 框架自测 337 条     [3] ④ E2E 场景3→2→1     [4] ② 特性自测 15 脚本
+  [1] ③ demo 新鲜度      [2] ① 框架自测（条数以实跑为准）   [3] ④ E2E 场景3→2→1   [4] ② 特性自测（脚本数以实跑为准）
   退出码: 0 通过 / 3 跳过(不算通过) / 其它失败 —— 任一项红就停手并报「哪一项」</pre>
     <p><b>怎么用：</b><code>python tests/featureTest/run_acceptance.py</code>（日常）· <code>--with-record</code>（发版前含录制闭环）· <code>python tests/featureTest/run_verifications.py</code>（只跑二类）。</p>
     <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
@@ -1394,6 +1394,41 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
         <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_acceptance_entry.py</span>（8 条：入口步骤顺序即契约 / 三场景齐全 / 跳过必须标出 / SKIP ≠ 通过）· <span class="code-inline">tests/frameworkTest/test_demo_freshness_gate.py</span>（21 条）· <span class="code-inline">tests/frameworkTest/test_pack_release.py</span>（16 条）· <span class="code-inline">tests/frameworkTest/test_artifacts_health.py</span>（7 条：产物健康，坏产物给人话诊断）· <span class="code-inline">tests/frameworkTest/test_target_reachability.py</span>（7 条：连不上时统一给「先起 demo」指引）· <span class="code-inline">tests/frameworkTest/test_case_quality_gate.py</span>（13 条）</li>
         <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_demo_freshness.py</span>（<b>7 项含负向证伪 + 真重启 + 还原</b>：闸门自己也必须被证明「坏 demo 能抓、好 demo 不误伤」）· <span class="code-inline">tests/featureTest/verify_slow_target.py</span> · <span class="code-inline">tests/featureTest/verify_html_sync.py</span>（R8：培训页可复现 + 与代码逐字节一致）</li>
         <li><b>原则：</b>闸门类结论必须<b>先主动证伪</b>（实测漏洞 + 边界清单）再下结论；<b>宁漏不误伤</b>（误拦会诱发绕过工具）。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="border-left:4px solid var(--brand)">
+    <h4>特性 9 · CLI 帮助契约（<code>--help</code> 与参数注册表同源 ⇒ 新增命令/参数自动进总览）</h4>
+    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>「<b>help 里看到的 = 代码里注册的</b>」。
+      过去总览只列子命令<b>名字</b>，V8.2.x 之后加的参数（<code>--llm-cassette</code>、<code>--only</code>、
+      <code>--changed</code>、<code>--keep-runs</code>、<code>--force-browser</code> …）在总览里<b>一个都看不到</b>
+      —— 新人只能翻代码才知道能带什么。旧判据只断言「子命令名出现在输出里」，所以这类漂移长期没被抓到。</p>
+    <p><b>关键设计</b></p>
+    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
+      <li><b>唯一来源</b>：总览的子命令清单 + 每个子命令的「<code>参数：</code>」行<b>全部由参数注册表
+          <code>CMD_FLAGS</code> 生成</b>（<code>framework/cli.py::_print_help</code>），一句话说明取各子命令函数 docstring 首行
+          ⇒ 新增子命令 / 参数<b>不用改 help 代码</b>就会出现在总览里。</li>
+      <li><b>人只需做两件事</b>：① 在 <code>FLAG_SPECS</code> 登记新参数（值语义 value / opt / 纯开关）；
+          ② 在 <code>CMD_FLAGS</code> 里给它归属子命令，并给该子命令写一句 docstring。</li>
+      <li><b>两级视图</b>：总览答「有什么」（逐条列全，机器可比对）；<code>python -m framework.cli &lt;子命令&gt; --help</code>
+          答「怎么用」（用法行 + 完整说明）。</li>
+      <li><b>唯一真值口径</b>：help 与注册表不一致即 bug（文档漂移），用判据钉住而不是靠「记得刷新」。</li>
+    </ul>
+    <pre class="tree">python -m framework.cli --help                 ← 总览：子命令 + 每个的全部参数（每行形如「参数：--a --b」，无参数则「参数：(无参数)」）
+python -m framework.cli run --help             ← 单个子命令：用法 + 完整说明
+新增参数后必跑：python -m pytest tests/frameworkTest/test_cli_help_coverage.py -q      （秒级，不需要 demo / key）</pre>
+    <p><b>怎么用：</b>接手项目第一件事就是 <code>python -m framework.cli --help</code>（一眼看完能带什么都）；
+      改完 <code>FLAG_SPECS</code> / <code>CMD_FLAGS</code> 之后<b>必须</b>跑上面那条判据。</p>
+    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
+      <b>🧪 测试验证用例设计（20 条）</b>
+      <ul style="margin:6px 0 0 18px;line-height:1.75">
+        <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_cli_help_coverage.py</span>（20 条）——
+          逐子命令比对「<b>总览参数集 ⇄ CMD_FLAGS</b>」· 全集覆盖（一个 flag 都不许漏）· 反向（总览不许列未注册的命令 / docstring 不许写不存在的参数）·
+          <b>机制自证</b>（临时注册一个假子命令 + 假参数 ⇒ 总览必须<b>自动</b>带上它，不改文案）·
+          <b>负向自证</b>（喂一段「少一个 flag」「多一个假 flag」的总览文本 ⇒ 判定必须报红，防判据写成恒真）</li>
+        <li><b>为什么要机制自证 + 负向自证：</b>上一次漏掉这类漂移的判据，恰恰只断言「名字出现」而自己从未被证伪过 ——
+          判据没证明过「写错会红」，等于没写（R7 口径）。</li>
       </ul>
     </div>
   </div>

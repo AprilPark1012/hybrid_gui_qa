@@ -963,7 +963,15 @@ def _validate_args(cmd: str, rest: list[str]) -> None:
 
 
 def _print_help(cmd: str | None = None) -> None:
-    """`--help` / `-h`：总览或单子命令帮助（**直接取函数 docstring**，文档与代码同源不会漂）。"""
+    """`--help` / `-h`：总览或单子命令帮助。
+
+    ⚠️ 业务规则（2026-09-28 定）：**help 的每一行都由代码生成** ——
+      · 子命令清单 / 每个子命令的**全部参数**取自 `CMD_FLAGS`（唯一注册表）；
+      · 一句话说明取自各子命令函数的 docstring 首行。
+    ⇒ 新增子命令 / 参数时**不用改本函数**，总览自动带上它（人只写那句 docstring）。
+    判据：`tests/frameworkTest/test_cli_help_coverage.py`（含「注册即显示」机制自证
+    + 「漏一个 flag 必须被判红」的负向自证）。
+    """
     import inspect
     if cmd is None:
         print((__doc__ or "").strip())
@@ -971,10 +979,10 @@ def _print_help(cmd: str | None = None) -> None:
         for c in CMD_FLAGS:
             first = (inspect.getdoc(_CMD_FUNCS[c]) or "").strip().splitlines()[0]
             print(f"  {c:<9} {first}")
-        print("\n查看单个子命令：python -m framework.cli <子命令> --help")
-        print("run/all 通用参数：--workers N | --debug [true|false] | --headed | "
-              "--force-workers | --isolated-target | --case <id>（可重复）| --slowmo <ms>")
-        print("  说明：--force-workers  = 无视内存预检强行并发（有 OOM 风险）")
+            print(f"            {'参数：' + _usage(c)}")
+        print("\n查看单个子命令：python -m framework.cli <子命令> --help（含参数取值说明）")
+        print("run / all 的两个危险开关（其余参数见上面的『参数：』行）：")
+        print("        --force-workers   = 无视内存预检强行并发（有 OOM 风险）")
         print("        --isolated-target = 显式声明『目标已按 worker 隔离数据』，放行并发；")
         print("                            没声明时框架会探测目标 /api/health，未声明就保守降到 1 并发")
         return
