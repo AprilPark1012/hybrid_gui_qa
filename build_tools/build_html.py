@@ -56,11 +56,43 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.2.5"
-VERSION_DATE = "2026-09-24"
+VERSION = "8.2.6"
+VERSION_DATE = "2026-09-28"
 CHANGELOG = [
     dict(
-        version="8.2.5", date="2026-09-24", tag="当前版本",
+        version="8.2.6", date="2026-09-28", tag="当前版本",
+        theme="<b>行锚选取修复</b>：从「整行文本」改成「<b>整表内唯一的最短单元格文本</b>」—— 跨 demo 重启不再降级",
+        summary="产物里的行锚原本是整行 <code>tr.textContent</code>（截 120 字符），而 demo 数据含随机字段"
+                "（<code>mu / file / type / bu</code>）⇒ <b>demo 每次重启，行锚必然失配</b>，生成脚本静默退到语义兜底"
+                "（用例照样 PASSED、每处白等 5 秒）—— 交付包到别人机器上 <b>100% 降级</b>，属「看着能下钻、"
+                "实际没生效」的假绿。<br>本版把行锚改成「<b>整表内恰好出现 1 次</b>的最短单元格文本」："
+                "纯数据驱动、不猜哪列是业务键；取不到唯一候选就<b>保持现状</b>（绝不静默编锚）。",
+        added=[
+            "<code>anchor.pick_row_anchor(cells, table_cells)</code>：唯一最短单元格的<b>纯函数</b>选取"
+            "（无浏览器），含负向红线（整表无唯一值 ⇒ 返回 <code>None</code>，绝不猜整行 / 第一列）",
+            "<b>新判据</b> <code>tests/frameworkTest/test_row_anchor_selection.py</code>（5 条：选取 · 两条负向 · "
+            "表达式形态与引号拒绝 · 产物不得是整行文本）—— 按 R7-c <b>判据先行</b>：先落判据留红态（4 failed），再实现",
+        ],
+        changed=[
+            "采集端 <code>probe.py</code>：行锚改取「整表内唯一的最短单元格文本」，并带 <code>row_anchor_stable</code> "
+            "标记（供生成期告警用）",
+            "<code>scope_locate.step_expr</code> 行步：值含双引号 / 换行 ⇒ <b>拒绝</b>（不再拼出运行期会炸的表达式）",
+        ],
+        fixed=[
+            "<b>行锚跨 demo 重启必降级</b>（随机字段一变 ⇒ 定位表达式 0 命中 ⇒ 静默降为语义兜底 + 每处白等 5s）："
+            "行锚改为与随机字段无关的稳定值",
+        ],
+        notes=[
+            "<b>本版范围（批 1+2）</b>：框架代码 + 一类判据。产物刷新（重跑 probe / generate）与二类端到端验证"
+            "（重启 demo 两态 · 「语义兜底」必须 0 次）<b>随批 3 收口</b> —— 计划重构 demo，产物与录像本就需一并重做。",
+            "仓里那份 ElementMap 仍是旧形态（整行文本）⇒ 产物判据标了 <code>xfail(strict=True)</code> 作为「待收口」"
+            "提醒；批 3 转绿后<b>须移除</b>该标记。",
+            "AI 链路的 <code>row_text</code>（AI 自产业务值，如「退货订单-{datetime}」）与 <code>_click_row_cell</code> "
+            "<b>未改动</b> —— 本缺陷不涉及它们。",
+        ],
+    ),
+    dict(
+        version="8.2.5", date="2026-09-24", tag="上一版本",
         theme="<b>生成物按 id 分文件</b>（一个场景一个目录 · 一个用例一个脚本）+ <b>增量重生成</b>",
         summary="把「一个 <code>test_cases.py</code> 装全部用例」这件事改掉：生产上会有大量专属用例与场景，"
                 "塞在同一个文件里既难管理、又让每次 generate 都得全量重做。<br>"

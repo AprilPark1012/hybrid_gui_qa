@@ -76,7 +76,8 @@ def path_for_table_row(row_text: str | None = None, cell_field: str | None = Non
                        target_text: str | None = None) -> list[dict]:
     """构造行内元素的下钻路径。
 
-    行锚优先级：`row_text`（行内唯一文本，最稳）> `row_index`（**显式**行序；调用方明确给出才用）。
+    行锚优先级：`row_text`（**整表内唯一的最短单元格文本**，最稳；由 `pick_row_anchor` 选出，
+    见 L18 修法 A）> `row_index`（**显式**行序；调用方明确给出才用）。
     **两者都没有 ⇒ 不生成行步**（不许偷偷按第一行猜）。
     列优先级：`cell_field`（`td[data-field]`）> `col_header`（表头文本）> `col_index`（显式列序，1-based）。
     """
@@ -98,6 +99,41 @@ def path_for_table_row(row_text: str | None = None, cell_field: str | None = Non
     elif target_text not in (None, ""):
         steps.append({"axis": "target", "by": "text", "value": target_text})
     return steps
+
+
+def pick_row_anchor(cells: list[str] | None, table_cells: list[list[str]] | None) -> str | None:
+    """为这一行挑一个**稳定**的行锚（纯函数 · 无浏览器 · P18 修法 A）。
+
+    规则：只保留「在**整表**内恰好出现 1 次」的候选，取**最短**者（等长取列序最小）。
+    挑不到 ⇒ 返回 `None`（**绝不**退化猜整行文本 / 第一列 / 第一行）。
+
+    为什么这样选（P18 §四 实测依据）：demo 的随机字段（`mu`/`file`/`type`/`bu`）取值池只有 3~5 个
+    ⇒ 在 20~60 行里**必然重复** ⇒ 被唯一性过滤掉；而编号列（`HT-1005`）天然唯一且最短 ⇒ 稳定胜出。
+    ⇒ **不需要**事先判定"哪一列是业务键"（不依赖列名语义，纯数据驱动）。
+    取最短的额外好处：表达式更短更可读，顺带缓解 L13（行锚冗长）。
+
+    调用方口径（P18 §四 兜底 · 不许静默）：返回 `None` 时按"整表全自由文本"处理 ⇒ 保持整行文本
+    + **生成期显式告警**（"该行锚未取得稳定值，demo/数据变动后可能降级为语义兜底"）。
+    """
+    own = [str(c or "").strip() for c in (cells or [])]
+    if not own:
+        return None
+    counts: dict[str, int] = {}
+    for row in (table_cells or []):
+        for c in (row or []):
+            t = str(c or "").strip()
+            if t:
+                counts[t] = counts.get(t, 0) + 1
+    if not counts:                      # 整表没采到任何文本 ⇒ 无从判断唯一性，如实放弃
+        return None
+    best: tuple[int, int, str] | None = None
+    for idx, t in enumerate(own):
+        if not t or counts.get(t, 0) != 1:
+            continue
+        key = (len(t), idx, t)
+        if best is None or key < best:  # 最短优先；等长取列序最小；再等则按文本序（保证确定性）
+            best = key
+    return best[2] if best else None
 
 
 def header_index(headers: list[str] | None, text: str | None) -> int | None:

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.2.5）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.2.6）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup>★</sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.2.5 · 2026-09-24　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.2.6 · 2026-09-28　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1725,9 +1725,29 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.2.5</b>（2026-09-24）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.2.6</b>（2026-09-28）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.2.5</span><span class="cl-date">2026-09-24</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>生成物按 id 分文件</b>（一个场景一个目录 · 一个用例一个脚本）+ <b>增量重生成</b></span></div>
+      <div class="cl-head"><span class="cl-ver">V8.2.6</span><span class="cl-date">2026-09-28</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>行锚选取修复</b>：从「整行文本」改成「<b>整表内唯一的最短单元格文本</b>」—— 跨 demo 重启不再降级</span></div>
+      <p class="cl-sum">产物里的行锚原本是整行 <code>tr.textContent</code>（截 120 字符），而 demo 数据含随机字段（<code>mu / file / type / bu</code>）⇒ <b>demo 每次重启，行锚必然失配</b>，生成脚本静默退到语义兜底（用例照样 PASSED、每处白等 5 秒）—— 交付包到别人机器上 <b>100% 降级</b>，属「看着能下钻、实际没生效」的假绿。<br>本版把行锚改成「<b>整表内恰好出现 1 次</b>的最短单元格文本」：纯数据驱动、不猜哪列是业务键；取不到唯一候选就<b>保持现状</b>（绝不静默编锚）。</p>
+      <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
+        <li><code>anchor.pick_row_anchor(cells, table_cells)</code>：唯一最短单元格的<b>纯函数</b>选取（无浏览器），含负向红线（整表无唯一值 ⇒ 返回 <code>None</code>，绝不猜整行 / 第一列）</li>
+        <li><b>新判据</b> <code>tests/frameworkTest/test_row_anchor_selection.py</code>（5 条：选取 · 两条负向 · 表达式形态与引号拒绝 · 产物不得是整行文本）—— 按 R7-c <b>判据先行</b>：先落判据留红态（4 failed），再实现</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
+        <li>采集端 <code>probe.py</code>：行锚改取「整表内唯一的最短单元格文本」，并带 <code>row_anchor_stable</code> 标记（供生成期告警用）</li>
+        <li><code>scope_locate.step_expr</code> 行步：值含双引号 / 换行 ⇒ <b>拒绝</b>（不再拼出运行期会炸的表达式）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
+        <li><b>行锚跨 demo 重启必降级</b>（随机字段一变 ⇒ 定位表达式 0 命中 ⇒ 静默降为语义兜底 + 每处白等 5s）：行锚改为与随机字段无关的稳定值</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
+        <li><b>本版范围（批 1+2）</b>：框架代码 + 一类判据。产物刷新（重跑 probe / generate）与二类端到端验证（重启 demo 两态 · 「语义兜底」必须 0 次）<b>随批 3 收口</b> —— 计划重构 demo，产物与录像本就需一并重做。</li>
+        <li>仓里那份 ElementMap 仍是旧形态（整行文本）⇒ 产物判据标了 <code>xfail(strict=True)</code> 作为「待收口」提醒；批 3 转绿后<b>须移除</b>该标记。</li>
+        <li>AI 链路的 <code>row_text</code>（AI 自产业务值，如「退货订单-{datetime}」）与 <code>_click_row_cell</code> <b>未改动</b> —— 本缺陷不涉及它们。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.2.5</span><span class="cl-date">2026-09-24</span><span class="cl-tag">上一版本</span><span class="cl-theme"><b>生成物按 id 分文件</b>（一个场景一个目录 · 一个用例一个脚本）+ <b>增量重生成</b></span></div>
       <p class="cl-sum">把「一个 <code>test_cases.py</code> 装全部用例」这件事改掉：生产上会有大量专属用例与场景，塞在同一个文件里既难管理、又让每次 generate 都得全量重做。<br>本版改成 <code>scripts/generated/&lt;scenario_id&gt;/&lt;case_id&gt;.py</code>，并用 <code>index.json</code> 把 <code>scenario_id → case_id → 脚本 → 数据集</code> 串起来；generate 用<b>四指纹</b>（用例 / 场景 / 探测结果 / 渲染模板）判定 <b>只重做「变了」的那些</b> —— 无变化时零重写（实测：重写 0 · 跳过 19）。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>按 id 分文件的产物</b>：<code>scripts/generated/&lt;场景&gt;/&lt;用例&gt;.py</code>（手搓用例在 <code>generated/manual/</code>）；<code>cases/</code> 同步按场景分目录</li>
@@ -2267,7 +2287,7 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.2.5</b>（2026-09-24）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.2.6</b>（2026-09-28）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>

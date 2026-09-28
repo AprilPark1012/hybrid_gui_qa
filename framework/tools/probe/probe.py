@@ -56,6 +56,10 @@ def _table_context(loc) -> dict | None:
 
     真实项目表格常没有 `data-field`（也不是埋点），所以列信息是**三级降级**：
     `data-field` → 表头文本 → 显式列序。拿不到就留空（下游据此放弃或另找锚点，绝不猜）。
+
+    **行锚口径（L18 修法 A · 2026-09-28）**：不再取整行 `textContent`（含 demo `seed()` 的随机字段
+    ⇒ 每次重启必失配、静默降级），改为「**整表内恰好出现 1 次**的最短单元格文本」。
+    取不到唯一候选 ⇒ **保持现状**（整行文本）并置 `row_anchor_stable=False`（由生成期告警，批 3 落地）。
     """
     try:
         ctx = loc.evaluate(
@@ -74,8 +78,31 @@ def _table_context(loc) -> dict | None:
                    colIndex = idx >= 0 ? idx + 1 : null;
                    if (colIndex && colIndex <= heads.length) colHeader = heads[colIndex - 1];
                  }
+                 // ★L18 修法 A（2026-09-28）：行锚不再取整行文本（含 demo 随机字段 ⇒ 每次重启必失配），
+                 //   改为「**整表内恰好出现 1 次**的最短单元格文本」—— 纯数据驱动，不猜哪列是业务键。
+                 //   取最短：编号列这类键值天然短 ⇒ 表达式更短更稳（顺带缓解 L13）。
+                 const norm = (x) => (x.textContent || '').replace(/\\s+/g, ' ').trim();
+                 const counts = new Map();
+                 if (tbl) {
+                   for (const r of tbl.querySelectorAll('tbody tr'))
+                     for (const c of r.children) {
+                       const t = norm(c);
+                       if (t) counts.set(t, (counts.get(t) || 0) + 1);
+                     }
+                 }
+                 const cand = [];
+                 Array.from(tr.children).forEach((c, i) => {
+                   const t = norm(c);
+                   if (t && counts.get(t) === 1) cand.push({t: t, i: i});
+                 });
+                 cand.sort((a, b) => (a.t.length - b.t.length) || (a.i - b.i));
+                 const stable = cand.length > 0;
                  const rowText = (tr.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
-                 return {row_text: rowText, col_field: colField, col_header: colHeader,
+                 // ⚠️ 无唯一候选 ⇒ **保持现状**（整行文本），绝不静默编锚；stable=false 由生成期告警
+                 //    （「该行锚未取得稳定值，数据变动后可能降级为语义兜底」——批 3 落地，P18 §四兜底）
+                 return {row_text: stable ? cand[0].t : rowText, row_anchor_stable: stable,
+                         row_text_full: rowText,
+                         col_field: colField, col_header: colHeader,
                          col_index: colIndex,
                          table_test_id: tbl ? (tbl.getAttribute('data-testid') || '') : ''};
                }"""

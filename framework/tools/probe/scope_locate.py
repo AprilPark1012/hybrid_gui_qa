@@ -91,6 +91,10 @@ def step_expr(prev: str, step: dict, *, col_index: int | None = None) -> str | N
     val = (step or {}).get("value")
     if axis == "row":
         if by == "text" and val not in (None, ""):
+            # L18 批 2（2026-09-28）：值里含双引号 ⇒ 直接插进 `has_text="…"` 会生成**语法坏掉**的表达式
+            # （运行期 SyntaxError 或定位失真，且属"静默炸"）⇒ 如实返回 None 让调用方退到其它 tier。
+            if '"' in str(val) or "\n" in str(val):
+                return None
             return f'{prev}.locator("tbody tr").filter(has_text="{val}")'
         if by == "nth" and isinstance(val, (int, float)):
             return f'{prev}.locator("tbody tr").nth({int(val) - 1})'
