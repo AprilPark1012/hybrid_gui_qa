@@ -52,9 +52,15 @@ def test_runner_runs_a_real_script(capsys=None):
 
     ⚠️ 用 `--list` 测不出来：那条分支在 demo 检查**之前**就返回了（2026-09-23 实测踩到 ——
     第一版判据就是这么写成假绿的）。所以这里用 `--only <最快脚本>` 真跑一遍。
+
+    ⚠️ `--min-mem 0`（L19 · 2026-09-28 修）：**必须显式关掉二类的内存闸门**。本机长期多会话共存
+    （MemAvailable 常年 280~470MB < 默认 550MB）⇒ 不关的话 runner 恒 `SKIP exit 3`，一类里这条**恒定假红**；
+    而这里跑的 `verify_html_sync` 是纯文件比对（零浏览器 / 零内存开销）⇒ 闸门拦住的不是本用例要防的东西
+    （本用例要防的是「runner 起不来 / sys.path 漏目录」）。守这条的判据：
+    `test_class1_no_mem_gate_coupling.py`（含负向自证 + 「关闸门后真跑 exit 0」的行为判据）。
     """
     assert RUNNER.is_file(), f"缺 {RUNNER}"
-    p = _run([str(RUNNER.relative_to(REPO)), "--only", FAST_OFFLINE])
+    p = _run([str(RUNNER.relative_to(REPO)), "--only", FAST_OFFLINE, "--min-mem", "0"])
     out = (p.stdout or "") + (p.stderr or "")
     assert p.returncode == 0, (
         f"runner --only {FAST_OFFLINE} 起不来/跑不过（exit {p.returncode}）—— "
