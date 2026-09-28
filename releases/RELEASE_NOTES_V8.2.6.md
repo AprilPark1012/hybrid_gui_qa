@@ -39,6 +39,16 @@
 | 一类全量 | `python -m pytest tests/frameworkTest/ -q` | **567 passed / 1 xfailed / 43.6s** |
 | R8 | `python tests/featureTest/verify_html_sync.py` | exit 0（培训页与代码可复现且逐字节一致） |
 
+### ④ 培训页目录树两类归属移正（L20）
+
+- 第 2 章目录树里 6 个**一类**条目（`test_*.py` / `demo_freshness.py` / `repo_files.py · artifacts.py` /
+  `testid_policy.py` / `fixtures/*.html`）原先挂在 `tests/featureTest/` 下，而它们实际住在
+  `tests/frameworkTest/` ⇒ 对外培训页把两类目录的职责讲反了。现已移到正确父节点。
+- 新增判据「目录树父子归属」（`tests/frameworkTest/test_docs_sync.py`，含两条负向自证）：
+  一类条目不许挂 featureTest 下、二类条目不许挂 frameworkTest 下 —— 以前的判据只查「模块名出现过」，
+  查不出**挂在谁下面**。
+- **版本号仍为 V8.2.6**（本版尚未打包发版，修正并入同版，不另起版本号）。
+
 ## 三、本版范围（诚实标注）
 
 - **已做（批 1+2）**：框架代码（采集端 / 纯函数 / 表达式合成）+ 一类判据 + 文档三同步 + 版本号。

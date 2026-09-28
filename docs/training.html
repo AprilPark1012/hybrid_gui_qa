@@ -237,15 +237,16 @@
 │   ├── order_detail.html            订单详情页
 │   └── todo.html                    旧版 Todo 演示页(保留)
 ├── <b>tests/frameworkTest/</b>             框架自验证：test_*（秒级、不需 demo/浏览器）
-├── <b>tests/featureTest/</b>               特性自验证：verify_*（端到端、需 demo、含负向）
-│   ├── run_verifications.py         ★ 二类(端到端特性验证)统一入口 — Python 唯一实现,Windows 通用
-│   ├── run_acceptance.py            ★ R7 四项验收一条命令(闸门→新鲜度→自测→E2E→特性)
-│   ├── test_*.py                    一类自测(秒级,不需 demo):CLI 契约/退出码/UTF-8/断言翻译/质量闸/打包/门禁解耦/README 结构
-│   ├── verify_*.py                  二类验证(需 demo,含负向证伪):断言/跨页/弹层/订单/慢目标/录像/培训页同步
+│   ├── test_*.py                    一类判据(秒级,不需 demo):CLI 契约/退出码/UTF-8/断言翻译/质量闸/打包/门禁解耦/README 结构
 │   ├── demo_freshness.py            demo 新鲜度闸门(改了 demo 必须重启,否则验证跑在旧页面上)
 │   ├── repo_files.py · artifacts.py 判据公共件:文件清单(非 git 环境降级) / 生成物读取(可行动诊断)
 │   ├── testid_policy.py             demo 埋点口径扫描器(只有顶层容器允许埋点,防回退)
 │   └── fixtures/*.html              夹具页(歧义页 / 零 testid 页)
+├── <b>tests/featureTest/</b>               特性自验证：verify_*（端到端、需 demo、含负向）
+│   ├── run_verifications.py         ★ 二类(端到端特性验证)统一入口 — Python 唯一实现,Windows 通用
+│   ├── run_acceptance.py            ★ R7 四项验收一条命令(闸门→新鲜度→自测→E2E→特性)
+│   ├── run_verifications.sh         入口的 .sh 转发包装(Windows 无 bash ⇒ 退化壳,防两处逻辑漂移)
+│   └── verify_*.py                  二类验证(需 demo,含负向证伪):断言/跨页/弹层/订单/慢目标/录像/培训页同步
 ├── <b>build_tools/</b>               ★ 开发期工具(不属于被测应用,也不进运行链)
 │   ├── pack_release.py              交付打包器:组装 zip + 自检包内产物(不达标不出包；--with-cassettes 另打录像包)
 │   ├── build_html.py                生成 docs/training.html 培训页(**版本号单一来源**)
@@ -1744,6 +1745,7 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
         <li><b>本版范围（批 1+2）</b>：框架代码 + 一类判据。产物刷新（重跑 probe / generate）与二类端到端验证（重启 demo 两态 · 「语义兜底」必须 0 次）<b>随批 3 收口</b> —— 计划重构 demo，产物与录像本就需一并重做。</li>
         <li>仓里那份 ElementMap 仍是旧形态（整行文本）⇒ 产物判据标了 <code>xfail(strict=True)</code> 作为「待收口」提醒；批 3 转绿后<b>须移除</b>该标记。</li>
         <li>AI 链路的 <code>row_text</code>（AI 自产业务值，如「退货订单-{datetime}」）与 <code>_click_row_cell</code> <b>未改动</b> —— 本缺陷不涉及它们。</li>
+        <li><b>培训页目录树两类归属移正（L20）</b>：第 2 章目录树里 6 个<b>一类</b>条目（<code>test_*.py</code> / <code>demo_freshness.py</code> / <code>repo_files.py · artifacts.py</code> / <code>testid_policy.py</code> / <code>fixtures/*.html</code>）曾挂在 <code>tests/featureTest/</code> 下，现移到 <code>tests/frameworkTest/</code> 下；并新增「目录树父子归属」判据防再挂错。<b>版本号仍为 V8.2.6</b>（本版尚未打包，修正并入同版）。</li>
       </ul></div>
     </div>
     <div class="card cl">

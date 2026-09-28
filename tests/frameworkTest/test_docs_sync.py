@@ -19,6 +19,7 @@
 """
 from __future__ import annotations
 
+import html as html_mod
 import re
 import sys
 from pathlib import Path
@@ -149,3 +150,99 @@ def test_negative_changelog_area_is_excluded():
 def test_negative_undocumented_module_is_detected():
     assert undocumented_modules("clients: cli.py")  # 缺一大批 ⇒ 非空
     assert undocumented_modules(" · ".join(MUST_BE_DOCUMENTED)) == []
+
+
+# ---------------- ④ 目录树的「父子归属」（L20 · 2026-09-28 新增） ----------------
+# 起因：第 2 章目录树里，6 个**一类**条目（test_*.py / demo_freshness.py / repo_files.py · artifacts.py /
+# testid_policy.py / fixtures/*.html）被挂在 `tests/featureTest/` 父节点下，而它们实际住在
+# `tests/frameworkTest/` ⇒ 对外培训页把两类目录的职责讲反了。
+# 为什么以前的判据抓不到：①「关键模块名出现过」只查名字在不在页面里，不查**挂在谁下面**；
+# ② 引用路径判据只看路径存在性。⇒ 这条判据看的是**树的结构**。
+
+_TREE_BLOCK = re.compile(r'<pre class="tree">(.*?)</pre>', re.S)
+_TREE_ENTRY = re.compile(r"^([\s│]*)(?:├──|└──)\s*(.+)$")
+
+# 只有一类才有的条目（属 tests/frameworkTest/）与只有二类才有的条目（属 tests/featureTest/）
+_FRAMEWORK_ONLY = ("test_*.py", "demo_freshness.py", "repo_files.py", "testid_policy.py", "fixtures/")
+_FEATURE_ONLY = ("verify_*.py", "run_verifications.py", "run_acceptance.py")
+
+
+def tree_entries(html_text: str) -> list[tuple[int, str, str]]:
+    """把「含 tests/frameworkTest/ 的那棵目录树」解析成 [(深度, 条目名, 父条目名)]。
+
+    只认 `├──` / `└──` 这一种画法 —— 换画法 ⇒ 解析不出 ⇒ 判据会红（有意的：目录树的结构必须机器可读，
+    否则「谁挂在谁下面」这件事没法钉）。
+    """
+    block = next((b for b in _TREE_BLOCK.findall(html_text) if "tests/frameworkTest/" in b), None)
+    if block is None:
+        return []
+    text = html_mod.unescape(re.sub(r"<[^>]+>", "", block))
+    stack: list[tuple[int, str]] = [(-1, "hybrid_gui_qa/")]
+    out: list[tuple[int, str, str]] = []
+    for line in text.splitlines():
+        m = _TREE_ENTRY.match(line)
+        if not m:
+            continue
+        depth = len(m.group(1)) // 4
+        name = m.group(2).strip()
+        while stack and stack[-1][0] >= depth:
+            stack.pop()
+        out.append((depth, name, stack[-1][1] if stack else ""))
+        stack.append((depth, name))
+    return out
+
+
+def belonging_problems(entries: list[tuple[int, str, str]]) -> list[str]:
+    """一类条目不许挂在 featureTest 下、二类条目不许挂在 frameworkTest 下（判据与负向自证共用）。"""
+    fw = " · ".join(n for _, n, p in entries if "tests/frameworkTest/" in p)
+    ft = " · ".join(n for _, n, p in entries if "tests/featureTest/" in p)
+    bad: list[str] = []
+    for name in _FRAMEWORK_ONLY:
+        if name in ft:
+            bad.append(f"{name} 挂在 tests/featureTest/ 下 ⇒ 应挂 tests/frameworkTest/（一类自测）")
+    for name in _FEATURE_ONLY:
+        if name in fw:
+            bad.append(f"{name} 挂在 tests/frameworkTest/ 下 ⇒ 应挂 tests/featureTest/（二类验证）")
+    return bad
+
+
+def test_training_tree_parent_child_belonging():
+    """第 2 章目录树里，一类条目必须在 frameworkTest 下、二类条目必须在 featureTest 下。"""
+    html_text = HTML.read_text(encoding="utf-8")
+    entries = tree_entries(html_text)
+    assert entries, "解析不出第 2 章目录树（树画法变了 ⇒ 本判据要同步）"
+    bad = belonging_problems(entries)
+    assert not bad, (
+        "培训页目录树把两类文件挂错了父节点（改完重跑 `python build_tools/build_html.py`）：\n  - "
+        + "\n  - ".join(bad))
+
+
+_MISPLACED_TREE = """
+<b>hybrid_gui_qa/</b>
+├── <b>tests/frameworkTest/</b>             框架自验证：test_*（秒级、不需 demo/浏览器）
+├── <b>tests/featureTest/</b>               特性自验证：verify_*（端到端、需 demo、含负向）
+│   ├── run_verifications.py         ★ 二类统一入口
+│   ├── test_*.py                    一类自测（← 故意错挂）
+│   └── demo_freshness.py            demo 新鲜度闸门（← 故意错挂）
+"""
+
+_CORRECT_TREE = """
+<b>hybrid_gui_qa/</b>
+├── <b>tests/frameworkTest/</b>             框架自验证：test_*（秒级、不需 demo/浏览器）
+│   ├── test_*.py                    一类判据
+│   └── demo_freshness.py            demo 新鲜度闸门
+├── <b>tests/featureTest/</b>               特性自验证：verify_*（端到端、需 demo、含负向）
+│   └── run_verifications.py         ★ 二类统一入口
+"""
+
+
+def test_negative_misplaced_tree_is_caught():
+    """负向自证：故意挂错的树必须被抓住（否则这条判据等于恒真）。"""
+    bad = belonging_problems(tree_entries(f'<pre class="tree">{_MISPLACED_TREE}</pre>'))
+    assert any("test_*.py" in b for b in bad), f"错挂的 test_*.py 没被抓：{bad}"
+    assert any("demo_freshness.py" in b for b in bad), f"错挂的 demo_freshness.py 没被抓：{bad}"
+
+
+def test_negative_correct_tree_passes():
+    """负向自证：挂对的树不许被误报（防判据写成恒红、逼人绕过）。"""
+    assert belonging_problems(tree_entries(f'<pre class="tree">{_CORRECT_TREE}</pre>')) == []
