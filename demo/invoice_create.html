@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>应收发票创建</title>
+<!--
+  应收发票创建（P21.5 · Vue 3 重写）—— 需求第 7 条 + 2026-09-28 晚需求⑩
+    基础信息 #form-inv-basic：业务单元 / 发票号 / 发票类型 / 发票日期 / 销售员 / 币种 / 客户
+      —— 每项各自在 div 内、层级 >5 ≤12；label 是**独立 div**、内部不含控件
+    发票行区 #form-inv-lines ≈ 订单详情表单 3 的 **3 个 div**：
+      ① 按钮组「新增行 / 保存 / 取消」 ② 表头列「操作/期次号/发票行类型/数量/单位」 ③ 数据行
+      —— 期次号下拉 **1~12**；发票行类型下拉 = 物料行 / 服务行 / 费用行；必填 = 期次号 / 发票行类型 / 数量
+
+  ★ 需求⑩「去开票」带入：URL 带 ?from_order=SO-1005 时，自动拉该订单并带入
+    **业务单元 / 销售员 / 客户**（发票号由服务端自动分配，发票类型/日期/币种给默认值），发票行由用户新增。
+
+  ★ 需求⑪（2026-09-28 晚）：**开票前置条件 = 来源订单「已关闭」**
+    · 带 ?from_order= 进来时先查该订单状态；状态 ≠ 服务端 closed_state（/api/health 声明）
+      ⇒ 提示 + **禁用「保存」**（orderBlocked），不带入任何信息 ⇒ 直链也开不了票
+    · 服务端 POST /api/invoices 按同一口径复核（权威判定；客户端可被绕开）
+
+  契约：
+    · 就绪契约 body[data-hybrid-ready] 0→1（字典 + 带入数据都就绪）；行数标记 #inv-lines-body[data-hybrid-rows]
+    · 埋点口径 C：只有顶层容器带 data-testid（form-inv-basic / form-inv-lines / inv-status）
+    · 接口：GET /api/dict?kind=bu|invoice_type|currency · GET /api/salesmen · GET /api/customers
+            GET /api/invoice/next_no · GET /api/order?no=（带入）· POST /api/invoices（创建，?w= 保留）
+-->
+<script src="vendor/vue.global.prod.js"></script>
+<script src="auth.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 "Microsoft YaHei", system-ui, sans-serif; color: #1f2329; background: #f5f6f8; }
+  .topbar { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #e2e4e8; }
+  .topbar h2 { font-size: 16px; margin: 0; }
+  .topbar .spacer { flex: 1 1 auto; }
+  .btn { height: 28px; padding: 0 12px; border: 1px solid #c9ccd2; background: #fff; border-radius: 3px; cursor: pointer; font: inherit; }
+  .btn.primary { background: #1668dc; border-color: #1668dc; color: #fff; }
+  .btn.danger { color: #d4380d; border-color: #ffa39e; }
+
+  .block { background: #fff; margin: 12px 16px; border: 1px solid #e2e4e8; border-radius: 3px; padding: 12px 16px; }
+  .block h3 { margin: 0 0 12px; font-size: 14px; border-left: 3px solid #1668dc; padding-left: 8px; }
+  .field { display: flex; align-items: center; margin-bottom: 10px; }
+  .field > .label { flex: 0 0 96px; text-align: right; padding-right: 8px; color: #4b5058; }   /* 独立 div label */
+  .field .ctl { flex: 1 1 auto; }
+  .field input, .field select { width: 100%; height: 28px; padding: 0 8px; border: 1px solid #c9ccd2; border-radius: 3px; background: #fff; font: inherit; }
+  .field input[readonly] { background: #f7f8fa; color: #666; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+
+  .inv-lines-toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
+  .inv-lines-grid { display: grid; grid-template-columns: 90px 110px 130px 110px 90px; gap: 0; }
+  .inv-lines-grid > div { border: 1px solid #e2e4e8; padding: 5px 8px; background: #fff; white-space: nowrap; }
+  .inv-lines-grid .head { background: #fafbfc; font-weight: 600; }
+  .inv-lines-grid .cell { display: flex; align-items: center; }
+  .inv-lines-grid input, .inv-lines-grid select { width: 100%; height: 26px; border: 1px solid #c9ccd2; border-radius: 3px; padding: 0 6px; font: inherit; }
+  .hint { color: #888; font-size: 12px; margin: 6px 0 0; }
+  #inv-status { padding: 8px 16px; color: #1668dc; min-height: 20px; }
+  #from-order-hint { color: #1668dc; font-size: 12px; margin: 0 16px; }
+</style>
+</head>
+<body data-hybrid-ready="0">
+<div id="app">
+
+  <div class="topbar">
+    <h2>应收发票创建</h2>
+    <div class="spacer"></div>
+    <a class="btn" id="btn-back-o" href="/orders.html">返回订单系统</a>
+    <!-- 需求⑮：登录身份 + 超管切换角色的头像（auth.js 渲染） -->
+    <div id="nav-user" class="nav-user"></div>
+  </div>
+  <p class="hint" id="from-order-hint" v-if="fromOrder">来源订单：{{ fromOrder }} —— 业务单元 / 销售员 / 客户 已自动带入{{ contractNo ? '（合同编号 ' + contractNo + '）' : '' }}</p>
+
+  <!-- ===== 基础信息（7 项，每项在 div 内、层级 >5 ≤12）===== -->
+  <section class="block" id="form-inv-basic" data-testid="form-inv-basic" aria-label="基础信息">
+    <h3>基础信息</h3>
+    <div class="grid2">
+      <div class="field" v-for="fl in fields" :key="fl.key">
+        <div class="label">{{ fl.label }}</div>
+        <div class="ctl f1"><div class="f2"><div class="f3"><div class="f4"><div class="f5"><div class="f6">
+          <select v-if="fl.options" :id="fl.id" :name="fl.key" :title="fl.label" :aria-label="fl.label" v-model="form[fl.key]">
+            <option v-if="!fl.required" value="">请选择</option>
+            <option v-for="o in fl.options" :key="o.v" :value="o.v">{{ o.t }}</option>
+          </select>
+          <input v-else :id="fl.id" :name="fl.key" type="text" :title="fl.label" :aria-label="fl.label"
+                 :placeholder="fl.ph" autocomplete="off" v-model="form[fl.key]">
+        </div></div></div></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 发票行区（3 个 div：按钮组 / 表头列 / 数据行）===== -->
+  <section class="block" id="form-inv-lines" data-testid="form-inv-lines" aria-label="发票行">
+    <h3>发票行</h3>
+
+    <!-- div1：按钮取值 -->
+    <div class="inv-lines-toolbar" id="inv-lines-toolbar">
+      <button id="btn-inv-add-line" class="btn" type="button" @click="addLine">新增行</button>
+      <button id="btn-inv-save-lines" class="btn primary" type="button" @click="checkLines">保存</button>
+      <button id="btn-inv-cancel-lines" class="btn" type="button" @click="resetLines">取消</button>
+    </div>
+
+    <!-- div2 + div3：表头列 + 数据行 -->
+    <div class="inv-lines-grid" id="inv-lines-grid">
+      <div class="head">操作</div><div class="head">期次号</div><div class="head">发票行类型</div>
+      <div class="head">数量</div><div class="head">单位</div>
+
+      <template v-for="(ln, idx) in lines" :key="idx">
+        <div class="cell"><button class="btn danger" type="button" @click="removeLine(idx)">删除</button></div>
+        <div class="cell">
+          <select name="period" title="期次号" aria-label="期次号" v-model="ln.period">
+            <option value="">请选择</option>
+            <option v-for="p in periods" :key="p" :value="p">{{ p }}</option>
+          </select>
+        </div>
+        <div class="cell">
+          <select name="line_type" title="发票行类型" aria-label="发票行类型" v-model="ln.line_type">
+            <option value="">请选择</option>
+            <option v-for="t in lineTypes" :key="t" :value="t">{{ t }}</option>
+          </select>
+        </div>
+        <div class="cell"><input type="text" name="qty" title="数量" aria-label="数量" v-model="ln.qty"></div>
+        <div class="cell">
+          <select name="unit" title="单位" aria-label="单位" v-model="ln.unit">
+            <option v-for="u in units" :key="u" :value="u">{{ u }}</option>
+          </select>
+        </div>
+      </template>
+    </div>
+    <p class="hint" id="inv-lines-body" :data-hybrid-rows="lines.length">
+      共 {{ lines.length }} 行 · 必填：期次号 / 发票行类型 / 数量
+    </p>
+  </section>
+
+  <!-- ===== 底部按钮 ===== -->
+  <div class="block" style="display:flex;justify-content:flex-end;gap:8px">
+    <a class="btn" id="btn-inv-cancel" href="/invoice_list.html">取消</a>
+    <button id="btn-inv-submit" class="btn primary" type="button" data-perm="create_invoice"
+            data-perm-tip="「保存发票」需要发票管理员角色：当前不是发票管理员，不能创建发票（可用右上角头像切换角色）"
+            :disabled="orderBlocked" @click="submitInvoice">保存</button>
+  </div>
+
+  <div id="inv-status" data-testid="inv-status">{{ status }}</div>
+</div>
+
+<script>
+const { createApp } = Vue;
+
+// 分区号（F6 契约）：**框架用 context.add_init_script 注入 window.__HYBRID_W**（pytest-xdist 每 worker 一个分区）
+// ⇒ 必须优先读它；手工浏览时退回 URL 的 ?w=<分区>。只读 ?w= 会让框架驱动时全落 default 分区，并发互相踩。
+const PART = String(window.__HYBRID_W || '').trim() || (new URLSearchParams(location.search).get('w') || '');
+function markBusy() { document.body.dataset.hybridReady = '0'; }
+function markReady() { document.body.dataset.hybridReady = '1'; }
+const FROM_ORDER = new URLSearchParams(location.search).get('from_order') || '';
+function apiUrl(path) {
+  // 需求⑮：带上身份（token 或自动化用的 ?demo_role=），页面自己的 ?w=<分区> 先拼
+  return DEMO_AUTH.url(PART ? path + (path.includes('?') ? '&' : '?') + 'w=' + encodeURIComponent(PART) : path);
+}
+function today() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+createApp({
+  data() {
+    return {
+      fromOrder: FROM_ORDER, contractNo: '', status: '', periods: [], lineTypes: [], units: ['个', '件', '套', '千克'],
+      closedState: '已关闭',   // 需求⑪：以 /api/health 的 closed_state 为准（不写死）
+      orderBlocked: false,     // 需求⑪：来源订单不是「已关闭」⇒ 拦截（禁保存）
+      fields: [
+        { key: 'bu',           label: '业务单元', id: 'i-bu',       options: [], required: true },
+        { key: 'no',           label: '发票号',   id: 'i-no',       ph: '留空由服务端自动分配', required: true },
+        { key: 'invoice_type', label: '发票类型', id: 'i-type',     options: [], required: true },
+        { key: 'invoice_date', label: '发票日期', id: 'i-date',     ph: 'YYYY-MM-DD', required: true },
+        { key: 'salesman',     label: '销售员',   id: 'i-salesman', options: [], required: true },
+        { key: 'currency',     label: '币种',     id: 'i-currency', options: [], required: true },
+        { key: 'cust',         label: '客户',     id: 'i-cust',     options: [], required: true },
+      ],
+      form: { bu: '', no: '', invoice_type: '', invoice_date: today(), salesman: '', currency: 'CNY', cust: '' },
+      lines: [{ period: '1', line_type: '', qty: '', unit: '个' }],
+    };
+  },
+  mounted() { this.init(); },
+  watch: {
+    // 需求⑱：所有校验/提示信息都弹一个「弹出框 tips」；
+    // ⚠️ 状态行**保留同样文字**（自动化判据/用例按状态行取值），所以这里是"加弹窗"而不是"挪走文字"
+    status(v) { if (v) window.DEMO_TIPS.show(v); },
+  },
+  methods: {
+    async init() {
+      markBusy();
+      const bu = await (await fetch(apiUrl('/api/dict?kind=bu'))).json();
+      const it = await (await fetch(apiUrl('/api/dict?kind=invoice_type'))).json();
+      const cu = await (await fetch(apiUrl('/api/dict?kind=currency'))).json();
+      const pe = await (await fetch(apiUrl('/api/dict?kind=period'))).json();
+      const lt = await (await fetch(apiUrl('/api/dict?kind=invoice_line_type'))).json();
+      const sal = await (await fetch(apiUrl('/api/salesmen'))).json();
+      const cus = await (await fetch(apiUrl('/api/customers'))).json();
+      const next = await (await fetch(apiUrl('/api/invoice/next_no'))).json();
+      const h = await (await fetch(apiUrl('/api/health'))).json();
+      this.closedState = h.closed_state || this.closedState;   // 需求⑪
+      const opt = (v) => v.map(x => ({ v: x, t: x }));
+      this.fields.find(f => f.key === 'bu').options = opt(bu.values || []);
+      this.fields.find(f => f.key === 'invoice_type').options = opt(it.values || []);
+      this.fields.find(f => f.key === 'currency').options = opt(cu.values || []);
+      this.fields.find(f => f.key === 'salesman').options = (sal || []).map(s => ({ v: s.id, t: s.name }));
+      this.fields.find(f => f.key === 'cust').options = (cus || []).map(c => ({ v: c.id, t: c.name }));
+      this.periods = pe.values || [];
+      this.lineTypes = lt.values || [];
+      this.form.no = next.no || '';
+      this.form.bu = this.form.bu || (bu.values || [])[0] || '';
+      this.form.invoice_type = this.form.invoice_type || (it.values || [])[0] || '';
+      this.form.salesman = this.form.salesman || ((sal || [])[0] || {}).id || '';
+      this.form.cust = this.form.cust || ((cus || [])[0] || {}).id || '';
+      // 需求⑩：从订单「去开票」进来 ⇒ 拉订单并带入 业务单元 / 销售员 / 客户（+ 合同编号，仅随单保存）
+      if (this.fromOrder) {
+        const o = await (await fetch(apiUrl('/api/order?no=' + encodeURIComponent(this.fromOrder)))).json();
+        if (o && o.no) {
+          // 需求⑳：已开票的订单不许再次开票（直链进来也拦）
+          if (o.invoiced) {
+            this.orderBlocked = true;
+            this.status = `订单 ${o.no} 已开票（发票号 ${o.invoice_no || '—'}），不允许再次开票 —— 已拦截（不能保存）`;
+            markReady();
+            return;
+          }
+          // 需求⑪：**只有「已关闭」的订单才能开票** —— 直链进来也拦（客户端闸只挡按钮，直链挡不住）
+          if ((o.status || '') !== this.closedState) {
+            this.orderBlocked = true;
+            this.status = `订单 ${o.no} 当前状态为「${o.status || '未知'}」，`
+                        + `只有「${this.closedState}」的订单才能开票 —— 已拦截（不能保存）`;
+            markReady();
+            return;
+          }
+          this.form.bu = o.bu || this.form.bu;
+          this.form.salesman = o.salesman || this.form.salesman;
+          this.form.cust = o.cust || this.form.cust;
+          this.contractNo = o.contract_no || '';
+          this.status = `已从订单 ${o.no} 带入：业务单元 ${o.bu} · 销售员 ${o.salesmanName || o.salesman} · 客户 ${o.custName || o.cust}`;
+        } else {
+          this.status = `未找到来源订单 ${this.fromOrder}（未带入任何信息）`;
+        }
+      }
+      markReady();
+    },
+    /* ---- 发票行：新增 / 删除 / 校验 / 重置 ---- */
+    addLine() {
+      this.lines.push({ period: '', line_type: '', qty: '', unit: '个' });
+      this.status = `已新增第 ${this.lines.length} 行（空白行，请填写必填项）`;
+    },
+    removeLine(idx) {
+      if (this.lines.length <= 1) { this.status = '至少保留 1 行'; return; }
+      this.lines.splice(idx, 1);
+      this.status = `已删除第 ${idx + 1} 行`;
+    },
+    checkLines() {
+      const bad = this.lines.map((l, i) => (!l.period || !l.line_type || !String(l.qty || '').trim()) ? (i + 1) : null)
+                            .filter(Boolean);
+      this.status = bad.length ? `行必填项未填全（第 ${bad.join('、')} 行）`
+                               : `行校验通过：共 ${this.lines.length} 行`;
+      return !bad.length;
+    },
+    resetLines() {
+      this.lines = [{ period: '1', line_type: '', qty: '', unit: '个' }];
+      this.status = '已重置发票行（回到 1 行空白）';
+    },
+    /* ---- 保存（创建发票）⇒ 回列表 ---- */
+    async submitInvoice() {
+      if (this.orderBlocked) {   // 需求⑪：来源订单未关闭 ⇒ 不放行（服务端 400 兜底）
+        this.status = `来源订单 ${this.fromOrder} 不是「${this.closedState}」，不能开票`;
+        return;
+      }
+      const missing = this.fields.filter(fl => fl.required && !String(this.form[fl.key] || '').trim()).map(fl => fl.key);
+      if (missing.length) { this.status = '请填写全部必填字段（' + missing.join('、') + '）'; return; }
+      if (!this.checkLines()) return;
+      const payload = { ...this.form, contract_no: this.contractNo, from_order: this.fromOrder, lines: this.lines };
+      const r = await fetch(apiUrl('/api/invoices'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { this.status = d.error || ('保存失败（HTTP ' + r.status + '）'); return; }
+      this.status = `发票 ${d.no} 已创建（${d.lines ? d.lines.length : 0} 行），正在返回列表…`;
+      location.href = '/invoice_list.html' + (PART ? '?w=' + encodeURIComponent(PART) : '');
+    },
+  },
+}).mount('#app');
+// 需求⑮：登录与角色（创建发票需发票管理员；服务端同口径再校验）
+DEMO_AUTH.init();
+</script>
+</body>
+</html>

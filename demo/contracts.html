@@ -3,369 +3,337 @@
 <head>
 <meta charset="utf-8">
 <title>合同管理系统</title>
+<!--
+  合同管理系统（P21.2 · Vue 3 重写）—— 需求第 1/2/3 条
+    ① VueJS 实现、支持懒加载与动态生成、标准属性（id/class/title/placeholder/readonly/autocomplete）+ 自定义属性（data-*）
+    ② 搜索栏对齐；**每个搜索条件的 label 是独立 div，label 内不含任何子控件**；每个控件包在多层 div（>5 层、≤12 层）
+    ③ 「…」选客户 ⇒ 弹出「选择客户」**iframe**（同源 pick_customer.html，Vue 实现），进 iframe 才能选
+
+  契约（不许破 —— references/demo-refactor-contract.md）：
+    · 就绪契约 body[data-hybrid-ready] 0 → 1（数据渲染完成）
+    · 埋点口径 C：只有顶层容器带 data-testid（tbl-contracts / status / modal-new / modal-customer）
+    · 接口：GET /api/contracts · GET /api/customers · POST /api/contracts（均支持 ?w= 分区）
+    · 列定位：td[data-field] 保留（contractNo/contractName/managementUnit/folder/contractType/customer/businessUnit）
+    · 客户筛选语义保留：**右模糊（前缀）匹配**，客户名前缀或客户编号前缀
+-->
+<script src="vendor/vue.global.prod.js"></script>
+<script src="auth.js"></script>
 <style>
-  body{font-family:sans-serif;max-width:1100px;margin:30px auto;padding:0 20px;color:#222;}
-  h1{font-size:22px;border-bottom:2px solid #4a90d9;padding-bottom:8px;}
-  .toolbar{margin:14px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
-  .toolbar label{font-size:13px;color:#555;}
-  input,select{padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:13px;}
-  #tb-keyword{width:200px;}
-  #tb-customer{width:190px;}
-  button{padding:6px 14px;border:none;border-radius:4px;cursor:pointer;font-size:13px;background:#4a90d9;color:#fff;}
-  button.ghost{background:#f0f0f0;color:#333;}
-  .topbar{display:flex;justify-content:space-between;align-items:center;margin:10px 0;}
-  table{width:100%;border-collapse:collapse;margin-top:10px;}
-  th,td{border:1px solid #ddd;padding:8px 10px;text-align:left;font-size:13px;}
-  th{background:#f5f7fa;}
-  tr:nth-child(even){background:#fafbfc;}
-  #status{margin-top:12px;color:#0a0;font-size:13px;}
-  /* 新建弹窗 */
-  .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);}
-  .modal.show{display:flex;align-items:center;justify-content:center;}
-  .modal-box{background:#fff;border-radius:8px;padding:22px 28px;width:420px;box-shadow:0 8px 30px rgba(0,0,0,.3);}
-  .modal-box.wide{width:560px;}
-  .modal-box h3{margin:0 0 16px;font-size:18px;}
-  .field{margin-bottom:12px;}
-  .field label{display:block;font-size:13px;color:#555;margin-bottom:4px;}
-  .field input,.field select{width:100%;box-sizing:border-box;}
-  .pick-row{display:flex;gap:6px;}
-  .pick-row input{flex:1;}
-  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
-  .empty{text-align:center;color:#999;padding:30px;}
-  /* 客户弹层（叠在新建弹窗之上） */
-  #modal-customer{z-index:20;}
-  #modal-new{z-index:10;}
-  #tbl-customers{margin-top:0;}
-  /* 2026-09-18 需求②：客户弹层里的行**本身**也能选中（点行 = 点该行「选择」按钮） */
-  #tbody-customers tr[data-pick]{cursor:pointer;}
-  #tbody-customers tr[data-pick]:hover{background:#eef4ff;}
-  /* 2026-09-18：搜索区客户字段加「...」弹层入口（与订单页同款样式） */
-  .pick-row{display:flex;gap:6px;align-items:center;}
-  .pick-row input{flex:1;}
-  button.pick{padding:6px 10px;background:#e8eefc;color:#2f6fed;}
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 "Microsoft YaHei", system-ui, sans-serif; color: #1f2329; background: #f5f6f8; }
+  .topbar { display: flex; align-items: center; gap: 16px;
+            padding: 10px 16px; background: #fff; border-bottom: 1px solid #e2e4e8; }
+  .topbar h2 { font-size: 16px; margin: 0; }
+  .topbar .total { color: #4b5058; }
+  .topbar .spacer { flex: 1 1 auto; }
+  #link-orders { font-size: 13px; color: #2f6fed; }
+  #btn-new { height: 30px; padding: 0 14px; background: #1668dc; color: #fff; border: 1px solid #1668dc; border-radius: 3px; cursor: pointer; }
+
+  /* 搜索工具栏：样式对齐 —— 每个条件等宽、label 等宽、控件等宽 */
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+             padding: 12px 16px; background: #fff; border-bottom: 1px solid #e2e4e8; }
+  .cond { display: flex; align-items: center; width: 320px; }
+  .cond > .label { flex: 0 0 76px; text-align: right; padding-right: 8px; color: #4b5058; }  /* 独立 div，不含子控件 */
+  .cond .ctl { flex: 1 1 auto; }
+  .cond .ctl input, .cond .ctl select { width: 100%; height: 28px; padding: 0 8px;
+             border: 1px solid #c9ccd2; border-radius: 3px; background: #fff; font: inherit; }
+  .pick-row { display: flex; gap: 6px; }
+  .pick-row input { flex: 1 1 auto; }
+  .pick-row .pick { flex: 0 0 auto; width: 28px; height: 28px; border: 1px solid #c9ccd2;
+             background: #fff; border-radius: 3px; cursor: pointer; }
+  .tb-actions { display: flex; gap: 8px; margin-left: auto; }
+  .btn { height: 28px; padding: 0 12px; border: 1px solid #c9ccd2; background: #fff; border-radius: 3px; cursor: pointer; font: inherit; }
+  .btn.primary { background: #1668dc; border-color: #1668dc; color: #fff; }
+  .btn[disabled] { color: #b6b9bf; background: #f2f3f5; cursor: not-allowed; }
+
+  /* 表格 */
+  .grid-wrap { padding: 12px 16px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; }
+  th, td { border: 1px solid #e2e4e8; padding: 6px 9px; text-align: left; }
+  th { background: #fafbfc; font-weight: 600; }
+  tbody tr:hover { background: #f0f6ff; }
+  #status { padding: 8px 16px; color: #1668dc; min-height: 20px; }
+
+  /* 弹层 */
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex;
+           align-items: center; justify-content: center; z-index: 10; }
+  .modal-box { background: #fff; border-radius: 4px; width: 460px; max-height: 88vh; overflow: auto; padding: 16px; }
+  .modal-box.wide { width: 620px; }
+  .modal-box h3 { margin: 0 0 12px; font-size: 15px; }
+  .field { display: flex; align-items: center; margin-bottom: 10px; }
+  .field > .label { flex: 0 0 84px; text-align: right; padding-right: 8px; color: #4b5058; }  /* 独立 div label */
+  .field .ctl { flex: 1 1 auto; }
+  .field .ctl input, .field .ctl select { width: 100%; height: 28px; padding: 0 8px;
+             border: 1px solid #c9ccd2; border-radius: 3px; background: #fff; font: inherit; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  #frame-customer { width: 100%; height: 340px; border: 1px solid #e2e4e8; border-radius: 3px; }
 </style>
 </head>
-<!-- 就绪契约（F1）：静态声明 data-hybrid-ready="0"，数据渲染完成后由 JS 置 "1"；
-     测试框架 goto 之后等它 ⇒ 慢机器/高并发下不再「页面还在取数、脚本已经开始点」。 -->
 <body data-hybrid-ready="0">
-<h1>合同管理系统</h1>
+<div id="app">
 
-<!-- 新建按钮 / 订单系统入口 -->
-<div class="topbar">
-  <div id="result-info" style="font-size:13px;color:#666;">共 <span id="total">0</span> 条合同</div>
-  <div style="display:flex;gap:12px;align-items:center;">
-    <!-- 2026-09-17 需求①：订单系统入口 —— 点击**新开一个 tab**打开订单系统页面（orders.html） -->
-    <a id="link-orders" href="/orders.html" target="_blank" rel="noopener"
-       style="font-size:13px;color:#2f6fed;">查看订单</a>
-    <button id="btn-new">+ 新建合同</button>
+  <div class="topbar">
+    <h2>合同管理系统</h2>
+    <!-- 共 N 条合同（2026-09-17 起的老口径，P21.2 重写时丢失、2026-09-28 找回）：
+         数字 = **筛选后的行数**（老实现 `total.textContent = data.length`）
+         ⇒ 两个场景的断言护栏 must_contain「条合同」依赖这行文本，别删 -->
+    <div class="total">共 <span id="total">{{ rows.length }}</span> 条合同</div>
+    <div class="spacer"></div>
+    <!-- 订单系统入口（2026-09-17 需求①，同批丢失、2026-09-28 找回）：
+         点击**新开一个 tab** 打开订单列表页 orders.html（框架靠 role=link name=查看订单 定位） -->
+    <a id="link-orders" href="/orders.html" target="_blank" rel="noopener">查看订单</a>
+    <button id="btn-new" type="button" data-perm="create_contract"
+            data-perm-tip="「新建合同」需要合同管理员角色：当前不是合同管理员，不能新建合同（可用右上角头像切换角色）"
+            @click="openNew">+ 新建合同</button>
+    <!-- 需求⑮：登录身份 + 超管切换角色的头像（auth.js 渲染） -->
+    <div id="nav-user" class="nav-user"></div>
   </div>
-</div>
 
-<!-- 搜索区（P16 批 4：撤掉子元素埋点后，这里作为**顶层锚点** —— 真实项目常见写法）-->
-<div class="toolbar" aria-label="搜索工具栏">
-  <label>关键字 <input id="tb-keyword" placeholder="合同编号/名称/管理单元/合同类型/帐套" autocomplete="off"></label>
-  <!-- 2026-09-14 需求②：客户筛选由下拉框改为**输入框 + 右模糊（前缀）匹配**。
-       匹配口径：客户名称前缀（大小写不敏感）或客户编号前缀（c1…）。
-       「华信」这种包含但不前缀的输入**必须不命中**，用来证明是右模糊而不是包含匹配。 -->
-  <label>客户
-    <span class="pick-row">
-      <input id="tb-customer" placeholder="客户名称（右模糊：前缀匹配）" autocomplete="off">
-      <button type="button" class="pick" id="btn-pick-c-search"
-              title="按客户筛选">...</button>
-    </span>
-  </label>
-  <label>业务单元
-    <select id="sel-bu">
-      <option value="">全部业务单元</option>
-      <option value="bu_a">bu_a</option><option value="bu_b">bu_b</option>
-      <option value="bu_c">bu_c</option>
-    </select>
-  </label>
-  <button id="btn-search">搜索</button>
-  <button id="btn-reset" class="ghost">重置</button>
-  <!-- 2026-09-13：断言类型扩展需要真页覆盖 enabled/disabled —— 加一个「功能未接入」的禁用按钮 -->
-  <button id="btn-export" class="ghost" disabled
-          title="导出功能未接入">导出</button>
-</div>
+  <!-- ===== 搜索工具栏：每个条件 = 独立 label div（不含子控件） + 控件包在 8 层 div 里 ===== -->
+  <div class="toolbar" id="search-toolbar" aria-label="搜索工具栏">
+    <div class="cond" v-for="c in conds" :key="c.key">
+      <div class="label">{{ c.label }}</div>
+      <div class="ctl w1"><div class="w2"><div class="w3"><div class="w4">
+        <div class="w5"><div class="w6"><div class="w7"><div class="w8">
+          <template v-if="c.type === 'pick'">
+            <div class="pick-row">
+              <input :id="c.id" :name="c.key" type="text" :title="c.label" :aria-label="c.label"
+                     :placeholder="c.ph" autocomplete="off" v-model="f[c.key]"
+                     @keyup.enter="load">
+              <button type="button" class="pick" :id="c.btnId" :title="'选择' + c.label"
+                      @click="openPick('cust-search')">...</button>
+            </div>
+          </template>
+          <template v-else-if="c.type === 'select'">
+            <select :id="c.id" :name="c.key" :title="c.label" :aria-label="c.label" v-model="f[c.key]">
+              <option value="">{{ c.ph }}</option>
+              <option v-for="o in c.options" :key="o.v" :value="o.v">{{ o.t }}</option>
+            </select>
+          </template>
+          <template v-else>
+            <input :id="c.id" :name="c.key" type="text" :title="c.label" :aria-label="c.label"
+                   :placeholder="c.ph" autocomplete="off" v-model="f[c.key]" @keyup.enter="load">
+          </template>
+        </div></div></div></div>
+      </div></div></div></div>
+    </div>
 
-<!-- 合同列表 -->
-<table id="tbl-contracts" data-testid="tbl-contracts" aria-label="合同列表">
-  <thead>
-    <tr>
-      <th>合同编号</th><th>合同名称</th><th>管理单元</th><th>帐套</th>
-      <th>合同类型</th><th>客户</th><th>业务单元</th>
-    </tr>
-  </thead>
-  <tbody id="tbody-contracts"></tbody>
-</table>
-<div id="status" data-testid="status"></div>
+    <div class="tb-actions">
+      <button id="btn-search" class="btn primary" type="button" @click="load">搜索</button>
+      <button id="btn-reset" class="btn" type="button" @click="reset">重置</button>
+      <button id="btn-export" class="btn" type="button" disabled title="导出功能未接入">导出</button>
+    </div>
+  </div>
 
-<!-- 新建合同弹窗 -->
-<div id="modal-new" class="modal" data-testid="modal-new">
-  <div class="modal-box">
-    <h3>新建合同</h3>
-    <div class="field">
-      <label>合同名称</label>
-      <input id="inp-name" placeholder="请输入合同名称" autocomplete="off">
-    </div>
-    <div class="field">
-      <label>管理单元</label>
-      <select id="sel-mu">
-        <option value="">请选择</option>
-        <option value="0021">0021</option><option value="0451">0451</option>
-        <option value="1031">1031</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>帐套</label>
-      <select id="sel-fs">
-        <option value="">请选择</option>
-        <option value="001">001</option><option value="002">002</option>
-        <option value="003">003</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>合同类型</label>
-      <select id="sel-type">
-        <option value="">请选择</option>
-        <option value="合同">合同</option><option value="po">po</option>
-        <option value="预po">预po</option>
-      </select>
-    </div>
-    <!-- 2026-09-14 需求①：客户不再是下拉框 —— 点「选择客户」弹出**客户列表弹层**，
-         列表两列（客户名称/客户地址），点某一行的「选择」按钮回填并关闭弹层。
-         注意：每行的按钮文字都是「选择」（同名）⇒ 这正是「同名元素必须靠所在行上下文区分」的
-         真实场景，framework 会给出 选择@<客户名称> 这样的语义名。 -->
-    <div class="field">
-      <label>客户</label>
-      <div class="pick-row">
-        <input id="inp-c" placeholder="请选择客户" readonly autocomplete="off">
-        <button id="btn-pick-c" type="button" class="ghost">选择客户</button>
+  <!-- ===== 合同列表（顶层容器 = 唯一允许埋点处） ===== -->
+  <div class="grid-wrap">
+    <table id="tbl-contracts" data-testid="tbl-contracts" aria-label="合同列表">
+      <thead>
+        <tr>
+          <th>合同编号</th><th>合同名称</th><th>管理单元</th><th>帐套</th>
+          <th>合同类型</th><th>客户</th><th>业务单元</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-contracts">
+        <tr v-for="c in rows" :key="c.no">
+          <td data-field="contractNo"><a :href="'/contract_detail.html?no=' + c.no">{{ c.no }}</a></td>
+          <td data-field="contractName">{{ c.name }}</td>
+          <td data-field="managementUnit">{{ c.mu }}</td>
+          <td data-field="folder">{{ c.file }}</td>
+          <td data-field="contractType">{{ c.type }}</td>
+          <td data-field="customer" :data-cust="c.cust">{{ custName(c) }}</td>
+          <td data-field="businessUnit">{{ c.bu }}</td>
+        </tr>
+        <tr v-if="!rows.length"><td colspan="7">没有匹配的合同</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div id="status" data-testid="status">{{ status }}</div>
+
+  <!-- ===== 新建合同弹窗 ===== -->
+  <div id="modal-new" class="modal" data-testid="modal-new" v-if="showNew">
+    <div class="modal-box">
+      <h3>新建合同</h3>
+
+      <div class="field">
+        <div class="label">合同名称</div>
+        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
+          <input id="inp-name" name="contractName" type="text" title="合同名称" aria-label="合同名称"
+                 placeholder="请输入合同名称" autocomplete="off" v-model="form.name">
+        </div></div></div></div></div></div>
+      </div>
+
+      <div class="field">
+        <div class="label">管理单元</div>
+        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
+          <select id="sel-mu" name="managementUnit" title="管理单元" aria-label="管理单元" v-model="form.mu">
+            <option value="">请选择</option>
+            <option value="0021">0021</option><option value="0451">0451</option><option value="1031">1031</option>
+          </select>
+        </div></div></div></div></div></div>
+      </div>
+
+      <div class="field">
+        <div class="label">帐套</div>
+        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
+          <select id="sel-fs" name="folder" title="帐套" aria-label="帐套" v-model="form.file">
+            <option value="">请选择</option>
+            <option value="001">001</option><option value="002">002</option><option value="003">003</option>
+          </select>
+        </div></div></div></div></div></div>
+      </div>
+
+      <div class="field">
+        <div class="label">合同类型</div>
+        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
+          <select id="sel-type" name="contractType" title="合同类型" aria-label="合同类型" v-model="form.type">
+            <option value="">请选择</option>
+            <option value="合同">合同</option><option value="po">po</option><option value="预po">预po</option>
+          </select>
+        </div></div></div></div></div></div>
+      </div>
+
+      <div class="field">
+        <div class="label">客户</div>
+        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
+          <div class="pick-row">
+            <input id="inp-c" name="customer" type="text" title="客户" aria-label="客户"
+                   placeholder="请选择客户" readonly autocomplete="off" v-model="form.cust">
+            <button id="btn-pick-c" class="btn" type="button" title="选择客户" @click="openPick('cust')">选择客户</button>
+          </div>
+        </div></div></div></div></div></div>
+      </div>
+
+      <div class="field">
+        <div class="label">业务单元</div>
+        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
+          <select id="sel-b" name="businessUnit" title="业务单元" aria-label="业务单元" v-model="form.bu">
+            <option value="">请选择</option>
+            <option value="bu_a">bu_a</option><option value="bu_b">bu_b</option><option value="bu_c">bu_c</option>
+          </select>
+        </div></div></div></div></div></div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="btn-cancel" class="btn" type="button" @click="showNew = false">取消</button>
+        <button id="btn-submit" class="btn primary" type="button" @click="submit">提交</button>
       </div>
     </div>
-    <div class="field">
-      <label>业务单元</label>
-      <select id="sel-b">
-        <option value="">请选择</option>
-        <option value="bu_a">bu_a</option><option value="bu_b">bu_b</option>
-        <option value="bu_c">bu_c</option>
-      </select>
-    </div>
-    <div class="modal-actions">
-      <button id="btn-cancel" class="ghost">取消</button>
-      <button id="btn-submit">提交</button>
-    </div>
   </div>
-</div>
 
-<!-- 客户列表弹层（在新建弹窗之上再叠一层） -->
-<div id="modal-customer" class="modal" data-testid="modal-customer">
-  <div class="modal-box wide">
-    <h3>选择客户</h3>
-    <table id="tbl-customers">
-      <thead>
-        <tr><th>客户名称</th><th>客户地址</th><th>操作</th></tr>
-      </thead>
-      <tbody id="tbody-customers"></tbody>
-    </table>
-    <div class="modal-actions">
-      <button id="btn-cust-cancel" class="ghost" type="button">取消</button>
+  <!-- ===== 选择客户：**iframe**（需求③）—— 进 iframe 才能选到客户 ===== -->
+  <div id="modal-customer" class="modal" data-testid="modal-customer" v-if="showCust">
+    <div class="modal-box wide">
+      <h3>选择客户</h3>
+      <iframe id="frame-customer" :src="frameSrc" title="选择客户" name="frame-customer"></iframe>
+      <div class="modal-actions">
+        <button id="btn-cust-cancel" class="btn" type="button" @click="closeCust">取消</button>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-// ========== 数据来源：服务端 API（2026-09-14 改造：唯一数据源） ==========
-// 客户主数据与合同数据都放在 demo/app.py 里，页面只负责取来渲染。
-// 这样**详情页读到的是同一条真实记录**（新建的合同在详情页也能看到正确的客户），
-// 而且页面刷新不再丢数据 —— 也就不需要「列表页一套推导、详情页另一套推导」那种两处打架的写法。
-// ⚠️ 数据留在服务端 ⇒ 测试用例之间必须复位（POST /api/reset），framework 生成的 conftest 会自动做。
-let CUSTOMERS = [];   // [{id,name,addr}]
-let CONTRACTS = [];   // [{no,name,mu,file,type,cust,custName,bu}]
+const { createApp } = Vue;
 
-// ========== 分区（F6）+ 就绪契约（F1）—— 2026-09-14 ==========
-// 分区：pytest-xdist 下 conftest 给每个 worker 的页面注入 window.__HYBRID_W（如 "gw0"），
-//       页面把它带进**所有** /api 调用 ⇒ 每个 worker 读写自己那份数据，并发不再互相踩。
-// 就绪：boot() 渲染完成后置 document.body.dataset.hybridReady="1"；测试框架 goto 之后等它，
-//       避免"页面还在异步取数、脚本已经开始点"（慢机器/高并发下的假红根因）。
-const W = (window.__HYBRID_W || '').toString().trim();
-function apiUrl(path){
-  if(!W) return path;
-  return path + (path.indexOf('?') >= 0 ? '&' : '?') + 'w=' + encodeURIComponent(W);
-}
-function markReady(){ document.body.dataset.hybridReady = '1'; }
-
-async function boot(){
-  CUSTOMERS = await (await fetch(apiUrl('/api/customers'))).json();
-  CONTRACTS = await (await fetch(apiUrl('/api/contracts'))).json();
-  renderCustomers();
-  render(CONTRACTS);
-  markReady();          // ← 数据已就位：测试可以开始动作/断言了
-}
-function custById(id){ return CUSTOMERS.find(c=>c.id===id) || {id:id, name:id, addr:''}; }
-function custNameOf(c){ return c.custName || custById(c.cust).name; }
-
-// ========== 渲染 ==========
-function render(data){
-  const tb = document.getElementById('tbody-contracts');
-  if(!data.length){ tb.innerHTML='<tr><td colspan="7" class="empty">无匹配数据</td></tr>'; }
-  else{
-    tb.innerHTML = data.map(c=>`<tr>
-      <td data-field="contractNo"><a href="/contract_detail.html?no=${c.no}">${c.no}</a></td>
-      <td data-field="contractName">${c.name}</td>
-      <td data-field="managementUnit">${c.mu}</td>
-      <td data-field="folder">${c.file}</td>
-      <td data-field="contractType">${c.type}</td>
-      <td data-field="customer" data-cust="${c.cust}">${custNameOf(c)}</td>
-      <td data-field="businessUnit">${c.bu}</td>
-    </tr>`).join('');
-  }
-  document.getElementById('total').textContent = data.length;
+// 分区号（F6 契约）：**框架用 context.add_init_script 注入 window.__HYBRID_W**（pytest-xdist 每 worker 一个分区）
+// ⇒ 必须优先读它；手工浏览时退回 URL 的 ?w=<分区>。只读 ?w= 会让框架驱动时全落 default 分区，并发互相踩。
+const PART = String(window.__HYBRID_W || '').trim() || (new URLSearchParams(location.search).get('w') || '');
+function markBusy() { document.body.dataset.hybridReady = '0'; }
+function markReady() { document.body.dataset.hybridReady = '1'; }
+function apiUrl(path) {
+  // 需求⑮：带上身份（token 或自动化用的 ?demo_role=），页面自己的 ?w=<分区> 先拼
+  return DEMO_AUTH.url(PART ? path + (path.includes('?') ? '&' : '?') + 'w=' + encodeURIComponent(PART) : path);
 }
 
-// ========== 客户列表弹层 ==========
-function renderCustomers(){
-  // 2026-09-18 需求②：行**本身**也带 data-pick ⇒ 点行任意位置 = 点该行的「选择」按钮（两种选中方式等效）
-  document.getElementById('tbody-customers').innerHTML = CUSTOMERS.map(c=>`
-    <tr data-cust="${c.id}" data-pick="${c.id}">
-      <td data-field="custName">${c.name}</td>
-      <td data-field="custAddr">${c.addr}</td>
-      <td><button type="button" data-pick="${c.id}">选择</button></td>
-    </tr>`).join('');
-}
-
-// 客户弹层有两个入口：新建合同表单（inp-c）与**搜索区**（tb-customer）
-// ⇒ 用「回填目标列表」区分，选中逻辑只有一份（与订单页同一套思路）。
-let _custTargets = ['inp-c'];
-function openCustomerPicker(targets){
-  _custTargets = (targets && targets.length) ? targets : ['inp-c'];
-  document.getElementById('modal-customer').classList.add('show');
-}
-function closeCustomerPicker(){ document.getElementById('modal-customer').classList.remove('show'); }
-function pickCustomer(id){
-  const name = custById(id).name;
-  _custTargets.forEach(tid=>{
-    const box = document.getElementById(tid);
-    if(!box) return;
-    box.value = name;             // 回填客户名称（表单提交它；搜索区显示它）
-    box.dataset.cust = id;        // 真正的取值：表单提交用；搜索区用它做**精确**筛选
-  });
-  closeCustomerPicker();
-}
-document.getElementById('btn-pick-c').addEventListener('click', ()=>openCustomerPicker(['inp-c']));
-document.getElementById('inp-c').addEventListener('click', ()=>openCustomerPicker(['inp-c']));  // 点输入框也能开
-document.getElementById('btn-pick-c-search').addEventListener('click', ()=>openCustomerPicker(['tb-customer']));
-document.getElementById('btn-cust-cancel').addEventListener('click', closeCustomerPicker);
-document.getElementById('tbody-customers').addEventListener('click', e=>{
-  // 2026-09-18 需求②：两种选中方式 —— 点「选择」按钮 或 **点整行**，都走同一条回填逻辑。
-  // closest 先命中更近的那个（点按钮→button；点行里其他位置→tr），互不干扰；
-  // 「取消」按钮在 modal-actions 里、不在 tr 内 ⇒ 点它不会被当成选中。
-  const hit = e.target.closest('button[data-pick], tr[data-pick]');
-  if(hit) pickCustomer(hit.dataset.pick);
-});
-
-// ========== 搜索（关键字：包含匹配；客户：**右模糊=前缀匹配**） ==========
-function doSearch(){
-  const kw = document.getElementById('tb-keyword').value.trim().toLowerCase();
-  const cust = document.getElementById('tb-customer').value.trim().toLowerCase();
-  const custPick = document.getElementById('tb-customer').dataset.cust || '';   // 弹层选中的客户 id
-  const bu = document.getElementById('sel-bu').value;
-  const result = CONTRACTS.filter(c=>{
-    // 关键字：在 编号/名称/管理单元/合同类型/帐套 里匹配，名称用包含(模糊)
-    let kwOk = true;
-    if(kw){
-      kwOk = (c.no).toLowerCase().includes(kw)
-          || (c.name).toLowerCase().includes(kw)   // 模糊
-          || (c.mu).toLowerCase().includes(kw)
-          || (c.file).toLowerCase().includes(kw)
-          || (c.type).toLowerCase().includes(kw);
-    }
-    // 客户两种来源：
-    //   ① 弹层**选中**（有 data-cust）⇒ 精确命中该客户（与订单页的选择语义一致）；
-    //   ② 手工输入 ⇒ 右模糊（前缀）：名称前缀 或 客户编号前缀；「华信」这种非前缀**不命中**（既有需求，语义不动）。
-    const custOk = !cust
-        ? true
-        : ((custPick && c.cust === custPick)
-           || custNameOf(c).toLowerCase().startsWith(cust)
-           || (c.cust || '').toLowerCase().startsWith(cust));
-    const buOk = !bu || c.bu===bu;
-    return kwOk && custOk && buOk;
-  });
-  render(result);
-  const extra = cust ? `（客户右模糊「${document.getElementById('tb-customer').value.trim()}」）` : '';
-  document.getElementById('status').textContent = `搜索完成，命中 ${result.length} 条${extra}`;
-}
-
-// ========== 新建弹窗 ==========
-function clearCustomerPick(){
-  const box = document.getElementById('inp-c');
-  box.value = ''; box.dataset.cust = '';
-}
-function openModal(){
-  document.getElementById('modal-new').classList.add('show');
-  document.getElementById('inp-name').value='';
-  ['sel-mu','sel-fs','sel-type','sel-b'].forEach(id=>document.getElementById(id).value='');
-  clearCustomerPick();
-  document.getElementById('status').textContent='';
-}
-function closeModal(){
-  document.getElementById('modal-new').classList.remove('show');
-  closeCustomerPicker();
-}
-
-async function submitNew(){
-  const name = document.getElementById('inp-name').value.trim();
-  const mu = document.getElementById('sel-mu').value;
-  const file = document.getElementById('sel-fs').value;
-  const type = document.getElementById('sel-type').value;
-  const cust = document.getElementById('inp-c').dataset.cust || '';   // 客户来自弹层选择
-  const bu = document.getElementById('sel-b').value;
-  if(!name || !mu || !file || !type || !cust || !bu){
-    document.getElementById('status').textContent='请填写全部必填字段';
-    return null;
-  }
-  // 提交到服务端：**编号由服务端分配**（页面不再自己编号，避免两处各编一套、也避免刷新后编号撞车）
-  const resp = await fetch(apiUrl('/api/contracts'), {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name, mu, file, type, cust, bu}),
-  });
-  const rec = await resp.json().catch(()=>({}));
-  if(!resp.ok){
-    document.getElementById('status').textContent = rec.error || ('提交失败（HTTP '+resp.status+'）');
-    return null;
-  }
-  CONTRACTS.push(rec);
-  closeModal();
-  render(CONTRACTS);                    // 自动刷新列表
-  document.getElementById('status').textContent = '已新增合同: '+rec.no+' '+rec.name;
-  return {no: rec.no, name: rec.name};  // 供测试断言
-}
-
-// ========== 事件绑定 ==========
-document.getElementById('btn-search').addEventListener('click', doSearch);
-document.getElementById('btn-reset').addEventListener('click', ()=>{
-  ['tb-keyword','tb-customer','sel-bu'].forEach(id=>document.getElementById(id).value='');
-  delete document.getElementById('tb-customer').dataset.cust;   // 连「弹层选中」一起清，别残留精确条件
-  doSearch();                              // 清空条件 → 回到全量列表（口径与「搜索」一致）
-  document.getElementById('status').textContent='已重置';
-});
-document.getElementById('tb-keyword').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
-document.getElementById('tb-customer').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
-// 手工改动输入框 ⇒ 清掉「弹层选中」的 id（否则残留的精确条件会盖住手输的右模糊语义）
-document.getElementById('tb-customer').addEventListener('input', e=>{ delete e.target.dataset.cust; });
-document.getElementById('btn-new').addEventListener('click', openModal);
-document.getElementById('btn-cancel').addEventListener('click', closeModal);
-document.getElementById('btn-submit').addEventListener('click', submitNew);
-
-// expose for tests / 手工调试（控制台用；用例不依赖这些钩子）
-window.__demo = {
-  get contracts(){ return CONTRACTS; },
-  get customers(){ return CUSTOMERS; },
-  reload: boot, submitNew, doSearch,
-};
-
-boot();   // 首次加载：拉客户主数据 + 合同列表
+createApp({
+  data() {
+    const MUS = ['0021', '0451', '1031'], FILES = ['001', '002', '003'];
+    const TYPES = ['合同', 'po', '预po'], BUS = ['bu_a', 'bu_b', 'bu_c'];
+    return {
+      // 动态生成搜索条件（需求①：动态生成）—— label 独立 div、控件包多层 div
+      conds: [
+        { key: 'kw',    label: '关键字',   id: 'tb-keyword',   type: 'text',   ph: '合同编号/名称/管理单元/合同类型/帐套' },
+        { key: 'cust',  label: '客户',     id: 'tb-customer',  type: 'pick',   ph: '客户名称（右模糊：前缀匹配）', btnId: 'btn-pick-c-search' },
+        { key: 'mu',    label: '管理单元', id: 'tb-mu',        type: 'select', ph: '全部管理单元', options: MUS.map(v => ({ v, t: v })) },
+        { key: 'file',  label: '帐套',     id: 'tb-fs',        type: 'select', ph: '全部帐套',     options: FILES.map(v => ({ v, t: v })) },
+        { key: 'type',  label: '合同类型', id: 'tb-type',      type: 'select', ph: '全部类型',     options: TYPES.map(v => ({ v, t: v })) },
+        { key: 'bu',    label: '业务单元', id: 'sel-bu',       type: 'select', ph: '全部业务单元', options: BUS.map(v => ({ v, t: v })) },
+      ],
+      f: { kw: '', cust: '', mu: '', file: '', type: '', bu: '' },
+      rows: [], all: [], customers: [], status: '',
+      showNew: false, showCust: false, pickTarget: '', frameSrc: '',
+      form: { name: '', mu: '', file: '', type: '', cust: '', bu: '' },
+    };
+  },
+  mounted() {
+    window.addEventListener('message', (e) => {
+      const d = e.data || {};
+      if (d.type === 'pick-customer') {
+        if (this.pickTarget === 'cust-search') { this.f.cust = d.name; }
+        else { this.form.cust = d.name; }
+        this.closeCust();
+      }
+    });
+    this.load();
+  },
+  watch: {
+    // 需求⑱：所有校验/提示信息都弹一个「弹出框 tips」；
+    // ⚠️ 状态行**保留同样文字**（自动化判据/用例按状态行取值），所以这里是"加弹窗"而不是"挪走文字"
+    status(v) { if (v) window.DEMO_TIPS.show(v); },
+  },
+  methods: {
+    async load() {
+      markBusy();
+      this.customers = await (await fetch(apiUrl('/api/customers'))).json();
+      this.all = await (await fetch(apiUrl('/api/contracts'))).json();
+      this.rows = this.filterRows(this.all);
+      markReady();
+    },
+    custName(c) { const t = this.customers.find(x => x.name === c.cust || x.no === c.cust); return t ? t.name : c.cust; },
+    filterRows(list) {
+      const kw = (this.f.kw || '').trim(), cust = (this.f.cust || '').trim().toLowerCase();
+      return list.filter(c => {
+        if (kw && !(c.no.includes(kw) || (c.name || '').includes(kw) || (c.mu || '').includes(kw)
+                 || (c.file || '').includes(kw) || (c.type || '').includes(kw))) return false;
+        // 客户：右模糊（前缀）匹配 —— 客户名称前缀 或 客户编号前缀
+        if (cust) {
+          const nm = this.custName(c).toLowerCase(), cd = (c.cust || '').toLowerCase();
+          if (!(nm.startsWith(cust) || cd.startsWith(cust))) return false;
+        }
+        if (this.f.mu && c.mu !== this.f.mu) return false;
+        if (this.f.file && c.file !== this.f.file) return false;
+        if (this.f.type && c.type !== this.f.type) return false;
+        if (this.f.bu && c.bu !== this.f.bu) return false;
+        return true;
+      });
+    },
+    reset() { this.f = { kw: '', cust: '', mu: '', file: '', type: '', bu: '' }; this.load(); },
+    openNew() { this.form = { name: '', mu: '', file: '', type: '', cust: '', bu: '' }; this.showNew = true; },
+    // 打开「选择客户」iframe（搜索栏用的按钮 ⇒ 回填搜索条件；弹窗里的按钮 ⇒ 回填表单）
+    openPick(which) {
+      this.pickTarget = (which === 'cust-search') ? 'cust-search' : 'cust';
+      const q = new URLSearchParams();
+      if (PART) q.set('w', PART);
+      q.set('_t', String(Date.now()));
+      this.frameSrc = 'pick_customer.html?' + q.toString();
+      this.showCust = true;
+    },
+    closeCust() { this.showCust = false; this.frameSrc = ''; },
+    async submit() {
+      if (!this.form.name) { this.status = '请填写合同名称'; return; }
+      const r = await fetch(apiUrl('/api/contracts'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: this.form.name, mu: this.form.mu, file: this.form.file,
+                               type: this.form.type, cust: this.form.cust, bu: this.form.bu }),
+      });
+      if (r.ok) { const c = await r.json(); this.status = '已创建合同 ' + (c.no || c.name); this.showNew = false; await this.load(); }
+      else { this.status = '创建失败：' + r.status; }
+    },
+  },
+}).mount('#app');
+// 需求⑮：登录与角色（未登录 ⇒ 跳 /login.html；已登录 ⇒ 按 data-perm 置灰 + 右上角头像）
+DEMO_AUTH.init();
 </script>
 </body>
 </html>

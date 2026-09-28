@@ -37,6 +37,8 @@
     <!-- 2026-09-17 需求⑥：从订单页点「合同编号」打开时标记来源（此时按钮文案是「返回」且关闭本 tab） -->
     <span id="from-hint" style="font-size:13px;color:#2f6fed;margin-left:8px;"></span>
   </span>
+  <!-- 需求⑮：登录身份 + 超管切换角色的头像（auth.js 渲染） -->
+  <div id="nav-user" class="nav-user"></div>
 </div>
 
 <div class="wrap">
@@ -70,12 +72,13 @@
   <div id="status" data-testid="detail-status"></div>
 </div>
 
+<script src="auth.js"></script>
 <script>
 // 分区（F6）+ 就绪契约（F1）：与列表页同一套约定（window.__HYBRID_W / body[data-hybrid-ready]）
 const W = (window.__HYBRID_W || '').toString().trim();
 function apiUrl(path){
-  if(!W) return path;
-  return path + (path.indexOf('?') >= 0 ? '&' : '?') + 'w=' + encodeURIComponent(W);
+  const u = !W ? path : path + (path.indexOf('?') >= 0 ? '&' : '?') + 'w=' + encodeURIComponent(W);
+  return DEMO_AUTH.url(u);          // 需求⑮：带上身份（token / ?demo_role=）
 }
 function markReady(){ document.body.dataset.hybridReady = '1'; }
 
@@ -137,6 +140,8 @@ async function render(){
 }
 applyBackMode();   // 需求⑥：从订单页（?from=order）进来时，按钮变「返回」且点击关本 tab
 render();
+// 需求⑮：登录与角色（未登录 ⇒ 跳 /login.html；已登录 ⇒ 右上角头像）
+DEMO_AUTH.init();
 
 // 详情页也可按编号搜索（跳到另一份合同的详情）—— 与列表页的「搜索」同名，
 // 用于验证跨页同名唯一化；点搜索后跳到对应详情（不存在则由上面如实报「未找到」）。
@@ -147,6 +152,13 @@ document.getElementById('btn-detail-search').addEventListener('click', ()=>{
   if(!m){ st.textContent = '请输入合同编号（如 1005）'; st.className=''; return; }
   location.href = '/contract_detail.html?no=HT-' + m[1];
 });
+</script>
+<script>
+// 需求⑱：合同详情页的状态提示同步弹「弹出框 tips」
+new MutationObserver(() => {
+  const el = document.getElementById('status');
+  if (el && el.textContent.trim()) window.DEMO_TIPS.show(el.textContent.trim());
+}).observe(document.getElementById('status'), { childList: true, characterData: true, subtree: true });
 </script>
 </body>
 </html>

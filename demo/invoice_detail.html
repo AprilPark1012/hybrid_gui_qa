@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>应收发票详情</title>
+<!--
+  应收发票详情（需求⑲ · 2026-09-28 晚）
+    · 入口：发票列表点「发票号」⇒ /invoice_detail.html?no=INV-1001（列表侧 detailHref() 会带上身份）
+    · 展示：表单1 基础信息（业务单元/发票号/发票类型/发票日期/销售员/币种/客户/合同编号）
+            + 表单2 发票行（行号/期次号/发票行类型/数量/单位 + 操作列）
+    · 默认**只读**；右下角两个按钮：「返回」（回发票列表）与「编辑」
+    · 点「编辑」⇒ 进编辑态：基础信息与发票行都可改（行可增删），同一个按钮文案变「保存」，
+      点「保存」⇒ POST /api/invoice/update（基础信息 + 行一起落库）⇒ 回只读态
+    · 权限（需求⑰/⑲）：创建人 或 发票管理员可编辑；其余角色点「编辑」弹 tips 说明原因
+    · 提示（需求⑱）：一律弹「弹出框 tips」，状态行保留同样文字供自动化判据读取
+
+  契约：
+    · 就绪契约 body[data-hybrid-ready] 0→1（发票 + 行 + 字典都就绪）；行数标记 #inv-lines-body[data-hybrid-rows]
+    · 埋点口径 C：顶层容器才带 data-testid（form-inv-basic / form-inv-lines / inv-detail-status）
+    · 接口：GET /api/invoice?no= · GET /api/invoice/lines?no= · POST /api/invoice/update ·
+            GET /api/dict?kind=bu|invoice_type|currency|period|invoice_line_type · GET /api/salesmen · GET /api/customers
+-->
+<script src="vendor/vue.global.prod.js"></script>
+<script src="auth.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.6 "Microsoft YaHei", system-ui, sans-serif; color: #1f2329; background: #f5f6f8; }
+  .topbar { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #e2e4e8; }
+  .topbar h2 { font-size: 16px; margin: 0; }
+  .topbar .hint { color: #8a8f99; font-size: 12px; }
+  .topbar .spacer { flex: 1 1 auto; }
+  .block { background: #fff; margin: 12px 16px; border: 1px solid #e2e4e8; border-radius: 3px; padding: 12px 16px; }
+  .block h3 { margin: 0 0 12px; font-size: 14px; border-left: 3px solid #1668dc; padding-left: 8px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+  .field { display: flex; align-items: center; margin-bottom: 10px; }
+  .field > .label { flex: 0 0 96px; text-align: right; padding-right: 8px; color: #4b5058; }
+  .field .ctl { flex: 1 1 auto; }
+  .field input, .field select { width: 100%; height: 28px; padding: 0 8px; border: 1px solid #c9ccd2; border-radius: 3px; background: #fff; font: inherit; }
+  .field input[readonly], .field input[disabled], .field select[disabled] { background: #f7f8fa; color: #666; }
+  .btn { height: 28px; padding: 0 12px; border: 1px solid #c9ccd2; background: #fff; border-radius: 3px; cursor: pointer; font: inherit; }
+  .btn.primary { background: #1668dc; border-color: #1668dc; color: #fff; }
+  .btn.danger { color: #d4380d; border-color: #ffa39e; }
+  .lines-toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
+  .lines-toolbar .btn:disabled { background: #f5f5f5; color: #b0b4bb; border-color: #e2e4e8; cursor: not-allowed; }
+  .lines-toolbar .btn.lit { border-color: #1668dc; color: #1668dc; }
+  .lines-grid { display: grid; grid-template-columns: 88px 56px 100px 130px 100px 84px; gap: 0; }
+  .lines-grid > div { border: 1px solid #e2e4e8; padding: 5px 8px; background: #fff; white-space: nowrap; }
+  .lines-grid .head { background: #fafbfc; font-weight: 600; }
+  .lines-grid .cell { display: flex; align-items: center; }
+  .lines-grid input, .lines-grid select { width: 100%; height: 26px; border: 1px solid #c9ccd2; border-radius: 3px; padding: 0 6px; font: inherit; }
+  .lines-grid input[readonly], .lines-grid select[disabled], .lines-grid input[disabled] { background: #f7f8fa; color: #666; }
+  #inv-detail-status { padding: 8px 16px; color: #1668dc; min-height: 20px; }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 4px 16px 20px; }
+</style>
+</head>
+<body data-hybrid-ready="0">
+<div id="app">
+
+  <div class="topbar">
+    <h2>应收发票详情</h2>
+    <span class="hint" id="hint">{{ editing ? '编辑中' : '只读' }}</span>
+    <span class="hint" id="d-inv-no">发票号：<b>{{ row.no || '—' }}</b></span>
+    <span class="hint" id="d-inv-creator">创建人：{{ row.created_by_label || '系统管理员' }}</span>
+    <div class="spacer"></div>
+    <!-- 需求⑲：右上角也放个头像（超管可切角色）；两个业务按钮按他的要求放**右下角** -->
+    <div id="nav-user" class="nav-user"></div>
+  </div>
+
+  <!-- ===== 表单1：基础信息（只读态全灰；编辑态可改，发票号/合同编号是只读）===== -->
+  <section class="block" id="form-inv-basic" data-testid="form-inv-basic" aria-label="发票基础信息">
+    <h3>基础信息</h3>
+    <div class="grid2">
+      <div class="field" v-for="f in basicFields" :key="f.key">
+        <div class="label">{{ f.label }}</div>
+        <div class="ctl b1"><div class="b2"><div class="b3"><div class="b4"><div class="b5"><div class="b6">
+          <template v-if="f.type === 'select'">
+            <select :id="f.id" :name="f.key" :title="f.label" :aria-label="f.label"
+                    v-model="form[f.key]" :disabled="!editing || f.locked">
+              <option v-for="o in dicts[f.dict] || []" :key="o" :value="o">{{ o }}</option>
+            </select>
+          </template>
+          <template v-else>
+            <input :id="f.id" :name="f.key" type="text" :title="f.label" :aria-label="f.label"
+                   :readonly="!editing || f.locked" autocomplete="off" v-model="form[f.key]">
+          </template>
+        </div></div></div></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 表单2：发票行 ==== -->
+  <section class="block" id="form-inv-lines" data-testid="form-inv-lines" aria-label="发票行">
+    <h3>发票行</h3>
+    <div class="lines-toolbar" id="inv-lines-toolbar">
+      <button id="btn-inv-add-line" class="btn" :class="{ lit: editing }" type="button"
+              :disabled="!editing" @click="addLine">新增行</button>
+    </div>
+    <div class="lines-grid" id="inv-lines-grid">
+      <div class="head">操作</div><div class="head">行号</div><div class="head">期次号</div>
+      <div class="head">发票行类型</div><div class="head">数量</div><div class="head">单位</div>
+      <template v-for="(ln, idx) in lines" :key="idx">
+        <div class="cell">
+          <button class="btn danger" type="button" :disabled="!editing" @click="removeLine(idx)">删除</button>
+        </div>
+        <div class="cell" data-field="lineNo">{{ idx + 1 }}</div>
+        <div class="cell">
+          <select name="period" title="期次号" aria-label="期次号" :disabled="!editing" v-model="ln.period">
+            <option value="">请选择</option>
+            <option v-for="p in dicts.period || []" :key="p" :value="p">{{ p }}</option>
+          </select>
+        </div>
+        <div class="cell">
+          <select name="line_type" title="发票行类型" aria-label="发票行类型" :disabled="!editing" v-model="ln.line_type">
+            <option value="">请选择</option>
+            <option v-for="t in dicts.invoice_line_type || []" :key="t" :value="t">{{ t }}</option>
+          </select>
+        </div>
+        <div class="cell">
+          <input type="text" name="qty" title="数量" aria-label="数量" :readonly="!editing" v-model="ln.qty">
+        </div>
+        <div class="cell">
+          <select name="unit" title="单位" aria-label="单位" :disabled="!editing" v-model="ln.unit">
+            <option v-for="u in units" :key="u" :value="u">{{ u }}</option>
+          </select>
+        </div>
+      </template>
+    </div>
+    <p class="hint" id="inv-lines-body" :data-hybrid-rows="lines.length">共 {{ lines.length }} 行（必填：期次号 / 发票行类型 / 数量）</p>
+  </section>
+
+  <div id="inv-detail-status" data-testid="inv-detail-status">{{ status }}</div>
+
+  <!-- ===== 右下角：返回 / 编辑（编辑态下同一个按钮变「保存」）===== -->
+  <div class="actions">
+    <button id="btn-inv-back" class="btn" type="button" @click="goBack">返回</button>
+    <button id="btn-inv-edit" class="btn primary" type="button" @click="onEditOrSave">{{ editing ? '保存' : '编辑' }}</button>
+  </div>
+</div>
+
+<script>
+const { createApp } = Vue;
+
+const NO = new URLSearchParams(location.search).get('no') || '';
+// 分区号（F6 契约）：框架用 context.add_init_script 注入 window.__HYBRID_W；手工浏览时退回 ?w=
+const PART = String(window.__HYBRID_W || '').trim() || (new URLSearchParams(location.search).get('w') || '');
+function markBusy() { document.body.dataset.hybridReady = '0'; }
+function markReady() { document.body.dataset.hybridReady = '1'; }
+function apiUrl(path) {
+  const u = PART ? path + (path.includes('?') ? '&' : '?') + 'w=' + encodeURIComponent(PART) : path;
+  return DEMO_AUTH.url(u);          // 需求⑮：带身份（token / 自动化 ?demo_role=）
+}
+
+createApp({
+  data() {
+    return {
+      no: NO, row: {}, form: {}, lines: [], units: ['个', '件', '套', '千克'],
+      editing: false, canEdit: false, me: null, status: '', dicts: {},
+      basicFields: [
+        { key: 'bu',           label: '业务单元', id: 'iv-bu',       type: 'select', dict: 'bu' },
+        { key: 'no',           label: '发票号',   id: 'iv-no',       locked: true },
+        { key: 'invoice_type', label: '发票类型', id: 'iv-type',     type: 'select', dict: 'invoice_type' },
+        { key: 'invoice_date', label: '发票日期', id: 'iv-date' },
+        { key: 'salesman',     label: '销售员',   id: 'iv-salesman', type: 'select', dict: 'salesman' },
+        { key: 'currency',     label: '币种',     id: 'iv-currency', type: 'select', dict: 'currency' },
+        { key: 'cust',         label: '客户',     id: 'iv-cust',     type: 'select', dict: 'cust' },
+        { key: 'contract_no',  label: '合同编号', id: 'iv-contract', locked: true },
+      ],
+    };
+  },
+  watch: {
+    // 需求⑱：所有校验/提示信息弹「弹出框 tips」（状态行保留同样文字给自动化判据读）
+    status(v) { if (v) window.DEMO_TIPS.show(v); },
+  },
+  mounted() { this.init(); },
+  methods: {
+    async init() {
+      markBusy();
+      const me = await DEMO_AUTH.init();                    // 未登录 ⇒ 这里会跳登录页
+      this.me = me;
+      if (!this.no) { this.status = '请带 ?no= 参数（发票号）'; markReady(); return; }
+      const r = await fetch(apiUrl('/api/invoice?no=' + encodeURIComponent(this.no)));
+      if (!r.ok) { this.status = `未找到发票 ${this.no}`; markReady(); return; }
+      this.row = await r.json();
+      this.form = { bu: this.row.bu || '', no: this.row.no || '', invoice_type: this.row.invoice_type || '',
+                    invoice_date: this.row.invoice_date || '', salesman: this.row.salesman || '',
+                    currency: this.row.currency || '', cust: this.row.cust || '',
+                    contract_no: this.row.contract_no || '' };
+      const d = await (await fetch(apiUrl('/api/invoice/lines?no=' + encodeURIComponent(this.no)))).json();
+      this.lines = d.lines || [];
+      this.units = d.units || this.units;
+      for (const kind of ['bu', 'invoice_type', 'currency', 'period', 'invoice_line_type']) {
+        this.dicts[kind] = (await (await fetch(apiUrl('/api/dict?kind=' + kind))).json()).values || [];
+      }
+      this.dicts.salesman = (await (await fetch(apiUrl('/api/salesmen'))).json()).map(s => s.id);
+      this.dicts.cust = (await (await fetch(apiUrl('/api/customers'))).json()).map(c => c.id);
+      // 需求⑰/⑲：创建人 或 发票管理员可编辑
+      this.canEdit = !!(me && (me.can.create_invoice || (this.row.created_by && this.row.created_by === me.user)));
+      markReady();
+    },
+    // 需求⑲：右下角同一个按钮两态 —— 只读态「编辑」/ 编辑态「保存」
+    onEditOrSave() {
+      if (!this.editing) {
+        if (!this.canEdit) {
+          const me = this.me;
+          this.status = `「编辑发票」需要发票管理员角色，或者你必须是这张发票的创建人`
+                      + `（当前角色：${me ? me.role_label : '未登录'} · 创建人：${this.row.created_by_label || '系统管理员'}）`;
+          return;
+        }
+        this.editing = true;
+        this.status = '编辑中：改完点「保存」';
+        return;
+      }
+      this.save();
+    },
+    addLine() {
+      if (!this.editing) { this.status = '请先点「编辑」'; return; }
+      this.lines.push({ line_no: this.lines.length + 1, period: '', line_type: '', qty: '', unit: '个' });
+      this.status = `已新增第 ${this.lines.length} 行（请填写期次号 / 发票行类型 / 数量）`;
+    },
+    removeLine(idx) {
+      if (!this.editing) { this.status = '请先点「编辑」'; return; }
+      if (this.lines.length <= 1) { this.status = '至少保留 1 行'; return; }
+      this.lines.splice(idx, 1);
+      this.status = `已删除第 ${idx + 1} 行`;
+    },
+    async save() {
+      const missing = this.basicFields.filter(f => !f.locked && !String(this.form[f.key] || '').trim()).map(f => f.label);
+      if (missing.length) { this.status = '请填写全部必填字段：' + missing.join('、'); return; }
+      const bad = this.lines.map((l, i) => (!l.period || !l.line_type || !String(l.qty || '').trim()) ? (i + 1) : null)
+                            .filter(Boolean);
+      if (bad.length) { this.status = `行必填项未填全（第 ${bad.join('、')} 行）`; return; }
+      const r = await fetch(apiUrl('/api/invoice/update'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ no: this.no, fields: this.form, lines: this.lines }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { this.status = d.error || ('保存失败（HTTP ' + r.status + '）'); return; }
+      this.row = { ...this.row, ...d };
+      this.lines = d.lines || this.lines;
+      this.editing = false;
+      this.status = `已保存：基础信息 + ${this.lines.length} 行`;
+    },
+    goBack() { location.href = DEMO_AUTH.url('/invoice_list.html'); },
+  },
+}).mount('#app');
+</script>
+</body>
+</html>

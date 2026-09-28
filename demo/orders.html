@@ -3,622 +3,728 @@
 <head>
 <meta charset="utf-8">
 <title>订单系统</title>
+<!--
+  订单系统（P21.3 · Vue 3 重写）—— 需求第 4/5 条
+    ④ label 规则与合同页一致（独立 div、不含子控件）；控件 div 层级 >5、≤12；
+       **每页 >50 行（共 60 行）· 首屏只显示 20 条 · 滚动容器触发懒加载 · 每次 +20**（60 条共 2 次加载）
+       业务单元/管理单元/帐套：**双模** —— input 关键字联想下拉（dropdown，内部 ul，选中任一行即选中）
+       **同时**支持「…」弹出框选择
+    ⑤ 新建订单弹层：合同/业务单元/管理单元/帐套 支持 input 关键字联想下拉（与订单页一致）；
+       点底部「提交」⇒ **跳转到「订单详情」页**
+
+  契约（不许破 —— references/demo-refactor-contract.md）：
+    · 就绪契约 body[data-hybrid-ready] 0→1（初次加载/搜索完成）；
+      **懒加载追加**用行数标记 #tbody-orders[data-hybrid-rows]（分区块就绪的雏形，框架可等行数变化）
+    · 埋点口径 C：顶层容器才有 data-testid（tbl-orders / total-o / page-info / pager / status-o / modal-* ）
+    ★ 2026-09-28 晚追加（需求⑨⑩）：
+      · 新增「状态」列 td[data-field=orderStatus]：订单**整体状态**（已新建/履行中/已关闭，服务端按行汇总）
+      · 需求⑳：新增「**是否开票**」列 td[data-field=invoiced]（已开票 / 未开票；`data-invoiced` 0/1 便于断言），
+        已开票的订单**不允许再次开票**（「去开票」本地拦 + 服务端 POST /api/invoices 400）
+      · 首列单选按钮（name=pick-order，id=rd-<订单号>）：「去开票」(#btn-to-invoice) 未选中就点 ⇒ 只在
+        #status-o 给提示不跳转；选中后跳 /invoice_create.html?from_order=<订单号>（发票基础信息自动带入）
+    ★ 2026-09-28 晚追加（需求⑪）：**开票前置条件 = 订单已关闭**
+      · 「去开票」只放行 状态 == 服务端 closed_state（/api/health 声明，现为「已关闭」）的订单；
+        其余状态 ⇒ 只在 #status-o 提示、**不跳转**（客户端第一道闸）
+      · 同一口径在服务端 POST /api/invoices（带 from_order 时）二次校验（权威判定）；
+        开票页对 ?from_order= 直链也会拦（禁「保存」）
+    · 接口：GET /api/orders?page&size&name&salesman&cust&bu&mu&file · POST /api/orders（?w= 分区保留）
+    · 列定位 td[data-field]：orderNo/contractNo/orderName/managementUnit/salesman/orderType/businessUnit/folder/customer
+    · 新建订单插到最前（后端行为，列表第一行即新单）
+    ★ 2026-09-28 找回（P21.3 重写时漏掉、老页面本来有）：
+      · 需求③「弹层内临时新建客户 / 销售员」（叠层弹框 modal-create-cust / modal-create-salesman；两层的
+        取消按钮也只给客户/销售员 —— bu/mu/file/contract 四类**刻意没有**）
+      · 回填老口径：label 显示 + `data-value` 存**真正的取值**（客户/销售员 = id，二类按 data-value 断言）
+      · 顶部「合同管理」链接（a#link-contracts → /）
+      · 订单行「合同编号」链接带 `&from=order`（合同详情页需求⑥「返回=关本 tab」依赖；场景/用例/二类断言写死）
+-->
+<script src="vendor/vue.global.prod.js"></script>
+<script src="auth.js"></script>
 <style>
-  body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:#f5f6f8;color:#222;}
-  .topbar{display:flex;justify-content:space-between;align-items:center;background:#fff;
-          border-bottom:1px solid #e3e6ea;padding:14px 22px;}
-  h1{font-size:18px;margin:0;}
-  .wrap{padding:18px 22px;}
-  .toolbar{margin:0 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;
-           background:#fff;border:1px solid #e3e6ea;border-radius:8px;padding:14px 16px;}
-  .toolbar label{font-size:13px;color:#555;display:flex;align-items:center;gap:6px;}
-  input,select{font:inherit;padding:6px 9px;border:1px solid #cfd4da;border-radius:5px;font-size:13px;}
-  input[readonly]{background:#f7f8fa;}
-  #tb-o-name{width:180px;}  #tb-o-salesman{width:180px;}  #tb-o-cust{width:170px;}
-  .pick-mini{width:130px;}
-  button{font:inherit;padding:6px 14px;border:none;border-radius:5px;cursor:pointer;font-size:13px;
-         background:#2f6fed;color:#fff;}
-  button.ghost{background:#f0f0f0;color:#333;}
-  button:disabled{opacity:.45;cursor:not-allowed;}
-  button.pick{padding:6px 10px;background:#e8eefc;color:#2f6fed;}
-  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e3e6ea;border-radius:8px;
-        overflow:hidden;}
-  th,td{border-bottom:1px solid #eef0f3;padding:8px 10px;text-align:left;font-size:13px;}
-  th{background:#f5f7fa;color:#555;font-weight:400;}
-  tbody tr:nth-child(even){background:#fafbfc;}
-  a{color:#2f6fed;}
-  /* 需求②：弹层里的行**本身**也能选中（点行 = 点该行「选择」按钮）—— 给个可点提示 */
-  tbody tr[data-pick-value]{cursor:pointer;}
-  tbody tr[data-pick-value]:hover{background:#eef4ff;}
-  /* 需求③：「新建」弹框叠在选择弹层之上（z-index 更高） */
-  .create-modal{z-index:30;}
-  .pager{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:13px;color:#555;}
-  .pager button{min-width:34px;background:#fff;color:#333;border:1px solid #cfd4da;}
-  .pager button.active{background:#2f6fed;color:#fff;border-color:#2f6fed;}
-  #status-o{margin-top:12px;color:#0a0;font-size:13px;min-height:18px;}
-  .empty{text-align:center;color:#999;padding:26px;}
-  /* 弹窗（新建订单 + 各选择弹层） */
-  .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);}
-  .modal.show{display:flex;align-items:center;justify-content:center;}
-  .modal-box{background:#fff;border-radius:8px;padding:20px 24px;width:460px;max-height:88vh;overflow:auto;
-             box-shadow:0 8px 30px rgba(0,0,0,.3);}
-  .modal-box.wide{width:620px;}
-  .modal-box h3{margin:0 0 14px;font-size:17px;}
-  .field{margin-bottom:11px;}
-  .field label{display:block;font-size:12px;color:#666;margin-bottom:4px;}
-  .field input,.field select{width:100%;box-sizing:border-box;}
-  .pick-row{display:flex;gap:6px;}
-  .pick-row input{flex:1;}
-  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;}
-  /* 叠层顺序：新建订单之上再叠选择弹层 */
-  #modal-new-order{z-index:10;}
-  .pick-modal{z-index:20;}
-  .required-mark{color:#c0392b;}
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 "Microsoft YaHei", system-ui, sans-serif; color: #1f2329; background: #f5f6f8; }
+  .topbar { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #e2e4e8; }
+  .topbar h2 { font-size: 16px; margin: 0; }
+  .topbar .total { color: #4b5058; }
+  .topbar .spacer { flex: 1 1 auto; }
+  #btn-new-order { height: 30px; padding: 0 14px; background: #1668dc; color: #fff; border: 1px solid #1668dc; border-radius: 3px; cursor: pointer; }
+  #btn-to-invoice { height: 30px; padding: 0 14px; background: #fff; color: #1668dc; border: 1px solid #1668dc; border-radius: 3px; cursor: pointer; }
+  tbody tr.picked { background: #e6f4ff; }
+  td[data-field="orderStatus"] { font-weight: 600; }
+  .pick-cell { text-align: center; width: 44px; }
+
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #e2e4e8; }
+  .cond { display: flex; align-items: center; width: 348px; }
+  .cond > .label { flex: 0 0 76px; text-align: right; padding-right: 8px; color: #4b5058; }   /* 独立 div label */
+  .cond .ctl { flex: 1 1 auto; }
+  .cond .ctl input, .cond .ctl select { width: 100%; height: 28px; padding: 0 8px; border: 1px solid #c9ccd2; border-radius: 3px; background: #fff; font: inherit; }
+  .pick-row { display: flex; gap: 6px; align-items: flex-start; }
+  .pick-row .grow { flex: 1 1 auto; position: relative; }
+  .pick-row .pick { flex: 0 0 auto; width: 28px; height: 28px; border: 1px solid #c9ccd2; background: #fff; border-radius: 3px; cursor: pointer; }
+  .dropdown { position: absolute; left: 0; right: 0; top: 30px; z-index: 30; margin: 0; padding: 4px 0; list-style: none;
+              background: #fff; border: 1px solid #c9ccd2; border-radius: 3px; max-height: 180px; overflow: auto; box-shadow: 0 4px 10px rgba(0,0,0,.08); }
+  .dropdown li { padding: 4px 10px; cursor: pointer; }
+  .dropdown li:hover, .dropdown li.active { background: #f0f6ff; }
+  .dropdown li.empty { color: #999; cursor: default; }
+  .tb-actions { display: flex; gap: 8px; margin-left: auto; }
+  .btn { height: 28px; padding: 0 12px; border: 1px solid #c9ccd2; background: #fff; border-radius: 3px; cursor: pointer; font: inherit; }
+  .btn.primary { background: #1668dc; border-color: #1668dc; color: #fff; }
+
+  /* 列表区：容器内滚动 ⇒ 滚动触底加载（懒加载） */
+  .grid-wrap { margin: 12px 16px; }
+  #grid-scroll { height: 420px; overflow-y: auto; background: #fff; border: 1px solid #e2e4e8; border-radius: 3px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #e2e4e8; padding: 6px 9px; text-align: left; white-space: nowrap; }
+  th { background: #fafbfc; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+  tbody tr:hover { background: #f0f6ff; }
+  .pager-bar { display: flex; align-items: center; gap: 14px; padding: 8px 12px; border-top: 1px solid #e2e4e8; background: #fafbfc; }
+  #status-o { padding: 8px 16px; color: #1668dc; min-height: 20px; }
+
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 10; }
+  .modal-box { background: #fff; border-radius: 4px; width: 520px; max-height: 90vh; overflow: auto; padding: 16px; }
+  .modal-box.wide { width: 700px; }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  /* 需求③（2026-09-18）：弹层内「+ 新建客户/销售员」是**叠在选择层之上的第二层**。
+     老页面用 `.show` 类切换显示（元素常驻 DOM）—— 二类 verify_order_pick_create.py 按
+     `classList.contains('show')` / `is_visible()` 判，所以这里同样必须用 show 类，**不能改成 v-if** */
+  .modal.create-layer { display: none; }
+  .modal.create-layer.show { display: flex; }
+  .create-layer .modal-box { width: 420px; }
+  .modal-box h3 { margin: 0 0 12px; font-size: 15px; }
+  /* 需求㉒：新建订单弹层 = 3 个区域（基础信息 / 更多信息 / 详细信息），与订单详情页同构 */
+  .blk { border: 1px solid #e2e4e8; border-radius: 3px; padding: 10px 12px; margin-bottom: 12px; }
+  .blk h4 { margin: 0 0 10px; font-size: 13px; border-left: 3px solid #1668dc; padding-left: 8px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+  .lines-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+  .lines-grid { display: grid; gap: 0; }
+  .lines-grid.new-lines-grid { grid-template-columns: 88px 56px 130px 130px 90px 84px 130px; }
+  .lines-grid > div { border: 1px solid #e2e4e8; padding: 5px 8px; background: #fff; white-space: nowrap; }
+  .lines-grid .head { background: #fafbfc; font-weight: 600; }
+  .lines-grid .cell { display: flex; align-items: center; }
+  .lines-grid input, .lines-grid select { width: 100%; height: 26px; border: 1px solid #c9ccd2; border-radius: 3px; padding: 0 6px; font: inherit; }
+  .field { display: flex; align-items: center; margin-bottom: 10px; }
+  .field > .label { flex: 0 0 96px; text-align: right; padding-right: 8px; color: #4b5058; }   /* 独立 div label */
+  .field .ctl { flex: 1 1 auto; }
+  .field .ctl input, .field .ctl select { width: 100%; height: 28px; padding: 0 8px; border: 1px solid #c9ccd2; border-radius: 3px; background: #fff; font: inherit; }
+  .req { color: #d4380d; margin-left: 2px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .pick-table { width: 100%; border-collapse: collapse; }
+  .pick-table th, .pick-table td { border: 1px solid #e2e4e8; padding: 5px 8px; }
 </style>
 </head>
-<!-- 就绪契约（F1）：静态声明 data-hybrid-ready="0"，数据渲染完成后由 JS 置 "1"；
-     测试框架 goto 之后等它 ⇒ 慢机器/高并发下不再「页面还在取数、脚本已经开始点」。 -->
 <body data-hybrid-ready="0">
-<div class="topbar">
-  <h1>订单系统</h1>
-  <div style="display:flex;gap:14px;align-items:center;font-size:13px;">
-    <div>共 <span id="total" data-testid="total-o">0</span> 条订单</div>
-    <a href="/">合同管理</a>
-    <button id="btn-new-order">+ 新建订单</button>
-  </div>
-</div>
+<div id="app">
 
-<div class="wrap">
-  <!-- 搜索区：订单名称(全模糊) / 销售员(右模糊) / 客户(全模糊) / 业务单元·管理单元·帐套 用「...」弹层选值 -->
-  <div class="toolbar" aria-label="搜索工具栏">
-    <label>订单名称 <input id="tb-o-name" placeholder="订单名称（全模糊）" autocomplete="off"></label>
-    <label>销售员 <input id="tb-o-salesman" placeholder="销售员（右模糊：前缀匹配）" autocomplete="off"></label>
-    <label>客户 <input id="tb-o-cust" placeholder="客户（全模糊）" autocomplete="off"></label>
-    <label>业务单元
-      <span class="pick-row">
-        <input id="tb-o-bu" class="pick-mini" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-bu-search"
-                title="按业务单元筛选">...</button>
-      </span>
-    </label>
-    <label>管理单元
-      <span class="pick-row">
-        <input id="tb-o-mu" class="pick-mini" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-mu-search"
-                title="按管理单元筛选">...</button>
-      </span>
-    </label>
-    <label>帐套
-      <span class="pick-row">
-        <input id="tb-o-file" class="pick-mini" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-file-search"
-                title="按帐套筛选">...</button>
-      </span>
-    </label>
-    <button id="btn-search-o">搜索</button>
-    <button id="btn-reset-o" class="ghost">重置</button>
+  <div class="topbar">
+    <h2>订单系统</h2>
+    <div class="total">共 <span id="total" data-testid="total-o">{{ total }}</span> 条订单</div>
+    <!-- 合同管理系统入口（2026-09-17 老页面就有；P21.3 重写时漏掉，2026-09-28 找回）-->
+    <a href="/" id="link-contracts">合同管理</a>
+    <div class="spacer"></div>
+    <button id="btn-new-order" type="button" data-perm="create_order"
+            data-perm-tip="「新建订单」需要订单管理员角色：当前不是订单管理员，不能新建订单（可用右上角头像切换角色）"
+            @click="openNewOrder">+ 新建订单</button>
+    <button id="btn-to-invoice" type="button" data-perm="create_invoice"
+            data-perm-tip="「去开票」需要发票管理员角色：当前不是发票管理员，不能去开票（可用右上角头像切换角色）"
+            @click="goInvoice">去开票</button>
+    <!-- 需求⑮：登录身份 + 超管切换角色的头像（auth.js 渲染） -->
+    <div id="nav-user" class="nav-user"></div>
   </div>
 
-  <!-- 订单列表：9 列（订单编号 / 合同编号 / 订单名称 / 管理单元 / 销售员 / 订单类型 / 业务单元 / 帐套 / 客户） -->
-  <table id="tbl-orders" data-testid="tbl-orders" aria-label="订单列表">
-    <thead>
-      <tr>
-        <th>订单编号</th><th>合同编号</th><th>订单名称</th><th>管理单元</th><th>销售员</th>
-        <th>订单类型</th><th>业务单元</th><th>帐套</th><th>客户</th>
-      </tr>
-    </thead>
-    <tbody id="tbody-orders"></tbody>
-  </table>
+  <!-- ===== 搜索工具栏：label 独立 div + 控件 8 层嵌套 + 三个双模字段 ===== -->
+  <div class="toolbar" id="search-toolbar-o" aria-label="订单搜索工具栏">
+    <div class="cond" v-for="c in conds" :key="c.key">
+      <div class="label">{{ c.label }}</div>
+      <div class="ctl w1"><div class="w2"><div class="w3"><div class="w4">
+        <div class="w5"><div class="w6"><div class="w7"><div class="w8">
 
-  <!-- 分页：默认 3 页 × 20 条 -->
-  <div class="pager">
-    <span id="page-info" data-testid="page-info">第 1 / 1 页</span>
-    <button id="btn-prev-o" class="ghost" type="button">上一页</button>
-    <span id="pager" data-testid="pager"></span>
-    <button id="btn-next-o" class="ghost" type="button">下一页</button>
-  </div>
-  <div id="status-o" data-testid="status-o"></div>
-</div>
+          <template v-if="c.type === 'suggest'">
+            <div class="pick-row">
+              <div class="grow">
+                <input :id="c.id" :name="c.key" type="text" :title="c.label" :aria-label="c.label"
+                       :placeholder="c.ph" autocomplete="off" v-model="f[c.key]"
+                       :data-value="fVals[c.key] || null"
+                       @input="onManualInput(c.key, $event.target.value); onSuggest(c.key, c.dict, $event.target.value)"
+                       @focus="onSuggest(c.key, c.dict, $event.target.value)">
+                <ul class="dropdown" :id="'sug-' + c.key" v-show="sug[c.key] && sug[c.key].open">
+                  <li v-for="s in (sug[c.key] ? sug[c.key].items : [])" :key="s"
+                      @mousedown.prevent="chooseSug(c.key, s)">{{ s }}</li>
+                  <li v-if="sug[c.key] && !sug[c.key].items.length" class="empty">无匹配</li>
+                </ul>
+              </div>
+              <button type="button" class="pick" :id="c.btnId" :title="'选择' + c.label" @click="openPick(c.key)">...</button>
+            </div>
+          </template>
 
-<!-- ================= 新建订单弹窗（必填 8 项 + 备注选填） ================= -->
-<div id="modal-new-order" class="modal" data-testid="modal-new-order">
-  <div class="modal-box wide">
-    <h3>新建订单</h3>
-    <div class="field">
-      <label>订单名称 <span class="required-mark">*</span></label>
-      <input id="o-name" placeholder="请输入订单名称" autocomplete="off">
-    </div>
-    <div class="field">
-      <label>合同 <span class="required-mark">*</span></label>
-      <div class="pick-row">
-        <input id="o-contract" placeholder="请选择合同" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-contract">选择合同</button>
-      </div>
-    </div>
-    <div class="field">
-      <label>业务单元 <span class="required-mark">*</span></label>
-      <div class="pick-row">
-        <input id="o-bu" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-bu"
-                title="选择业务单元">...</button>
-      </div>
-    </div>
-    <div class="field">
-      <label>管理单元 <span class="required-mark">*</span></label>
-      <div class="pick-row">
-        <input id="o-mu" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-mu"
-                title="选择管理单元">...</button>
-      </div>
-    </div>
-    <div class="field">
-      <label>帐套 <span class="required-mark">*</span></label>
-      <div class="pick-row">
-        <input id="o-file" placeholder="请选择" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-file"
-                title="选择帐套">...</button>
-      </div>
-    </div>
-    <div class="field">
-      <label>订单类型 <span class="required-mark">*</span></label>
-      <select id="o-type">
-        <option value="">请选择</option>
-        <option value="标准销售订单">标准销售订单</option>
-        <option value="退货订单">退货订单</option>
-        <option value="服务订单">服务订单</option>
-        <option value="电商订单">电商订单</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>客户 <span class="required-mark">*</span></label>
-      <div class="pick-row">
-        <input id="o-cust" placeholder="请选择客户" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-cust">选择客户</button>
-      </div>
-    </div>
-    <div class="field">
-      <label>销售员 <span class="required-mark">*</span></label>
-      <div class="pick-row">
-        <input id="o-salesman" placeholder="请选择销售员" readonly autocomplete="off">
-        <button type="button" class="pick" id="btn-pick-salesman">选择销售员</button>
-      </div>
-    </div>
-    <div class="field">
-      <label>订单备注（选填）</label>
-      <input id="o-remark" placeholder="订单备注（可不填）" autocomplete="off">
-    </div>
-    <div class="modal-actions">
-      <button id="btn-cancel-order" class="ghost" type="button">取消</button>
-      <button id="btn-submit-order" type="button">提交</button>
-    </div>
-  </div>
-</div>
+          <template v-else>
+            <input :id="c.id" :name="c.key" type="text" :title="c.label" :aria-label="c.label"
+                   :placeholder="c.ph" autocomplete="off" v-model="f[c.key]"
+                   :data-value="fVals[c.key] || null"
+                   @input="onManualInput(c.key, $event.target.value)" @keyup.enter="search(1)">
+          </template>
 
-<!-- ================= 选择弹层 ×6 =================
-     需求③：业务单元 / 管理单元 / 帐套 三类「...」弹层**没有「取消」按钮**（选中即回填并关闭）。
-     需求④：新建订单里的「选择合同」与「业务单元」的设计一致（同样没有「取消」）。
-     客户 / 销售员沿用合同页既有设计（有「取消」，可以不改而退出）。 -->
-<div id="modal-pick-bu" class="modal pick-modal" data-testid="modal-pick-bu">
-  <div class="modal-box">
-    <h3>选择业务单元</h3>
-    <table><thead><tr><th>业务单元</th><th style="width:90px;">操作</th></tr></thead>
-      <tbody id="tbody-pick-bu"></tbody></table>
-  </div>
-</div>
-<div id="modal-pick-mu" class="modal pick-modal" data-testid="modal-pick-mu">
-  <div class="modal-box">
-    <h3>选择管理单元</h3>
-    <table><thead><tr><th>管理单元</th><th style="width:90px;">操作</th></tr></thead>
-      <tbody id="tbody-pick-mu"></tbody></table>
-  </div>
-</div>
-<div id="modal-pick-file" class="modal pick-modal" data-testid="modal-pick-file">
-  <div class="modal-box">
-    <h3>选择帐套</h3>
-    <table><thead><tr><th>帐套</th><th style="width:90px;">操作</th></tr></thead>
-      <tbody id="tbody-pick-file"></tbody></table>
-  </div>
-</div>
-<div id="modal-pick-contract" class="modal pick-modal" data-testid="modal-pick-contract">
-  <div class="modal-box wide">
-    <h3>选择合同</h3>
-    <table>
-      <thead><tr><th>合同编号</th><th>合同名称</th><th>客户</th><th style="width:90px;">操作</th></tr></thead>
-      <tbody id="tbody-pick-contract"></tbody>
-    </table>
-    <div class="modal-actions">
-      <button id="btn-new-contract" type="button">+ 新建合同</button>
+        </div></div></div></div>
+      </div></div></div></div>
     </div>
-  </div>
-</div>
-<!-- 第 3 层：合同挑选层 →「+ 新建合同」→ 本弹层（需求③ 的合同版，2026-09-22 加） -->
-<div id="modal-create-contract" class="modal create-modal" data-testid="modal-create-contract">
-  <div class="modal-box">
-    <h3>新建合同</h3>
-    <div class="field"><label>合同名称 <span class="required-mark">*</span></label>
-      <input id="nct-name" placeholder="请输入合同名称" autocomplete="off"></div>
-    <div class="field"><label>管理单元</label><select id="nct-mu"></select></div>
-    <div class="field"><label>帐套</label><select id="nct-fs"></select></div>
-    <div class="field"><label>合同类型</label><select id="nct-type"></select></div>
-    <div class="field"><label>业务单元</label><select id="nct-bu"></select></div>
-    <div class="field"><label>客户</label><select id="nct-cust"></select></div>
-    <div class="modal-actions">
-      <button id="btn-create-contract-cancel" class="ghost" type="button">取消</button>
-      <button id="btn-create-contract-submit" type="button">提交</button>
-    </div>
-  </div>
-</div>
-<div id="modal-pick-cust" class="modal pick-modal" data-testid="modal-pick-cust">
-  <div class="modal-box wide">
-    <h3>选择客户</h3>
-    <table>
-      <thead><tr><th>客户名称</th><th>客户地址</th><th style="width:90px;">操作</th></tr></thead>
-      <tbody id="tbody-pick-cust"></tbody>
-    </table>
-    <div class="modal-actions">
-      <button id="btn-new-cust" type="button">+ 新建客户</button>
-      <button id="btn-pick-cust-cancel" class="ghost" type="button">取消</button>
-    </div>
-  </div>
-</div>
-<div id="modal-pick-salesman" class="modal pick-modal" data-testid="modal-pick-salesman">
-  <div class="modal-box">
-    <h3>选择销售员</h3>
-    <table><thead><tr><th>销售员</th><th style="width:90px;">操作</th></tr></thead>
-      <tbody id="tbody-pick-salesman"></tbody></table>
-    <div class="modal-actions">
-      <button id="btn-new-salesman" type="button">+ 新建销售员</button>
-      <button id="btn-pick-salesman-cancel" class="ghost" type="button">取消</button>
-    </div>
-  </div>
-</div>
 
-<!-- ================= 需求③：叠在选择弹层之上的「临时新建」弹框（客户 / 销售员） =================
-     业务场景：在弹层里翻/搜，发现目标**不存在** ⇒ 不退出去重来，就地新建 ⇒ 提交后
-       ① 落进服务端**主数据**（后续搜索能搜到、订单能引用）
-       ② **直接回填**到订单新建页对应的客户/销售员字段
-       ③ 两层弹框一起关掉（先关新建层、再关选择层）
-     为什么叠一层而不是替换：真实系统就是这样弹的，且正好构成「跨弹框」链路（框架要能扛）。 -->
-<div id="modal-create-cust" class="modal create-modal" data-testid="modal-create-cust">
-  <div class="modal-box">
-    <h3>新建客户</h3>
-    <div class="field">
-      <label>客户名称 <span class="required-mark">*</span></label>
-      <input id="nc-name" placeholder="请输入客户名称" autocomplete="off">
-    </div>
-    <div class="field">
-      <label>客户地址</label>
-      <input id="nc-addr" placeholder="选填" autocomplete="off">
-    </div>
-    <div class="modal-actions">
-      <button id="btn-create-cust-cancel" class="ghost" type="button">取消</button>
-      <button id="btn-create-cust-submit" type="button">提交</button>
+    <div class="tb-actions">
+      <button id="btn-search-o" class="btn primary" type="button" @click="search(1)">搜索</button>
+      <button id="btn-reset-o" class="btn" type="button" @click="resetSearch">重置</button>
     </div>
   </div>
-</div>
-<div id="modal-create-salesman" class="modal create-modal" data-testid="modal-create-salesman">
-  <div class="modal-box">
-    <h3>新建销售员</h3>
-    <div class="field">
-      <label>销售员姓名 <span class="required-mark">*</span></label>
-      <input id="ns-name" placeholder="请输入销售员姓名" autocomplete="off">
+
+  <!-- ===== 订单列表（容器滚动 + 懒加载）===== -->
+  <div class="grid-wrap">
+    <div id="grid-scroll" ref="gridScroll" @scroll="onScroll">
+      <table id="tbl-orders" data-testid="tbl-orders" aria-label="订单列表">
+        <thead>
+          <tr>
+            <th>选择</th><th>订单编号</th><th>合同编号</th><th>订单名称</th><th>管理单元</th><th>销售员</th>
+            <th>订单类型</th><th>业务单元</th><th>帐套</th><th>客户</th><th>状态</th><th>是否开票</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-orders" :data-hybrid-rows="rows.length">
+          <tr v-for="o in rows" :key="o.no" :class="{ picked: picked === o.no }">
+            <td class="pick-cell">
+              <input type="radio" name="pick-order" :id="'rd-' + o.no" :value="o.no" v-model="picked"
+                     :title="'选择订单 ' + o.no" :aria-label="'选择订单 ' + o.no">
+            </td>
+            <td data-field="orderNo"><a :href="'/order_detail.html?no=' + o.no">{{ o.no }}</a></td>
+            <!-- 需求⑥（2026-09-17）：新 tab 打开合同详情，URL 必须带 from=order
+                 ⇒ 详情页按钮变「返回」、点了**关掉本 tab** 回到订单系统。
+                 ⚠️ 场景 / 用例 / verify_order_pages.py 都按「带 from=order」写死，别省这个参数 -->
+            <td data-field="contractNo"><a :href="'/contract_detail.html?no=' + o.contract_no + '&from=order'" target="_blank" rel="noopener">{{ o.contract_no }}</a></td>
+            <td data-field="orderName"><a :href="'/order_detail.html?no=' + o.no">{{ o.name }}</a></td>
+            <td data-field="managementUnit">{{ o.mu }}</td>
+            <td data-field="salesman" :data-salesman="o.salesman">{{ o.salesmanName }}</td>
+            <td data-field="orderType">{{ o.order_type }}</td>
+            <td data-field="businessUnit">{{ o.bu }}</td>
+            <td data-field="folder">{{ o.file }}</td>
+            <td data-field="customer" :data-cust="o.cust">{{ o.custName }}</td>
+            <td data-field="orderStatus" :data-order-status="o.status">{{ o.status }}</td>
+            <!-- 需求⑳：是否开票（已开票 / 未开票）—— 已开票的订单不允许再次开票 -->
+            <td data-field="invoiced" :data-invoiced="o.invoiced ? '1' : '0'"
+                :title="o.invoice_no ? ('发票号 ' + o.invoice_no) : ''">{{ o.invoiced ? '已开票' : '未开票' }}</td>
+          </tr>
+          <tr v-if="!rows.length"><td colspan="12">没有匹配的订单</td></tr>
+        </tbody>
+      </table>
+      <div class="pager-bar">
+        <span id="page-info" data-testid="page-info">已加载 {{ rows.length }} / {{ total }} 条（第 {{ page }} / {{ pages }} 页）</span>
+        <span id="pager" data-testid="pager">{{ pagerText }}</span>
+      </div>
     </div>
-    <div class="modal-actions">
-      <button id="btn-create-salesman-cancel" class="ghost" type="button">取消</button>
-      <button id="btn-create-salesman-submit" type="button">提交</button>
+  </div>
+  <div id="status-o" data-testid="status-o">{{ status }}</div>
+
+  <!-- ===== 新建订单弹层（需求㉒：与订单详情页同构的 3 个区域 —— 基础信息 / 更多信息 / 详细信息，
+       三个区域都可编辑；底部「保存」「取消」；合同/业务单元/管理单元/帐套 仍走联想下拉 + 「...」弹层选择）===== -->
+  <div id="modal-new-order" class="modal" data-testid="modal-new-order" v-if="showNew">
+    <div class="modal-box wide">
+      <h3>新建订单</h3>
+
+      <!-- 需求㉒：与订单详情页同构 —— 分成 3 个区域，**三个区域都可编辑**；底部「保存」「取消」 -->
+      <section class="blk" id="new-basic" data-testid="new-basic" aria-label="基础信息">
+        <h4>基础信息</h4>
+        <div class="grid2">
+      <div class="field" v-for="fl in fields" :key="fl.key">
+        <div class="label">{{ fl.label }}<span v-if="fl.required" class="req">*</span></div>
+        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
+          <template v-if="fl.type === 'suggest'">
+            <div class="pick-row">
+              <div class="grow">
+                <input :id="fl.id" :name="fl.key" type="text" :title="fl.label" :aria-label="fl.label"
+                       :placeholder="fl.ph" autocomplete="off" v-model="form[fl.key]"
+                       :data-value="formVals[fl.key] || null"
+                       @input="onManualInput('n-' + fl.key, $event.target.value); onSuggest('n-' + fl.key, fl.dict, $event.target.value)"
+                       @focus="onSuggest('n-' + fl.key, fl.dict, $event.target.value)">
+                <ul class="dropdown" :id="'sug-n-' + fl.key" v-show="sug['n-' + fl.key] && sug['n-' + fl.key].open">
+                  <li v-for="s in (sug['n-' + fl.key] ? sug['n-' + fl.key].items : [])" :key="s"
+                      @mousedown.prevent="chooseSug('n-' + fl.key, s)">{{ s }}</li>
+                  <li v-if="sug['n-' + fl.key] && !sug['n-' + fl.key].items.length" class="empty">无匹配</li>
+                </ul>
+              </div>
+              <button type="button" class="pick" :id="fl.btnId" :title="'选择' + fl.label"
+                      @click="openPick(fl.key, true)">...</button>
+            </div>
+          </template>
+
+          <template v-else-if="fl.type === 'select'">
+            <select :id="fl.id" :name="fl.key" :title="fl.label" :aria-label="fl.label" v-model="form[fl.key]">
+              <option value="">请选择</option>
+              <option v-for="o in fl.options" :key="o" :value="o">{{ o }}</option>
+            </select>
+          </template>
+
+          <template v-else-if="fl.type === 'pick'">
+            <div class="pick-row">
+              <div class="grow">
+                <input :id="fl.id" :name="fl.key" type="text" :title="fl.label" :aria-label="fl.label"
+                       :placeholder="fl.ph" readonly autocomplete="off" v-model="form[fl.key]"
+                       :data-value="formVals[fl.key] || null">
+              </div>
+              <button type="button" class="btn" :id="fl.btnId" :title="fl.label"
+                      @click="openPick(fl.key, true)">{{ fl.btnText }}</button>
+            </div>
+          </template>
+
+          <template v-else>
+            <input :id="fl.id" :name="fl.key" type="text" :title="fl.label" :aria-label="fl.label"
+                   :placeholder="fl.ph" autocomplete="off" v-model="form[fl.key]"
+                   :data-value="formVals[fl.key] || null"
+                   @input="onManualInput('n-' + fl.key, $event.target.value)">
+          </template>
+
+        </div></div></div></div></div></div>
+      </div>
+        </div>
+      </section>
+
+      <section class="blk" id="new-more" data-testid="new-more" aria-label="更多信息">
+        <h4>更多信息</h4>
+        <div class="grid2">
+      <div class="field" v-for="fl in moreFields" :key="fl.key">
+        <div class="label">{{ fl.label }}<span v-if="fl.required" class="req">*</span></div>
+        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
+          <template v-if="fl.type === 'suggest'">
+            <div class="pick-row">
+              <div class="grow">
+                <input :id="fl.id" :name="fl.key" type="text" :title="fl.label" :aria-label="fl.label"
+                       :placeholder="fl.ph" autocomplete="off" v-model="form[fl.key]"
+                       :data-value="formVals[fl.key] || null"
+                       @input="onManualInput('n-' + fl.key, $event.target.value); onSuggest('n-' + fl.key, fl.dict, $event.target.value)"
+                       @focus="onSuggest('n-' + fl.key, fl.dict, $event.target.value)">
+                <ul class="dropdown" :id="'sug-n-' + fl.key" v-show="sug['n-' + fl.key] && sug['n-' + fl.key].open">
+                  <li v-for="s in (sug['n-' + fl.key] ? sug['n-' + fl.key].items : [])" :key="s"
+                      @mousedown.prevent="chooseSug('n-' + fl.key, s)">{{ s }}</li>
+                  <li v-if="sug['n-' + fl.key] && !sug['n-' + fl.key].items.length" class="empty">无匹配</li>
+                </ul>
+              </div>
+              <button type="button" class="pick" :id="fl.btnId" :title="'选择' + fl.label"
+                      @click="openPick(fl.key, true)">...</button>
+            </div>
+          </template>
+
+          <template v-else-if="fl.type === 'select'">
+            <select :id="fl.id" :name="fl.key" :title="fl.label" :aria-label="fl.label" v-model="form[fl.key]">
+              <option value="">请选择</option>
+              <option v-for="o in fl.options" :key="o" :value="o">{{ o }}</option>
+            </select>
+          </template>
+
+          <template v-else-if="fl.type === 'pick'">
+            <div class="pick-row">
+              <div class="grow">
+                <input :id="fl.id" :name="fl.key" type="text" :title="fl.label" :aria-label="fl.label"
+                       :placeholder="fl.ph" readonly autocomplete="off" v-model="form[fl.key]"
+                       :data-value="formVals[fl.key] || null">
+              </div>
+              <button type="button" class="btn" :id="fl.btnId" :title="fl.label"
+                      @click="openPick(fl.key, true)">{{ fl.btnText }}</button>
+            </div>
+          </template>
+
+          <template v-else>
+            <input :id="fl.id" :name="fl.key" type="text" :title="fl.label" :aria-label="fl.label"
+                   :placeholder="fl.ph" autocomplete="off" v-model="form[fl.key]"
+                   :data-value="formVals[fl.key] || null"
+                   @input="onManualInput('n-' + fl.key, $event.target.value)">
+          </template>
+
+        </div></div></div></div></div></div>
+      </div>
+        </div>
+      </section>
+
+      <section class="blk" id="new-lines" data-testid="new-lines" aria-label="详细信息">
+        <h4>详细信息（订单行）</h4>
+      <div class="lines-toolbar">
+        <button id="btn-new-add-line" class="btn" type="button" @click="addNewLine">新增行</button>
+      </div>
+      <div class="lines-grid new-lines-grid" id="new-lines-grid">
+        <div class="head">操作</div><div class="head">行号</div><div class="head">物料编码</div>
+        <div class="head">产品编码</div><div class="head">数量</div><div class="head">单位</div><div class="head">行类型</div>
+        <template v-for="(ln, idx) in newLines" :key="idx">
+          <div class="cell"><button class="btn danger" type="button" @click="removeNewLine(idx)">删除</button></div>
+          <div class="cell" data-field="lineNo">{{ idx + 1 }}</div>
+          <div class="cell"><input type="text" name="material" title="物料编码" aria-label="物料编码" v-model="ln.material"></div>
+          <div class="cell"><input type="text" name="product" title="产品编码" aria-label="产品编码" v-model="ln.product"></div>
+          <div class="cell"><input type="text" name="qty" title="数量" aria-label="数量" v-model="ln.qty"></div>
+          <div class="cell">
+            <select name="unit" title="单位" aria-label="单位" v-model="ln.unit">
+              <option v-for="u in lineUnits" :key="u" :value="u">{{ u }}</option>
+            </select>
+          </div>
+          <div class="cell">
+            <select name="line_type" title="行类型" aria-label="行类型" v-model="ln.line_type">
+              <option value="">请选择</option>
+              <option v-for="t in lineTypes" :key="t" :value="t">{{ t }}</option>
+            </select>
+          </div>
+        </template>
+      </div>
+      <p class="hint" id="new-lines-count" :data-hybrid-rows="newLines.length">共 {{ newLines.length }} 行（必填：物料编码 / 产品编码 / 数量 / 行类型；全空行不落库）</p>
+      </section>
+
+      <div class="modal-actions">
+        <button id="btn-cancel-order" class="btn" type="button" @click="cancelNewOrder">取消</button>
+        <button id="btn-submit-order" class="btn primary" type="button" @click="submitNewOrder">保存</button>
+      </div>
+    </div>
+
+  <!-- ===== 选择弹层（6 个，动态生成，保留各自 testid）===== -->
+  <template v-for="k in pickKinds" :key="k.key">
+    <div v-if="pickOpen === k.key" :id="'modal-pick-' + k.key" :data-testid="'modal-pick-' + k.key" class="modal">
+      <div class="modal-box wide">
+        <div class="modal-head">
+          <h3>{{ k.title }}</h3>
+          <!-- 需求③：客户 / 销售员弹层里可**临时新建** —— 点它在本层之上再叠一层（选择层仍在） -->
+          <button v-if="k.create" type="button" class="btn" :id="'btn-new-' + k.key"
+                  @click="openCreate(k.key)">+ 新建{{ k.newLabel }}</button>
+        </div>
+        <table class="pick-table" :id="'tbl-pick-' + k.key">
+          <thead><tr><th>{{ k.col1 }}</th><th v-if="k.col2">{{ k.col2 }}</th><th>操作</th></tr></thead>
+          <tbody :id="'tbody-pick-' + k.key">
+            <tr v-for="row in pickRows(k.key)" :key="row.v">
+              <td data-field="value">{{ row.t }}</td>
+              <td v-if="k.col2" data-field="value2">{{ row.s }}</td>
+              <td><button type="button" class="btn" @click="choosePick(k.key, row)">选择</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <!-- ⚠️ 取消按钮**只给客户 / 销售员**：bu/mu/file/contract 四类按需求刻意没有
+             （「点取消不能算作选中」）—— 二类 verify_order_pick_create.py:175-179 会数这个按钮的个数 -->
+        <div class="modal-actions" v-if="k.cancel">
+          <button :id="'btn-pick-' + k.key + '-cancel'" class="btn" type="button" @click="pickOpen = ''">取消</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- ===== 需求③（2026-09-18；P21.3 重写时丢失、2026-09-28 找回）：弹层内**临时新建** =====
+       · 叠在「选择客户 / 选择销售员」层之上（两层同时可见）
+       · 提交成功 ⇒ ① 落服务端主数据（后续弹层里能看到、能选）② **直接回填**订单表单字段
+                    ③ **两层弹框一起关**
+       · 空名 / 重名不许创建（状态行给提示，弹框不关）
+       ⚠️ 常驻 DOM + `.show` 类（不是 v-if）：老口径，二类按 classList.contains('show') 判 -->
+  <div id="modal-create-cust" class="modal create-layer" :class="{ show: createOpen === 'cust' }"
+       data-testid="modal-create-cust">
+    <div class="modal-box">
+      <h3>+ 新建客户</h3>
+      <div class="field">
+        <div class="label">客户名称</div>
+        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
+          <input id="nc-name" name="custName" type="text" title="客户名称" aria-label="客户名称"
+                 placeholder="请输入客户名称" autocomplete="off" v-model="cform.name">
+        </div></div></div></div></div></div>
+      </div>
+      <div class="field">
+        <div class="label">客户地址</div>
+        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
+          <input id="nc-addr" name="custAddr" type="text" title="客户地址" aria-label="客户地址"
+                 placeholder="选填" autocomplete="off" v-model="cform.addr">
+        </div></div></div></div></div></div>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-create-cust-cancel" class="btn" type="button" @click="createOpen = ''">取消</button>
+        <button id="btn-create-cust-submit" class="btn primary" type="button" @click="submitCreate('cust')">提交</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-create-salesman" class="modal create-layer" :class="{ show: createOpen === 'salesman' }"
+       data-testid="modal-create-salesman">
+    <div class="modal-box">
+      <h3>+ 新建销售员</h3>
+      <div class="field">
+        <div class="label">销售员姓名</div>
+        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
+          <input id="ns-name" name="salesmanName" type="text" title="销售员姓名" aria-label="销售员姓名"
+                 placeholder="请输入销售员姓名" autocomplete="off" v-model="sform.name">
+        </div></div></div></div></div></div>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-create-salesman-cancel" class="btn" type="button" @click="createOpen = ''">取消</button>
+        <button id="btn-create-salesman-submit" class="btn primary" type="button" @click="submitCreate('salesman')">提交</button>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-// ========== 数据来源：服务端 API（与合同页同一套口径，唯一数据源是 demo/app.py） ==========
-let CUSTOMERS = [], CONTRACTS = [], SALESMEN = [];
-const DICT = { bu: [], mu: [], file: [] };
+const { createApp } = Vue;
 
-// 分区（F6）：pytest-xdist 下 conftest 给每个 worker 的页面注入 window.__HYBRID_W，页面带进所有 /api 调用
-// 就绪（F1）：boot() 渲染完成后置 body[data-hybrid-ready="1"]，测试框架 goto 之后等它
-const W = (window.__HYBRID_W || '').toString().trim();
-function apiUrl(path){
-  if(!W) return path;
-  return path + (path.indexOf('?') >= 0 ? '&' : '?') + 'w=' + encodeURIComponent(W);
+// 分区号（F6 契约）：**框架用 context.add_init_script 注入 window.__HYBRID_W**（pytest-xdist 每 worker 一个分区）
+// ⇒ 必须优先读它；手工浏览时退回 URL 的 ?w=<分区>。只读 ?w= 会让框架驱动时全落 default 分区，并发互相踩。
+const PART = String(window.__HYBRID_W || '').trim() || (new URLSearchParams(location.search).get('w') || '');
+function markBusy() { document.body.dataset.hybridReady = '0'; }
+function markReady() { document.body.dataset.hybridReady = '1'; }
+function apiUrl(path) {
+  // 需求⑮：带上身份（token 或自动化用的 ?demo_role=），页面自己的 ?w=<分区> 先拼
+  return DEMO_AUTH.url(PART ? path + (path.includes('?') ? '&' : '?') + 'w=' + encodeURIComponent(PART) : path);
 }
-function markReady(){ document.body.dataset.hybridReady = '1'; }
-function $(id){ return document.getElementById(id); }
+const SIZE = 20;   // 懒加载每批 20 条（需求④）
 
-let PAGE = 1;
-
-async function boot(){
-  CUSTOMERS = await (await fetch(apiUrl('/api/customers'))).json();
-  CONTRACTS = await (await fetch(apiUrl('/api/contracts'))).json();
-  SALESMEN  = await (await fetch(apiUrl('/api/salesmen'))).json();
-  for(const k of ['bu','mu','file']){
-    DICT[k] = (await (await fetch(apiUrl('/api/dict?kind=' + k))).json()).values || [];
-  }
-  renderPickRows('bu'); renderPickRows('mu'); renderPickRows('file');
-  renderPickRows('contract'); renderPickRows('cust'); renderPickRows('salesman');
-  await loadOrders(1);
-  markReady();          // ← 数据已就位：测试可以开始动作/断言了
-}
-
-// ========== 列表：筛选 + 分页（全部走服务端，口径见 demo/app.py 的 filter_orders / page_of） ==========
-function currentFilters(){
-  return {
-    name: $('tb-o-name').value.trim(),
-    salesman: $('tb-o-salesman').value.trim(),
-    cust: $('tb-o-cust').value.trim(),
-    bu: $('tb-o-bu').value,
-    mu: $('tb-o-mu').value,
-    file: $('tb-o-file').value,
-  };
-}
-async function loadOrders(page){
-  const f = currentFilters();
-  const qs = new URLSearchParams({page: String(page || 1), size: '20'});
-  Object.entries(f).forEach(([k,v])=>{ if(v) qs.set(k, v); });
-  const info = await (await fetch(apiUrl('/api/orders?' + qs.toString()))).json();
-  PAGE = info.page;
-  render(info.items);
-  renderPager(info);
-  return info;
-}
-function render(items){
-  const tb = $('tbody-orders');
-  if(!items.length){
-    tb.innerHTML = '<tr><td colspan="9" class="empty">无匹配数据</td></tr>';
-    return;
-  }
-  tb.innerHTML = items.map(o=>`<tr>
-    <td data-field="orderNo"><a href="/order_detail.html?no=${o.no}">${o.no}</a></td>
-    <td data-field="contractNo"><a target="_blank" rel="noopener"
-        href="/contract_detail.html?no=${o.contract_no}&from=order">${o.contract_no}</a></td>
-    <td data-field="orderName"><a href="/order_detail.html?no=${o.no}">${o.name}</a></td>
-    <td data-field="managementUnit">${o.mu}</td>
-    <td data-field="salesman" data-salesman="${o.salesman}">${o.salesmanName}</td>
-    <td data-field="orderType">${o.order_type}</td>
-    <td data-field="businessUnit">${o.bu}</td>
-    <td data-field="folder">${o.file}</td>
-    <td data-field="customer" data-cust="${o.cust}">${o.custName}</td>
-  </tr>`).join('');
-}
-function renderPager(info){
-  $('total').textContent = info.total;
-  $('page-info').textContent = `第 ${info.page} / ${info.pages} 页`;
-  $('btn-prev-o').disabled = info.page <= 1;
-  $('btn-next-o').disabled = info.page >= info.pages;
-  let html = '';
-  for(let p = 1; p <= info.pages; p++){
-    html += `<button type="button" data-page="${p}"
-              class="${p === info.page ? 'active' : ''}">${p}</button>`;
-  }
-  $('pager').innerHTML = html;
-}
-$('pager').addEventListener('click', e=>{
-  const b = e.target.closest('button[data-page]');
-  if(b) loadOrders(Number(b.dataset.page));
-});
-$('btn-prev-o').addEventListener('click', ()=>loadOrders(PAGE - 1));
-$('btn-next-o').addEventListener('click', ()=>loadOrders(PAGE + 1));
-
-// ========== 搜索 / 重置 ==========
-async function doSearch(){
-  const info = await loadOrders(1);          // 换条件后回到第 1 页
-  const f = currentFilters();
-  const parts = Object.entries(f).filter(([,v])=>v).map(([k,v])=>`${k}=${v}`);
-  $('status-o').textContent = `搜索完成，命中 ${info.total} 条` + (parts.length ? `（${parts.join('，')}）` : '');
-}
-$('btn-search-o').addEventListener('click', doSearch);
-$('btn-reset-o').addEventListener('click', async ()=>{
-  ['tb-o-name','tb-o-salesman','tb-o-cust','tb-o-bu','tb-o-mu','tb-o-file'].forEach(id=>{
-    $(id).value = ''; delete $(id).dataset.value;
-  });
-  await loadOrders(1);
-  $('status-o').textContent = '已重置';
-});
-['tb-o-name','tb-o-salesman','tb-o-cust'].forEach(id=>{
-  $(id).addEventListener('keydown', e=>{ if(e.key === 'Enter') doSearch(); });
-});
-
-// ========== 选择弹层（一套逻辑 × 6 类） ==========
-// targetIds：回填到哪些输入框（搜索区的同一个弹层与新建订单里的输入框共用）
-let _pickKind = null, _pickTargets = [];
-function renderPickRows(kind){
-  const body = $('tbody-pick-' + kind);
-  if(!body) return;
-  const btn = (v, label) => `<button type="button"
-                              data-pick-value="${v}" data-pick-label="${label}">选择</button>`;
-  // 需求②：行**本身**带同一组 data-pick-* ⇒ 点行任意位置 = 点该行的「选择」按钮（两种选中方式等效）
-  const row = (val_, label, cells) => `<tr
-        data-pick-value="${val_}" data-pick-label="${label}">${cells}</tr>`;
-  if(kind === 'bu' || kind === 'mu' || kind === 'file'){
-    body.innerHTML = DICT[kind].map(v=>row(v, v,
-        `<td data-field="value">${v}</td><td>${btn(v, v)}</td>`)).join('');
-  }else if(kind === 'contract'){
-    body.innerHTML = CONTRACTS.map(c=>row(c.no, c.no,
-        `<td data-field="contractNo">${c.no}</td>
-         <td data-field="contractName">${c.name}</td>
-         <td data-field="customer" data-cust="${c.cust}">${c.custName}</td>
-         <td>${btn(c.no, c.no)}</td>`)).join('');
-  }else if(kind === 'cust'){
-    body.innerHTML = CUSTOMERS.map(c=>row(c.id, c.name,
-        `<td data-field="custName">${c.name}</td>
-         <td data-field="custAddr">${c.addr}</td>
-         <td>${btn(c.id, c.name)}</td>`)).join('');
-  }else if(kind === 'salesman'){
-    body.innerHTML = SALESMEN.map(s=>row(s.id, s.name,
-        `<td data-field="salesmanName">${s.name}</td><td>${btn(s.id, s.name)}</td>`)).join('');
-  }
-}
-// 回填（供「选中行/按钮」与「临时新建后回填」共用）：label 显示、data-value 存真正的取值
-function fillTargets(ids, value, label){
-  ids.forEach(id=>{
-    const el = $(id);
-    if(!el) return;
-    el.value = label;
-    el.dataset.value = value;
-  });
-}
-function openPick(kind, targetIds){
-  _pickKind = kind; _pickTargets = targetIds;
-  $('modal-pick-' + kind).classList.add('show');
-}
-function closePick(kind){ $('modal-pick-' + kind).classList.remove('show'); }
-document.querySelectorAll('.pick-modal').forEach(m=>{
-  m.addEventListener('click', e=>{
-    // 需求②：两种选中方式 —— 点「选择」按钮 或 **点整行**，都走同一条回填逻辑。
-    // closest 先命中更近的那个（点按钮→button；点行里其他位置→tr），互不干扰。
-    // ⚠️「取消」按钮不在 tr 内 ⇒ 点它不会被当成选中（客户/销售员弹层的取消语义不受影响）。
-    const b = e.target.closest('button[data-pick-value], tr[data-pick-value]');
-    if(!b) return;
-    fillTargets(_pickTargets, b.dataset.pickValue, b.dataset.pickLabel);
-    closePick(_pickKind);
-  });
-});
-// 「...」与「选择」按钮 → 打开对应弹层（搜索区 / 新建订单 各一套，弹层共用）
-[['btn-pick-bu-search',['tb-o-bu']], ['btn-pick-mu-search',['tb-o-mu']], ['btn-pick-file-search',['tb-o-file']],
- ['btn-pick-bu',['o-bu']], ['btn-pick-mu',['o-mu']], ['btn-pick-file',['o-file']],
- ['btn-pick-contract',['o-contract']], ['btn-pick-cust',['o-cust']], ['btn-pick-salesman',['o-salesman']]
-].forEach(([btnId, targets])=>{
-  const kind = btnId.includes('contract') ? 'contract'
-             : btnId.includes('-cust') ? 'cust'
-             : btnId.includes('salesman') ? 'salesman'
-             : btnId.includes('-bu') ? 'bu' : btnId.includes('-mu') ? 'mu' : 'file';
-  $(btnId).addEventListener('click', ()=>openPick(kind, targets));
-});
-// 客户 / 销售员弹层有「取消」（沿用合同页既有设计）；业务单元/管理单元/帐套/合同弹层**没有取消按钮**（需求③④）
-$('btn-pick-cust-cancel').addEventListener('click', ()=>closePick('cust'));
-$('btn-pick-salesman-cancel').addEventListener('click', ()=>closePick('salesman'));
-
-// ========== 新建订单 ==========
-function val(id){ return ($(id).dataset.value || $(id).value || '').trim(); }
-function openNewOrder(){
-  ['o-name','o-remark'].forEach(id=>$(id).value = '');
-  ['o-contract','o-bu','o-mu','o-file','o-cust','o-salesman'].forEach(id=>{
-    $(id).value = ''; delete $(id).dataset.value;
-  });
-  $('o-type').value = '';
-  $('status-o').textContent = '';
-  $('modal-new-order').classList.add('show');
-}
-function closeNewOrder(){ $('modal-new-order').classList.remove('show'); }
-async function submitNewOrder(){
-  const payload = {
-    name: $('o-name').value.trim(),
-    contract_no: val('o-contract'),
-    bu: val('o-bu'),
-    mu: val('o-mu'),
-    file: val('o-file'),
-    order_type: $('o-type').value,
-    cust: val('o-cust'),
-    salesman: val('o-salesman'),
-    remark: $('o-remark').value.trim(),      // 选填
-  };
-  const missing = Object.entries(payload).filter(([k,v])=>k !== 'remark' && !v).map(([k])=>k);
-  if(missing.length){
-    $('status-o').textContent = '请填写全部必填字段';
-    return null;
-  }
-  const resp = await fetch(apiUrl('/api/orders'), {
-    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
-  });
-  const rec = await resp.json().catch(()=>({}));
-  if(!resp.ok){
-    $('status-o').textContent = rec.error || ('提交失败（HTTP ' + resp.status + '）');
-    return null;
-  }
-  closeNewOrder();
-  // 需求④：提交后回到订单列表，且**列表第一个就是刚新建的订单** ⇒ 清掉筛选、回到第 1 页重取
-  ['tb-o-name','tb-o-salesman','tb-o-cust','tb-o-bu','tb-o-mu','tb-o-file'].forEach(id=>{
-    $(id).value = ''; delete $(id).dataset.value;
-  });
-  await loadOrders(1);
-  $('status-o').textContent = '已新增订单: ' + rec.no + ' ' + rec.name;
-  return {no: rec.no, name: rec.name};       // 供测试断言
-}
-$('btn-new-order').addEventListener('click', openNewOrder);
-$('btn-cancel-order').addEventListener('click', closeNewOrder);
-$('btn-submit-order').addEventListener('click', submitNewOrder);
-
-// ========== 需求③：弹层内「临时新建」客户 / 销售员 → 落主数据 + 回填 ==========
-let _createKind = null;
-function openCreate(kind){
-  _createKind = kind;
-  if(kind === 'cust'){ $('nc-name').value = ''; $('nc-addr').value = ''; }
-  else { $('ns-name').value = ''; }
-  $('modal-create-' + kind).classList.add('show');
-}
-function closeCreate(kind){ $('modal-create-' + kind).classList.remove('show'); }
-async function submitCreate(kind){
-  const st = $('status-o');
-  const name = (kind === 'cust' ? $('nc-name').value : $('ns-name').value).trim();
-  if(!name){ st.textContent = (kind === 'cust' ? '客户' : '销售员') + '名称不能为空'; return null; }
-  const payload = kind === 'cust' ? {name, addr: $('nc-addr').value.trim()} : {name};
-  const resp = await fetch(apiUrl(kind === 'cust' ? '/api/customers' : '/api/salesmen'), {
-    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
-  });
-  const rec = await resp.json().catch(()=>({}));
-  if(!resp.ok){ st.textContent = rec.error || ('新建失败（HTTP ' + resp.status + '）'); return null; }
-  // ① 落进本地主数据并重渲染该弹层 —— 新建这条**立刻能在弹层里看到**（后续也能搜到）
-  if(kind === 'cust') CUSTOMERS.push(rec); else SALESMEN.push(rec);
-  renderPickRows(kind);
-  // ② 直接回填到当前弹层的目标字段（订单新建页的客户/销售员）
-  fillTargets(_pickTargets, rec.id, rec.name);
-  // ③ 两层弹框一起关（先新建层、再选择层）
-  closeCreate(kind); closePick(kind);
-  st.textContent = '已新建' + (kind === 'cust' ? '客户' : '销售员') + ': ' + rec.id + ' ' + rec.name;
-  return {id: rec.id, name: rec.name};
-}
-// ========== 需求③ 合同版：合同挑选层内「临时新建」→ 落主数据 + 回填（2026-09-22） ==========
-function _fillCreateContractOptions(){
-  const fill = (id, vals) => { const el = $(id); if(el && !el.options.length)
-    el.innerHTML = vals.map(v=>`<option>${v}</option>`).join(''); };
-  fill('nct-mu', ['0021','0451','1031']);
-  fill('nct-fs', ['001','002','003']);
-  fill('nct-type', ['合同','PO','预PO']);
-  fill('nct-bu', ['bu_a','bu_b','bu_c']);
-  const c = $('nct-cust');
-  if(c && !c.options.length) c.innerHTML = (CUSTOMERS||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
-}
-function openCreateContract(){
-  _fillCreateContractOptions();
-  $('nct-name').value = '';
-  $('modal-create-contract').classList.add('show');
-}
-function closeCreateContract(){ $('modal-create-contract').classList.remove('show'); }
-async function submitCreateContract(){
-  const st = $('status-o');
-  const name = $('nct-name').value.trim();
-  if(!name){ st.textContent = '合同名称不能为空'; return null; }
-  const payload = {name, mu: $('nct-mu').value, file: $('nct-fs').value,
-                   type: $('nct-type').value, bu: $('nct-bu').value, cust: $('nct-cust').value};
-  const resp = await fetch(apiUrl('/api/contracts'), {method:'POST',
-    headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
-  const rec = await resp.json().catch(()=>({}));
-  if(!resp.ok){ st.textContent = rec.error || ('新建合同失败（HTTP ' + resp.status + '）'); return null; }
-  CONTRACTS.push(rec);            // ① 落进本地主数据
-  renderPickRows('contract');     // ② 重渲染挑选层：新建这条立刻能在弹层里看到
-  fillTargets(_pickTargets, rec.no, rec.no + ' ' + rec.name);   // ③ 回填当前挑选目标
-  closeCreateContract(); closePick('contract');                 // ④ 两层一起关（与「新建客户」同约定）
-  st.textContent = '已新建合同: ' + rec.no + ' ' + rec.name;
-  return {no: rec.no, name: rec.name};
-}
-$('btn-new-contract').addEventListener('click', openCreateContract);
-$('btn-create-contract-cancel').addEventListener('click', closeCreateContract);
-$('btn-create-contract-submit').addEventListener('click', submitCreateContract);
-
-$('btn-new-cust').addEventListener('click', ()=>openCreate('cust'));
-$('btn-new-salesman').addEventListener('click', ()=>openCreate('salesman'));
-$('btn-create-cust-cancel').addEventListener('click', ()=>closeCreate('cust'));
-$('btn-create-salesman-cancel').addEventListener('click', ()=>closeCreate('salesman'));
-$('btn-create-cust-submit').addEventListener('click', ()=>submitCreate('cust'));
-$('btn-create-salesman-submit').addEventListener('click', ()=>submitCreate('salesman'));
-
-// expose for tests / 手工调试（控制台用；用例不依赖这些钩子）
-window.__orders = {
-  loadOrders, doSearch, submitNewOrder, openPick, openCreate, submitCreate,
-  get page(){ return PAGE; },
-};
-
-boot();
+createApp({
+  data() {
+    return {
+      conds: [
+        { key: 'name',     label: '订单名称', id: 'tb-o-name',     type: 'text',    ph: '订单名称（全模糊）' },
+        { key: 'salesman', label: '销售员',   id: 'tb-o-salesman', type: 'text',    ph: '销售员（右模糊：前缀匹配）' },
+        { key: 'cust',     label: '客户',     id: 'tb-o-cust',     type: 'text',    ph: '客户（全模糊）' },
+        { key: 'bu',       label: '业务单元', id: 'tb-o-bu',       type: 'suggest', ph: '请选择或输入关键字', dict: 'bu',   btnId: 'btn-pick-bu-search' },
+        { key: 'mu',       label: '管理单元', id: 'tb-o-mu',       type: 'suggest', ph: '请选择或输入关键字', dict: 'mu',   btnId: 'btn-pick-mu-search' },
+        { key: 'file',     label: '帐套',     id: 'tb-o-file',     type: 'suggest', ph: '请选择或输入关键字', dict: 'file', btnId: 'btn-pick-file-search' },
+      ],
+      fields: [
+        { key: 'name',        label: '订单名称', id: 'o-name',     type: 'text',    ph: '请输入订单名称',      required: true },
+        { key: 'contract_no', label: '合同',     id: 'o-contract', type: 'suggest', ph: '请选择或输入关键字',  dict: 'contract', btnId: 'btn-pick-contract', required: true },
+        { key: 'bu',          label: '业务单元', id: 'o-bu',       type: 'suggest', ph: '请选择或输入关键字',  dict: 'bu',   btnId: 'btn-pick-bu',   required: true },
+        { key: 'mu',          label: '管理单元', id: 'o-mu',       type: 'suggest', ph: '请选择或输入关键字',  dict: 'mu',   btnId: 'btn-pick-mu',   required: true },
+        { key: 'file',        label: '帐套',     id: 'o-file',     type: 'suggest', ph: '请选择或输入关键字',  dict: 'file', btnId: 'btn-pick-file', required: true },
+        { key: 'order_type',  label: '订单类型', id: 'o-type',     type: 'select',  options: ['标准销售订单', '退货订单', '服务订单', '电商订单'], required: true },
+        { key: 'cust',        label: '客户',     id: 'o-cust',     type: 'pick',    ph: '请选择客户', btnId: 'btn-pick-cust', btnText: '选择客户', required: true },
+        { key: 'salesman',    label: '销售员',   id: 'o-salesman', type: 'pick',    ph: '请选择销售员', btnId: 'btn-pick-salesman', btnText: '选择销售员', required: true },
+        { key: 'remark',      label: '订单备注（选填）', id: 'o-remark', type: 'text', ph: '订单备注（可不填）' },
+      ],
+      // 需求㉒：更多信息 = 订单详情页「更多信息」同四项，全部可编辑
+      moreFields: [
+        { key: 'transport', label: '运输方式', id: 'o-transport', type: 'suggest', ph: '输入关键字联想（如 BY AIR）', dict: 'transport' },
+        { key: 'creator',   label: '创建人',   id: 'o-creator',   type: 'text', ph: '请输入创建人' },
+        { key: 'carrier',   label: '承运商',   id: 'o-carrier',   type: 'text', ph: '请输入承运商' },
+        { key: 'channel',   label: '销售渠道', id: 'o-channel',   type: 'select', options: ['直销', '分销', '电商', '代理'] },
+      ],
+      // 需求㉒：详细信息 = 订单行（新建时就能录，与详情页同一套行字段）
+      newLines: [],
+      lineUnits: ['个', '件', '套', '千克'],
+      lineTypes: ['产品订单行', '服务订单行', '费用订单行', '物料订单行'],
+      pickKinds: [
+        // cancel / create 只给客户与销售员（需求③：临时新建只在这两类；「取消」也只这两类有）
+        { key: 'cust',     title: '选择客户',   col1: '客户名称', col2: '客户地址',
+          cancel: true, create: true, newLabel: '客户' },
+        { key: 'salesman', title: '选择销售员', col1: '销售员',   col2: '',
+          cancel: true, create: true, newLabel: '销售员' },
+        { key: 'contract', title: '选择合同',   col1: '合同编号', col2: '合同名称' },
+        { key: 'bu',       title: '选择业务单元', col1: '业务单元', col2: '' },
+        { key: 'mu',       title: '选择管理单元', col1: '管理单元', col2: '' },
+        { key: 'file',     title: '选择帐套',   col1: '帐套',     col2: '' },
+      ],
+      f: { name: '', salesman: '', cust: '', bu: '', mu: '', file: '' },
+      form: {},
+      // 需求③：弹层内临时新建（叠层弹框）
+      createOpen: '', cform: { name: '', addr: '' }, sform: { name: '' },
+      // 老口径（2026-09-17）：回填 = 「label 显示 + **真正的取值**存 data-value」
+      // 二类 verify_order_pick_create.py 按 data-value 断言（客户 id 形如 c7）⇒ 必须有
+      fVals: { cust: '', salesman: '', bu: '', mu: '', file: '' },
+      formVals: { cust: '', salesman: '', bu: '', mu: '', file: '', contract_no: '' },
+      rows: [], total: 0, page: 1, pages: 1, picked: '',
+      loading: false, status: '', pagerText: '',
+      showNew: false, pickOpen: '', pickFromNew: false,
+      sug: {},
+      dicts: { bu: [], mu: [], file: [] },
+      customers: [], salesmen: [], contracts: [],
+      // 需求⑪：开票前置条件「订单已关闭」的口径取自服务端 /api/health（closed_state），不写死
+      closedState: '已关闭',
+    };
+  },
+  mounted() {
+    this.loadDicts();
+    this.search(1);
+  },
+  watch: {
+    // 需求⑱：所有校验/提示信息都弹一个「弹出框 tips」；
+    // ⚠️ 状态行**保留同样文字**（自动化判据/用例按状态行取值），所以这里是"加弹窗"而不是"挪走文字"
+    status(v) { if (v) window.DEMO_TIPS.show(v); },
+  },
+  methods: {
+    async loadDicts() {
+      for (const k of ['bu', 'mu', 'file']) {
+        this.dicts[k] = (await (await fetch(apiUrl('/api/dict?kind=' + k))).json()).values || [];
+      }
+      this.customers = await (await fetch(apiUrl('/api/customers'))).json();
+      this.salesmen = await (await fetch(apiUrl('/api/salesmen'))).json();
+      this.contracts = await (await fetch(apiUrl('/api/contracts'))).json();
+      const h = await (await fetch(apiUrl('/api/health'))).json();
+      this.closedState = h.closed_state || this.closedState;
+    },
+    /* ---------- 列表：服务端筛选 + 懒加载 ---------- */
+    async fetchPage(page) {
+      const qs = new URLSearchParams({ page: String(page), size: String(SIZE) });
+      Object.entries(this.f).forEach(([k, v]) => { if (v) qs.set(k, v); });
+      const info = await (await fetch(apiUrl('/api/orders?' + qs.toString()))).json();
+      this.total = info.total; this.pages = info.pages; this.page = info.page;
+      return info.items;
+    },
+    async search(page) {
+      markBusy();
+      this.loading = true; this.pagerText = '加载中…';
+      this.rows = await this.fetchPage(page || 1);
+      this.picked = '';          // 重新搜索 ⇒ 清空选中（避免「去开票」指着已不在列表里的订单）
+      this.loading = false;
+      this.updatePager();
+      markReady();
+    },
+    // 滚动触底 ⇒ 追加下一页（每批 20 条）
+    async onScroll(e) {
+      const el = e.target;
+      if (this.loading || this.page >= this.pages) return;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
+        this.loading = true; this.pagerText = '加载中…';
+        const more = await this.fetchPage(this.page + 1);
+        this.rows = this.rows.concat(more);      // 追加（#tbody-orders 的 data-hybrid-rows 随之变化）
+        this.loading = false;
+        this.updatePager();
+      }
+    },
+    updatePager() { this.pagerText = this.page >= this.pages ? '已全部加载' : '滚动到底部加载更多'; },
+    resetSearch() {
+      this.f = { name: '', salesman: '', cust: '', bu: '', mu: '', file: '' };
+      this.sug = {};
+      this.search(1);
+    },
+    /* ---------- 双模：input 关键字联想下拉（ul） ---------- */
+    async onSuggest(key, dict, value) {
+      let items = [];
+      if (dict === 'contract') {
+        const kw = (value || '').trim();
+        items = this.contracts.filter(c => !kw || c.no.includes(kw)).map(c => c.no);
+      } else {
+        const all = this.dicts[dict] || [];
+        const kw = (value || '').trim();
+        items = all.filter(v => !kw || v.includes(kw));
+      }
+      this.sug[key] = { open: true, items: items.slice(0, 20) };
+    },
+    chooseSug(key, val) {
+      if (key.startsWith('n-')) { const k = key.slice(2); this.form[k] = val; this.formVals[k] = val; }
+      else { this.f[key] = val; this.fVals[key] = val; }
+      this.sug[key] = { open: false, items: [] };
+    },
+    // 手输 ⇒ 清掉「弹层/联想选中」的取值（老口径：残留的精确取值会盖住手输的模糊语义）
+    onManualInput(key, val) {
+      if (key.startsWith('n-')) { const k = key.slice(2); this.formVals[k] = ''; this.form[k] = val; }
+      else { this.fVals[key] = ''; this.f[key] = val; }
+    },
+    /* ---------- 双模：「…」弹层选择 ---------- */
+    pickRows(kind) {
+      // ⚠️ v = **真正的取值**（客户/销售员用 id），t = 显示名（老口径 setVal(label, value)）
+      if (kind === 'cust')     return this.customers.map(c => ({ v: c.id, t: c.name, s: c.addr }));
+      if (kind === 'salesman') return this.salesmen.map(s => ({ v: s.id, t: s.name, s: '' }));
+      if (kind === 'contract') return this.contracts.map(c => ({ v: c.no, t: c.no, s: c.name }));
+      return (this.dicts[kind] || []).map(v => ({ v, t: v, s: '' }));
+    },
+    openPick(key, fromNew) { this.pickFromNew = !!fromNew; this.pickOpen = key; },
+    choosePick(kind, row) {
+      const toForm = this.pickFromNew;
+      const target = toForm ? this.form : this.f;
+      const vals = toForm ? this.formVals : this.fVals;
+      const vkey = (kind === 'contract') ? 'contract_no' : kind;   // 表单里合同字段叫 contract_no
+      if (kind === 'cust' || kind === 'salesman') { target[vkey] = row.t; vals[vkey] = row.v; }
+      else { target[vkey] = row.v; vals[vkey] = row.v; }
+      this.pickOpen = '';
+    },
+    /* ---------- 需求③：弹层内临时新建客户 / 销售员（叠层弹框 + 落主数据 + 回填 + 两层同关）---------- */
+    openCreate(kind) {
+      this.createOpen = kind;
+      this.cform = { name: '', addr: '' };
+      this.sform = { name: '' };
+      this.status = '';                      // 清掉上一轮提示，避免误读
+    },
+    async submitCreate(kind) {
+      const isCust = kind === 'cust';
+      const name = String((isCust ? this.cform.name : this.sform.name) || '').trim();
+      if (!name) {                             // 空名：不关弹框、不发请求（服务端同样会 400）
+        this.status = (isCust ? '客户名称' : '销售员姓名') + '不能为空';
+        return;
+      }
+      const payload = isCust ? { name, addr: String(this.cform.addr || '').trim() } : { name };
+      const r = await fetch(apiUrl(isCust ? '/api/customers' : '/api/salesmen'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {                             // 重名 ⇒ 服务端 409「…已存在: X」，如实透传
+        this.status = d.error || ('创建失败（HTTP ' + r.status + '）');
+        return;
+      }
+      await this.loadDicts();                  // 刷新主数据：下次打开弹层就能看到 / 能选
+      if (isCust) { this.form.cust = d.name || name; this.formVals.cust = d.id || ''; }
+      else { this.form.salesman = d.name || name; this.formVals.salesman = d.id || ''; }
+      this.createOpen = '';
+      this.pickOpen = '';                      // 两层弹框一起关
+      this.status = isCust ? ('已新建客户 ' + (d.name || name)) : ('已新建销售员 ' + (d.name || name));
+    },
+    /* ---------- 需求⑩：选中订单 ⇒ 去开票（跳应收发票创建页并带入基础信息）---------- */
+    goInvoice() {
+      if (!this.picked) {
+        this.status = '请先选中一个订单（列表首列的单选按钮），再点「去开票」';
+        return;
+      }
+      // 需求⑪：**只有「已关闭」的订单才能开票** —— 状态不符 ⇒ 只提示、不跳转
+      // （服务端 POST /api/invoices 同一口径复核 = 权威；开票页对直链也会拦）
+      const row = this.rows.find(r => r.no === this.picked) || {};
+      const st = row.status || '';
+      if (st !== this.closedState) {
+        this.status = `订单 ${this.picked} 当前状态为「${st || '未知'}」，只有「${this.closedState}」的订单才能开票`;
+        return;
+      }
+      // 需求⑳：**已开票的订单不允许再次开票**（服务端同一口径再拦一次）
+      if (row.invoiced) {
+        this.status = `订单 ${this.picked} 已开票（发票号 ${row.invoice_no || '—'}），不允许再次开票`;
+        return;
+      }
+      this.status = `订单 ${this.picked}（${st}）⇒ 打开开票页`;
+      location.href = '/invoice_create.html?from_order=' + encodeURIComponent(this.picked);
+    },
+    /* ---------- 新建订单 ⇒ 提交后跳订单详情 ---------- */
+    blankLine() { return { material: '', product: '', qty: '', unit: '个', line_type: '' }; },
+    openNewOrder() {
+      this.form = { name: '', contract_no: '', bu: '', mu: '', file: '', order_type: '', cust: '', salesman: '',
+                    remark: '', transport: '', creator: '', carrier: '', channel: '' };
+      this.newLines = [this.blankLine()];          // 需求㉒：默认给一行空行，进来就能录
+      this.sug = {}; this.status = ''; this.showNew = true;
+    },
+    addNewLine() { this.newLines.push(this.blankLine()); },
+    removeNewLine(idx) {
+      if (this.newLines.length <= 1) { this.status = '至少保留 1 行'; return; }
+      this.newLines.splice(idx, 1);
+    },
+    cancelNewOrder() {                      // 需求㉒：取消 = 关弹层且不落库（已填内容丢弃）
+      this.showNew = false;
+      this.status = '已取消新建订单（未保存）';
+    },
+    async submitNewOrder() {
+      // 需求㉒：三个区域一起校验 —— 基础信息必填（缺哪项报哪项）；行「全空行」忽略、填了就要求填全
+      const missing = this.fields.filter(fl => fl.required && !String(this.form[fl.key] || '').trim())
+                                 .map(fl => (this.fields.find(f => f.key === fl.key) || {}).label || fl.key);
+      if (missing.length) { this.status = '请填写全部必填字段：' + missing.join('、'); return; }
+      const filled = this.newLines.filter(ln => String(ln.material || '').trim() || String(ln.product || '').trim()
+                                             || String(ln.qty || '').trim() || String(ln.line_type || '').trim());
+      const bad = filled.map((ln, i) => (!ln.material || !ln.product || !String(ln.qty || '').trim() || !ln.line_type)
+                                       ? (this.newLines.indexOf(ln) + 1) : null).filter(Boolean);
+      if (bad.length) { this.status = `行必填项未填全（第 ${bad.join('、')} 行：物料编码 / 产品编码 / 数量 / 行类型）`; return; }
+      const payload = {
+        name: String(this.form.name).trim(), contract_no: this.form.contract_no, bu: this.form.bu,
+        mu: this.form.mu, file: this.form.file, order_type: this.form.order_type,
+        cust: this.form.cust, salesman: this.form.salesman, remark: String(this.form.remark || '').trim(),
+        more: { transport: this.form.transport, creator: this.form.creator,
+                carrier: this.form.carrier, channel: this.form.channel },   // 需求㉒：更多信息
+        lines: filled.map(ln => ({ material: String(ln.material).trim(), product: String(ln.product).trim(),
+                                   qty: String(ln.qty).trim(), unit: ln.unit, line_type: ln.line_type })),
+      };
+      const resp = await fetch(apiUrl('/api/orders'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      const rec = await resp.json().catch(() => ({}));
+      if (!resp.ok) { this.status = rec.error || ('保存失败（HTTP ' + resp.status + '）'); return; }
+      this.showNew = false;
+      this.status = `已保存：${rec.no}（基础信息 + 更多信息` +
+                    (payload.lines.length ? ` + ${payload.lines.length} 行订单行` : '') + '）';
+      // 需求⑤：点保存 ⇒ 跳转到「订单详情」页
+      location.href = '/order_detail.html?no=' + encodeURIComponent(rec.no);
+    },
+  },
+}).mount('#app');
+// 需求⑮：登录与角色
+DEMO_AUTH.init();
 </script>
 </body>
 </html>

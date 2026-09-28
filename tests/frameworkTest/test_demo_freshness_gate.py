@@ -202,8 +202,28 @@ def test_check_state_matches_verdict():
     if r["state"] in ("no_process", "unknown"):
         assert r["pid"] is None or r["state"] == "unknown"
     else:
-        expect, _ = df.verdict(r["started_epoch"], r["newest_mtime"])
+        # ⚠️ 必须把**同一套输入**喂给 verdict 才算「同口径」比对：
+        # check() 在有快照时走**内容指纹**主口径（内容没变、只是 mtime 变新 —— 如 touch / git checkout /
+        # 解压覆盖 —— 它就该判 fresh）；只喂 (started, mtime) 是在跑**降级 mtime 口径**，
+        # 两边口径不同 ⇒ 内容没变却假红（2026-09-28 实测踩过：复原写入只动了 mtime，判据报 fresh≠stale）。
+        snap = r["snapshot"] if r.get("snapshot_used") else None
+        expect, _ = df.verdict(r["started_epoch"], r["newest_mtime"],
+                               snapshot=snap, fingerprint=r["fingerprint"] if snap else None)
         assert r["state"] == expect, "check() 与 verdict() 必须同一口径"
+
+
+def test_verdict_two_tiers_do_not_mix_up():
+    """两条口径各自的语义（纯函数，不依赖现场）：
+       无快照 ⇒ 降级 mtime 口径；有快照 ⇒ 内容指纹优先，mtime 更新也不许判 stale。"""
+    started = 1_700_000_000.0
+    assert df.verdict(started, started - 10)[0] == "fresh"          # 降级：源码更旧 ⇒ fresh
+    assert df.verdict(started, started + 10)[0] == "stale"          # 降级：源码更新 ⇒ stale
+    assert df.verdict(None, started)[0] == "no_process"             # 没进程
+    snap = {"fingerprint": "abc"}
+    assert df.verdict(started, started + 10, snapshot=snap, fingerprint="abc")[0] == "fresh", \
+        "内容指纹一致 ⇒ 即使 mtime 更新也必须 fresh（否则 touch/解压/checkout 会假红逼人重启）"
+    assert df.verdict(started, started - 10, snapshot=snap, fingerprint="xyz")[0] == "stale", \
+        "内容指纹不一致 ⇒ 即使 mtime 看着更旧也必须 stale（checkout 保留旧时间戳的漏判口）"
 
 
 # ---------------- CLI 退出码契约（给脚本调用方）----------------

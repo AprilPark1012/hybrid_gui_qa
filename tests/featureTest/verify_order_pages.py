@@ -6,7 +6,7 @@
 
 判据按需求编号一一对应（每条都真开浏览器点、真读页面状态，不看「代码里写了」）：
   ① 合同页有「查看订单」链接，点击**新开 tab**打开订单系统页面
-  ② 订单列表默认 **3 页 × 20 条**（共 60 条）· 9 列字段与顺序一致 · 页码/上一页/下一页可用
+  ② 订单列表默认 **3 页 × 20 条**（共 60 条）· 11 列字段与顺序一致（含「状态」「是否开票」）· 页码/上一页/下一页可用
   ③ 搜索：订单名称**全模糊** / 销售员**右模糊** / 客户**全模糊** / 业务单元·管理单元·帐套走「...」弹层
      —— 且这三类「...」弹层**没有「取消」按钮**（选中即回填并关闭）
   ④ 新建订单：必填校验（空提交不许创建）→ 全填提交 → 弹窗关闭 · 回到列表 · **第一行就是新订单**；
@@ -50,6 +50,12 @@ def _pick(page, modal, row_text):
         raise RuntimeError(f"下钻定位失败（modal={modal} 行锚={row_text!r}）：{r.get('reason')}")
     return r["locator_obj"]
 DEMO = "http://localhost:8000"
+
+# 需求⑮（2026-09-28）起所有业务页都有登录墙 ⇒ 自动化入口一律带 ?demo_role=
+#   （页面上**没有**这个入口，只有 URL 参数/请求头/token 三种程序化入口）
+#   本脚本要看得见合同页 + 新建订单 ⇒ 用订单管理员身份；老脚本没带这个参数会被跳去登录页（此前就是这么红的）
+TEST_ROLE = "order_admin"
+ROLE_Q = "?demo_role=" + TEST_ROLE
 SHOTS = BASE / "output" / "order_shots"
 RESULTS: list[tuple[bool, str, str]] = []
 
@@ -104,6 +110,17 @@ def _ready(page, timeout: int = 8000):
 
 
 def run() -> None:
+    # ⚠️ 项目内存红线（硬纪律）：MemAvailable < 550MB 时**一律 SKIP**，不许硬起 chromium
+    #    —— 本机历史事故：低内存拉起浏览器会把 Hermes 网关一起带走。「没跑 ≠ 通过」，SKIP 必须如实报。
+    try:
+        _avail = int(next(l.split()[6] for l in open("/proc/meminfo")
+                          if l.startswith("MemAvailable"))) // 1024
+    except Exception:
+        _avail = 9999
+    if _avail < 550:
+        print(f"\n⚠️ 浏览器段 SKIP：MemAvailable={_avail}MB < 550MB 红线 ⇒ 未跑（**没跑 ≠ 通过**）")
+        sys.exit(3)
+
     h = _api("/api/health")
     check(h.get("order_presets") == 60 and h.get("orders_per_page") == 20,
           "服务端声明订单数据口径（60 条 = 3 页 × 20）",
@@ -120,7 +137,7 @@ def run() -> None:
 
         # ============================ ① 入口 ============================
         print("\n===== ① 合同管理系统 → 「查看订单」→ 新 tab =====")
-        page.goto(DEMO + "/", wait_until="networkidle")
+        page.goto(DEMO + "/" + ROLE_Q, wait_until="networkidle")
         _ready(page)
         entry = page.locator("#link-orders")
         check(entry.count() == 1 and entry.inner_text().strip() == "查看订单",
@@ -138,11 +155,13 @@ def run() -> None:
               "点击后**新开了一个 tab**打开订单系统页面", f"url={orders.url.split('/')[-1]} tabs={len(ctx.pages)}")
 
         # ============================ ② 列表 + 分页 ============================
-        print("\n===== ② 订单列表：3 页 × 20 条 · 9 列字段 =====")
+        print("\n===== ② 订单列表：3 页 × 20 条 · 11 列字段 =====")
         headers = orders.eval_on_selector_all(
             "#tbl-orders thead th", "els => els.map(e => e.innerText.trim())")
-        want = ["订单编号", "合同编号", "订单名称", "管理单元", "销售员", "订单类型", "业务单元", "帐套", "客户"]
-        check(headers == want, "9 列字段与顺序完全一致", f"{headers}")
+        # 需求⑨ 加「状态」列（2026-09-28 上旬）· 需求⑳ 加「是否开票」列 ⇒ 9 列变 11 列，断言同步刷新
+        want = ["订单编号", "合同编号", "订单名称", "管理单元", "销售员", "订单类型", "业务单元", "帐套",
+                "客户", "状态", "是否开票"]
+        check(headers == want, "11 列字段与顺序完全一致", f"{headers}")
         check(orders.locator("#total").inner_text().strip() == "60",
               "共 60 条订单（3 页 × 20）", f"total={orders.locator('#total').inner_text().strip()}")
         check(orders.locator("#page-info").inner_text().strip() == "第 1 / 3 页",
@@ -287,7 +306,7 @@ def run() -> None:
         # P16 批 6（口径 C）：行内链接 `olink-*`/`nlink-*` 埋点已撤 ⇒ 改走**行锚 + 列字段 + 目标**下钻
         # （这正是生产里唯一可行的路：顶层表格当锚点，行按内容锚定，列按 data-field 取，目标按角色取）
         for col_field, desc in [("orderNo", "点订单编号"), ("orderName", "点订单名称")]:
-            orders.goto(DEMO + "/orders.html", wait_until="networkidle")
+            orders.goto(DEMO + "/orders.html" + ROLE_Q, wait_until="networkidle")
             _ready(orders)
             tabs_before = len(ctx.pages)
             _r = scope_locate(orders, {"kind": "table", "by": "test_id", "value": "tbl-orders"},
@@ -322,7 +341,7 @@ def run() -> None:
 
         # ============================ ⑥ 合同编号 → 新 tab + 关闭 ============================
         print("\n===== ⑥ 点合同编号 ⇒ 新 tab 合同详情 ⇒ 「返回」关闭该 tab =====")
-        orders.goto(DEMO + "/orders.html", wait_until="networkidle")
+        orders.goto(DEMO + "/orders.html" + ROLE_Q, wait_until="networkidle")
         _ready(orders)
         row_contract = orders.eval_on_selector(
             "#tbody-orders tr:first-child td[data-field=contractNo] a", "e => e.innerText.trim()")

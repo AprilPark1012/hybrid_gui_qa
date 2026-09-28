@@ -1590,7 +1590,9 @@ def _assert_first_row(page, field, expected, desc=""):
 # 而且失败原因会指向错误的地方（用例互相污染比用例失败更难查）。
 # 口径：HYBRID_RESET_URL 可覆盖默认值；设为 off/0/none/空 则完全不复位（被测应用没有复位接口时）。
 # 复位失败**大声告警但不中断**：那是「用例可能互相污染」的信号，绝不该被静默吞掉。
-_RESET_URL = os.environ.get("HYBRID_RESET_URL", "http://localhost:8000/api/reset")
+# 2026-09-28：demo 的 /api/reset 默认**保留用户手工数据**（免得跑判据把演示数据清了），
+# 用例间要做干净隔离 ⇒ 默认 URL 带 ?purge=1（可用 HYBRID_RESET_URL 覆盖）
+_RESET_URL = os.environ.get("HYBRID_RESET_URL", "http://localhost:8000/api/reset?purge=1")
 _RESET_OFF = ("", "off", "0", "none", "no", "false")
 
 

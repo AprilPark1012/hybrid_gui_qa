@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>应收发票列表</title>
+<!--
+  应收发票列表（P21.5 · Vue 3 重写）—— 需求第 7 条
+    页面结构 = **3 个 div**：
+      ① 搜索区 #search-area    —— 业务单元 / 发票号 / 合同编号（label 全是**独立 div**、不含子控件；控件嵌套 >5 ≤12）
+      ② 操作区 #op-area        —— 创建（跳「应收发票创建」页）/ 删除（删掉勾选的发票）
+      ③ 列表区 #list-area      —— 表格 + 行数标记（分区块就绪用）
+
+  契约（不许破 —— references/demo-refactor-contract.md）：
+    · 就绪契约 body[data-hybrid-ready] 0→1（初次加载/搜索完成）；行数标记 #tbody-invoices[data-hybrid-rows]
+    · 埋点口径 C：**只有顶层容器**才带 data-testid（tbl-invoices / total-inv / status-inv / search-area）
+    · 接口：GET /api/invoices?no=&contract_no=&bu=&page=&size= · POST /api/invoice/delete（?w= 分区保留）
+    · 搜索口径：业务单元 **精确**（下拉选择）· 发票号 / 合同编号 **全模糊**
+    · 「创建」⇒ /invoice_create.html（可带 ?from_order=SO-xxxx 从订单「去开票」进来）
+-->
+<script src="vendor/vue.global.prod.js"></script>
+<script src="auth.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 "Microsoft YaHei", system-ui, sans-serif; color: #1f2329; background: #f5f6f8; }
+  .topbar { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #e2e4e8; }
+  .topbar h2 { font-size: 16px; margin: 0; }
+  .topbar .total { color: #4b5058; }
+  .topbar .spacer { flex: 1 1 auto; }
+  .btn { height: 28px; padding: 0 12px; border: 1px solid #c9ccd2; background: #fff; border-radius: 3px; cursor: pointer; font: inherit; }
+  .btn.primary { background: #1668dc; border-color: #1668dc; color: #fff; }
+  .btn.danger { color: #d4380d; border-color: #ffa39e; }
+
+  .block { background: #fff; margin: 12px 16px; border: 1px solid #e2e4e8; border-radius: 3px; padding: 12px 16px; }
+  .block h3 { margin: 0 0 12px; font-size: 14px; border-left: 3px solid #1668dc; padding-left: 8px; }
+  .cond { display: flex; align-items: center; width: 330px; }
+  .cond > .label { flex: 0 0 76px; text-align: right; padding-right: 8px; color: #4b5058; }   /* 独立 div label */
+  .cond .ctl { flex: 1 1 auto; }
+  .cond .ctl input, .cond .ctl select { width: 100%; height: 28px; padding: 0 8px; border: 1px solid #c9ccd2; border-radius: 3px; background: #fff; font: inherit; }
+  #search-area { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  #search-area .tb-actions { display: flex; gap: 8px; margin-left: auto; }
+  #op-area { display: flex; gap: 8px; align-items: center; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #e2e4e8; padding: 6px 9px; text-align: left; white-space: nowrap; }
+  th { background: #fafbfc; font-weight: 600; }
+  tbody tr:hover { background: #f0f6ff; }
+  .pick-cell { text-align: center; width: 44px; }
+  #status-inv { padding: 8px 16px; color: #1668dc; min-height: 20px; }
+</style>
+</head>
+<body data-hybrid-ready="0">
+<div id="app">
+
+  <div class="topbar">
+    <h2>应收发票列表</h2>
+    <div class="total">共 <span id="total-inv" data-testid="total-inv">{{ total }}</span> 张发票</div>
+    <div class="spacer"></div>
+    <a class="btn" id="btn-back-o" href="/orders.html">返回订单系统</a>
+    <!-- 需求⑮：登录身份 + 超管切换角色的头像（auth.js 渲染） -->
+    <div id="nav-user" class="nav-user"></div>
+  </div>
+
+  <!-- ===== ① 搜索区 ===== -->
+  <div class="block" id="search-area" data-testid="search-area" aria-label="发票搜索区">
+    <div class="cond" v-for="c in conds" :key="c.key">
+      <div class="label">{{ c.label }}</div>
+      <div class="ctl e1"><div class="e2"><div class="e3"><div class="e4"><div class="e5"><div class="e6">
+        <select v-if="c.type === 'select'" :id="c.id" :name="c.key" :title="c.label" :aria-label="c.label" v-model="f[c.key]">
+          <option value="">全部</option>
+          <option v-for="o in c.options" :key="o" :value="o">{{ o }}</option>
+        </select>
+        <input v-else :id="c.id" :name="c.key" type="text" :title="c.label" :aria-label="c.label"
+               :placeholder="c.ph" autocomplete="off" v-model="f[c.key]" @keyup.enter="search">
+      </div></div></div></div></div></div>
+    </div>
+    <div class="tb-actions">
+      <button id="btn-search-inv" class="btn primary" type="button" @click="search">搜索</button>
+      <button id="btn-reset-inv" class="btn" type="button" @click="resetSearch">重置</button>
+    </div>
+  </div>
+
+  <!-- ===== ② 操作区 ===== -->
+  <div class="block" id="op-area" aria-label="发票操作区">
+    <button id="btn-create-inv" class="btn primary" type="button" @click="createInvoice">创建</button>
+    <button id="btn-delete-inv" class="btn danger" type="button" @click="deletePicked">删除</button>
+    <span class="hint" id="op-hint" style="color:#888;">勾选要删除的发票后点「删除」</span>
+  </div>
+
+  <!-- ===== ③ 列表区 ===== -->
+  <div class="block" id="list-area" aria-label="发票列表区">
+    <table id="tbl-invoices" data-testid="tbl-invoices" aria-label="应收发票列表">
+      <thead>
+        <tr>
+          <th>选择</th><th>发票号</th><th>发票类型</th><th>发票日期</th><th>业务单元</th><th>合同编号</th>
+          <th>客户</th><th>销售员</th><th>币种</th><th>行数</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-invoices" :data-hybrid-rows="rows.length">
+        <tr v-for="r in rows" :key="r.no">
+          <td class="pick-cell">
+            <input type="checkbox" name="pick-invoice" :id="'ck-' + r.no" :value="r.no" v-model="picked"
+                   :title="'选择发票 ' + r.no" :aria-label="'选择发票 ' + r.no">
+          </td>
+          <td data-field="invoiceNo"><a :href="detailHref(r.no)">{{ r.no }}</a></td>
+          <td data-field="invoiceType">{{ r.invoice_type }}</td>
+          <td data-field="invoiceDate">{{ r.invoice_date }}</td>
+          <td data-field="businessUnit">{{ r.bu }}</td>
+          <td data-field="contractNo">{{ r.contract_no }}</td>
+          <td data-field="customer" :data-cust="r.cust">{{ r.custName }}</td>
+          <td data-field="salesman" :data-salesman="r.salesman">{{ r.salesmanName }}</td>
+          <td data-field="currency">{{ r.currency }}</td>
+          <td data-field="lineCount">{{ r.line_count }}</td>
+        </tr>
+        <tr v-if="!rows.length"><td colspan="10">没有匹配的发票</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div id="status-inv" data-testid="status-inv">{{ status }}</div>
+</div>
+
+<script>
+const { createApp } = Vue;
+
+// 分区号（F6 契约）：**框架用 context.add_init_script 注入 window.__HYBRID_W**（pytest-xdist 每 worker 一个分区）
+// ⇒ 必须优先读它；手工浏览时退回 URL 的 ?w=<分区>。只读 ?w= 会让框架驱动时全落 default 分区，并发互相踩。
+const PART = String(window.__HYBRID_W || '').trim() || (new URLSearchParams(location.search).get('w') || '');
+function markBusy() { document.body.dataset.hybridReady = '0'; }
+function markReady() { document.body.dataset.hybridReady = '1'; }
+function apiUrl(path) {
+  // 需求⑮：带上身份（token 或自动化用的 ?demo_role=），页面自己的 ?w=<分区> 先拼
+  return DEMO_AUTH.url(PART ? path + (path.includes('?') ? '&' : '?') + 'w=' + encodeURIComponent(PART) : path);
+}
+
+createApp({
+  data() {
+    return {
+      conds: [
+        { key: 'bu',          label: '业务单元', id: 'tb-i-bu',       type: 'select', options: [] },
+        { key: 'no',          label: '发票号',   id: 'tb-i-no',       type: 'text',   ph: '发票号（全模糊）' },
+        { key: 'contract_no', label: '合同编号', id: 'tb-i-contract', type: 'text',   ph: '合同编号（全模糊）' },
+      ],
+      f: { bu: '', no: '', contract_no: '' },
+      rows: [], total: 0, picked: [], status: '', buOptions: [],
+    };
+  },
+  mounted() { this.loadDicts(); this.search(); },
+  watch: {
+    // 需求⑱：所有校验/提示信息都弹一个「弹出框 tips」；
+    // ⚠️ 状态行**保留同样文字**（自动化判据/用例按状态行取值），所以这里是"加弹窗"而不是"挪走文字"
+    status(v) { if (v) window.DEMO_TIPS.show(v); },
+  },
+  methods: {
+    async loadDicts() {
+      this.buOptions = (await (await fetch(apiUrl('/api/dict?kind=bu'))).json()).values || [];
+      this.conds.find(c => c.key === 'bu').options = this.buOptions;
+    },
+    async search() {
+      markBusy();
+      const qs = new URLSearchParams({ size: '100' });     // 演示规模一次取够，避免「共 31 张只显示 30 行」的错觉
+      Object.entries(this.f).forEach(([k, v]) => { if (v) qs.set(k, v); });
+      const info = await (await fetch(apiUrl('/api/invoices?' + qs.toString()))).json();
+      this.rows = info.items || []; this.total = info.total || 0;
+      this.picked = [];                       // 重新搜索 ⇒ 清空勾选
+      this.status = `查询到 ${this.total} 张发票`;
+      markReady();
+    },
+    resetSearch() { this.f = { bu: '', no: '', contract_no: '' }; this.search(); },
+    /* ---- 操作区：创建 ⇒ 跳「应收发票创建」页 ---- */
+    createInvoice() { location.href = '/invoice_create.html'; },
+    // 需求⑲：点发票号 ⇒ 进发票详情（带上身份，兼容 token / 自动化 ?demo_role=）
+    detailHref(no) { return DEMO_AUTH.url('/invoice_detail.html?no=' + encodeURIComponent(no)); },
+    /* ---- 操作区：删除勾选的发票（未勾选 ⇒ 只给提示） ---- */
+    async deletePicked() {
+      if (!this.picked.length) { this.status = '请先勾选要删除的发票'; return; }
+      const done = [], failed = [];
+      for (const no of this.picked.slice()) {
+        const r = await fetch(apiUrl('/api/invoice/delete'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ no }),
+        });
+        (r.ok ? done : failed).push(no);
+      }
+      await this.search();                                   // 先刷新列表
+      this.status = done.length
+        ? `已删除 ${done.length} 张发票：${done.join('、')}（当前共 ${this.total} 张）`
+        : `删除失败：${failed.join('、')}`;                    // ← 再写状态，别被 search() 的提示覆盖
+    },
+  },
+}).mount('#app');
+// 需求⑮：登录与角色
+DEMO_AUTH.init();
+</script>
+</body>
+</html>

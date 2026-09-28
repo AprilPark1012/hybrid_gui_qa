@@ -45,3 +45,6 @@ build/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# demo 运行期数据（需求⑯：数据留本地，不入库）
+demo/.data/

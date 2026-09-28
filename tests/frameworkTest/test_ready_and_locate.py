@@ -37,6 +37,12 @@ CLI = ROOT / "framework" / "cli.py"
 APP = ROOT / "demo" / "app.py"
 CONTRACTS_HTML = ROOT / "demo" / "contracts.html"
 DETAIL_HTML = ROOT / "demo" / "contract_detail.html"
+# 2026-09-28：demo 重构后页面变多 ⇒ 就绪契约的守门覆盖面同步扩到**全部页面**（此前只守 2 页，
+# 新页漏了也无声无息 —— 实测就是这么发现「重写页只读 ?w=、没读框架注入的 window.__HYBRID_W」的）
+DEMO_PAGES = [ROOT / "demo" / n for n in (
+    "contracts.html", "contract_detail.html", "orders.html",
+    "order_detail.html", "pick_customer.html", "invoice_list.html", "invoice_create.html",
+)]
 
 # 共享运行时 / 转发 conftest 不算「用例模块」（它们没有用例接线，见下 _read_generated_cases）
 _NOT_CASE_MODULE = ("conftest.py", "_harness.py")
@@ -103,13 +109,27 @@ def test_conftest_has_ready_wait_and_base_override():
         assert "HYBRID_WAIT_READY" in src, f"{tag} 缺少就绪等待开关（回滚用）"
 
 
+def _strip_comments(src: str) -> str:
+    """剥掉 HTML 注释与 JS 行注释后再做契约断言。
+
+    为什么：直接 `"token" in src` 会被**注释里提到的 token**满足 ⇒ 判据恒真、静默失效
+    （2026-09-28 实测：把页面里的 `window.__HYBRID_W` 读取删掉、只在注释里留了词，判据照样绿）。
+    """
+    src = re.sub(r"<!--.*?-->", "", src, flags=re.S)
+    src = re.sub(r"^\s*//.*$", "", src, flags=re.M)
+    return src
+
+
 def test_pages_declare_ready_contract():
-    for p in (CONTRACTS_HTML, DETAIL_HTML):
-        src = _read(p)
-        assert 'data-hybrid-ready="0"' in src, f"{p.name} 没有静态声明就绪契约"
-        assert "markReady" in src, f"{p.name} 没有在数据就绪后置位"
+    for p in DEMO_PAGES:
+        raw = _read(p)
+        assert 'data-hybrid-ready="0"' in raw, f"{p.name} 没有静态声明就绪契约"
+        src = _strip_comments(raw)          # ⚠️ 断言走「去掉注释后的代码」，注释里提一句不算数
+        assert re.search(r"\bmarkReady\s*\(\s*\)", src), \
+            f"{p.name} 没有在数据就绪后置位（缺 markReady() 调用）"
         assert "apiUrl(" in src, f"{p.name} 的 /api 调用没走 apiUrl（分区带不上）"
-        assert "window.__HYBRID_W" in src, f"{p.name} 没读分区号"
+        assert re.search(r"\bwindow\.__HYBRID_W\b", src), \
+            f"{p.name} 没读分区号（框架注入的分区带不上）"
 
 
 # ---------------- F2：有界等待（且不能把复数断言也拖慢） ----------------

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>登录 · 演示系统</title>
+<!--
+  登录页（需求⑮ · 2026-09-28 晚）—— 四个角色：合同管理员 / 订单管理员 / 发票管理员 / 超级管理员
+    · 账号密码各不相同（demo 固定值，见下方提示表；真系统应走服务端用户表 + 加盐哈希）
+    · 登录成功 ⇒ 发 token（localStorage: demo_token），跳回 ?next=（默认 / 合同列表页）
+    · 未登录访问受保护页面 ⇒ 由 auth.js 自动跳到本页
+  契约：就绪契约 body[data-hybrid-ready] 0→1；埋点口径 C（顶层容器才带 data-testid）
+-->
+<script src="auth.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.6 "Microsoft YaHei", system-ui, sans-serif; color: #1f2329;
+         background: #f5f6f8; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .card { width: 420px; background: #fff; border: 1px solid #e2e4e8; border-radius: 4px; padding: 22px 24px; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .sub { color: #8a8f99; font-size: 12px; margin-bottom: 16px; }
+  .field { display: flex; align-items: center; margin-bottom: 12px; }
+  .field > .label { flex: 0 0 64px; text-align: right; padding-right: 8px; color: #4b5058; }
+  .field .ctl { flex: 1 1 auto; }
+  .field input { width: 100%; height: 30px; padding: 0 8px; border: 1px solid #c9ccd2; border-radius: 3px; font: inherit; }
+  #btn-login { width: 100%; height: 32px; margin-top: 4px; background: #1668dc; color: #fff;
+               border: 1px solid #1668dc; border-radius: 3px; cursor: pointer; font: inherit; }
+  #login-status { min-height: 20px; color: #d4380d; font-size: 12px; margin: 10px 0 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+  th, td { border: 1px solid #e2e4e8; padding: 4px 6px; text-align: left; }
+  th { background: #fafbfc; font-weight: 600; }
+  .tip { color: #8a8f99; font-size: 12px; margin-top: 10px; }
+  .btn-mini { border: 1px solid #c9ccd2; background: #fff; border-radius: 3px; padding: 2px 8px;
+              cursor: pointer; font: inherit; }
+</style>
+</head>
+<body data-hybrid-ready="0">
+<div class="card">
+  <h1>演示系统登录</h1>
+  <div class="sub">合同 / 订单 / 发票 三个模块 + 超级管理员</div>
+
+  <div class="field">
+    <div class="label">账号</div>
+    <div class="ctl l1"><div class="l2"><div class="l3"><div class="l4"><div class="l5"><div class="l6">
+      <input id="login-user" name="username" type="text" title="账号" aria-label="账号"
+             placeholder="请输入账号" autocomplete="username">
+    </div></div></div></div></div></div>
+  </div>
+  <div class="field">
+    <div class="label">密码</div>
+    <div class="ctl l1"><div class="l2"><div class="l3"><div class="l4"><div class="l5"><div class="l6">
+      <input id="login-pwd" name="password" type="password" title="密码" aria-label="密码"
+             placeholder="请输入密码" autocomplete="current-password">
+    </div></div></div></div></div></div>
+  </div>
+  <button id="btn-login" type="button">登 录</button>
+  <div id="login-status" data-testid="login-status"></div>
+
+  <table data-testid="login-accounts">
+    <thead><tr><th>角色</th><th>账号</th><th>密码</th></tr></thead>
+    <tbody id="account-rows"></tbody>
+  </table>
+  <div class="tip">
+    demo 专用账号（真实系统应为服务端用户表）：<b>查看</b>合同/订单/发票四个角色都能做；
+    <b>新建</b>合同只给合同管理员、新建订单只给订单管理员、创建发票只给发票管理员；
+    <b>新建客户</b>四个角色都能做。超级管理员登录后，点右上角头像可切换角色。
+  </div>
+</div>
+
+<script>
+const ACCOUNTS_HINT = [
+  { role: '合同管理员', user: 'contract', pwd: 'contract@123' },
+  { role: '订单管理员', user: 'order', pwd: 'order@123' },
+  { role: '发票管理员', user: 'invoice', pwd: 'invoice@123' },
+  { role: '超级管理员', user: 'super', pwd: 'super@123' },
+];
+const NEXT = new URLSearchParams(location.search).get('next') || '/';
+const $ = (id) => document.getElementById(id);
+
+document.getElementById('account-rows').innerHTML = ACCOUNTS_HINT
+  .map((a) => `<tr><td>${a.role}</td><td>${a.user}</td><td>${a.pwd}</td></tr>` +
+              `<tr><td colspan="3" style="padding:2px 6px"><button class="btn-mini" data-use="${a.user}" ` +
+              `data-pwd="${a.pwd}">用这个账号填入 →</button></td></tr>`).join('');
+document.getElementById('account-rows').addEventListener('click', (e) => {
+  const u = e.target.getAttribute && e.target.getAttribute('data-use');
+  if (!u) return;
+  $('login-user').value = u;
+  $('login-pwd').value = e.target.getAttribute('data-pwd');
+  $('login-status').textContent = `已填入 ${u} 的账号密码，点「登 录」即可`;
+});
+
+async function doLogin() {
+  const u = $('login-user').value.trim();
+  const p = $('login-pwd').value;
+  if (!u || !p) { $('login-status').textContent = '账号和密码都要填'; return; }
+  $('login-status').style.color = '#1668dc';
+  $('login-status').textContent = '登录中…';
+  const d = await DEMO_AUTH.login(u, p);
+  if (d.error) {
+    $('login-status').style.color = '#d4380d';
+    $('login-status').textContent = d.error;
+    return;
+  }
+  $('login-status').style.color = '#1668dc';
+  $('login-status').textContent = `登录成功：${d.user} · ${d.role_label}，正在进入…`;
+  location.href = NEXT;
+}
+$('btn-login').addEventListener('click', doLogin);
+['login-user', 'login-pwd'].forEach((id) => $(id).addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doLogin();
+}));
+
+// 已登录过（token 还在）⇒ 提示一下，可一键继续
+DEMO_AUTH.load().then((me) => {
+  if (me) {
+    $('login-status').style.color = '#1668dc';
+    $('login-status').innerHTML = `当前已登录：${me.user} · ${me.role_label}　　点「登 录」可换账号`;
+    $('login-user').value = me.user;
+  }
+  document.body.dataset.hybridReady = '1';
+});
+</script>
+<script>
+// 需求⑱：登录页的提示（密码不对 / 账号密码都要填 / 登录成功）同步弹「弹出框 tips」
+new MutationObserver(() => {
+  const el = document.getElementById('login-status');
+  if (el && el.textContent.trim()) window.DEMO_TIPS.show(el.textContent.trim());
+}).observe(document.getElementById('login-status'), { childList: true, characterData: true, subtree: true });
+</script>
+</body>
+</html>

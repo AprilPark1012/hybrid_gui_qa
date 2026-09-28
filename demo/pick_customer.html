@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>选择客户</title>
+<!--
+  选客户 iframe 页（P21.2 · 需求第 3 条）：合同页点「…」后弹出的「选择客户」**在 iframe 里**，
+  必须进入 iframe 才能选到客户。本页与父页**同源**（同一 host:port 的静态页）。
+  技术：Vue 3（本地 vendor）+ 动态生成（v-for）+ 数据来自 mock API。
+
+  契约（不许破 —— 见 references/demo-refactor-contract.md）：
+    ① 就绪契约：body[data-hybrid-ready] 静态 0 ⇒ 数据渲染完成后置 "1"
+    ② 埋点口径 C：只有**顶层容器**带 data-testid；行/单元格/行内按钮一律不带
+    ③ 接口：GET /api/customers（支持 ?w=<分区>）—— 与父页同一分区
+    ④ 选中回传：同源 postMessage 给父窗口 {type:'pick-customer', name, addr}
+-->
+<script src="vendor/vue.global.prod.js"></script>
+<script src="auth.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 "Microsoft YaHei", system-ui, sans-serif; background: #f5f6f8; }
+  .page { padding: 10px 12px; }
+  .bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .bar .label { min-width: 68px; color: #333; }
+  .bar input { height: 26px; padding: 0 6px; border: 1px solid #c9ccd2; border-radius: 3px; flex: 1; }
+  .btn { height: 26px; padding: 0 12px; border: 1px solid #c9ccd2; background: #fff; border-radius: 3px; cursor: pointer; }
+  .btn.primary { background: #1668dc; border-color: #1668dc; color: #fff; }
+  table { width: 100%; border-collapse: collapse; background: #fff; }
+  th, td { border: 1px solid #e2e4e8; padding: 5px 8px; text-align: left; }
+  th { background: #fafbfc; font-weight: 600; }
+  tbody tr:hover { background: #f0f6ff; }
+  tbody tr.sel { background: #e6f2ff; }
+  .hint { color: #888; font-size: 12px; }
+</style>
+</head>
+<body data-hybrid-ready="0">
+<div class="page" id="app">
+
+  <!-- 搜索区（label 独立 div，不含子控件；控件包在多层 div 里） -->
+  <div class="bar">
+    <div class="label">客户名称</div>
+    <div class="w1"><div class="w2"><div class="w3"><div class="w4"><div class="w5"><div class="w6">
+      <input id="cust-keyword" name="custKeyword" type="text" title="客户名称关键字"
+             placeholder="输入客户名称关键字" autocomplete="off" v-model="keyword" @keyup.enter="load">
+    </div></div></div></div></div></div>
+    <button class="btn primary" id="btn-cust-search" type="button" @click="load">搜索</button>
+  </div>
+
+  <!-- 客户表格（顶层容器 = 唯一允许带 data-testid 的地方） -->
+  <table id="tbl-pick-cust" data-testid="tbl-pick-cust" aria-label="选择客户">
+    <thead>
+      <tr>
+        <th>客户名称</th><th>地址</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr v-for="(c, i) in rows" :key="c.name" :class="{ sel: picked === c.name }">
+        <td data-field="custName">{{ c.name }}</td>
+        <td data-field="custAddr">{{ c.addr }}</td>
+        <td><button class="btn" type="button" @click="pick(c)">选择</button></td>
+      </tr>
+      <tr v-if="!rows.length"><td colspan="3" class="hint">没有匹配的客户</td></tr>
+    </tbody>
+  </table>
+
+  <p class="hint" id="pick-hint" style="margin-top:8px">
+    选中后会把客户名回传给合同页（同源 postMessage）· 当前分区：{{ part || 'default' }}
+  </p>
+</div>
+
+<script>
+const { createApp } = Vue;
+
+// 分区号（F6 契约）：**框架用 context.add_init_script 注入 window.__HYBRID_W**（pytest-xdist 每 worker 一个分区）
+// ⇒ 必须优先读它；手工浏览时退回 URL 的 ?w=<分区>。只读 ?w= 会让框架驱动时全落 default 分区，并发互相踩。
+const PART = String(window.__HYBRID_W || '').trim() || (new URLSearchParams(location.search).get('w') || '');
+function markBusy() { document.body.dataset.hybridReady = '0'; }
+function markReady() { document.body.dataset.hybridReady = '1'; }
+
+function apiUrl(path) {
+  const u = !PART ? path : path + (path.includes('?') ? '&' : '?') + 'w=' + encodeURIComponent(PART);
+  return DEMO_AUTH.url(u);          // 需求⑮：带上身份（token / ?demo_role=）
+}
+
+createApp({
+  data() {
+    return { rows: [], keyword: '', picked: '', part: PART };
+  },
+  mounted() {
+    this.load();
+    // 父页 focus 到本 iframe 时重新拉一次（保证数据新鲜）
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'refresh-customers') this.load();
+    });
+  },
+  methods: {
+    async load() {
+      markBusy();
+      const all = await (await fetch(apiUrl('/api/customers'))).json();
+      const kw = (this.keyword || '').trim();
+      this.rows = kw ? all.filter(c => (c.name || '').includes(kw) || (c.addr || '').includes(kw)) : all;
+      markReady();   // 数据就绪
+    },
+    pick(c) {
+      this.picked = c.name;
+      // 同源回传：父窗口接收后填入「客户」字段并关闭弹层
+      window.parent.postMessage({ type: 'pick-customer', name: c.name, addr: c.addr }, '*');
+    },
+  },
+}).mount('#app');
+// 需求⑮：弹层/iframe 里的「新建客户 / 新建销售员」—— **四个角色都能做**，
+// 所以这里不跳登录页（allowAnonymous），只把身份带上；接口侧仍会校验登录态。
+DEMO_AUTH.init({ allowAnonymous: true });
+</script>
+</body>
+</html>
