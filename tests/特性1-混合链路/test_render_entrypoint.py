@@ -1,7 +1,7 @@
 """培训页渲染入口的「真跑」判据（2026-09-24 补 —— 一类当晚没抓住的漏网）。
 
 **为什么要有它**：`tests/` 结构搬迁那天，我做了批量路径替换，**误伤了没搬家的 `build_tools/build_html.py`**
-（它的 `parents[1]` 被改成 `parents[2]` -> 输出路径指到 `/home/admin/docs` -> 渲染 `FileNotFoundError`）。
+（它的 `parents[1]` 被改成 `parents[2]` -> 输出路径指到 `/home/<user>/docs` -> 渲染 `FileNotFoundError`）。
 当时一类 **485 passed 全绿** —— 因为它只 import `build_html`，**从不真跑渲染** -> 又一次「判据比现实宽松」。
 本判据直接**子进程真跑一次渲染**（幂等、秒级），并断言产物落在仓库内。
 
