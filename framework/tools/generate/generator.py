@@ -1707,8 +1707,11 @@ def _prepare_run_log_dir():
 # 它的同步 API 会一直等一个永远不来的响应 —— Python 侧 100% CPU 空转、**永不退出**
 # （2026-09-14 实测卡了 11 分钟，只能手工 kill）。挂死比失败更糟：CI 一直挂着、也没人知道卡在哪。
 # 用 stdlib 的 faulthandler：超时就打印**所有线程的调用栈**（直接看出卡在哪一行）并退出，绝不静默。
-# 口径：HYBRID_CASE_TIMEOUT 秒（默认 120）；设为 0/off 关掉。
-_CASE_TIMEOUT = os.environ.get("HYBRID_CASE_TIMEOUT", "120")
+# 口径：HYBRID_CASE_TIMEOUT 秒（**默认 600**，2026-10-08 由 120 上调）；设为 0/off 关掉。
+# 为什么上调：全链路 AI 用例要等「已签收 120 秒后自动关闭」，整条实测 165s
+#   -> 默认 120 会让它**卡在最后一步被看门狗杀掉**（日志停在最后一个 click、无任何报错），
+#   极易被误判成「用例坏了」。看门狗的作用是防挂死，不该把正常的长用例也切掉。
+_CASE_TIMEOUT = os.environ.get("HYBRID_CASE_TIMEOUT", "600")
 _WATCHDOG_SINK = None
 
 
@@ -1735,7 +1738,7 @@ def _case_watchdog():
     """每条用例一个硬超时：超时把**所有线程的调用栈**写进 log/<run>/watchdog.txt 并退出。
 
     防的是「Playwright 驱动崩溃 → 同步 API 空转不返回」那种永久挂死（比失败更糟）。
-    口径：HYBRID_CASE_TIMEOUT 秒（默认 120）；设 0/off 关掉。
+    口径：HYBRID_CASE_TIMEOUT 秒（**默认 600**）；设 0/off 关掉。
     """
     import faulthandler
     secs = (_CASE_TIMEOUT or "").strip().lower()

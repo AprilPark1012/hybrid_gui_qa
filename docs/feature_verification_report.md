@@ -7,8 +7,8 @@
 | 特性5-自愈闭环Healer | [skip] **零判据** | —（未提供日志） | [skip] **UNVERIFIED**（有实现、无判据） |
 | 特性6-并发与资源安全 | [OK] 27 | —（未提供日志） | [OK] |
 | 特性7-离线回放 | [OK] 42 | —（未提供日志） | [OK] |
-| 特性8-质量闸门体系 | [NG] 329 过 / **4 红** | —（未提供日志） | [NG] 有红 |
+| 特性8-质量闸门体系 | [NG] 334 过 / **1 红** | —（未提供日志） | [NG] 有红 |
 | 特性9-CLI帮助契约 | [OK] 85 | —（未提供日志） | [OK] |
 
-**一类合计**：676 passed / 4 failed（失败：test_good_package_passes, test_legacy_layout_audited_without_false_alarm, test_release_notes_recognized_in_both_layouts, test_missing_history_release_notes_is_caught）
+**一类合计**：681 passed / 1 failed（失败：test_readme_points_to_release_notes）
 **未验证特性（必须显式列出）**：特性5-自愈闭环Healer

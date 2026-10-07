@@ -56,11 +56,34 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.3.4"
+VERSION = "8.3.5"
 VERSION_DATE = "2026-10-07"
 CHANGELOG = [
     dict(
-        version="8.3.4", date="2026-10-07", tag="当前版本",
+        version="8.3.5", date="2026-10-08", tag="当前版本",
+        theme="<b>用例看门狗默认超时 120s 上调为 600s</b> —— 正常的长用例不该被当成「挂死」切掉",
+        summary="用户在本地跑 <code>run --debug</code>，手搓用例通过、<b>AI 全链路用例失败</b>，"
+                "而日志形态是：<b>停在最后一个 <code>click</code>、没有任何报错、没有 FAILED 标记</b>。<br>"
+                "根因：该用例最后要等「已签收后 <b>120 秒</b>自动关闭」，<b>整条实测 165 秒</b>，"
+                "而 <code>HYBRID_CASE_TIMEOUT</code> <b>默认 120 秒</b> => 被看门狗<b>掐死</b>。"
+                "看门狗的用途是防「挂死」，不该把<b>正常的长用例</b>也切掉；"
+                "而且它掐死时的表现（无报错、无 FAILED）<b>极容易被误判成「用例坏了」</b>。",
+        changed=[
+            "<code>HYBRID_CASE_TIMEOUT</code> 默认值 <b>120 -> 600</b>（生成期写入 <code>_harness.py</code>，已重生成产物）",
+            "口径注释与培训页同步：说明为何上调，以及「掐死时无报错」这个会误导人的表现",
+        ],
+        notes=[
+            "<b>为什么不是「让用户设环境变量」</b>：本地跑法太多（终端 / PyCharm 的 Run 按钮 / 内置 Terminal），"
+            "环境变量的来源各不相同 —— 终端里设的<b>对 PyCharm 的 Run 按钮 完全无效</b>"
+            "（那是另一个进程，不继承终端变量）。让用户记这种东西，等于把坑留给下一个人。",
+            "<b>排查心法（本版再次确认有效）</b>：日志<b>停在最后一个动作、后续空白、无 traceback</b> => "
+            "先怀疑<b>看门狗/超时</b>，而不是用例逻辑。对照：正常失败的用例会有明确 FAILED + 调用栈。",
+            "<b>遗留</b>：更精确的做法是「用例/场景可声明自己的超时」（谁用谁知道要多久），默认值保持激进；"
+            "已记入待办，下版评估。",
+        ],
+    ),
+    dict(
+        version="8.3.4", date="2026-10-07", tag="上一版本",
         theme="<b>交付包缺文件修复</b> —— 包里少了登录前置清单，导致「整条用例跑在登录页上」却报成「元素找不到」",
         summary="用户在<b>内网 Windows</b> 上跑 <code>python -m framework.cli run --debug</code>，"
                 "<b>两条用例全挂</b>，报 <code>RuntimeError: 元素语义未找到: 超@合同列表页</code>，"
@@ -1049,7 +1072,7 @@ CHANGELOG = [
             "（<code>HYBRID_RESET_URL</code> 可覆盖，设 off 关掉）—— 数据留在服务端后，不复位会让"
             "「列表恢复 20 行」这类断言被上一条用例的残留数据打乱（用例互相污染比用例失败更难查）",
             "<b>用例级看门狗</b>：超时把<b>所有线程的调用栈</b>写进 <code>log/&lt;run_id&gt;/watchdog.txt</code> 再退出"
-            "（<code>HYBRID_CASE_TIMEOUT</code> 默认 120s）—— 挂死比失败更糟，绝不允许",
+            "（<code>HYBRID_CASE_TIMEOUT</code> 默认 600s，2026-10-08 由 120 上调）—— 挂死比失败更糟，绝不允许",
             "<b>tests/_runner/verify_picker_layer.py</b>：弹层（picker）端到端回归 —— 弹层里 6 个同名「选择」按钮"
             "必须<b>按所在行命名</b>收集到、探完必须把层关掉、轮询必须第一轮就命中",
             "<b>tests/特性2-语义识别与分层定位/verify_cross_page.py 新增第四段</b>：UI 新建 → 详情页读到的客户必须等于弹层里选的那个；"
@@ -3001,7 +3024,7 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
         <td><b>换目标</b>：同一套用例跑本机 / 慢代理 / 预发环境（生成脚本的 <span class="code-inline">goto</span> 统一走 <span class="code-inline">_goto()</span> 替换 scheme + host）</td></tr>
     <tr><td><span class="code-inline">HYBRID_RESET_URL</span></td><td><span class="code-inline">http://localhost:8000/api/reset</span></td>
         <td><b>用例间数据复位</b>（每条用例前 POST 一次）；<span class="code-inline">off</span> / <span class="code-inline">0</span> / 空 = 不复位</td></tr>
-    <tr><td><span class="code-inline">HYBRID_CASE_TIMEOUT</span></td><td><span class="code-inline">120</span></td>
+    <tr><td><span class="code-inline">HYBRID_CASE_TIMEOUT</span></td><td><span class="code-inline">600</span></td>
         <td><b>用例级看门狗</b>（秒）：超时把调用栈写进 <span class="code-inline">log/&lt;run_id&gt;/watchdog.txt</span> 并退出；<span class="code-inline">0</span> / <span class="code-inline">off</span> = 关</td></tr>
     <tr><td><span class="code-inline">HYBRID_LOCATE_TIMEOUT</span></td><td><span class="code-inline">5000</span></td>
         <td><b>定位有界等待</b>（毫秒）：主定位等「元素 attached」的上限，超时才降到语义兜底 / 自愈 —— <b>慢页面调大它</b></td></tr>
