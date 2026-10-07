@@ -56,11 +56,36 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.3.3"
+VERSION = "8.3.4"
 VERSION_DATE = "2026-10-07"
 CHANGELOG = [
     dict(
-        version="8.3.3", date="2026-10-07", tag="当前版本",
+        version="8.3.4", date="2026-10-07", tag="当前版本",
+        theme="<b>交付包缺文件修复</b> —— 包里少了登录前置清单，导致「整条用例跑在登录页上」却报成「元素找不到」",
+        summary="用户在<b>内网 Windows</b> 上跑 <code>python -m framework.cli run --debug</code>，"
+                "<b>两条用例全挂</b>，报 <code>RuntimeError: 元素语义未找到: 超@合同列表页</code>，"
+                "而 <code>page.url</code> 停在 <code>login.html?next=%2F</code>。<br>"
+                "根因：<b>交付包缺 <code>scripts/generated/_auth.json</code></b>（登录前置清单）—— "
+                "它被 <code>.gitignore</code> 忽略，而打包脚本走 <code>git ls-files</code>（只收入库文件）"
+                "=> <b>必然漏</b>。包里的 <code>scripts/generated/*.py</code> 又已是<b>预生成产物</b>，"
+                "用户解包后直接 run、不会跑 generate => <code>_harness.py</code> 读不到同目录的 "
+                "<code>_auth.json</code> => 登录前置没凭据 => 业务页被重定向到登录页 => "
+                "<b>现象却是「元素语义未找到」，排查方向被彻底带偏</b>。",
+        fixed=[
+            "<code>pack_release.py</code> 收集文件时<b>显式补上</b> <code>scripts/generated/_auth.json</code>"
+            "（口径修正：<b>「不入库」不等于「不入包」</b> —— 入库靠 git，交付靠打包脚本，两件事分开）",
+            "<b>包自检加一条</b>：仓库里有该文件而包里没有 => 报问题"
+            "（只在仓库确有该文件时才要求，避免对无登录场景误报）；这个坑以后进不了交付包",
+        ],
+        notes=[
+            "<b>30 秒复现</b>（本机即可）：把 <code>scripts/generated/_auth.json</code> 移走 => "
+            "跑 <code>run --case &lt;id&gt;</code> => <b>必现</b>；移回来 => <code>passed</code>。",
+            "<b>排查心法</b>：用例报「元素找不到」时<b>先看 <code>page.url</code></b> —— "
+            "URL 是登录页/空白页，说明问题<b>根本不在定位</b>，而在<b>前置没生效</b>。",
+        ],
+    ),
+    dict(
+        version="8.3.3", date="2026-10-07", tag="上一版本",
         theme="<b>两条判据的跨平台适配</b> —— 把「我方无法在 Windows 验证的假设」换成「平台无关的确定判据」",
         summary="V8.3.2 在内网 Windows 上复跑一类，<b>7 条红降到 2 条</b>，剩下这两条<b>都不是原来那批</b>：<br>"
                 "<b>(1)</b> <code>test_runner_runs_a_real_script</code> 被 <b>demo 新鲜度闸门</b>拦下（exit 2 / 闸门 exit 5）"

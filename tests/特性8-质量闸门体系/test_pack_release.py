@@ -318,3 +318,44 @@ def test_collect_files_keeps_sources_and_drops_runtime_cruft():
     assert notes, "升级日志（releases/RELEASE_NOTES_*.md）没被收进包"
     leaked = [r for r in rel if r.startswith("releases/") and r not in notes]
     assert not leaked, f"releases/ 下不该进包的内容混进来了：{leaked[:5]}"
+
+def test_auth_json_gate_behaves(tmp_path):
+    """★ 守门（V8.3.4 交付事故）：`_auth.json` 缺失必须在**显式要求时**被抓住。
+
+    来源：V8.3.2 的交付包漏了 `scripts/generated/_auth.json`（登录前置清单）——
+    它被 `.gitignore` 忽略（注释理由「运行期产物，不入库/不入包」），而收集逻辑走
+    `git ls-files`（**只收入库文件**）=> **必然漏它**。包里的 `scripts/generated/*.py`
+    本身已是**预生成产物**、用户解包后**直接 run、不跑 generate** =>
+    `_harness.py` 读不到它 => 登录前置没凭据 => 业务页被重定向到登录页 =>
+    **但报出来却是「元素语义未找到」，排查方向被彻底带偏**（用户实测踩到）。
+
+    这里锁两件事（缺一不可）：
+      (1) **默认不查** —— 本文件的判据都用**最小临时包**构造各种形态，若不区分地要求
+          `_auth.json`，会把这批判据**全部误报**（2026-10-07 实测 4 条被带红）；
+      (2) **显式要求时，缺了必报** —— 交付路径（CLI `--check` / 打包后自检）就是这么调的。
+
+    [!] 必须能红：把 `expect_auth_json` 的分支删掉 => 本判据立刻失败。
+    """
+    zp = _make_zip(tmp_path, GOOD_TESTS)
+
+    # (1) 默认不查：最小包里没有 _auth.json，也不许报（防误伤）
+    assert pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9") == [], \
+        "默认不该检查 _auth.json —— 否则最小包构造的判据会被误报一片"
+
+    # (2) 显式要求：必须报出来
+    problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9",
+                                      expect_auth_json=True)
+    assert any("_auth.json" in p for p in problems), f"缺 _auth.json 没被抓住：{problems}"
+
+
+def test_auth_json_present_passes_when_required(tmp_path):
+    """反向：包里**带了** `_auth.json` 且显式要求 => 不许报（否则闸门会误伤正确的包）。"""
+    base = _make_zip(tmp_path / "b", GOOD_TESTS)
+    zp = tmp_path / "with_auth.zip"
+    with zipfile.ZipFile(base) as src, zipfile.ZipFile(zp, "w") as dst:
+        for n in src.namelist():
+            dst.writestr(n, src.read(n))
+        dst.writestr("pkg/scripts/generated/_auth.json", '{"x": {}}')
+    assert pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9",
+                                  expect_auth_json=True) == [], \
+        "带了 _auth.json 却仍报缺 —— 闸门会误伤正确包"

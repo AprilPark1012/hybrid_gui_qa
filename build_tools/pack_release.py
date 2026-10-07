@@ -128,6 +128,18 @@ def collect_files(exclude_test_artifacts: bool = False) -> list[Path]:
         if p.suffix in EXCLUDE_SUFFIX or p.name.endswith(".tar.gz"):
             continue
         out.append(p)
+
+    # [!] 2026-10-07（V8.3.4）交付事故修复：`scripts/generated/_auth.json` **必须进包**。
+    # 为什么原先漏了：本函数走 `git ls-files`（只收**入库**文件），而 `_auth.json` 被
+    # `.gitignore` 排除（理由写着「运行期产物、不入库/不入包」）-> 交付包里没有它。
+    # 为什么必须进包：包里的 `scripts/generated/*.py` 本身就是**生成好的产物**，用户解包后
+    # **直接 run、不会跑 generate** -> `_harness.py` 读不到同目录的 `_auth.json`
+    # -> 登录前置拿不到凭据 -> 业务页被重定向到登录页 -> **整条用例跑在登录页上**
+    # （2026-10-07 内网 Windows 实测：两条用例都报「元素语义未找到: 超@合同列表页」）。
+    # 口径修正：**「不入库」不等于「不入包」** —— 入库靠 git，交付靠本函数，两件事分开。
+    _auth_json = REPO / "scripts" / "generated" / "_auth.json"
+    if _auth_json.is_file():
+        out.append(_auth_json)
     return sorted(set(out))
 
 
@@ -150,7 +162,8 @@ def repo_release_notes() -> list[str]:
 def check_zip(zip_path: Path, expect_cases: int | None = None,
               require_notes_for: str | None = None,
               expect_notes: int | None = None,
-              legacy_notes: list[str] | None = None) -> list[str]:
+              legacy_notes: list[str] | None = None,
+              expect_auth_json: bool = False) -> list[str]:
     """审计一个包：返回问题清单（空 = 通过）。**只用标准库，不依赖 unzip。**
 
     `legacy_notes`：可选的出参列表 —— 历史形态命中（结构变更前的包）会写进来，
@@ -196,6 +209,17 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
                 problems.append(f"scripts/generated/_harness.py 缺接线：{miss}")
         else:
             problems.append("包里没有 scripts/generated/_harness.py（共享运行时缺失 -> 跑不起来）")
+
+        # [!] 2026-10-07（V8.3.4）：登录前置清单也必须进包 —— 缺了会让**整条用例跑在登录页上**，
+        # 而现象是「元素语义未找到」，极容易被误判成"页面还没渲染/语义名过期"，排查方向被带偏。
+        # 口径：由调用方**显式声明**这个包该不该带它（默认不查）。
+        # 为什么不做成「看真实仓库有没有」：本函数的测试用**最小临时包**构造各种形态，
+        # 拿真实仓库的状态去判它们会**全部误报**（2026-10-07 实测 4 条判据被带红）。
+        # 交付路径（CLI --check / 打包后自检）显式传 True；无登录场景的包不传即可。
+        if expect_auth_json and not read("scripts/generated/_auth.json"):
+            problems.append(
+                "包里没有 scripts/generated/_auth.json（登录前置缺失 -> 业务页会被重定向到登录页，"
+                "整条用例跑在登录页上，报出来却是「元素语义未找到」，排查方向会被带偏）")
 
         n_cases = sum(1 for k in rel if k.startswith("cases/") and k.endswith(".json"))
         if expect_cases is not None and n_cases != expect_cases:
@@ -444,6 +468,7 @@ def main() -> int:
         # 审计历史包时**不**强制「升级日志份数一致」：老包的日志在包根、份数也不同（形态差异不是缺陷）
         legacy: list[str] = []
         problems = check_zip(zp, expect_cases=repo_cases, require_notes_for=_version()[0],
+                            expect_auth_json=True,
                              legacy_notes=legacy)
         for n in legacy:
             print(f"[pack] [half] {n}")
@@ -469,6 +494,7 @@ def main() -> int:
 
     legacy: list[str] = []
     problems = check_zip(out_zip, expect_cases=repo_cases, require_notes_for=ver,
+                         expect_auth_json=True,
                          expect_notes=len(repo_notes) or None, legacy_notes=legacy)
     for n in legacy:          # 新包不该出现（出现=打包收集漏了当前布局）-> 大声打出来
         print(f"[pack] [!] {n}")
