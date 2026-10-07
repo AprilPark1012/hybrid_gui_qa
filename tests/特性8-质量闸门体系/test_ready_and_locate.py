@@ -1,0 +1,229 @@
+"""F1/F2/F3/F6 的契约锁（秒级、不需要浏览器、不需要 demo）。
+
+为什么要有这一层：这些改动的"生效点"分布在**生成物**（共享运行时
+scripts/generated/_harness.py、每个用例一个模块 scripts/generated/<场景>/<case_id>.py、
+demo 页面、CLI）里，而生成物是 generate 从模板产出的 —— 只改生成物、忘了改模板（或反过来），
+下次 generate 就会把修复抹掉。所以这里做**源码级互锁**：模板与生成物必须同时具备这些接线。
+
+口径（与项目一致）：任何"少做一步还报绿"都要显式失败；这里的"步骤"= 修复的接线点。
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+
+# 同目录测试工具：生成物读取入口（缺失/为空时给「先跑 generate」这类可行动诊断）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import artifacts  # noqa: E402
+
+GEN = ROOT / "framework" / "tools" / "generate" / "generator.py"
+# ---- P20（2026-09-24）产物布局：一个用例一个模块，辅助函数放共享运行时 ----
+#   scripts/generated/<scenario_id>/<case_id>.py   一个用例一个脚本（AI 用例 + 手搓用例）
+#   scripts/generated/_harness.py                  共享辅助（原 scripts/conftest.py 内容原样搬）
+#   scripts/generated/conftest.py                  只转发（from _harness import *）
+# 判据口径不变：**生成物整体**必须同时具备这些接线；只是「产物在哪」从
+# scripts/test_cases.py + scripts/conftest.py 换成上面这套。
+GEN_DIR = ROOT / "scripts" / "generated"
+HARNESS = GEN_DIR / "_harness.py"          # 生成物侧的共享运行时（就绪契约/有界等待/分区都在这里）
+CLI = ROOT / "framework" / "cli.py"
+APP = ROOT / "demo" / "app.py"
+CONTRACTS_HTML = ROOT / "demo" / "contracts.html"
+DETAIL_HTML = ROOT / "demo" / "contract_detail.html"
+# 2026-09-28：demo 重构后页面变多 ⇒ 就绪契约的守门覆盖面同步扩到**全部页面**（此前只守 2 页，
+# 新页漏了也无声无息 —— 实测就是这么发现「重写页只读 ?w=、没读框架注入的 window.__HYBRID_W」的）
+DEMO_PAGES = [ROOT / "demo" / n for n in (
+    "contracts.html", "contract_detail.html", "orders.html",
+    "order_detail.html", "pick_customer.html", "invoice_list.html", "invoice_create.html",
+)]
+
+# 共享运行时 / 转发 conftest 不算「用例模块」（它们没有用例接线，见下 _read_generated_cases）
+_NOT_CASE_MODULE = ("conftest.py", "_harness.py")
+
+
+def _generated_case_modules() -> list[Path]:
+    """列出**全部**生成出来的用例模块（P20：scripts/generated/<场景>/<case_id>.py）。
+
+    一个都没有 ⇒ 抛带动作诊断（同 `artifacts.read_artifact` 的口径：产物缺失是**环境问题**，
+    第一句就要说清 + 给出下一步命令，而不是让 6 条判据各报一句"生成物缺 _wait_ready"）。
+    """
+    mods = (sorted(p for p in GEN_DIR.rglob("*.py") if p.name not in _NOT_CASE_MODULE)
+            if GEN_DIR.exists() else [])
+    if not mods:
+        raise AssertionError(
+            f"生成物 scripts/generated/ 下没有任何用例模块（{GEN_DIR}）\n"
+            f"  ⇒ 生成物还没产出。先确认被测目标起着（另开一个窗口 `python -m demo.app`），"
+            f"再跑 `python -m framework.cli generate`（或 `cli all` 一条龙）。\n"
+            f"  ⇒ 若这是从交付包解压出来的目录：说明解压不完整，重新完整解压一次。"
+        )
+    return mods
+
+
+def _read_generated_cases() -> str:
+    """把**全部**用例模块拼成一份源码来判（判据看的是"生成脚本整体"的接线，不是某一个文件）。"""
+    return "\n".join(_read(p) for p in _generated_case_modules())
+
+
+def _read(p: Path) -> str:
+    """读来源文件：**生成物**走带动作诊断的入口，框架源码照常读。
+
+    ⚠️ 2026-09-22（AprilPark1012 本地 Windows 验收 19 红驱动）：生成物为 0 字节时，6 条契约判据各自
+    报「生成物 缺少 _wait_ready / 缺 _goto」这类细节 —— 读的人看不出真因是「产物是空的」。
+    产物缺失/为空属**环境问题**，第一句就要说清 + 给出下一步命令（见 tests/_helpers/artifacts.py）。
+    """
+    if ROOT / "scripts" in p.parents:            # scripts/generated/… ⇒ 生成物
+        return artifacts.read_artifact(p, role=f"生成物 {p.relative_to(ROOT)}")
+    return p.read_text(encoding="utf-8")
+
+
+# ---------------- F1：就绪契约 + 统一导航入口 ----------------
+
+def test_generator_emits_goto_helper():
+    """生成脚本必须通过 _goto 导航（它内部才做 HYBRID_BASE_URL 覆盖 + 等就绪）。"""
+    src = _read_generated_cases()
+    assert "_goto(page," in src, "生成脚本里没有 _goto( —— 是不是又回退成裸 page.goto 了？"
+    assert "page.goto('http" not in src, "生成脚本里还有裸 page.goto( —— 导航没有走统一入口"
+
+
+def test_generator_source_uses_goto_helper():
+    """模板侧（唯一真源）也必须 emit _goto —— 只改生成物会被下次 generate 抹掉。"""
+    src = _read(GEN)
+    assert "    _goto(page, {case.get(" in src
+    assert "    _goto(page, {st.get('url'" in src
+    assert "    page.goto({case.get(" not in src and "page.goto({st.get(" not in src
+
+
+def test_conftest_has_ready_wait_and_base_override():
+    for src, tag in ((_read(HARNESS), "生成物 _harness.py"), (_read(GEN), "模板")):
+        assert "def _wait_ready(page" in src, f"{tag} 缺少 _wait_ready"
+        assert "data-hybrid-ready='1'" in src, f"{tag} 没有等就绪标志"
+        assert "HYBRID_READY_SELECTOR" in src, f"{tag} 缺少无契约页面的退化方案"
+        assert "HYBRID_BASE_URL" in src, f"{tag} 缺少目标地址覆盖（闸门/多环境要用）"
+        assert "HYBRID_WAIT_READY" in src, f"{tag} 缺少就绪等待开关（回滚用）"
+
+
+def _strip_comments(src: str) -> str:
+    """剥掉 HTML 注释与 JS 行注释后再做契约断言。
+
+    为什么：直接 `"token" in src` 会被**注释里提到的 token**满足 ⇒ 判据恒真、静默失效
+    （2026-09-28 实测：把页面里的 `window.__HYBRID_W` 读取删掉、只在注释里留了词，判据照样绿）。
+    """
+    src = re.sub(r"<!--.*?-->", "", src, flags=re.S)
+    src = re.sub(r"^\s*//.*$", "", src, flags=re.M)
+    return src
+
+
+def test_pages_declare_ready_contract():
+    for p in DEMO_PAGES:
+        raw = _read(p)
+        assert 'data-hybrid-ready="0"' in raw, f"{p.name} 没有静态声明就绪契约"
+        src = _strip_comments(raw)          # ⚠️ 断言走「去掉注释后的代码」，注释里提一句不算数
+        assert re.search(r"\bmarkReady\s*\(\s*\)", src), \
+            f"{p.name} 没有在数据就绪后置位（缺 markReady() 调用）"
+        assert "apiUrl(" in src, f"{p.name} 的 /api 调用没走 apiUrl（分区带不上）"
+        assert re.search(r"\bwindow\.__HYBRID_W\b", src), \
+            f"{p.name} 没读分区号（框架注入的分区带不上）"
+
+
+# ---------------- F2：有界等待（且不能把复数断言也拖慢） ----------------
+
+def test_bounded_wait_helper_present_and_used():
+    for src, tag in ((_read(HARNESS), "生成物 _harness.py"), (_read(GEN), "模板")):
+        assert "def _count_attached(cand" in src, f"{tag} 缺少有界等待工具"
+        assert "n = _count_attached(cand)" in src, f"{tag} 的动作定位没有用有界等待"
+
+
+def test_plural_assertions_keep_instant_judgement():
+    """count 这类复数断言必须**瞬时**判定：『期望 0 个』是合法用例，等 attached 只会白等超时。"""
+    for src, tag in ((_read(HARNESS), "生成物 _harness.py"), (_read(GEN), "模板")):
+        assert "cand.count() if not unique else _count_attached(cand)" in src, \
+            f"{tag} 的断言定位把 unique=False 也改成等待了（会让『期望 0』白等超时）"
+
+
+# ---------------- F3：报错信息必须指向真因 ----------------
+
+def test_misleading_errors_are_gone():
+    bad1 = "断言 locator 失效且无语义兜底（该断言既没 selector 也没 element）"
+    for src, tag in ((_read(HARNESS), "生成物 _harness.py"), (_read(GEN), "模板")):
+        assert bad1 not in src, f"{tag} 里还留着那条自相矛盾的旧文案"
+        assert "元素语义未找到" in src and "排查：加 --debug 看逐步截图" in src, \
+            f"{tag} 的『语义未找到』没有给出真因+下一步"
+
+
+# ---------------- F6：分区隔离（demo / 页面 / conftest / CLI 四处必须一致） ----------------
+
+def test_demo_partition_and_health():
+    src = _read(APP)
+    assert "/api/health" in src and '"partitioned"' in src, "demo 没有能力探针"
+    assert "def _part_of(" in src and "def _store(" in src, "demo 没有分区数据层"
+    # 2026-09-30：原用字面串 `"reset_data(part)"` 匹配 ⇒ 实参形如
+    # `reset_data(part, purge=_purge)` 时匹配不到（后面跟逗号）⇒ 假红。
+    # 改成正则：调用**必须把分区作为第一个实参**。
+    assert "def reset_data(part" in src, "复位函数没有分区参数"
+    assert re.search(r"reset_data\(\s*part\b", src), \
+        "复位调用没带分区（会不会又全局复位了？）"
+    assert "threading.RLock()" in src, "锁必须是可重入的（_store 与调用方都会加锁，普通 Lock 会自死锁）"
+
+
+def test_conftest_partition_wiring():
+    for src, tag in ((_read(HARNESS), "生成物 _harness.py"), (_read(GEN), "模板")):
+        assert "PYTEST_XDIST_WORKER" in src and "_PARTITION" in src, f"{tag} 没有 worker 分区概念"
+        assert "add_init_script" in src and "__HYBRID_W" in src, f"{tag} 没把分区注入页面"
+        assert "_with_partition(url)" in src, f"{tag} 的复位没带分区"
+
+
+def test_cli_has_isolated_target_flag():
+    src = _read(CLI)
+    assert '"--isolated-target": None' in src, "FLAG_SPECS 没登记 --isolated-target"
+    assert '"--isolated-target"' in src.split("_COMMON_FLAGS =")[1].split("\n")[0] or \
+           "--isolated-target" in src.split("_COMMON_FLAGS =")[1][:200], "CMD_FLAGS 没给 run/all 放行"
+    assert "probe_partitioned" in src, "cmd_run 没有接并发能力探针（F6b）"
+
+
+# ---------------- F6b：真的跑一遍 CLI，锁住"未声明就降级"的行为 ----------------
+
+def _run_cli(args: list[str], env_extra: dict) -> str:
+    env = dict(os.environ)
+    env.update({"HYBRID_RESET_URL": "off", "HYBRID_BASE_URL": "http://127.0.0.1:9",  # 探针必然失败
+                "HYBRID_MB_PER_WORKER": "100", "HYBRID_RESERVE_MB": "50"})
+    env.update(env_extra)
+    r = subprocess.run([sys.executable, "-m", "framework.cli", "run", *args],
+                       cwd=ROOT, capture_output=True, text=True, timeout=180, env=env,
+                       encoding="utf-8", errors="replace")
+    return (r.stdout or "") + (r.stderr or "")
+
+
+@pytest.mark.parametrize("extra,expect", [
+    ([], ["目标未声明可并发隔离", "保守降级为 1"]),
+    (["--isolated-target"], ["已显式声明", "保持 2 worker"]),
+])
+def test_cli_downgrade_or_explicit_declaration(extra, expect):
+    """并发能力探针：未声明 → 降级到 1 并说明原因；显式声明 → 放行。
+
+    用 --case 选一个不存在的用例名 ⇒ pytest 只收集、**不起浏览器**（秒级、低内存）。
+    用 --force-workers 固定「请求 2 并发」这个前提，**不依赖本机当时的内存**
+    （否则 MemAvailable 一波动，期望就从"保持 2"变成"降为 1"，测试会莫名其妙红）。
+    """
+    out = _run_cli(["--workers", "2", "--force-workers", "--case", "__no_such_case__", *extra], {})
+    for token in expect:
+        assert token in out, f"期望输出里出现 {token!r}，实际：\n{out}"
+
+    assert "未声明可并发隔离" in out if not extra else True
+    if not extra:
+        assert "保守降级为 1" in out and "已显式声明" not in out
+    else:
+        assert "保守降级为 1" not in out
+
+
+def test_target_probe_returns_none_for_unknown_target():
+    from framework.tools.common.target_probe import probe_partitioned, _base_url
+    ok, why = probe_partitioned("http://127.0.0.1:9")
+    assert ok is None and "未声明" in why
+    assert _base_url("http://x:1/") == "http://x:1"
