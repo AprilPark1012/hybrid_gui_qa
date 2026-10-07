@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.3.1）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.3.2）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup>★</sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.3.1 · 2026-10-07　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.3.2 · 2026-10-07　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1724,9 +1724,33 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.3.1</b>（2026-10-07）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.3.2</b>（2026-10-07）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.3.1</span><span class="cl-date">2026-10-07</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>测试体系按框架 9 个特性重组 + 特性验证闭环（R7-g）</b> —— 验证从「两类目录」升级为「<b>逐特性可见</b>」</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.3.2</span><span class="cl-date">2026-10-07</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>跨平台修复</b> —— 修掉「只在 Windows 上暴露」的崩溃：路径分隔符 / 重复定义 / 输出编码</span></div>
+      <p class="cl-sum">V8.3.1 在内网 Windows 上跑一类，<b>7 条红</b>（同一份代码在 Linux 上全绿）—— 根因是<b>判据与输出都假设了 POSIX</b>。<br>其中 4 条是「用 <code>split("/")</code> 判路径层级」（Windows 是反斜杠 -> 恒判 False）；1 条是<b>真 bug</b>：<code>mem_available_mb</code> <b>被定义了两次</b>，旧版（返回 0）覆盖了跨平台版；1 条是探针的前提在 Windows 上不成立；还有 1 条最要命 —— <b>整个框架的输出用 emoji 装饰</b>，当 stdout 是<b>管道</b>（被 pytest / 父进程捕获）时 Python 退回 <b>cp936</b> -> <code>print</code> 直接 <code>UnicodeEncodeError</code>，<b>入口整体挂掉</b>（不是少一行日志，是 exit 1）。</p>
+      <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">[go] 新增</span><ul>
+        <li><b>跨平台守门判据</b>：<code>test_in_feature_dir_accepts_windows_style_paths</code> —— 拿<b>反斜杠路径</b>喂纯函数，把「分隔符假设」这类问题<b>在 Linux 上就钉住</b></li>
+        <li><b>输出编码守门判据</b>：<code>test_source_has_no_gbk_unencodable_chars</code> —— 源码（含注释）禁出现 GBK 编不了的字符（两条判据均<b>负向自证过</b>）</li>
+        <li><code>run_acceptance.py</code> / <code>run_verifications.py</code> 补调 <code>force_stdio()</code>（其余 20 个脚本早就调了，偏偏两个入口漏了）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">[tool] 改进</span><ul>
+        <li><b>全仓输出装饰 emoji -> ASCII</b>（135 文件 / 4550 处）：<code>[OK] [NG] [!] -> [skip] [info]</code> ... 圈号改成数字；被编码搞坏的编号只标批次（不猜）</li>
+        <li><b>路径判断统一走 <code>pathlib</code></b>：<code>PurePosixPath(...).parts</code> / <code>.as_posix()</code>，不再有 <code>split("/")</code> 式的分隔符假设</li>
+        <li>用例数据 <code>cases/*.json</code> 的 steps 文本同步换 ASCII（<b>不动 <code>scenarios/*.yml</code></b>：改它会让场景指纹变、作废已有录像；那里只有给 AI 看的文案）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">[bug] 修复</span><ul>
+        <li><b>真 bug</b>：<code>mem_available_mb()</code> 在同一文件里<b>重复定义</b>，后者（返回 0）覆盖了跨平台版 -> Windows 上的 ctypes 实现从未生效（判据「内存探测不许编数字」正是抓它的）</li>
+        <li><code>_CONFTEST_TEMPLATE</code> 是<b>普通三引号</b> -> <code>一</code> 在<b>定义期</b>就被解析成「一」-> 生成物 <code>_harness.py</code> 里那个「CJK 字符区间」被写成了实际汉字；改成双反斜杠字面透传，生成物里恢复成「反斜杠 u4e00」形式的 Unicode 转义（Python <code>re</code> 会解析它，功能不变）</li>
+        <li>GBK 机理探针：子进程改用 <code>sys.stdout.buffer.write</code> <b>直接写字节</b>，不再依赖 <code>print</code> 的文本编码层</li>
+        <li><code>run_acceptance.py</code> 一类自测那步写死了 <code>pytest tests/_helpers/</code>（9 特性重组前的旧路径）-> 改 <code>pytest tests/</code></li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
+        <li>两条新判据都做了<b>负向自证</b>（改回旧写法 / 塞个 emoji -> 判据立刻红），确保不是空转。</li>
+        <li><b>教训</b>：一类全绿<b>只证明在一个平台上自洽</b> —— 「只在 Windows 暴露」的问题，必须靠<b>平台无关的判据</b>（喂反斜杠路径）来守，而不是靠「我在 Linux 上跑过了」。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.3.1</span><span class="cl-date">2026-10-07</span><span class="cl-tag">上一版本</span><span class="cl-theme"><b>测试体系按框架 9 个特性重组 + 特性验证闭环（R7-g）</b> —— 验证从「两类目录」升级为「<b>逐特性可见</b>」</span></div>
       <p class="cl-sum">原先测试按「一类/二类」两目录组织，文件夹<b>不体现框架有多少特性</b> -> 哪条特性在验证、哪条是空的，只能靠人脑记。<br>本版把 <code>tests/</code> 按框架的 <b>9 个特性</b>分文件夹（一类 <code>test_*.py</code> 与二类 <code>verify_*.py</code> <b>同住一个特性夹</b>，靠文件名前缀区分），并新增：<b>(1)</b> 特性<->用例同步要求（R7-h）；<b>(2)</b> 日常版/发版版两种跑法（<b>都 ≤30 分钟</b>）；<b>(3)</b> 每次交付邮件必须带「<b>特性 × 验证结果</b>」表；<b>(4)</b> 有实现、零判据的特性必须显式标 <code>UNVERIFIED.md</code>。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">[go] 新增</span><ul>
         <li><b>tests/ 按 9 个特性分文件夹</b>：特性1-混合链路 … 特性9-CLI帮助契约；公共模块住 <code>tests/_helpers/</code>、入口与工具住 <code>tests/_runner/</code>；新增 <code>tests/conftest.py</code> 统一补 <code>_helpers</code> 的 import 路径</li>
@@ -2329,7 +2353,7 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.3.1</b>（2026-10-07）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.3.2</b>（2026-10-07）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>

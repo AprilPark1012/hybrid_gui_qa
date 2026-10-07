@@ -56,11 +56,54 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.3.1"
+VERSION = "8.3.2"
 VERSION_DATE = "2026-10-07"
 CHANGELOG = [
     dict(
-        version="8.3.1", date="2026-10-07", tag="当前版本",
+        version="8.3.2", date="2026-10-07", tag="当前版本",
+        theme="<b>跨平台修复</b> —— 修掉「只在 Windows 上暴露」的崩溃：路径分隔符 / 重复定义 / 输出编码",
+        summary="V8.3.1 在内网 Windows 上跑一类，<b>7 条红</b>（同一份代码在 Linux 上全绿）—— 根因是"
+                "<b>判据与输出都假设了 POSIX</b>。<br>其中 4 条是「用 <code>split(\"/\")</code> 判路径层级」"
+                "（Windows 是反斜杠 -> 恒判 False）；1 条是<b>真 bug</b>：<code>mem_available_mb</code> "
+                "<b>被定义了两次</b>，旧版（返回 0）覆盖了跨平台版；1 条是探针的前提在 Windows 上不成立；"
+                "还有 1 条最要命 —— <b>整个框架的输出用 emoji 装饰</b>，当 stdout 是<b>管道</b>"
+                "（被 pytest / 父进程捕获）时 Python 退回 <b>cp936</b> -> <code>print</code> 直接 "
+                "<code>UnicodeEncodeError</code>，<b>入口整体挂掉</b>（不是少一行日志，是 exit 1）。",
+        added=[
+            "<b>跨平台守门判据</b>：<code>test_in_feature_dir_accepts_windows_style_paths</code> —— "
+            "拿<b>反斜杠路径</b>喂纯函数，把「分隔符假设」这类问题<b>在 Linux 上就钉住</b>",
+            "<b>输出编码守门判据</b>：<code>test_source_has_no_gbk_unencodable_chars</code> —— "
+            "源码（含注释）禁出现 GBK 编不了的字符（两条判据均<b>负向自证过</b>）",
+            "<code>run_acceptance.py</code> / <code>run_verifications.py</code> 补调 <code>force_stdio()</code>"
+            "（其余 20 个脚本早就调了，偏偏两个入口漏了）",
+        ],
+        changed=[
+            "<b>全仓输出装饰 emoji -> ASCII</b>（135 文件 / 4550 处）：<code>[OK] [NG] [!] -> [skip] [info]</code> ... "
+            "圈号改成数字；被编码搞坏的编号只标批次（不猜）",
+            "<b>路径判断统一走 <code>pathlib</code></b>：<code>PurePosixPath(...).parts</code> / <code>.as_posix()</code>，"
+            "不再有 <code>split(\"/\")</code> 式的分隔符假设",
+            "用例数据 <code>cases/*.json</code> 的 steps 文本同步换 ASCII（<b>不动 <code>scenarios/*.yml</code></b>："
+            "改它会让场景指纹变、作废已有录像；那里只有给 AI 看的文案）",
+        ],
+        fixed=[
+            "<b>真 bug</b>：<code>mem_available_mb()</code> 在同一文件里<b>重复定义</b>，后者（返回 0）覆盖了"
+            "跨平台版 -> Windows 上的 ctypes 实现从未生效（判据「内存探测不许编数字」正是抓它的）",
+            "<code>_CONFTEST_TEMPLATE</code> 是<b>普通三引号</b> -> <code>\u4e00</code> 在<b>定义期</b>就被解析成「一」"
+            "-> 生成物 <code>_harness.py</code> 里那个「CJK 字符区间」被写成了实际汉字；改成双反斜杠字面透传，"
+            "生成物里恢复成「反斜杠 u4e00」形式的 Unicode 转义（Python <code>re</code> 会解析它，功能不变）",
+            "GBK 机理探针：子进程改用 <code>sys.stdout.buffer.write</code> <b>直接写字节</b>，"
+            "不再依赖 <code>print</code> 的文本编码层",
+            "<code>run_acceptance.py</code> 一类自测那步写死了 <code>pytest tests/_helpers/</code>"
+            "（9 特性重组前的旧路径）-> 改 <code>pytest tests/</code>",
+        ],
+        notes=[
+            "两条新判据都做了<b>负向自证</b>（改回旧写法 / 塞个 emoji -> 判据立刻红），确保不是空转。",
+            "<b>教训</b>：一类全绿<b>只证明在一个平台上自洽</b> —— 「只在 Windows 暴露」的问题，"
+            "必须靠<b>平台无关的判据</b>（喂反斜杠路径）来守，而不是靠「我在 Linux 上跑过了」。",
+        ],
+    ),
+    dict(
+        version="8.3.1", date="2026-10-07", tag="上一版本",
         theme="<b>测试体系按框架 9 个特性重组 + 特性验证闭环（R7-g）</b> —— 验证从「两类目录」升级为「<b>逐特性可见</b>」",
         summary="原先测试按「一类/二类」两目录组织，文件夹<b>不体现框架有多少特性</b> -> 哪条特性在验证、哪条是空的，"
                 "只能靠人脑记。<br>本版把 <code>tests/</code> 按框架的 <b>9 个特性</b>分文件夹（一类 <code>test_*.py</code> "
