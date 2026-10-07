@@ -219,14 +219,40 @@ def test_gbk_upstream_utf8_downstream_gbk_must_explode(tmp_path):
     `errors="replace"` 那条不炸但内容**静默变错**（所以「不炸」绝不等于「对」）；
     `run_capture` 显式 UTF-8 解码 -> 正确。
     """
+    # ① 机理用**固定字节流**钉死（平台无关、必炸）—— 这是本判据的硬核部分。
+    #    [!] 2026-10-07（V8.3.2 → V8.3.3）：原先整条判据都依赖「子进程 + 管道」的真实行为，
+    #    但内网 Windows 实测 `OLD_GBK= 未复现`（同一段字节在 Linux 上必炸）——
+    #    Windows 的 subprocess/管道编码行为与 POSIX 不同，而**我方只有 Linux、无法验证**。
+    #    -> 按本项目既有口径（见 test_reproduce_and_fix_gbk_byte_0xbb_position_13）：
+    #       **不拿未验证的假设去红别人的环境** —— 机理部分改用确定的字节流，
+    #       端到端部分 Windows 上降级为诊断（POSIX 仍必须复现，本机可验 -> 绝不放松）。
+    raw = "[generate] 读 cases/".encode("utf-8")
+    assert raw[13] == 0xBB, f"样本字节已变（position 13 不再是 0xbb）：{raw!r}"
+    with_e = ""
+    try:
+        raw.decode("gbk")
+        pytest.fail(f"显式 gbk 解码居然没炸（机理不成立）：{raw!r}")
+    except UnicodeDecodeError as e:
+        with_e = f"{type(e).__name__} {e}"
+    assert re.search(_GBK_SIG, with_e), f"签名不是 0xbb@13：{with_e!r}"
+    assert raw.decode("gbk", errors="replace") != "[generate] 读 cases/", \
+        "errors='replace' 竟然解出了正确文本（那这条对照就失去意义）"
+
+    # ② 端到端（子进程 + 管道）：POSIX 必须复现；Windows 如实降级为诊断
     out = _probe_out(tmp_path, "mech")
     assert out.strip(), "探针没有输出（子进程起不来？）"
     assert _line(out, "NEW") == "[generate] 读 cases/", f"run_capture 未能正确解码 UTF-8 输出:\n{out}"
     old_gbk = _line(out, "OLD_GBK") or ""
-    assert "UnicodeDecodeError" in old_gbk, f"显式 gbk 解码居然没炸（机理不成立？）:\n{out}"
-    assert re.search(_GBK_SIG, old_gbk), f"签名不是 0xbb@13：{old_gbk!r}"
+    if "UnicodeDecodeError" not in old_gbk:
+        if os.name == "nt":
+            print(f"[诊断] Windows 上「子进程→管道」路径未复现（{old_gbk!r}）；"
+                  "机理与修复有效性由上面那条固定字节流判据覆盖")
+        else:
+            pytest.fail(f"POSIX 上显式 gbk 解码必须炸（否则端到端判据失去意义）：\n{out}")
+    else:
+        assert re.search(_GBK_SIG, old_gbk), f"签名不是 0xbb@13：{old_gbk!r}"
     assert _line(out, "REPLACED_WRONG") == "True", \
-        f"errors='replace' 竟然解出了正确文本（那这条对照就失去意义）:\n{out}"
+        f"errors='replace' 竟然解出了正确文本（那这条对照就失去意义）：\n{out}"
 
 
 @pytest.mark.skipif(_gbk_default_encoding() is None, reason=_GBK_SKIP_REASON)

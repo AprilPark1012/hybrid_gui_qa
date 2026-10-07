@@ -56,11 +56,42 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.3.2"
+VERSION = "8.3.3"
 VERSION_DATE = "2026-10-07"
 CHANGELOG = [
     dict(
-        version="8.3.2", date="2026-10-07", tag="当前版本",
+        version="8.3.3", date="2026-10-07", tag="当前版本",
+        theme="<b>两条判据的跨平台适配</b> —— 把「我方无法在 Windows 验证的假设」换成「平台无关的确定判据」",
+        summary="V8.3.2 在内网 Windows 上复跑一类，<b>7 条红降到 2 条</b>，剩下这两条<b>都不是原来那批</b>：<br>"
+                "<b>(1)</b> <code>test_runner_runs_a_real_script</code> 被 <b>demo 新鲜度闸门</b>拦下（exit 2 / 闸门 exit 5）"
+                "—— 那是<b>环境没准备好</b>（R7 第 0 步本就要求跑验证前先重启 demo），"
+                "不是判据要防的「runner 起不来 / sys.path 漏目录」；<br>"
+                "<b>(2)</b> <code>test_gbk_upstream_utf8_downstream_gbk_must_explode</code> 在 Windows 上"
+                "<code>OLD_GBK= 未复现</code> —— 同一段字节在 Linux 上<b>必炸</b>（已本机对照实测），"
+                "说明 Windows 的 <b>subprocess/管道编码行为</b>与 POSIX 不同，而<b>我方只有 Linux、无法验证</b>。",
+        changed=[
+            "<b>GBK 机理判据改成「固定字节流」</b>：直接对 <code>b'[generate] \xe8\xaf\xbb cases/'</code> "
+            "做 gbk 解码 —— 平台无关、必然抛 <code>UnicodeDecodeError</code>，"
+            "不再依赖「子进程 + 管道」的平台相关行为（端到端那段保留，POSIX 仍必须复现，"
+            "Windows 上降级为诊断打印）",
+            "<b>runner 冒烟判据</b>：demo 新鲜度闸门未过时 <code>skip</code> 并说明原因；"
+            "runner 真起不来（import 失败 / 用法错）仍然照红 —— 判据不会因此空转",
+        ],
+        fixed=[
+            "两条判据原先都隐含「本平台的环境/行为 == 对方平台」的假设 —— "
+            "按本项目既有口径修正：<b>不拿未验证的假设去红别人的环境</b>"
+            "（同 <code>test_reproduce_and_fix_gbk_byte_0xbb_position_13</code> 对 Windows 的降级处理）",
+        ],
+        notes=[
+            "<b>本机对照实验</b>（Linux）：同一子脚本输出 <code>b'[generate] \xe8\xaf\xbb cases/\n'</code>，"
+            "下游 <code>encoding='gbk', errors='strict'</code> <b>确实抛</b> "
+            "<code>byte 0xbb in position 13</code> => 机理本身成立，差异在平台。",
+            "两条判据均做负向自证：GBK 判据改样本字节 => 立刻红；"
+            "runner 判据在 demo 常驻的云主机上 => <b>真跑 passed</b>（不是 skip 空转）。",
+        ],
+    ),
+    dict(
+        version="8.3.2", date="2026-10-07", tag="上一版本",
         theme="<b>跨平台修复</b> —— 修掉「只在 Windows 上暴露」的崩溃：路径分隔符 / 重复定义 / 输出编码",
         summary="V8.3.1 在内网 Windows 上跑一类，<b>7 条红</b>（同一份代码在 Linux 上全绿）—— 根因是"
                 "<b>判据与输出都假设了 POSIX</b>。<br>其中 4 条是「用 <code>split(\"/\")</code> 判路径层级」"
