@@ -23,7 +23,7 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 REPO = Path(__file__).resolve().parents[2]          # tests/<特性>/ ⇒ 上两级才是仓库根
 TESTS_DIR = REPO / "tests"                          # 容器目录（2026-09-24 定：容器保留）
@@ -59,14 +59,16 @@ def find_test_modules(root: Path) -> list[str]:
     for p in root.rglob("test_*.py"):
         if any(part in skip for part in p.parts):
             continue
-        out.append(str(p.relative_to(root)))
+        # ⚠️ 跨平台（2026-10-07 修）：必须 `as_posix()` —— Windows 上 str(relative_to) 给 `\`，
+        # 而下游 in_feature_dir / 断言里的期望串都是 `/` 风格 ⇒ 集合永远对不上（假红）。
+        out.append(p.relative_to(root).as_posix())
     return sorted(out)
 
 
 def find_verify_modules(root: Path) -> list[str]:
     """找出 root 下所有 `verify_*.py`（同上口径）。"""
     skip = (".venv", "__pycache__", "log", "output", ".git")
-    return sorted(str(p.relative_to(root)) for p in root.rglob("verify_*.py")
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("verify_*.py")   # 同上：跨平台
                   if not any(part in skip for part in p.parts))
 
 
@@ -94,8 +96,13 @@ def declared_budgets(text: str) -> dict[str, int]:
 
 
 def in_feature_dir(rel_path: str) -> bool:
-    """相对路径是否落在某个「特性N-…」夹里。"""
-    parts = rel_path.split("/")
+    """相对路径是否落在某个「特性N-…」夹里。
+
+    ⚠️ **跨平台**（2026-10-07 修，Windows 内网实测红）：**不许**直接 `split("/")` ——
+    Windows 的分隔符是反斜杠，测试里传进来的可能是「tests + 反斜杠 + 特性1-… + 反斜杠 + test_x.py」
+    ⇒ 切不开、判断恒 False（表现为「明明在特性夹里却说没归位」）。统一先归一化成 POSIX 再切。
+    """
+    parts = PurePosixPath(str(rel_path).replace("\\", "/")).parts
     return len(parts) >= 2 and parts[0] == "tests" and any(
         parts[1].startswith(f"特性{i}-") for i in range(1, 10))
 
@@ -233,3 +240,21 @@ def test_negative_in_feature_dir():
     assert in_feature_dir("tests/特性1-混合链路/test_a.py") is True
     assert in_feature_dir("tests/_helpers/artifacts.py") is False
     assert in_feature_dir("tests/特性10-没有这个/test_a.py") is False
+
+
+def test_in_feature_dir_accepts_windows_style_paths():
+    """★ **跨平台守门**（2026-10-07 加，来源：内网 Windows 实测一类 7 条红）。
+
+    Windows 上 `Path.relative_to()` / `str()` 给的是**反斜杠**路径 ⇒
+    凡是用 `split("/")` 判路径层级的纯函数，在 Windows 上会被**静默判 False**
+    （表现为「文件明明在特性夹里，却说没归位」）。
+    ⇒ 这里**喂 Windows 风格路径**，把这类问题**在 Linux 上就钉住**（不必等真去 Windows 跑）。
+
+    ⚠️ 为什么用「行为判据」而不是扫源码文本：`str(x.relative_to())` 有两种用法 ——
+    当 subprocess 参数是**安全**的（Windows 的 Python 认 `\`），用于**集合/比较**才危险；
+    纯文本扫描分不出来（会误报）⇒ 直接测行为更可靠。
+    """
+    assert in_feature_dir("tests\\特性1-混合链路\\test_a.py") is True, \
+        "反斜杠路径没被认出来 ⇒ in_feature_dir 又用 split('/') 了"
+    assert in_feature_dir("tests\\_helpers\\artifacts.py") is False
+    assert in_feature_dir("tests\\特性10-没有这个\\test_a.py") is False

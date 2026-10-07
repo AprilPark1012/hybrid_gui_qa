@@ -156,7 +156,13 @@ _child_env["PYTHONIOENCODING"] = "utf-8"
 # 所以这里只让「子进程的 stdout」承担中文，专测解码方向。
 _child = os.path.join(tempfile.mkdtemp(), "child.py")
 with open(_child, "w", encoding="utf-8") as f:
-    f.write("print('[generate] 读 cases/')\n")
+    # ⚠️ 2026-10-07 修（Windows 内网实测「未复现」）：**别用 print** ——
+    #    print 走 Python 的文本编码层，Windows 上受 UTF-8 模式 / 控制台代码页影响，
+    #    即便设了 PYTHONIOENCODING=utf-8 也可能不是 UTF-8 字节 ⇒ 下游 gbk 解码不炸 ⇒ 判据失真。
+    #    ⇒ **直接写字节**，绕过编码层，「上游 = UTF-8」这个前提在任何平台都成立。
+    f.write("import sys\n"
+            "sys.stdout.buffer.write('[generate] 读 cases/'.encode('utf-8') + b'\\n')\n"
+            "sys.stdout.buffer.flush()\n")
 child = [sys.executable, _child]
 
 # ① 修好后的写法（text_io.run_capture）：显式 UTF-8 ⇒ 必须正确

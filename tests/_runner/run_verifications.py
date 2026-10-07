@@ -352,17 +352,6 @@ def is_browser_script(path: Path) -> bool:
             and any(h in text for h in _SPAWN_HINTS))
 
 
-def mem_available_mb() -> int:
-    """当前可用内存（MB）。拿不到 ⇒ 返回 0（触发最保守策略）。"""
-    try:
-        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
-            if line.startswith("MemAvailable:"):
-                return int(line.split()[1]) // 1024
-    except OSError:
-        pass
-    return 0
-
-
 def may_start(*, is_browser: bool, running: int, running_browsers: int, jobs: int,
               mem_mb: int, exclusive: bool = False,
               running_exclusive: bool = False) -> tuple[bool, str]:

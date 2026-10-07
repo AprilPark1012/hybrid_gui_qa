@@ -8,7 +8,7 @@ AprilPark1012 2026-09-22 刷新的 R7 四条：
   [0] gate_selfcheck      闸门自检 `tests/特性8-质量闸门体系/verify_demo_freshness.py`（~1s；**红则停手**）
                           —— 先验「闸门自己」：它若坏了，③ 的「新鲜」结论毫无意义，后面全建在沙子上
   [1] demo_freshness      ③ `tests/_helpers/demo_freshness.py --ensure --start-if-missing`
-  [2] framework_selftest  ① `pytest tests/_helpers/ -q`（~15s，**不依赖 demo** —— 一类自测刻意与 demo 解耦）
+  [2] framework_selftest  ① `pytest tests/ -q`（~30s，**不依赖 demo** —— 一类自测刻意与 demo 解耦）
   [3] e2e                 ④ 三个场景（见下）
   [4] feature_selftest    ② `tests/_runner/run_verifications.py`（最慢：单个脚本可达 7 分钟 ⇒ 放最后）
 
@@ -55,7 +55,7 @@ STEP_IDS = ["gate_selfcheck", "demo_freshness", "framework_selftest", "e2e", "fe
 HELP_TEXT = {
     "gate_selfcheck": "闸门自检：verify_demo_freshness.py（~1s；红则停手）",
     "demo_freshness": "③ demo 新鲜度闸门：demo_freshness.py --ensure --start-if-missing",
-    "framework_selftest": "① 框架自测：pytest tests/_helpers/ -q（不依赖 demo）",
+    "framework_selftest": "① 框架自测：pytest tests/ -q（不依赖 demo）",
     "e2e": "④ E2E：场景3 录制回放 · 场景2 手搓用例 · 场景1 真 AI（无 key 可跳过）",
     "feature_selftest": "② 特性自测：run_verifications.py（最慢，放最后）",
 }
@@ -141,7 +141,9 @@ def step_demo_freshness(py: str) -> tuple[str, int, str]:
 
 def step_framework_selftest(py: str) -> tuple[str, int, str]:
     """[2] ① 框架自测（一类；与 demo 无关）。"""
-    rc, tail = _run(py, ["-m", "pytest", "tests/_helpers/", "-q"], timeout=900)
+    # 2026-10-07：一类已按 9 特性分文件夹 ⇒ 跑 `tests/`（原来写死 tests/_helpers/ 会只跑公共模块，
+    # 一条判据都收不到）。_helpers/ 现在只放公共模块，不再是判据的家。
+    rc, tail = _run(py, ["-m", "pytest", "tests/", "-q"], timeout=900)
     return _verdict(rc), rc, tail
 
 

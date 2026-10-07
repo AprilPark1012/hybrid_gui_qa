@@ -52,7 +52,9 @@ def test_every_index_entry_has_a_unique_script():
 def test_index_and_disk_are_bidirectionally_consistent():
     """index ↔ 磁盘**双向**一致：孤儿脚本 / 幽灵条目都要红（与 R7-f"三目录新陈代谢"同源）。"""
     idx = _index()
-    on_disk = {str(p.relative_to(REPO)) for p in GEN.glob("*/*.py") if p.name != "conftest.py"}
+    # ⚠️ 跨平台（2026-10-07 修）：Windows 上 str(relative_to) 给 `scripts\generated\…`，
+    # 而 index.json 里存的是 `/` 风格 ⇒ 集合永远对不上（假红）。统一用 as_posix()。
+    on_disk = {p.relative_to(REPO).as_posix() for p in GEN.glob("*/*.py") if p.name != "conftest.py"}
     in_index = {m["script_path"] for m in idx.values()}
     assert not (on_disk - in_index), f"✗ 磁盘上有 index 不认识的孤儿脚本：{sorted(on_disk - in_index)}"
     assert not (in_index - on_disk), f"✗ index 里有磁盘上不存在的幽灵条目：{sorted(in_index - on_disk)}"
