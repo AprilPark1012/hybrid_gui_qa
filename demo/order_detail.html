@@ -13,12 +13,14 @@
         数量/单位/行类型/收入/状态，行类型为下拉：产品订单行/许可证订单行/软件订单行）③ 数据行
         —— 必填 物料编码/产品编码/数量/行类型；新增行自动加空行；**一个订单最多 100 行**
     6.4 底部 3 按钮：取消（弹「取消原因」页 ⇒ 删除订单）/ 编辑（3 个表单可编辑）/ 提交（订单履行，
-        **每 30 秒刷新**履行状态）
+        **每 10 秒刷新**履行状态；已签收后停留 2 分钟 ⇒ 自动关闭）
     ★ 2026-09-28 晚追加（需求⑧）：行状态完整流转 = 已新建 / 已挑选 / 已出库 / 已发货 / 已签收 / **已关闭**；
-      已新建 = 未提交；已挑选~已签收 = 提交后按时钟每 30 秒推进；**已关闭 = 手工关闭**（行「操作」列的
+      已新建 = 未提交；已挑选~已出库~已发货~已签收 = 提交后按时钟**每 10 秒**推进一档（0s 已挑选 → 10s 已出库 →
+      20s 已发货 → 30s 已签收）；**已关闭 = 手工关闭，或「已签收」停留满 2 分钟自动关闭**（需求㉙；两者同一状态）
+      （手工关闭见行「操作」列的
       「关闭」按钮，或工具栏 `#btn-close-lines`「关闭」—— 需求⑭ 起改为关**勾选的行**，见下），
       关闭后不再随时钟变化；**订单整体状态**（#d-order-status）=
-      全部行已关闭 ⇒ 已关闭 · 已提交且未全关 ⇒ 履行中 · 其余 ⇒ 已新建（服务端派生 app.py::order_status）
+      全部行已关闭（手工或自动）⇒ 已关闭 · 已提交且未全关 ⇒ 履行中 · 其余 ⇒ 已新建（服务端派生 app.py::order_status）
 
     ★ 2026-09-28 晚追加（需求⑫）：底部按钮闭环 —— 点「编辑」⇒ ①「取消」**消失**
       ② 同一个按钮文案变「保存」（保存 = 表单1 + 表单2 + 表单3）③「提交」不变；
@@ -40,6 +42,7 @@
             GET /api/order/fulfill · POST /api/order/submit
             POST /api/order/cancel · GET /api/order/cancel_reasons · GET /api/transport_modes（均支持 ?w=）
     · 保留旧 id：d-no/d-contract/d-name/d-mu/d-salesman/d-type/d-bu/d-file/d-cust/d-remark/btn-back/detail-status
+     （需求㛍：btn-back 的位置从右上角挪到了右下角「取消」旁边，id 不变）
 -->
 <script src="vendor/vue.global.prod.js"></script>
 <script src="auth.js"></script>
@@ -90,8 +93,35 @@
 
   .modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 10; }
   .modal-box { background: #fff; border-radius: 4px; width: 420px; padding: 16px; }
+  /* 需求㛅（2026-09-29）：合同类弹层放大到「首屏能看完」——
+     宽 = min(1280px, 94vw)、高 = 90vh，iframe 用 flex 撑满剩余高度（高度不再写死），
+     内容区交给 iframe 自己排版 ⇒ 详情 7 行 + 按钮 + 搜索框、新建/编辑 7 个字段都能一屏看完。 */
+  .modal-box.xl { width: min(1280px, 94vw) !important; height: 90vh; max-height: 90vh !important;
+                  display: flex; flex-direction: column; overflow: hidden; }
+  .modal-box.xl > h3 { flex: 0 0 auto; }
+  .modal-box.xl > iframe { flex: 1 1 auto; height: auto !important; min-height: 0; width: 100%; }
+  .modal-box.xl > .modal-actions { flex: 0 0 auto; }
+  /* 需求㛋（2026-09-29）：必填项统一红色星号，**星号在标签前**（如 *物料编码）*/
+  .req { color: #d4380d; font-weight: 600; margin-right: 2px; }
+  /* 需求㛌（2026-09-29）：提交时未填的必填项 ⇒ 红框高亮（用户一输入/选择就自动去掉）*/
+  .err { border-color: #d4380d !important; background: #fff2f0 !important;
+         box-shadow: 0 0 0 2px rgba(212, 56, 13, .15) !important; }
   .modal-box h3 { margin: 0 0 12px; font-size: 15px; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  /* 需求㉘：带「...」的字段（输入框 + 选择按钮）与弹层里的可点单元格 */
+  .pick-row { display: flex; gap: 6px; align-items: center; }
+  .pick-row input { flex: 1 1 auto; }
+  .pick-row .pick { flex: 0 0 auto; width: 28px; height: 28px; border: 1px solid #c9ccd2;
+                    background: #fff; border-radius: 3px; cursor: pointer; }
+  .pick-row .pick[disabled] { color: #b6b9bf; background: #f2f3f5; cursor: not-allowed; }
+  .modal-box.wide { width: 520px; }
+  .modal-box table { width: 100%; border-collapse: collapse; }
+  .modal-box th, .modal-box td { border: 1px solid #e2e4e8; padding: 6px 9px; text-align: left; }
+  .modal-box th { background: #fafbfc; font-weight: 600; }
+  td.cell-pick { cursor: pointer; }
+  td.cell-pick:hover { background: #e6f2ff; text-decoration: underline; }
+  /* 2026-09-29（需求）：被嵌进弹层时隐藏顶部栏（父页有「关闭」按钮，自己不再重复一个返回）*/
+  body.embed .topbar { display: none; }
 </style>
 </head>
 <body data-hybrid-ready="0">
@@ -108,7 +138,7 @@
          注意 id 从 d-creator 改为 d-created-by —— 表单2 里原本就有一个「创建人」字段也叫 d-creator（id 撞了） -->
     <span class="hint" id="d-created-by">创建人：{{ order.created_by_label || '系统管理员' }}</span>
     <div class="spacer"></div>
-    <a class="btn" id="btn-back" href="/orders.html">返回</a>
+    <!-- 需求㛍（2026-09-29）：右上角的「返回」按钮**已挪到右下角**（放在「取消」旁边），此处不再放 -->
     <!-- 需求⑮：登录身份 + 超管切换角色的头像（auth.js 渲染） -->
     <div id="nav-user" class="nav-user"></div>
   </div>
@@ -118,7 +148,7 @@
     <h3>基础信息</h3>
     <div class="grid2">
       <div class="field" v-for="f in basicFields" :key="f.key">
-        <div class="label">{{ f.label }}</div>
+        <div class="label"><span v-if="f.required" class="req">*</span>{{ f.label }}</div>
         <div class="ctl b1"><div class="b2"><div class="b3"><div class="b4"><div class="b5"><div class="b6">
           <template v-if="f.type === 'select'">
             <select :id="f.id" :name="f.key" :title="f.label" :aria-label="f.label"
@@ -131,10 +161,21 @@
                  textContent = 合同编号（老脚本按 textContent 取值），里面是**新 tab** 打开合同详情的链接。
                  URL 必须带 `from=order` ⇒ 合同详情页按钮变「返回」、点了**关本 tab** 回到订单系统。 -->
             <span :id="f.id" class="contract-link">
-              <a v-if="order[f.key]" :href="'/contract_detail.html?no=' + order[f.key] + '&from=order'"
-                 target="_blank" rel="noopener">{{ order[f.key] }}</a>
+              <a v-if="order[f.key]" :href="'/contract_detail.html?no=' + order[f.key]"
+                 @click.prevent="openContract(order[f.key])">{{ order[f.key] }}</a>
               <span v-else>—</span>
             </span>
+          </template>
+          <template v-else-if="f.pick">
+            <!-- 需求㉘（2026-09-29）：业务单元 / 管理单元 / 帐套 带「...」⇒ 点开弹层**手动选择**
+                 （与订单列表页搜索区、新建订单弹层同口径；只读态按钮置灰，点「编辑」后才可选） -->
+            <div class="pick-row">
+              <input :id="f.id" :name="f.key" type="text" :title="f.label" :aria-label="f.label"
+                     :value="order[f.key] || ''" :readonly="!editing || f.locked"
+                     autocomplete="off" @input="order[f.key] = $event.target.value">
+              <button type="button" class="pick" :id="f.btnId" :title="'选择' + f.label"
+                      :disabled="!editing" @click="openPick(f.key)">...</button>
+            </div>
           </template>
           <template v-else>
             <input :id="f.id" :name="f.key" type="text" :title="f.label" :aria-label="f.label"
@@ -152,7 +193,7 @@
     <h3>更多信息</h3>
     <div class="grid2">
       <div class="field" v-for="f in moreFields" :key="f.key">
-        <div class="label">{{ f.label }}</div>
+        <div class="label"><span v-if="f.required" class="req">*</span>{{ f.label }}</div>
         <div class="ctl c1"><div class="c2"><div class="c3"><div class="c4"><div class="c5"><div class="c6">
           <template v-if="f.type === 'suggest'">
             <div class="sug-wrap">
@@ -213,9 +254,9 @@
           <input type="checkbox" id="chk-all-lines" title="全选" aria-label="全选"
                  :checked="allPicked" @change="toggleAllLines($event.target.checked)">
         </div>
-        <div class="head">操作</div><div class="head">行号</div><div class="head">物料编码</div>
-        <div class="head">产品编码</div><div class="head">数量</div><div class="head">单位</div>
-        <div class="head">行类型</div><div class="head">收入</div><div class="head">状态</div>
+        <div class="head">操作</div><div class="head">行号</div><div class="head"><span class="req">*</span>物料编码</div>
+        <div class="head"><span class="req">*</span>产品编码</div><div class="head"><span class="req">*</span>数量</div><div class="head">单位</div>
+        <div class="head"><span class="req">*</span>行类型</div><div class="head">收入</div><div class="head">状态</div>
 
         <template v-for="(ln, idx) in lines" :key="idx">
           <div class="cell">
@@ -259,6 +300,9 @@
          （保存 = 表单1 + 表单2 + 表单3）③ 「提交」按钮不变；点「提交」前**校验页面编辑是否已保存**，
          有未保存的编辑 ⇒ 只在状态行提示、**不提交**。 -->
   <div class="block" style="display:flex;justify-content:flex-end;gap:8px">
+    <!-- 需求㛍（2026-09-29）：从右上角挪下来的「返回」（id 不变 ⇒ 既有用例/脚本不受影响）-->
+    <!-- 需求 2026-09-29：embed（弹层 iframe）下点「返回」= 请父页关弹层；独立页仍是回订单列表 -->
+    <a class="btn" id="btn-back" href="/orders.html" @click.prevent="goBack">返回</a>
     <button v-if="!editing" id="btn-detail-cancel" class="btn danger" type="button"
             :disabled="!canOrder" data-perm="create_order" @click="openCancel">取消</button>
     <button id="btn-detail-edit" class="btn" type="button"
@@ -271,6 +315,18 @@
   <div id="detail-status" data-testid="detail-status">{{ status }}</div>
 
   <!-- ===== 取消原因（点「取消」弹出；确认后删除订单）===== -->
+  <!-- ===== 合同详情（需求㉜，2026-09-29）：点「合同编号」⇒ 弹层 iframe 打开合同详情
+       （不再新开 tab；详情里点「编辑」⇒ 同一个弹层里的 iframe 换成编辑页 contract_edit.html）===== -->
+  <div id="modal-contract" class="modal" data-testid="modal-contract" v-if="showContract">
+    <div class="modal-box wide xl">
+      <h3>{{ contractSrc.indexOf('contract_edit.html') >= 0 ? '编辑合同' : '合同详情' }}</h3>
+      <iframe id="frame-contract-detail" :src="contractSrc" title="合同详情" name="frame-contract-detail"></iframe>
+      <div class="modal-actions">
+        <button id="btn-contract-close" class="btn" type="button" @click="closeContract">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <div id="modal-cancel-reason" class="modal" data-testid="modal-cancel-reason" v-if="showCancel">
     <div class="modal-box">
       <h3>取消原因</h3>
@@ -297,12 +353,34 @@
       </div>
     </div>
   </div>
+
+  <!-- ===== 需求㉘：业务单元 / 管理单元 / 帐套 的选择弹层（顶层容器 ⇒ 带 data-testid）===== -->
+  <div v-if="pickOpen" :id="'modal-pick-' + pickOpen" :data-testid="'modal-pick-' + pickOpen" class="modal">
+    <div class="modal-box wide">
+      <h3>选择{{ pickLabel }}</h3>
+      <table :id="'tbl-pick-' + pickOpen">
+        <thead><tr><th>{{ pickLabel }}</th><th>操作</th></tr></thead>
+        <tbody :id="'tbody-pick-' + pickOpen">
+          <tr v-for="row in pickRows(pickOpen)" :key="row.v">
+            <td class="cell-pick" data-field="value" @click="choosePick(pickOpen, row)">{{ row.t }}</td>
+            <td><button type="button" class="btn" @click="choosePick(pickOpen, row)">选择</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="modal-actions">
+        <button :id="'btn-pick-' + pickOpen + '-cancel'" class="btn" type="button" @click="pickOpen = ''">取消</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
 const { createApp } = Vue;
 
 const NO = new URLSearchParams(location.search).get('no') || '';
+// 2026-09-29（需求）：embed=1 ⇒ 本页作为**弹层 iframe** 被嵌（发票列表点订单编号进来）——
+// 隐藏顶部栏（关闭由父页承担），「返回」改为请求父页关闭弹层。
+const EMBED = new URLSearchParams(location.search).get('embed') === '1';
 // 分区号（F6 契约）：**框架用 context.add_init_script 注入 window.__HYBRID_W**（pytest-xdist 每 worker 一个分区）
 // ⇒ 必须优先读它；手工浏览时退回 URL 的 ?w=<分区>。只读 ?w= 会让框架驱动时全落 default 分区，并发互相踩。
 const PART = String(window.__HYBRID_W || '').trim() || (new URLSearchParams(location.search).get('w') || '');
@@ -316,22 +394,26 @@ function apiUrl(path) {
 createApp({
   data() {
     return {
+      showContract: false, contractSrc: '', contractNo: '',
       no: NO, order: {}, lines: [], more: { transport: '', creator: '系统管理员', carrier: '', channel: '直销' },
       editing: false, status: '', showCancel: false, cancelReason: '', orderStatus: '已新建',
       baseline: '',            // 需求⑫：最近一次「已保存/已加载」的快照 ⇒ 与它比对得出「有没有未保存的编辑」
       cancelReasons: [], transports: [], lineTypes: [], units: ['个', '件', '套', '千克'],
       maxLines: 100, sugOpen: false, sugItems: [], timer: null,
+      stepSeconds: 10,                       // 需求㉙：履行刷新间隔（取服务端 fulfill.step_seconds，默认 10 秒）
+      dicts: { bu: [], mu: [], file: [] },   // 需求㉘：三个「...」弹层的候选值（服务端主数据）
+      pickOpen: '',                          // 当前打开的选择弹层（字段 key：bu/mu/file）
       canOrder: false,       // 需求⑮：当前角色能不能动订单（只有订单管理员 / 切到该角色的超管）
       submitted: false,      // 需求⑯：订单是否已提交履行（已提交 ⇒ 页面自动续刷行状态）
       pickedLines: [],       // 需求⑭：被勾选的行（值 = 行号 idx+1），「关闭」关的就是它们
       basicFields: [
         { key: 'salesman',    label: '销售员',   id: 'd-salesman', locked: true },
-        { key: 'order_type',  label: '订单类型', id: 'd-type',     type: 'select' },
-        { key: 'bu',          label: '业务单元', id: 'd-bu' },
-        { key: 'file',        label: '帐套',     id: 'd-file' },
+        { key: 'order_type',  label: '订单类型', id: 'd-type',     type: 'select', required: true },
+        { key: 'bu',          label: '业务单元', id: 'd-bu',   pick: true, btnId: 'btn-pick-d-bu', required: true },
+        { key: 'file',        label: '帐套',     id: 'd-file', pick: true, btnId: 'btn-pick-d-file', required: true },
         { key: 'custName',    label: '客户',     id: 'd-cust',     locked: true },
-        { key: 'mu',          label: '管理单元', id: 'd-mu' },
-        { key: 'name',        label: '订单名称', id: 'd-name' },
+        { key: 'mu',          label: '管理单元', id: 'd-mu',   pick: true, btnId: 'btn-pick-d-mu', required: true },
+        { key: 'name',        label: '订单名称', id: 'd-name', required: true },
         { key: 'no',          label: '订单编号', id: 'd-no',       locked: true },
         { key: 'contract_no', label: '合同编号', id: 'd-contract', locked: true },
       ],
@@ -354,12 +436,60 @@ createApp({
     dirty() { return this.editing && this.snapshot() !== this.baseline; },
     // 需求⑭：表头「全选」的状态（全勾 = 关全部行；半勾不显示 indeterminate，避免与「关闭」语义混淆）
     allPicked() { return this.lines.length > 0 && this.pickedLines.length === this.lines.length; },
+    // 需求㉘：当前弹层的标题（用字段自己的 label，别另写一份文案）
+    pickLabel() { const f = this.basicFields.find(x => x.key === this.pickOpen); return f ? f.label : ''; },
   },
   mounted() {
+    // 需求㛎：订单行控件的 change/blur（浏览器自动填充会触发）⇒ 立刻按 DOM 值同步回数据
+    ['change', 'blur'].forEach(t => document.addEventListener(t, (e) => {
+      const nm = (e.target && e.target.name) || '';
+      if (['material', 'product', 'qty', 'unit', 'line_type', 'revenue'].includes(nm)) this.syncLinesFromDom();
+    }, true));
+    // 需求㉜：合同详情 / 编辑 iframe 的回传处理（关弹层 / 同弹层切编辑页 / 保存后切回详情 / 取消编辑）
+    window.addEventListener('message', (e) => {
+      const d = e.data || {};
+      if (d.type === 'contract-detail-close') this.closeContract();
+      else if (d.type === 'contract-edit-request') this.contractSrc = this.contractUrl(d.no || this.contractNo, 'edit');
+      else if (d.type === 'contract-updated') this.contractSrc = this.contractUrl(d.no || this.contractNo, 'detail');
+      else if (d.type === 'contract-edit-cancel') this.contractSrc = this.contractUrl(this.contractNo, 'detail');
+    });
+    if (EMBED) document.body.classList.add('embed');   // 2026-09-29：被嵌进弹层 ⇒ 隐藏顶部栏
     this.init();
   },
   beforeUnmount() { if (this.timer) clearInterval(this.timer); },
   methods: {
+    /* ---------- 2026-09-29（需求）：返回（embed 下 = 请求父页关闭弹层）---------- */
+    goBack() {
+      if (EMBED) { window.parent.postMessage({ type: 'order-detail-close' }, '*'); return; }
+      location.href = DEMO_AUTH.href('/orders.html');
+    },
+    /* ---------- 合同详情 / 编辑（需求㉜，2026-09-29）：弹层 iframe；「编辑」= 同弹层换 src ---------- */
+    contractUrl(no, mode) {
+      const q = new URLSearchParams();
+      if (PART) q.set('w', PART);
+      const role = DEMO_AUTH.demoRole();
+      if (role) q.set('demo_role', role); else if (DEMO_AUTH.token) q.set('token', DEMO_AUTH.token);
+      q.set('no', no); q.set('embed', '1'); q.set('_t', String(Date.now()));
+      return (mode === 'edit' ? 'contract_edit.html?' : 'contract_detail.html?') + q.toString();
+    },
+    openContract(no) { this.contractNo = no; this.contractSrc = this.contractUrl(no, 'detail'); this.showContract = true; },
+    closeContract() { this.showContract = false; this.contractSrc = ''; },
+    /* ---------- 需求㉘：业务单元 / 管理单元 / 帐套 的「...」弹层选择 ---------- */
+    async loadDicts() {
+      for (const k of ['bu', 'mu', 'file']) {
+        this.dicts[k] = (await (await fetch(apiUrl('/api/dict?kind=' + k))).json()).values || [];
+      }
+    },
+    pickRows(kind) { return (this.dicts[kind] || []).map(v => ({ v, t: v })); },
+    openPick(key) {
+      if (!this.editing) return;              // 只读态按钮本就置灰，这里再兜一层
+      this.pickOpen = key;
+    },
+    choosePick(kind, row) {
+      this.order[kind] = row.v;               // 回填表单1 的字段（保存时随 EDITABLE_ORDER 一起落库）
+      this.pickOpen = '';
+      this.status = '已选择' + this.pickLabel + '：' + row.t;
+    },
     async init() {
       markBusy();
       const me = await DEMO_AUTH.init();                     // 需求⑮：未登录 ⇒ 这里会跳登录页
@@ -373,6 +503,7 @@ createApp({
       this.transports = (await (await fetch(apiUrl('/api/transport_modes'))).json()).values || [];
       this.lineTypes = (await (await fetch(apiUrl('/api/dict?kind=line_type'))).json()).values || [];
       this.cancelReasons = (await (await fetch(apiUrl('/api/order/cancel_reasons'))).json()).reasons || [];
+      await this.loadDicts();                                   // 需求㉘：bu/mu/file 三个弹层的候选值
       const d = await (await fetch(apiUrl('/api/order/lines?no=' + encodeURIComponent(this.no)))).json();
       this.lines = d.lines || []; this.maxLines = d.max || 100;
       // 需求⑫：表单2 四项从服务端读回（保存过就显示保存过的值，而不是每次都被默认值覆盖）
@@ -411,10 +542,39 @@ createApp({
       this.saveAll();
     },
     // 保存 = 表单1 + 表单2 + 表单3（需求⑫；表单1/2 走 /api/order/update，表单3 走 /api/order/lines）
+    /* 需求㛎（2026-09-29）：浏览器自动填充 / 输入历史只改 DOM value、不派发 input ⇒ v-model 不同步，
+       保存时会误报「行必填项未填全」。① change/blur 里同步；② 保存前再按 DOM 兜底读一遍。 */
+    syncLinesFromDom() {
+      const root = document.querySelector('#lines-grid');
+      if (!root) return 0;
+      let fixed = 0;
+      ['material', 'product', 'qty', 'unit', 'line_type', 'revenue'].forEach(k => {
+        const els = root.querySelectorAll('[name="' + k + '"]');
+        els.forEach((el, i) => {
+          const row = this.lines[i];
+          if (row && String(el.value) !== String(row[k] || '')) { row[k] = el.value; fixed += 1; }
+        });
+      });
+      return fixed;
+    },
     async saveAll() {
+      this.syncLinesFromDom();   // 需求㛎：先把自动填充进来的值采纳
+      // 需求㛌：提交前先校验必填（表单1 的可编辑项）⇒ 未填的高亮 + 聚焦第一个
+      const LBL = { name: '订单名称', order_type: '订单类型', bu: '业务单元', mu: '管理单元', file: '帐套' };
+      const missKeys = Object.keys(LBL).filter(k => !String(this.order[k] || '').trim());
+      if (missKeys.length) {
+        markMissing(missKeys.map(k => ({ name: '#d-name', order_type: '#d-type', bu: '#d-bu',
+                                         mu: '#d-mu', file: '#d-file' }[k])));
+        this.status = '请填写全部必填字段：' + missKeys.map(k => LBL[k]).join('、');
+        return;
+      }
       const bad = this.lines.map((l, i) => (!l.material || !l.product || !l.qty || !l.line_type) ? (i + 1) : null)
                              .filter(Boolean);
-      if (bad.length) { this.status = `行必填项未填全（第 ${bad.join('、')} 行）`; return; }
+      if (bad.length) {
+        markRowsMissing(bad.map(n => n - 1), ['material', 'product', 'qty', 'line_type'],
+                        document.querySelector('#lines-grid'));   // 需求㛌：未填行高亮
+        this.status = `行必填项未填全（第 ${bad.join('、')} 行）`; return;
+      }
       const r1 = await fetch(apiUrl('/api/order/update'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -456,8 +616,12 @@ createApp({
     },
     async saveLines() {
       if (!this.editing) { this.status = '请先点「编辑」（只读态下「保存」是置灰的）'; return; }
+      this.syncLinesFromDom();   // 需求㛎：先把自动填充进来的值采纳
       const bad = this.lines.map((l, i) => (!l.material || !l.product || !l.qty || !l.line_type) ? (i + 1) : null).filter(Boolean);
-      if (bad.length) { this.status = `行必填项未填全（第 ${bad.join('、')} 行）`; return; }
+      if (bad.length) {
+        markRowsMissing(bad.map(n => n - 1), ['material', 'product', 'qty', 'line_type']);   // 需求㛌
+        this.status = `行必填项未填全（第 ${bad.join('、')} 行）`; return;
+      }
       const r = await fetch(apiUrl('/api/order/lines'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ no: this.no, lines: this.lines }),
@@ -525,7 +689,8 @@ createApp({
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { this.status = d.error || ('提交失败（HTTP ' + r.status + '）'); return; }
-      this.status = `订单已提交履行（每 ${d.step_seconds} 秒推进一档；本页每 30 秒刷新）`;
+      if (d.step_seconds) this.stepSeconds = d.step_seconds;
+      this.status = `订单已提交履行（每 ${d.step_seconds} 秒推进一档；本页每 ${d.step_seconds} 秒刷新）`;
       this.orderStatus = '履行中';                                  // 需求⑧：已提交 ⇒ 履行中
       this.submitted = true;
       await this.refreshFulfill();                                  // 立刻刷一次 ⇒ 起始态「已挑选」
@@ -534,7 +699,10 @@ createApp({
     // 需求⑯：统一计时器入口（提交后 / 页面打开时已提交 / 保存后仍在提交态 都用它）
     startFulfillTimer() {
       if (this.timer) clearInterval(this.timer);
-      this.timer = setInterval(this.refreshFulfill, 30000);      // 需求：每隔 30 秒刷新
+      // 需求㉙：刷新间隔**跟随服务端声明的 step_seconds**（当前 10 秒），不写死 ——
+      // 推进变快而轮询没跟上，会让某一档被整段跳过（历史上踩过 30s 轮询 + 20s 推进 ⇒ 已发货永远跳过）
+      const step = Math.max(1, Number(this.stepSeconds || 10));
+      this.timer = setInterval(this.refreshFulfill, step * 1000);
     },
     async refreshFulfill() {
       const d = await (await fetch(apiUrl('/api/order/fulfill?no=' + encodeURIComponent(this.no)))).json();
@@ -549,10 +717,53 @@ createApp({
       this.submitted = !!d.submitted;
       if (this.submitted && !this.timer) this.startFulfillTimer();      // 已提交 ⇒ 一直刷到行关闭
       if (d.order_status) this.orderStatus = d.order_status;     // 需求⑧：全部行关闭 ⇒ 已关闭
-      this.status = d.submitted ? `履行状态：${d.state}（已过 ${d.elapsed} 秒）` : this.status;
+      if (d.step_seconds) this.stepSeconds = d.step_seconds;          // 需求㉙：间隔跟随服务端
+      // 需求㉙：已签收后 2 分钟内显示「还有多久自动关闭」，到点后状态自然变「已关闭」
+      const left = d.submitted && d.auto_close_at_seconds
+        ? Math.max(0, Math.round(d.auto_close_at_seconds - (d.elapsed || 0))) : null;
+      this.status = d.submitted
+        ? `履行状态：${d.state}（已过 ${d.elapsed} 秒${left !== null && left > 0 ? '；' + left + ' 秒后自动关闭' : ''}）`
+        : this.status;
     },
   },
 }).mount('#app');
+</script>
+<script>
+/* 需求㛌（2026-09-29）：表单提交时把**未填的必填项**高亮出来（红框），并滚动/聚焦到第一个未填项；
+   用户一旦输入或选择，该项的高亮自动清除。keys 用控件的 name（各页控件的 name = 字段 key）。 */
+function markMissing(keys, root) {
+  root = root || document;
+  root.querySelectorAll('.err').forEach(function (e) { e.classList.remove('err'); });
+  var els = [];
+  (keys || []).forEach(function (k) {
+    if (!k) return;
+    // 传 CSS 选择器（'#inp-name'）直接用；传字段名则先按 name 再按 id 找
+    var e = /^[#.\[]/.test(k) ? root.querySelector(k)
+                               : (root.querySelector('[name="' + k + '"]') || root.querySelector('#' + k));
+    if (e) els.push(e);
+  });
+  els.forEach(function (e) { e.classList.add('err'); });
+  if (els[0]) { try { els[0].scrollIntoView({ block: 'center' }); els[0].focus(); } catch (err) {} }
+  return els.length;
+}
+/* 行级（订单行 / 发票行）：idxList = 0 起的行号数组，keys = 行内字段名 */
+function markRowsMissing(idxList, keys, root) {
+  root = root || document;
+  (idxList || []).forEach(function (i) {
+    (keys || []).forEach(function (k) {
+      var els = root.querySelectorAll('[name="' + k + '"]');
+      var el = els[i];
+      if (el && !String(el.value || '').trim()) el.classList.add('err');
+    });
+  });
+}
+(function () {
+  ['input', 'change'].forEach(function (t) {
+    document.addEventListener(t, function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('err')) e.target.classList.remove('err');
+    }, true);
+  });
+})();
 </script>
 </body>
 </html>

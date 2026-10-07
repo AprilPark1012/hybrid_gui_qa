@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.2.6）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.3）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup>★</sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.2.6 · 2026-09-28　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.3 · 2026-09-30　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -385,7 +385,7 @@
 
   <h4 style="margin:18px 0 4px">最小可跑样例（照着改就行）</h4>
   <pre class="tree"># 一个文件 = 一个场景；文件名 = 场景 id
-id: contracts_search_by_no
+id: orders_invoice_full_lifecycle
 title: 合同列表 · 按编号搜索
 description: 输入合同编号片段 → 点搜索 → 确认列表出现对应编号的记录
 tags: [合同, 搜索, smoke]
@@ -452,7 +452,7 @@ assert_guard:
 python -m framework.cli probe                 # → output/element_maps/probe_*.json
 
 # ② 复制一个最像的现成场景，改 id / scenario / business_context
-cp scenarios/contracts/contracts_search_by_no.yml scenarios/contracts/&lt;你的场景id&gt;.yml
+cp scenarios/orders/orders_invoice_full_lifecycle.yml scenarios/contracts/&lt;你的场景id&gt;.yml
 
 # ③ 跑！默认会自动试跑（--verify 默认开）：FAILED → exit 3
 python -m framework.cli explore --ai --scenario-file scenarios/contracts/&lt;你的场景id&gt;.yml
@@ -535,8 +535,8 @@ ls log/&lt;run_id&gt;/                          # 用例日志 / 报告 / trace
   <pre class="tree"># ① 跑 probe，拿到目标控件的语义名
 python -m framework.cli probe
 
-# ② 抄一个最像的现成用例改（手搓样例：cases/manual/hand_enter_search.json）
-cp cases/manual/hand_enter_search.json cases/manual/&lt;你的用例id&gt;.json
+# ② 抄一个最像的现成用例改（样例：cases/orders_invoice_full_lifecycle/<case_id>.json）
+cp cases/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_140528.json cases/manual/&lt;你的用例id&gt;.json
 #    必改：case_id 与文件名一致 · name 给人看 · steps 换成你的动作 · asserts 换成你的判定
 
 # ③ 生成脚本（幂等，可反复跑）
@@ -552,7 +552,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <h4 style="margin:18px 0 4px">一个真实的手搓用例（节选，可当模板）</h4>
   <pre class="tree">{
-  "case_id": "hand_enter_search",
+  "case_id": "ai_orders_invoice_full_lifecycle_140528",
   "name": "手搓用例 · 回车触发搜索 + 客户右模糊筛选",
   "base_url": "http://localhost:8000",
   "steps": [
@@ -864,7 +864,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 ╚══════════════════════════════════════════════════════════════════════════════════════════════╝
  <b>① 输入（自然语言）</b>
     内联  --scenario "在搜索框输入'1005'点搜索，确认出现 HT-1005"      ← 原样保留的临时用法
-    文件  --scenario-file scenarios/contracts/contracts_search_by_no.yml   ← 场景库（可版本化）
+    文件  --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml   ← 场景库（可版本化）
     批量  --scenario-dir scenarios/ [--tag smoke] [--limit N]              ← 三者互斥，同时给则 exit 2
       └─ cli.py::main() → <b>cli.cmd_explore(rest)</b>
            ├─ scenario.<b>load_scenario_file()</b> / <b>discover_scenarios()</b>   解析+校验 → text/url/page_bg/guard
@@ -1192,7 +1192,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
     <pre class="tree">自然语言场景 ──explore --ai──▶ cases/ai_*.json ─┐
                                               ├─▶ generate ─▶ scripts/ + datasets/ ─▶ run（零 token）
 手搓 cases/*.json ──────────────────────────┘        ▲ 缺项才现场 probe；ElementMap 快照优先</pre>
-    <p><b>怎么用：</b><code>python -m framework.cli explore --ai --scenario-file scenarios/contracts/contracts_search_by_no.yml</code> → <code>python -m framework.cli generate</code> → <code>python -m framework.cli run --workers 2</code></p>
+    <p><b>怎么用：</b><code>python -m framework.cli explore --ai --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml</code> → <code>python -m framework.cli generate</code> → <code>python -m framework.cli run --workers 2</code></p>
     <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
@@ -1281,7 +1281,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
         <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_data_expand.py</span>（16 条：占位符展开与固化）· <span class="code-inline">tests/frameworkTest/test_assert_kinds_render.py</span>（25 条：11 种断言渲染正确）· <span class="code-inline">tests/frameworkTest/test_case_quality_gate.py</span>（13 条：用例质量闸门）· <span class="code-inline">tests/frameworkTest/test_generate_quality_gate.py</span>（4 条）</li>
-        <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_data_expand.py</span>（全真跑）· <span class="code-inline">tests/featureTest/verify_assert_kinds.py</span>（<b>防假绿铁律：每条断言在「期望值写错」时必须 FAIL</b>）</li>
+        <li><b>二类：</b>全真跑的端到端验证脚本（<span class="code-inline">tests/featureTest/verify_*.py</span>）· <b>防假绿铁律：每条断言在「期望值写错」时必须 FAIL</b><br><span class="muted">（V8.3 起数据参数化与断言种类两项的独立脚本已随手写用例删除，本版交付面见发行说明「二类验收面」一节）</span></li>
       </ul>
     </div>
   </div>
@@ -1604,8 +1604,8 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
 <span class="prompt">$</span> python -m framework.cli run --workers 2 <span class="cmt"># ③ 并发执行 + 资源预检(内存不够自动降级)</span>
 
 <span class="prompt">$</span> python -m framework.cli run --debug  <span class="cmt"># ③' 调试开关：有屏幕弹浏览器；没屏幕录视频(webm)+逐步截图</span>
-<span class="prompt">$</span> python -m framework.cli run --debug --case search_mixed <span class="cmt"># ③'' 只调试一条（--case 可重复；不传=整包跑）</span>
-<span class="prompt">$</span> python -m framework.cli run --debug --slowmo 500 --case search_mixed <span class="cmt"># ③''' 放慢 500ms/动作，肉眼跟步</span>
+<span class="prompt">$</span> python -m framework.cli run --debug --case ai_orders_invoice_full_lifecycle_140528 <span class="cmt"># ③'' 只调试一条（--case 可重复；不传=整包跑）</span>
+<span class="prompt">$</span> python -m framework.cli run --debug --slowmo 500 --case ai_orders_invoice_full_lifecycle_140528 <span class="cmt"># ③''' 放慢 500ms/动作，肉眼跟步</span>
 <span class="prompt">$</span> python -m framework.cli run --force-workers <span class="cmt"># ③'' 无视资源预检(有 OOM 风险,慎用)</span>
 
 <span class="prompt">$</span> python -m framework.cli explore --ai --scenario "输入1005点搜索确认出现HT-1005"
@@ -1726,7 +1726,7 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.2.6</b>（2026-09-28）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.3</b>（2026-09-30）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
       <div class="cl-head"><span class="cl-ver">V8.2.6</span><span class="cl-date">2026-09-28</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>行锚选取修复</b>：从「整行文本」改成「<b>整表内唯一的最短单元格文本</b>」—— 跨 demo 重启不再降级</span></div>
       <p class="cl-sum">产物里的行锚原本是整行 <code>tr.textContent</code>（截 120 字符），而 demo 数据含随机字段（<code>mu / file / type / bu</code>）⇒ <b>demo 每次重启，行锚必然失配</b>，生成脚本静默退到语义兜底（用例照样 PASSED、每处白等 5 秒）—— 交付包到别人机器上 <b>100% 降级</b>，属「看着能下钻、实际没生效」的假绿。<br>本版把行锚改成「<b>整表内恰好出现 1 次</b>的最短单元格文本」：纯数据驱动、不猜哪列是业务键；取不到唯一候选就<b>保持现状</b>（绝不静默编锚）。</p>
@@ -1929,8 +1929,8 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><b>一组数据 = 一条用例</b>：生成器对带 <code>data:</code> 的用例产出 <code>parametrize(indirect=True)</code>，报告里形如 <code>test_xxx[编号-1007]</code>，可按组单选（<code>-k "&lt;case_id&gt; and &lt;组名&gt;"</code>）</li>
         <li><b>组名口径</b>：优先用组里的 <code>id</code>，其次取该组第一个占位符的值，最后回落 <code>ds1/ds2…</code>；重名自动加序号、去掉方括号等字符（否则报告里分不清哪组）</li>
-        <li>两类判据：<code>tests/frameworkTest/test_data_expand.py</code>（生成器契约，秒级 16 条）+ <code>tests/featureTest/verify_data_expand.py</code>（端到端：3 组→3 passed · <b>坏组只红那一行</b> · 单组可跑），后者进 R7 统一入口</li>
-        <li><b>样板场景</b> <code>scenarios/contracts/contracts_search_by_no.yml</code> 改 3 组数据，照它写即可</li>
+        <li>两类判据：<code>tests/frameworkTest/test_data_expand.py</code>（生成器契约，秒级 16 条）+ 数据参数化的端到端验证（3 组→3 passed · <b>坏组只红那一行</b> · 单组可跑），<b>（V8.3 起该验证脚本已随手写用例一起删除，后续版本新增用例时补回）</b>，后者进 R7 统一入口</li>
+        <li><b>样板场景</b> <code>scenarios/orders/orders_invoice_full_lifecycle.yml</code> 改 3 组数据，照它写即可</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
         <li>场景 <code>data</code> 字段从「二期 / 一期只解析不展开」变成<b>已支持</b>；<code>scenarios/README.md</code> 同步</li>
@@ -2175,7 +2175,7 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
         <li><b>cli.py</b>：`_verify_cases` 的两处 subprocess 改用 `run_capture()`；`cmd_run` 给 pytest 子进程注入 UTF-8 口径（否则 cp936 控制台下 conftest 里的 ✓/⚠️ 会 UnicodeEncodeError，跑到一半崩）</li>
         <li>`cli.main()` 入口第一件事就是 `force_stdio()`：本进程 + 所有子进程 + 控制台一次性拉齐 UTF-8</li>
-        <li>tests/featureTest/verify_assert_kinds.py、tests/featureTest/verify_cross_page.py、tests/frameworkTest/test_cli_flags.py 的跨进程调用同口径改造</li>
+        <li>tests/featureTest/verify_cross_page.py、tests/frameworkTest/test_cli_flags.py 的跨进程调用同口径改造</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
         <li><b>--verify 在中文 Windows 上必崩</b>（gbk 解码 UTF-8 子进程输出）—— 三入口（内联 / scenario 文件 / scenario 目录）全部修复并实测</li>
@@ -2196,7 +2196,7 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
         <li><b>断言 11 种 kind</b>：text / visible / hidden / count / attr / value / url / checked / unchecked / enabled / disabled（缺省 kind = text，老用例零改动）</li>
         <li>断言目标两种写法：<b>element</b>（probe 语义名 → 映射确定性 locator，AI 链路可用）与 <b>selector</b>（手写用例专用 CSS/Playwright 选择器，如 li:has-text('买牛奶')）</li>
         <li><b>tests/</b> 框架自测目录：CLI 参数契约 + 断言 kind→代码翻译契约（秒级，不需浏览器）</li>
-        <li><b>tests/featureTest/verify_assert_kinds.py</b> 正/负向端到端脚本：11 种 kind + 4 类结构性错误全部实测</li>
+        <li>断言种类（11 种 kind + 4 类结构性错误）的正/负向端到端实测<br><span class="muted">（V8.3 起原 <span class="code-inline">verify_assert_kinds.py</span> 已随手写用例删除；每条断言「期望值写错时必须 FAIL」的防假绿口径保留在 <span class="code-inline">tests/frameworkTest/</span> 内）</span></li>
         <li>用例：cases/assert_kinds_*.json（search 全类型 / reset 验 value 清空 / modal 验 visible / todo 验 checked）</li>
         <li>demo 合同页加一个「导出（未接入）」禁用按钮 —— 让 enabled/disabled 断言有真页覆盖</li>
       </ul></div>
@@ -2289,7 +2289,7 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.2.6</b>（2026-09-28）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.3</b>（2026-09-30）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>

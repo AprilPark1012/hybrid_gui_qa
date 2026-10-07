@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>编辑合同</title>
+<!--
+  编辑合同 iframe 页（需求㉜ · 2026-09-29）：
+  合同列表页 → 弹层 iframe 打开「合同详情」→ 详情里点「编辑」⇒ **同一个弹层内的 iframe 换成本页**
+  （不叠层，父页只换 src）。本页刻意用 **Vue** 实现（详情页同为 Vue），而「新建合同」用 jQuery ——
+  两者**共用同一份表单设计**（vendor/contract-form.css：字段表格布局 / 控件尺寸 / 客户选择弹层 / 按钮区 / 状态行）。
+
+  契约（不许破 —— 见 references/demo-refactor-contract.md）：
+    ① 就绪契约：body[data-hybrid-ready] 静态 0 ⇒ 取数渲染完成置 "1"（父页/测试等它）
+    ② 埋点口径 C：只有**顶层容器**带 data-testid（form-contract-edit / modal-cust-pick / status）；
+       行 / 单元格 / 行内按钮 / 表单控件一律不带
+    ③ 分区：优先读框架注入的 window.__HYBRID_W，手工浏览退回 URL 的 ?w=<分区>
+    ④ 身份：引 auth.js；父页把 demo_role / token 带下来（否则 PUT 会被服务端 401/403）
+    ⑤ 回传：同源 postMessage —— 保存成功 {type:'contract-updated', no, name} · 取消 {type:'contract-cancel'}
+       ⇒ 父页负责刷新列表 + 把弹层 iframe 换回详情页
+    ⑥ 客户：点「选择客户」开本页弹层；**点客户名称 / 地址单元格也能选中**（与需求㉔ 同口径）
+-->
+<script src="vendor/vue.global.prod.js"></script>
+<script src="auth.js"></script>
+<link rel="stylesheet" href="vendor/contract-form.css">
+</head>
+<body data-hybrid-ready="0">
+<div class="page" id="app">
+
+  <div class="title">编辑合同</div>
+
+  <table class="form" id="form-contract-edit" data-testid="form-contract-edit" aria-label="编辑合同">
+    <tbody>
+      <tr>
+        <td class="lbl">合同编号</td>
+        <td>
+          <!-- 编号是主键，只读展示（不可改） -->
+          <input id="inp-no" name="contractNo" type="text" title="合同编号" aria-label="合同编号"
+                 :value="form.no" readonly>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>合同名称</td>
+        <td>
+          <input id="inp-name" name="contractName" type="text" title="合同名称" aria-label="合同名称"
+                 placeholder="请输入合同名称" autocomplete="off" v-model.trim="form.name">
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>管理单元</td>
+        <td>
+          <select id="sel-mu" name="managementUnit" title="管理单元" aria-label="管理单元" v-model="form.mu">
+            <option value="">请选择</option>
+            <option v-for="v in MU" :key="v" :value="v">{{ v }}</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>帐套</td>
+        <td>
+          <select id="sel-fs" name="folder" title="帐套" aria-label="帐套" v-model="form.file">
+            <option value="">请选择</option>
+            <option v-for="v in FILE" :key="v" :value="v">{{ v }}</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>合同类型</td>
+        <td>
+          <select id="sel-type" name="contractType" title="合同类型" aria-label="合同类型" v-model="form.type">
+            <option value="">请选择</option>
+            <option v-for="v in TYPE" :key="v" :value="v">{{ v }}</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>客户</td>
+        <td>
+          <div class="pick-row">
+            <input id="inp-c" name="customer" type="text" title="客户" aria-label="客户"
+                   placeholder="请选择客户" readonly :value="custLabel" autocomplete="off">
+            <button id="btn-pick-c" class="btn" type="button" title="选择客户" @click="openCust">选择客户</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>业务单元</td>
+        <td>
+          <select id="sel-b" name="businessUnit" title="业务单元" aria-label="业务单元" v-model="form.bu">
+            <option value="">请选择</option>
+            <option v-for="v in BU" :key="v" :value="v">{{ v }}</option>
+          </select>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="actions">
+    <button id="btn-cancel" class="btn" type="button" @click="cancel">取消</button>
+    <!-- 2026-09-29（需求）：保存需要合同管理员角色（直接开本页 URL 时同样受控）-->
+    <button id="btn-save" class="btn primary" type="button" data-perm="create_contract"
+            data-perm-tip="「保存」需要合同管理员角色：当前不是合同管理员，不能保存合同（可用右上角头像切换角色）"
+            @click="save">保存</button>
+  </div>
+
+  <div id="status" data-testid="status">{{ status }}</div>
+</div>
+
+<!-- ===== 客户选择弹层（本页内，Vue 控制显隐；顶层容器 ⇒ 可带 data-testid）===== -->
+<div id="modal-cust-pick" data-testid="modal-cust-pick" v-if="showCust">
+  <div class="box">
+    <h4>选择客户</h4>
+    <div class="bar">
+      <input id="inp-cust-kw" type="text" placeholder="按客户名称或地址过滤" autocomplete="off"
+             aria-label="客户过滤" v-model.trim="custKw">
+      <button id="btn-cust-close" class="btn" type="button" @click="closeCust">关闭</button>
+    </div>
+    <table id="tbl-pick-cust" aria-label="选择客户">
+      <thead>
+        <tr><th>客户名称</th><th>地址</th><th style="width:70px;">操作</th></tr>
+      </thead>
+      <tbody>
+        <tr v-for="r in custRows" :key="r.id">
+          <td class="cell-pick" title="点这里选中该客户" @click="pick(r)">{{ r.name }}</td>
+          <td class="cell-pick" title="点这里选中该客户" @click="pick(r)">{{ r.addr }}</td>
+          <td><button class="btn" type="button" @click="pick(r)">选择</button></td>
+        </tr>
+        <tr v-if="!custRows.length"><td colspan="3" class="hint">没有匹配的客户</td></tr>
+      </tbody>
+    </table>
+    <div class="hint" style="margin-top:6px;">点「客户名称」或「地址」单元格也可直接选中</div>
+  </div>
+</div>
+
+<script>
+// 分区（F6）+ 就绪契约（F1）：与列表页/详情页同一套约定
+const W = (window.__HYBRID_W || '').toString().trim();
+function apiUrl(path){
+  const u = !W ? path : path + (path.indexOf('?') >= 0 ? '&' : '?') + 'w=' + encodeURIComponent(W);
+  return DEMO_AUTH.url(u);
+}
+function markReady(){ document.body.dataset.hybridReady = '1'; }
+
+const MU = ['0021', '0451', '1031'];
+const FILE = ['001', '002', '003'];
+const TYPE = ['合同', 'po', '预po'];
+const BU = ['bu_a', 'bu_b', 'bu_c'];
+
+const { createApp } = Vue;
+createApp({
+  data() {
+    const q = new URLSearchParams(location.search);
+    return {
+      no: q.get('no') || '', MU, FILE, TYPE, BU,
+      form: { no: '', name: '', mu: '', file: '', type: '', cust: '', bu: '' },
+      custName0: '',            // 服务端记录里的客户名（兜底展示）
+      customers: [], custKw: '', showCust: false, status: '',
+    };
+  },
+  computed: {
+    custLabel() {
+      const t = this.customers.find(x => x.id === this.form.cust);
+      return t ? t.name : (this.custName0 || this.form.cust);
+    },
+    custRows() {
+      const k = this.custKw;
+      if (!k) return this.customers;
+      return this.customers.filter(x => (x.name || '').includes(k) || (x.addr || '').includes(k));
+    },
+  },
+  async mounted() {
+    if (!this.no) { this.status = '缺少合同编号（父页应带 ?no=HT-xxxx）'; markReady(); return; }
+    const [rec, custs] = await Promise.all([
+      (await fetch(apiUrl('/api/contract?no=' + encodeURIComponent(this.no)))).json(),
+      (await fetch(apiUrl('/api/customers'))).json(),
+    ]);
+    if (!rec || rec.error || !rec.no) { this.status = '未找到该合同 ' + this.no; markReady(); return; }
+    this.customers = custs || [];
+    this.form = { no: rec.no, name: rec.name || '', mu: rec.mu || '', file: rec.file || '',
+                  type: rec.type || '', cust: rec.cust || '', bu: rec.bu || '' };
+    this.custName0 = rec.custName || '';
+    markReady();
+  },
+  methods: {
+    openCust() { this.custKw = ''; this.showCust = true; },
+    closeCust() { this.showCust = false; },
+    pick(r) { this.form.cust = r.id; this.custName0 = r.name; this.closeCust(); },
+    async save() {
+      const f = this.form;
+      const need = [['name', '合同名称'], ['mu', '管理单元'], ['file', '帐套'], ['type', '合同类型'], ['cust', '客户'], ['bu', '业务单元']];
+      const missKeys = need.filter(([k]) => !String(f[k] || '').trim()).map(([k]) => k);
+      if (missKeys.length) {
+        // 需求㛌：未填字段高亮 + 聚焦第一个（按本页控件 id 定位：name/mu/file/type/cust/bu）
+        markMissing(missKeys.map(k => ({ name: '#inp-name', mu: '#sel-mu', file: '#sel-fs',
+                                         type: '#sel-type', cust: '#inp-c', bu: '#sel-b' }[k])));
+        const label0 = (need.find(([k]) => k === missKeys[0]) || [])[1];
+        this.status = '「' + label0 + '」必填，请先选择/填写'
+                    + (missKeys.length > 1 ? '（还有 ' + (missKeys.length - 1) + ' 项未填）' : '');
+        window.parent.postMessage({ type: 'contract-error', status: this.status }, '*');
+        return;
+      }
+      const r = await fetch(apiUrl('/api/contract_update'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { this.status = d.error || ('保存失败（' + r.status + '）'); return; }
+      // ⚠️ 后端 /api/contract_update 返回的是**记录本体**（{no,name,...}），不是 {item:{...}}（2026-09-29 修）
+      this.status = '已保存合同 ' + (d.no || '');
+      window.parent.postMessage({ type: 'contract-updated', no: d.no || f.no, name: d.name || f.name }, '*');
+    },
+    cancel() { window.parent.postMessage({ type: 'contract-edit-cancel' }, '*'); },
+  },
+}).mount('#app');
+// 2026-09-29（需求）：本页会被弹层 iframe 嵌入 ⇒ 必须自己 init
+// （父页的 gating 管不到 iframe 内），否则 data-perm 的置灰 + 点击拦截不生效。
+DEMO_AUTH.init();
+</script>
+<script>
+/* 需求㛌（2026-09-29）：表单提交时把**未填的必填项**高亮出来（红框），并滚动/聚焦到第一个未填项；
+   用户一旦输入或选择，该项的高亮自动清除。keys 用控件的 name（各页控件的 name = 字段 key）。 */
+function markMissing(keys, root) {
+  root = root || document;
+  root.querySelectorAll('.err').forEach(function (e) { e.classList.remove('err'); });
+  var els = [];
+  (keys || []).forEach(function (k) {
+    if (!k) return;
+    // 传 CSS 选择器（'#inp-name'）直接用；传字段名则先按 name 再按 id 找
+    var e = /^[#.\[]/.test(k) ? root.querySelector(k)
+                               : (root.querySelector('[name="' + k + '"]') || root.querySelector('#' + k));
+    if (e) els.push(e);
+  });
+  els.forEach(function (e) { e.classList.add('err'); });
+  if (els[0]) { try { els[0].scrollIntoView({ block: 'center' }); els[0].focus(); } catch (err) {} }
+  return els.length;
+}
+/* 行级（订单行 / 发票行）：idxList = 0 起的行号数组，keys = 行内字段名 */
+function markRowsMissing(idxList, keys, root) {
+  root = root || document;
+  (idxList || []).forEach(function (i) {
+    (keys || []).forEach(function (k) {
+      var els = root.querySelectorAll('[name="' + k + '"]');
+      var el = els[i];
+      if (el && !String(el.value || '').trim()) el.classList.add('err');
+    });
+  });
+}
+(function () {
+  ['input', 'change'].forEach(function (t) {
+    document.addEventListener(t, function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('err')) e.target.classList.remove('err');
+    }, true);
+  });
+})();
+</script>
+</body>
+</html>

@@ -34,13 +34,32 @@ class ScenarioError(RuntimeError):
 
 @dataclass
 class ScenarioPage:
-    """场景里的一个页面（P3 跨页流程）：name 是人/AI 都看的页名，url 是该页直连地址。"""
+    """场景里的一个页面（P3 跨页流程）：name 是人/AI 都看的页名，url 是该页直连地址。
+
+    P22 批 5（缺口 ④⑤）：`pre` = **该页的前置动作**，按控件的 accessibility name 依次点。
+    为什么需要：有些控件只在"做了某个动作之后"才存在 ——
+      · 合同列表页的「新建订单」弹层：不先选中合同，点了只弹「请选择某个合同」，弹层压根不开；
+      · 订单详情页的行控件（数量/单位/行类型/收入）：只在「编辑 + 新增行」之后才有。
+    探针默认"打开页面就看一遍"永远看不到它们 ⇒ AI 拿不到语义名、用例引用不了
+    （批 5 实测：行必填没填 ⇒ 保存无效 ⇒ 提交被拦，状态永远停在「已新建」）。
+    """
     name: str
     url: str
     page: str = ""            # 该页的页面说明（给 AI 的领域知识）
+    pre: list = field(default_factory=list)   # 该页探测前要做的动作，如 ["编辑", "新增行"]
+    # P22 批 5：**探测期用的地址**（可选）。页面 url 带运行期才有的值（订单号之类）时，
+    # 探测期那个对象还不存在 ⇒ 场景另给一个"探测时去哪个地址"。
+    # ⚠️ 框架只认「探测地址」这个概念，**不认识任何具体业务值** —— 值由场景给
+    # （AprilPark1012 2026-09-30 口径：补能力要与场景解耦、不能写死）。
+    probe_url: str = ""
+
+    def probe_url_for(self) -> str:
+        """探测该页时实际访问的地址：声明了就用它，否则用执行地址（向后兼容）。"""
+        return self.probe_url or self.url
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "url": self.url, "page": self.page}
+        return {"name": self.name, "url": self.url, "page": self.page,
+                "pre": list(self.pre or []), "probe_url": self.probe_url}
 
 
 @dataclass
@@ -64,6 +83,12 @@ class Scenario:
     notes: str = ""
     warnings: list = field(default_factory=list)
     pages: list = field(default_factory=list)      # list[ScenarioPage]（跨页；空 = 单页老写法）
+    # P22 批 5（方案 H）：**登录前置声明** —— 探测与执行两侧共用的唯一来源（见 references/design/P22 §十）
+    auth: dict = field(default_factory=dict)
+
+    def auth_spec(self) -> dict:
+        """登录前置参数（空 dict = 该场景不需要登录）。"""
+        return dict(self.auth or {})
 
     @property
     def name(self) -> str:
@@ -184,9 +209,50 @@ def load_scenario_file(path) -> Scenario:
                                     f"（跨页要能直连，否则 AI 只能靠点、不可靠）")
             if any(x.name == pname for x in pages):
                 raise ScenarioError(f"{p}: pages 里页名重复：{pname!r}（页名是元素唯一化的依据，必须唯一）")
-            pages.append(ScenarioPage(name=pname, url=purl, page=str(pg.get("page") or "")))
+            raw_pre = pg.get("pre")
+            pre_list: list[str] = []
+            if raw_pre is not None:
+                if (not isinstance(raw_pre, list)
+                        or any(not str(x).strip() for x in raw_pre)):
+                    raise ScenarioError(
+                        f"{p}: pages[{i}].pre 应为**操控名列表**（每项是一个控件的可访问名，"
+                        f"如 [编辑, 新增行]），实际是 {type(raw_pre).__name__}")
+                pre_list = [str(x).strip() for x in raw_pre]
+            _probe_url = str(pg.get("probe_url") or "").strip()
+            if _probe_url and not _probe_url.startswith("http"):
+                raise ScenarioError(
+                    f"{p}: pages[{i}].probe_url 必须是完整 http(s) 地址（探测要能直连），"
+                    f"实际 {_probe_url!r}")
+            pages.append(ScenarioPage(name=pname, url=purl, page=str(pg.get("page") or ""),
+                                      pre=pre_list, probe_url=_probe_url))
         if len(pages) == 1:
             warns.append("pages 只给了一个页面 —— 等价于单页场景（跨页至少 2 页）")
+    # ---- P22 批 5：登录前置（可选段）----
+    raw_auth = raw.get("auth")
+    auth: dict = {}
+    if raw_auth is not None:
+        if not isinstance(raw_auth, dict):
+            raise ScenarioError(
+                f"{p}: auth 应为映射（login_api / username / password|password_env / token_key）"
+                f"，实际是 {type(raw_auth).__name__}")
+        uname = str(raw_auth.get("username") or "").strip()
+        if not uname:
+            raise ScenarioError(f"{p}: auth 缺少 username（登录账号）")
+        pwd = raw_auth.get("password")
+        pwd_env = str(raw_auth.get("password_env") or "").strip()
+        if not pwd and not pwd_env:
+            raise ScenarioError(
+                f"{p}: auth 需要 password 或 password_env 之一"
+                f"（真实系统请用 password_env，别把口令写进场景文件）")
+        api = str(raw_auth.get("login_api") or "/api/login").strip()
+        if not api:
+            raise ScenarioError(f"{p}: auth.login_api 不能为空")
+        key = str(raw_auth.get("token_key") or "").strip()
+        auth = {"login_api": api, "username": uname,
+                "password": str(pwd) if pwd else "", "password_env": pwd_env, "token_key": key}
+        if not key:
+            warns.append("auth 未声明 token_key ⇒ 只做接口登录、不注入 localStorage"
+                         "（页面若靠 localStorage 认身份，会仍然显示未登录）")
     guard = raw.get("assert_guard") or {}
     if not isinstance(guard, dict):
         raise ScenarioError(f"{p}: assert_guard 应为映射（must_contain / forbidden）")
@@ -231,6 +297,7 @@ def load_scenario_file(path) -> Scenario:
         notes=str(raw.get("notes") or ""),
         warnings=warns,
         pages=pages,
+        auth=auth,
     )
 
 

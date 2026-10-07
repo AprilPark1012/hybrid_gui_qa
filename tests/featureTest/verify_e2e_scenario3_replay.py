@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# HYBRID_DAILY_SKIP: V8.3 范围外 —— 录像键 = sha256(场景文案 + 控件骨架)，本版两样都动过
+#   （场景文案重写 + demo 删冗余 testid）⇒ 现有录像必然不命中，需在能连外网、有 key 的机器上重录；
+#   本版交付范围是「AI 订单→开票」这一条链路本身（其端到端执行已由该用例的真跑覆盖）。
+#   **后续版本重录录像后，删掉这一行即可恢复为日常二类验收**（在线版见 verify_e2e_scenario1_online.py）。
 """E2E 场景1（离线回放端到端）—— 二类特性验证（R7 第 ④ 条 · 日常口径）。
 
 **场景1 的完整链**：自然语言场景 → `explore --ai` 语义识别/编排 → 用例落 `cases/ai_*.json`
@@ -40,7 +44,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 PY = sys.executable
 CHAIN = REPO / "build_tools" / "offline_explore_chain.py"
-SCENARIO = REPO / "scenarios" / "contracts" / "contracts_search_by_no.yml"
+SCENARIO = REPO / "scenarios" / "orders" / "orders_invoice_full_lifecycle.yml"
 CASSETTE = REPO / "output" / "llm_cassettes"
 ARCHIVE = REPO / "output" / f"archived_cases_{time.strftime('%Y%m%d')}"
 BLACKHOLE = "http://127.0.0.1:9"          # LLM 端点指黑洞 ⇒ 「有没有偷偷联网」可证伪

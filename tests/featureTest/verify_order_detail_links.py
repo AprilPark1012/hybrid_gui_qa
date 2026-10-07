@@ -27,6 +27,10 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(BASE))
+
+from framework.tools.common.text_io import force_stdio       # noqa: E402
+
+force_stdio()          # 统一 UTF-8：Windows 控制台 cp936 下中文/✓ 会乱码（判据 test_utf8_io 守门）
 DEMO = "http://localhost:8000"
 SHOTS = BASE / "output" / "order_link_shots"
 fails: list[str] = []
@@ -72,7 +76,7 @@ def part_static():
 
 def part_browser():
     try:
-        avail = int(next(l.split()[6] for l in open("/proc/meminfo") if l.startswith("MemAvailable"))) // 1024
+        avail = int(next(l.split()[6] for l in open("/proc/meminfo", encoding="utf-8") if l.startswith("MemAvailable"))) // 1024
     except Exception:
         avail = 9999
     if avail < 550:
@@ -139,7 +143,7 @@ def _browser_body(SHOTS):
         for no in targets:
             res = {}
             try:      # 每个订单开新页面前再看一眼内存；低于红线就跳过剩余目标（不许硬刚 OOM）
-                avail = int(next(l.split()[6] for l in open("/proc/meminfo")
+                avail = int(next(l.split()[6] for l in open("/proc/meminfo", encoding="utf-8")
                                  if l.startswith("MemAvailable"))) // 1024
             except Exception:
                 avail = 9999

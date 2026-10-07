@@ -415,8 +415,43 @@ class _Tabs:
         return prev
 
 
-def _click_row_cell(page, row_text, cell_field, tabs=None):
-    """**行内定位**：在「包含 row_text 的那一行」里点 cell_field 列的链接（返回新 tab 或 None）。
+# 行内定位「列」的指定方式（与生成期 generator._CELL_BY_WHITELIST **同口径**）：
+# field（td[data-field=]，缺省）/ header（按表头文本）/ index（第 N 列，0 基）。
+# 为什么需要 header/index：有些列没有 data-field —— 实测订单列表勾选列是 `<td class="pick-cell">`，
+# 表头 `<th class="pick-head">` 还没文本 ⇒ 只能按列序定位。
+_CELL_BY_WHITELIST = ("field", "header", "index")
+
+
+def _row_col_step(cell_field, cell_by, cell_index) -> dict:
+    """构造 `locate_in_scope` 的 col step（生成期与运行期共用一份口径）。"""
+    by = str(cell_by or "field").strip().lower() or "field"
+    if by not in _CELL_BY_WHITELIST:
+        raise ValueError(
+            f"行内定位的 cell_by={cell_by!r} 不在白名单 {_CELL_BY_WHITELIST} 内")
+    if by == "index":
+        if cell_index is None:
+            raise ValueError("cell_by=index 时必须同时给 cell_index（第几列）")
+        n = int(cell_index)
+        # ⚠️ 口径是 **1 基**（与 scope_locate 的 col.index 一致：第 N 列 ⇒ .nth(N-1)）。
+        # 传 0 会算成 .nth(-1) = **最后一列** ⇒ 静默取错列（实测：想要勾选列却拿到"是否开票"，
+        # 报的错还是 "Not a checkbox"，看着像另一个问题，极难查）。所以必须在这里拦住。
+        if n < 1:
+            raise ValueError(
+                f"cell_index 是**从 1 起**的列序号（第 1 列 = 1），收到 {n} ⇒ 会取到最后一列，必须拦下")
+        return {"axis": "col", "by": "index", "value": n}
+    val = str(cell_field or "")
+    if not val:
+        raise ValueError(f"cell_by={by!r} 时必须给 cell_field（field=列字段名 / header=表头文本）")
+    return {"axis": "col", "by": by, "value": val}
+
+
+def _click_row_cell(page, row_text, cell_field, tabs=None, op="click", value=None,
+                    cell_by=None, cell_index=None):
+    """**行内定位**：在「包含 row_text 的那一行」里对 cell_field 列做动作（返回新 tab 或 None）。
+
+    `op`（2026-09-30 P22 批 5 新增）：click（默认，点列里的链接）/ check / uncheck / fill。
+    - click 之外的 op 为什么需要：**勾选某一行**（然后点批量按钮）是列表页的常见动作，
+      而"选哪一行"只能靠行锚表达 ⇒ 行内定位必须支持 check/fill，否则只能改用例绕过（丢验证点）。
 
     为什么需要这个能力：新建记录的编号/合同号是**服务端动态分配**的，探测清单里不可能有它的语义名，
     AI 无法按名字引用那一条 ⇒ 只能「按行内容锚定行 + 按列字段取元素」。
@@ -437,25 +472,42 @@ def _click_row_cell(page, row_text, cell_field, tabs=None):
             f"行内定位失败：含文本 {row_text!r} 的行命中 {n} 个（要求恰好 1 个）。"
             f" 常见原因：① 这段文本不在任何行里（上一步的新建没成功 / 名称写错）；"
             f" ② 锚文本太短，多行都含它（用更长的独有片段）。")
-    _col = locate_in_scope(rows.first, [{"axis": "col", "by": "field", "value": cell_field}])
+    _col = locate_in_scope(rows.first, [_row_col_step(cell_field, cell_by, cell_index)])
     if not _col["ok"]:
         raise RuntimeError(f"行内列 {cell_field!r} 定位失败：{_col['reason']}")
     cell = _col["locator_obj"]
-    target = cell.get_by_role("link")
-    if target.count() == 0:
-        target = cell
+    if op in ("check", "uncheck"):
+        # 勾选列：目标是单元格里的复选框（没有则退到单元格本身）
+        target = cell.locator("input[type='checkbox']")
+        if target.count() == 0:
+            target = cell
+    elif op == "fill":
+        target = cell.locator("input, textarea")
+        if target.count() == 0:
+            target = cell
+    else:
+        target = cell.get_by_role("link")
+        if target.count() == 0:
+            target = cell
     kn = target.count()
     if kn != 1:
         raise RuntimeError(f"行内列 {cell_field!r} 的目标元素命中 {kn} 个（要求 1 个）")
     _shot(page, f"row_{cell_field}")
 
     def _do():
-        target.click()
+        if op == "check":
+            target.check()
+        elif op == "uncheck":
+            target.uncheck()
+        elif op == "fill":
+            target.fill(value or "")
+        else:
+            target.click()
 
     if tabs is not None:
         return tabs.open_new(_do)
     _do()
-    _log(page, "row_click", f"已点「含 {row_text} 行」的 {cell_field} 列")
+    _log(page, f"row_{op}", f"已对「含 {row_text} 行」的 {cell_field} 列执行 {op}")
     return None
 
 
@@ -478,7 +530,9 @@ def _assert_first_row(page, field, expected, desc=""):
 # 而且失败原因会指向错误的地方（用例互相污染比用例失败更难查）。
 # 口径：HYBRID_RESET_URL 可覆盖默认值；设为 off/0/none/空 则完全不复位（被测应用没有复位接口时）。
 # 复位失败**大声告警但不中断**：那是「用例可能互相污染」的信号，绝不该被静默吞掉。
-_RESET_URL = os.environ.get("HYBRID_RESET_URL", "http://localhost:8000/api/reset")
+# 2026-09-28：demo 的 /api/reset 默认**保留用户手工数据**（免得跑判据把演示数据清了），
+# 用例间要做干净隔离 ⇒ 默认 URL 带 ?purge=1（可用 HYBRID_RESET_URL 覆盖）
+_RESET_URL = os.environ.get("HYBRID_RESET_URL", "http://localhost:8000/api/reset?purge=1")
 _RESET_OFF = ("", "off", "0", "none", "no", "false")
 
 
@@ -550,6 +604,42 @@ class _BrowserPool:
                 pass
 
 
+# ---- P22 批 5：登录前置表（case_id → auth 声明）----
+# generate 按场景的 `auth:` 段写进同目录 `_auth.json`；没有该文件 ⇒ 空表 ⇒ 行为与从前**完全一致**。
+_AUTH_TABLE: dict = {}
+try:
+    import json as _json_auth          # 显式 import：harness 顶层没有 json（实测踩过 NameError）
+    import pathlib as _pl_auth
+    _ap = _pl_auth.Path(__file__).resolve().parent / "_auth.json"
+    if _ap.exists():
+        _AUTH_TABLE = _json_auth.loads(_ap.read_text(encoding="utf-8")) or {}
+except Exception as _e_auth:
+    # ⚠️ 兜底**不许把"自己写错"吞成"没有登录前置"**（P19 教训：NameError 被 except 吞掉 ⇒ 静默失效，
+    # 现象是"整条用例跑在登录页上"，排查方向还容易被带偏）。产物里明明有 _auth.json 却读不出来
+    # = 环境/产物坏了 ⇒ **当场抛**，不降级。
+    raise RuntimeError(
+        f"_auth.json 读取失败（{type(_e_auth).__name__}: {_e_auth}）"
+        f" —— 登录前置无法生效，用例会整条跑在登录页上，故当场失败（不静默降级）") from _e_auth
+
+
+def _install_login(context, auth_spec=None):
+    """**登录前置**：context 建好后立刻把 token 注入 localStorage（P22 批 5 · 方案 H）。
+
+    为什么需要：目标系统未登录会跳登录页 ⇒ 用例里的 goto 全落在登录页（整条用例白跑）。
+    没声明（空 spec）⇒ 直接返回 —— 行为与不加这个特性时**完全一致**（零开销）。
+    登录失败**当场抛**：静默继续会变成"整条用例都在登录页上跑"的假象，比失败更坏。
+    """
+    if not auth_spec:
+        return
+    from framework.tools.run.login import ensure_logged_in
+    r = ensure_logged_in(context, _HYBRID_BASE or "http://localhost:8000", auth_spec)
+    if not r.get("ok"):
+        raise RuntimeError(
+            f"登录前置失败（场景声明了 auth，但登录没成功）：{r.get('reason')}"
+            f" —— 未登录态下跑用例没有意义，故当场失败（不静默）")
+    print(f"[setup] 🔑 登录前置 ok（{auth_spec.get('username')}）", flush=True)
+
+
 def _is_headed():
     """调试·有头判定：HYBRID_HEADED=1 且不在 xdist worker 里（worker 一律无头，见 cli.py 注释）。"""
     import os as _os
@@ -580,6 +670,7 @@ def page(request, _pool):
         _ctx_kw = {"record_video_dir": str(RUN_LOG_DIR / "videos"),
                    "record_video_size": {"width": 1280, "height": 720}}
     context = browser.new_context(**_ctx_kw)
+    _install_login(context, _AUTH_TABLE.get(_cid) or _AUTH_TABLE.get("*") or {})   # P22 批 5
     if _PARTITION:
         # F6：把分区号注入页面（页面据此把 /api 调用带上 ?w=…）⇒ 并发 worker 各用各的数据
         context.add_init_script("window.__HYBRID_W = " + repr(_PARTITION) + ";")
@@ -767,7 +858,17 @@ def _shot(page, tag):
         pass
 
 
-def _act(page, action, semantic=None, primary=None, value=None):
+def _wait_after_action(page) -> None:
+    """（P22 批 3）动作后若页面发生导航/重载，等它就绪。
+
+    ⚠️ **唯一实现在 `framework.tools.run.waits`** —— 这里只转发：生成物与框架二类脚本共用同一份
+    逻辑，避免"两处各写一份、慢慢漂移"（本项目已因这类漂移栽过）。
+    """
+    from framework.tools.run.waits import wait_after_action
+    return wait_after_action(page)
+
+
+def _act(page, action, semantic=None, primary=None, value=None, force=False, index=None):
     """执行动作：主用【确定性 locator】(零探测)；主失效才走语义定位/自愈兜底。
 
     健康页面 → 与改造前完全一致（零额外开销）；页面漂移 → 自动降级/自愈而非硬失败。
@@ -793,11 +894,34 @@ def _act(page, action, semantic=None, primary=None, value=None):
             raise RuntimeError(f"确定性 locator 失效且无语义兜底: {action}")
         loc = _loc(semantic, page)
     if action == "click":
-        loc.click()
+        # P22 批 3：① force 只由**手写用例**显式声明（AI 链路被质量闸拦住）；
+        #            ② 点完等页面就绪 —— 「切换为订单管理员」是 location.reload()（auth.js:130），
+        #               旧实现只有 loc.click()、不等任何状态 ⇒ 下一步撞重载竞态（控件还在旧文档上）。
+        loc.click(force=bool(force))
+        # P22 批 4：记下「最近一次搜索点击」—— wait_text(refresh=research) 靠它每轮重新取数
+        if semantic and _is_search_semantic(str(semantic)):
+            global _LAST_SEARCH
+            _LAST_SEARCH = str(semantic)
+        _wait_after_action(page)
     elif action == "fill":
         loc.fill(value if value is not None else "")
     elif action == "select":
-        loc.select_option(value if value is not None else "")
+        if index is not None:
+            # P22 批 5：index = 第 N 个**非空**选项（0 基）。语义为什么这么定：
+            # demo 的 #sel-o-bu/#sel-o-mu/#sel-o-file/#sel-o-cust 第一个 option 是
+            # `<option value="">请选择</option>`（order_new.html:45,51,57,69），而场景里
+            # 「各选第一项」的人话意思显然是「选第一个**真**选项」—— 按字面选 index 0
+            # 会落进「请选择」⇒ 表单校验不过 ⇒ 订单建不出来（2026-09-30 实测卡了两轮）。
+            _opts = loc.locator("option")
+            _real = [i for i in range(_opts.count())
+                     if (_opts.nth(i).get_attribute("value") or "").strip() != ""]
+            if int(index) >= len(_real):
+                raise AssertionError(
+                    f"select 第 {index} 个有效选项不存在（该控件 {_opts.count()} 个选项，"
+                    f"去掉空占位后只有 {len(_real)} 个）")
+            loc.select_option(index=_real[int(index)])
+        else:
+            loc.select_option(value if value is not None else "")
     elif action == "check":
         loc.check()
     elif action == "press_enter":
@@ -815,8 +939,8 @@ def _fill(page, hint, value):
     return _act(page, "fill", semantic=hint, value=value)
 
 
-def _select(page, hint, value):
-    return _act(page, "select", semantic=hint, value=value)
+def _select(page, hint, value=None, index=None):
+    return _act(page, "select", semantic=hint, value=value, index=index)
 
 
 def _check(page, hint):
@@ -841,6 +965,76 @@ def _assert_text(page, text, desc=""):
 # 约定：全部 web-first（playwright expect 自动重试）；成功统一打印 [CHECK] ✓ 断言: …
 #       并写逐用例日志（调试模式另存一张截图）。
 #       ❗ 缺字段 / 定位不到时，由**生成的脚本** pytest.fail（绝不静默少验一步 = 假绿）。
+
+
+# P22 批 4（2026-09-29）：等待式断言的"最后一次搜索"重放点（refresh=research 用）
+_LAST_SEARCH = None
+
+
+def _is_search_semantic(name: str) -> bool:
+    """语义名看起来像「搜索 / 查询」按钮吗？（`_act` 据此记下重放点）"""
+    n = (name or "").lower()
+    return ("搜索" in n) or ("查询" in n) or ("search" in n)
+
+
+def _replay_last_search(page) -> bool:
+    """重放**最近一次搜索点击**（P22 · refresh=research）。
+
+    为什么需要：demo 列表页不会自己刷新（无 setInterval）⇒ 「等状态流转」必须**重新取数**。
+    口径 = 用同一个语义名再点一次那次搜索按钮；没有记录就如实返回 False（不猜、不假装重放过了）。
+    """
+    if not _LAST_SEARCH:
+        return False
+    try:
+        _act(page, "click", semantic=_LAST_SEARCH)
+        return True
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def _assert_wait_text(page, text, timeout_ms=30000, refresh="none", desc="", selector=""):
+    """**等待式断言**：在有界时间内轮询，直到页面出现该文本（P22 批 4 · 缺口 ②）。
+
+    与 `_assert_text` 的区别：
+      · `_assert_text` 的等待硬编码 5s（只够等页面已渲染的东西）；
+      · 本断言按**业务时间**给上限（如订单 150 秒自动关闭），且能**每轮重新取数** ——
+        demo 列表页不会自己刷新，光把超时调大永远等不到。
+    refresh：none = 只轮询 DOM · reload = 每轮重载当前页 · research = 每轮重放最近一次搜索点击。
+    口径：**有界轮询 + 探到就走**（不是固定 sleep）；到点如实报"等了多久 / 轮询几轮 / 期望什么"。
+    """
+    import time as _t
+    deadline = _t.time() + (timeout_ms / 1000.0)
+    attempts = 0
+    last_err = ""
+    while True:
+        attempts += 1
+        try:
+            if selector:            # 限定范围（如状态列 td[data-field=…]）—— 避开隐藏的下拉选项
+                _sc = page.locator(selector)
+                if _sc.count() >= 1 and str(text) in (str(_sc.first.inner_text() or "")):
+                    _ok(page, desc or f"等到 {selector} 里的文本 {text}",
+                        f"wait_text_{str(text)[:24]}", f"{text} @ {selector}")
+                    return
+            else:
+                loc = page.get_by_text(text)
+                if loc.count() >= 1 and loc.first.is_visible():
+                    _ok(page, desc or f"等到文本 {text}", f"wait_text_{str(text)[:24]}", str(text))
+                    return
+        except Exception as e:                                 # noqa: BLE001
+            last_err = f"{type(e).__name__}: {str(e)[:80]}"
+        if _t.time() >= deadline:
+            raise AssertionError(
+                f"等待超时：{timeout_ms}ms 内页面始终没有出现 {text!r}"
+                f"（轮询 {attempts} 轮 · refresh={refresh}）"
+                + (f"；最后一轮读取异常：{last_err}" if last_err else ""))
+        if refresh == "reload":
+            try:
+                page.reload(wait_until="domcontentloaded")
+            except Exception:                                  # noqa: BLE001
+                pass
+        elif refresh == "research":
+            _replay_last_search(page)
+        page.wait_for_timeout(500)
 
 
 def _ok(page, desc, tag, detail=""):

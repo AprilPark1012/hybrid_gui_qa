@@ -9,7 +9,7 @@
 
 ```bash
 # 单个场景
-python -m framework.cli explore --ai --scenario-file scenarios/contracts/contracts_search_by_no.yml
+python -m framework.cli explore --ai --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml
 
 # 目录批量（递归扫；--tag 可重复，OR 语义；--limit 限流）
 python -m framework.cli explore --ai --scenario-dir scenarios/ --tag smoke

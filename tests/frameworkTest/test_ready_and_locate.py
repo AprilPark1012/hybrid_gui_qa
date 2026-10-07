@@ -163,7 +163,12 @@ def test_demo_partition_and_health():
     src = _read(APP)
     assert "/api/health" in src and '"partitioned"' in src, "demo 没有能力探针"
     assert "def _part_of(" in src and "def _store(" in src, "demo 没有分区数据层"
-    assert "def reset_data(part" in src and "reset_data(part)" in src, "复位没带分区（会不会又全局复位了？）"
+    # 2026-09-30：原用字面串 `"reset_data(part)"` 匹配 ⇒ 实参形如
+    # `reset_data(part, purge=_purge)` 时匹配不到（后面跟逗号）⇒ 假红。
+    # 改成正则：调用**必须把分区作为第一个实参**。
+    assert "def reset_data(part" in src, "复位函数没有分区参数"
+    assert re.search(r"reset_data\(\s*part\b", src), \
+        "复位调用没带分区（会不会又全局复位了？）"
     assert "threading.RLock()" in src, "锁必须是可重入的（_store 与调用方都会加锁，普通 Lock 会自死锁）"
 
 

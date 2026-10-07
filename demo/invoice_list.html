@@ -37,7 +37,9 @@
   .cond .ctl { flex: 1 1 auto; }
   .cond .ctl input, .cond .ctl select { width: 100%; height: 28px; padding: 0 8px; border: 1px solid #c9ccd2; border-radius: 3px; background: #fff; font: inherit; }
   #search-area { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
-  #search-area .tb-actions { display: flex; gap: 8px; margin-left: auto; }
+  /* 2026-09-29（需求）：搜索 / 重置 按钮**独占最后一行、居中**（原来靠右）*/
+  #search-area .tb-actions { display: flex; gap: 8px; flex-basis: 100%;
+                             justify-content: center; margin: 6px 0 2px; }
   #op-area { display: flex; gap: 8px; align-items: center; }
 
   table { width: 100%; border-collapse: collapse; }
@@ -46,6 +48,19 @@
   tbody tr:hover { background: #f0f6ff; }
   .pick-cell { text-align: center; width: 44px; }
   #status-inv { padding: 8px 16px; color: #1668dc; min-height: 20px; }
+  /* 2026-09-29（需求）：合同编号 / 订单编号可点 ⇒ iframe 弹层看详情（与合同页 / 订单页同款形态）*/
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex;
+           align-items: center; justify-content: center; z-index: 10; }
+  .modal-box { background: #fff; border-radius: 4px; width: 460px; max-height: 88vh; overflow: auto; padding: 16px; }
+  .modal-box.wide { width: 620px; }
+  .modal-box iframe { width: 100%; height: 420px; border: 1px solid #e2e4e8; border-radius: 3px; background: #fff; }
+  .modal-box.xl { width: min(1280px, 94vw) !important; height: 90vh; max-height: 90vh !important;
+                  display: flex; flex-direction: column; overflow: hidden; }
+  .modal-box.xl > h3 { flex: 0 0 auto; }
+  .modal-box.xl > iframe { flex: 1 1 auto; height: auto !important; min-height: 0; width: 100%; }
+  .modal-box.xl > .modal-actions { flex: 0 0 auto; }
+  .modal-box h3 { margin: 0 0 12px; font-size: 15px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 </style>
 </head>
 <body data-hybrid-ready="0">
@@ -91,7 +106,7 @@
     <table id="tbl-invoices" data-testid="tbl-invoices" aria-label="应收发票列表">
       <thead>
         <tr>
-          <th>选择</th><th>发票号</th><th>发票类型</th><th>发票日期</th><th>业务单元</th><th>合同编号</th>
+          <th>选择</th><th>发票号</th><th>发票类型</th><th>发票日期</th><th>业务单元</th><th>合同编号</th><th>订单编号</th>
           <th>客户</th><th>销售员</th><th>币种</th><th>行数</th>
         </tr>
       </thead>
@@ -105,17 +120,46 @@
           <td data-field="invoiceType">{{ r.invoice_type }}</td>
           <td data-field="invoiceDate">{{ r.invoice_date }}</td>
           <td data-field="businessUnit">{{ r.bu }}</td>
-          <td data-field="contractNo">{{ r.contract_no }}</td>
+          <td data-field="contractNo"><a :href="'/contract_detail.html?no=' + r.contract_no"
+              @click.prevent="openContract(r.contract_no)">{{ r.contract_no }}</a></td>
+          <!-- 2026-09-29：订单编号（来源订单，从哪个订单开的票；点它 ⇒ 弹层看订单详情）-->
+          <td data-field="fromOrder"><a v-if="r.from_order" :href="'/order_detail.html?no=' + r.from_order"
+              @click.prevent="openOrder(r.from_order)">{{ r.from_order }}</a><span v-else>—</span></td>
           <td data-field="customer" :data-cust="r.cust">{{ r.custName }}</td>
           <td data-field="salesman" :data-salesman="r.salesman">{{ r.salesmanName }}</td>
           <td data-field="currency">{{ r.currency }}</td>
           <td data-field="lineCount">{{ r.line_count }}</td>
         </tr>
-        <tr v-if="!rows.length"><td colspan="10">没有匹配的发票</td></tr>
+        <tr v-if="!rows.length"><td colspan="11">没有匹配的发票</td></tr>
       </tbody>
     </table>
   </div>
   <div id="status-inv" data-testid="status-inv">{{ status }}</div>
+
+  <!-- ===== 合同详情：iframe 弹层（2026-09-29 需求）=====
+       发票列表点「合同编号」⇒ 本弹层打开 contract_detail.html?no=&embed=1（Vue 实现）；
+       详情里点「编辑」⇒ 同一个弹层里换成 contract_edit.html（不叠层）===== -->
+  <div id="modal-contract" class="modal" data-testid="modal-contract" v-if="showContract">
+    <div class="modal-box wide xl">
+      <h3>{{ contractSrc.indexOf('contract_edit.html') >= 0 ? '编辑合同' : '合同详情' }}</h3>
+      <iframe id="frame-contract-detail" :src="contractSrc" title="合同详情" name="frame-contract-detail"></iframe>
+      <div class="modal-actions">
+        <button id="btn-contract-close" class="btn" type="button" @click="closeContract">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 订单详情：iframe 弹层（2026-09-29 需求）=====
+       发票列表点「订单编号」⇒ 本弹层打开 order_detail.html?no=&embed=1（embed = 隐藏它的顶部栏）===== -->
+  <div id="modal-order" class="modal" data-testid="modal-order" v-if="showOrder">
+    <div class="modal-box wide xl">
+      <h3>订单详情</h3>
+      <iframe id="frame-order-detail" :src="orderSrc" title="订单详情" name="frame-order-detail"></iframe>
+      <div class="modal-actions">
+        <button id="btn-order-close" class="btn" type="button" @click="closeOrder">关闭</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -138,12 +182,42 @@ createApp({
         { key: 'bu',          label: '业务单元', id: 'tb-i-bu',       type: 'select', options: [] },
         { key: 'no',          label: '发票号',   id: 'tb-i-no',       type: 'text',   ph: '发票号（全模糊）' },
         { key: 'contract_no', label: '合同编号', id: 'tb-i-contract', type: 'text',   ph: '合同编号（全模糊）' },
+        // 2026-09-29（需求）：新增「合同名称」「订单名称」两个条件（全模糊，按关联名称匹配）
+        { key: 'contract_name', label: '合同名称', id: 'tb-i-cname', type: 'text', ph: '合同名称（全模糊）' },
+        // 2026-09-29（需求）：新增「订单编号」条件 —— 订单页「查看发票」带 ?from_order= 进来会自动填入并搜索
+        { key: 'from_order',  label: '订单编号', id: 'tb-i-from-order', type: 'text', ph: '订单编号（全模糊）' },
+        // 2026-09-29（需求）：新增「销售员」「客户」两个条件（都是全模糊，按名称匹配）
+        { key: 'order_name',  label: '订单名称', id: 'tb-i-oname',  type: 'text', ph: '订单名称（全模糊）' },
+        { key: 'salesman',    label: '销售员',   id: 'tb-i-salesman', type: 'text', ph: '销售员（全模糊）' },
+        { key: 'cust',        label: '客户',     id: 'tb-i-cust',       type: 'text', ph: '客户（全模糊）' },
       ],
-      f: { bu: '', no: '', contract_no: '' },
+      f: { bu: '', no: '', contract_no: '', contract_name: '', from_order: '', order_name: '',
+           salesman: '', cust: '' },
+      // 2026-09-29（需求）：合同 / 订单详情弹层状态
+      showContract: false, contractSrc: '', contractNo: '',
+      showOrder: false, orderSrc: '', orderNo: '',
       rows: [], total: 0, picked: [], status: '', buOptions: [],
     };
   },
-  mounted() { this.loadDicts(); this.search(); },
+  mounted() {
+    // 2026-09-29（需求）：支持从订单页「查看发票」带 ?from_order=SO-xxxx 进来
+    // ⇒ 自动填进「订单编号」条件并立刻搜索（用户看到的已经是该订单的发票）
+    const src = new URLSearchParams(location.search).get('from_order') || '';
+    if (src) this.f.from_order = src;
+    // 2026-09-29（需求）：两个子页（合同详情 / 订单详情）用 postMessage 请求关闭或切换
+    window.addEventListener('message', (e) => {
+      const d = e.data || {};
+      if (d.type === 'contract-detail-close') this.closeContract();
+      else if (d.type === 'contract-detail-open') this.openContract(d.no);
+      else if (d.type === 'contract-edit-request') this.contractSrc = this.contractUrl(d.no || this.contractNo, 'edit');
+      else if (d.type === 'contract-updated') {
+        this.contractSrc = this.contractUrl(d.no || this.contractNo, 'detail');
+        this.search();                       // 合同改了（名称等）⇒ 刷新发票列表
+      } else if (d.type === 'contract-edit-cancel') this.contractSrc = this.contractUrl(this.contractNo, 'detail');
+      else if (d.type === 'order-detail-close') this.closeOrder();
+    });
+    this.loadDicts(); this.search();
+  },
   watch: {
     // 需求⑱：所有校验/提示信息都弹一个「弹出框 tips」；
     // ⚠️ 状态行**保留同样文字**（自动化判据/用例按状态行取值），所以这里是"加弹窗"而不是"挪走文字"
@@ -156,7 +230,7 @@ createApp({
     },
     async search() {
       markBusy();
-      const qs = new URLSearchParams({ size: '100' });     // 演示规模一次取够，避免「共 31 张只显示 30 行」的错觉
+      const qs = new URLSearchParams({ size: '200' });     // 演示规模一次取够，避免「共 31 张只显示 30 行」的错觉
       Object.entries(this.f).forEach(([k, v]) => { if (v) qs.set(k, v); });
       const info = await (await fetch(apiUrl('/api/invoices?' + qs.toString()))).json();
       this.rows = info.items || []; this.total = info.total || 0;
@@ -164,9 +238,36 @@ createApp({
       this.status = `查询到 ${this.total} 张发票`;
       markReady();
     },
-    resetSearch() { this.f = { bu: '', no: '', contract_no: '' }; this.search(); },
+    resetSearch() { this.f = { bu: '', no: '', contract_no: '', contract_name: '', from_order: '',
+                              order_name: '', salesman: '', cust: '' }; this.search(); },
+    /* ---------- 2026-09-29（需求）：合同详情 / 订单详情 = iframe 弹层（子页身份与分区随 src 带下去）---------- */
+    childQuery() {
+      const q = new URLSearchParams();
+      if (PART) q.set('w', PART);
+      const role = DEMO_AUTH.demoRole();
+      if (role) q.set('demo_role', role); else if (DEMO_AUTH.token) q.set('token', DEMO_AUTH.token);
+      q.set('_t', String(Date.now()));
+      return q.toString();
+    },
+    contractUrl(no, mode) {
+      const base = mode === 'edit' ? 'contract_edit.html?' : 'contract_detail.html?';
+      return base + 'no=' + encodeURIComponent(no) + '&embed=1&' + this.childQuery();
+    },
+    openContract(no) {
+      if (!no) { this.status = '该发票没有关联的合同编号'; return; }
+      this.contractNo = no; this.contractSrc = this.contractUrl(no, 'detail'); this.showContract = true;
+    },
+    closeContract() { this.showContract = false; this.contractSrc = ''; },
+    orderUrl(no) {
+      return 'order_detail.html?no=' + encodeURIComponent(no) + '&embed=1&' + this.childQuery();
+    },
+    openOrder(no) {
+      if (!no) { this.status = '该发票没有关联的订单编号（非从订单开票的发票）'; return; }
+      this.orderNo = no; this.orderSrc = this.orderUrl(no); this.showOrder = true;
+    },
+    closeOrder() { this.showOrder = false; this.orderSrc = ''; },
     /* ---- 操作区：创建 ⇒ 跳「应收发票创建」页 ---- */
-    createInvoice() { location.href = '/invoice_create.html'; },
+    createInvoice() { location.href = DEMO_AUTH.href('/invoice_create.html'); },
     // 需求⑲：点发票号 ⇒ 进发票详情（带上身份，兼容 token / 自动化 ?demo_role=）
     detailHref(no) { return DEMO_AUTH.url('/invoice_detail.html?no=' + encodeURIComponent(no)); },
     /* ---- 操作区：删除勾选的发票（未勾选 ⇒ 只给提示） ---- */

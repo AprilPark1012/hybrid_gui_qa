@@ -48,3 +48,9 @@ Thumbs.db
 
 # demo 运行期数据（需求⑯：数据留本地，不入库）
 demo/.data/
+
+# ============ 运行期生成的凭据清单（generate 从场景 auth: 段重建，不入库/不入包）============
+# 为什么忽略：它是 **运行期产物**，源在 scenarios/*.yml 的 auth: 段（generate 时重建）。
+# 内容含登录前置要用的口令（demo 是公开演示凭据；真实系统的口令走场景里的 password_env 从环境变量取）。
+# ⇒ 交付包里不该带运行期凭据文件，收包方 `generate` 一次就会重建它。
+scripts/generated/_auth.json

@@ -483,7 +483,13 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
             # 按**元素类型**挑最稳的信号（实测教训：demo 的 <label> 没有 for、也没包住 input
             # ⇒ `get_by_label` 关联不上，给按钮选 label 步会定位失败 ⇒ 按钮/链接优先用文本）
             if tag in ("input", "textarea", "select"):
-                cands = (("placeholder", placeholder), ("label", label), ("text", text))
+                # P22 批 5：补 `title` 一步。为什么必须补：`get_by_text` 对表单控件**无效** ——
+                # 它们的"名字"在 aria-label / title / name 上，没有文本节点。实测（demo 订单详情页
+                # 行内输入框 `title="数量" aria-label="数量"`）：placeholder 空、label 空（<label> 无 for）
+                # ⇒ 原候选只剩 text ⇒ 生成 `get_by_text("数量", exact=True)` ⇒ 永远 0 命中。
+                # title 是这类控件稳定且生产常见的写法（与下面按钮分支同一口径）。
+                cands = (("placeholder", placeholder), ("label", label),
+                         ("title", help_text), ("text", text))
             elif str(text or "").strip() in ("...", "…", "") and help_text:
                 # ★2026-09-22：图标按钮（文字就是 "..."）**text 毫无区分度** —— 弹层里 3 个「…」
                 # （业务单元/管理单元/帐套）用 text 步定位**必然歧义**（实测：primary 命中 3 个，

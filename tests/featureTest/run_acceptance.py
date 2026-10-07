@@ -15,7 +15,9 @@ AprilPark1012 2026-09-22 刷新的 R7 四条：
 ④ E2E 的三个场景：
   · **场景3 = 录制回放验证**（`verify_e2e_scenario3_cassette.py`，零成本 ⇒ 放最前）：
     录像可用性体检 + 体检有效性负向 + 不匹配必须 fail loud（+ `--with-record` 时跑录制闭环，要 key/外网）
-  · **场景2 = 手写用例驱动**（`cli run` 全量）
+  · **场景2 = 手写用例驱动** —— ⚠️ **本版本（V8.3）不适用**：本版只交付「AI 订单→开票」那一条
+    场景 + 对应的 AI 用例脚本，`cases/` 下**没有手搓用例** ⇒ 本场景**无输入**，无从验收。
+    **后续版本新增手搓用例时，再补回这项二类验收**（不是废弃，是本版范围外）。
   · **场景1 = 自然语言 → AI 链路**（`verify_e2e_scenario3_replay.py`：explore 回放 → cases → generate → run）
 
 退出码：**0** 全通过 · **1** 有失败 · **2** 环境/用法错 · **3** 有跳过（**SKIP ≠ 通过**，与二类入口同口径）
@@ -85,7 +87,7 @@ def format_summary(ok: int, skip: int, fail: int, code: int,
     """汇总文本（判据要求：**被允许的跳过必须可见且标注清楚**，不许看着像全绿）。"""
     lines = [f" R7 验收汇总（通过 {ok} · 跳过 {skip} · 失败 {fail}）"]
     allowed = [sid for sid, st in results if st == "ok_skipped"]
-    _cn = {"scenario1": "场景1（真 AI）", "scenario2": "场景2（手搓用例）",
+    _cn = {"scenario1": "场景1（真 AI）", "scenario2": "场景2（手搓用例·本版不适用）",
            "scenario3": "场景3（录制回放）", "framework_selftest": "① 框架自测",
            "feature_selftest": "② 特性自测", "e2e": "④ E2E 三场景", "demo": "③ demo 新鲜度"}
     for sid, st in results:
@@ -162,9 +164,13 @@ def step_e2e(py: str, *, skip_ai: bool, with_record: bool = False) -> tuple[str,
     logs.append("· 场景3（录制回放验证%s）：exit %d\n%s"
                 % ("，含录制闭环" if with_record else "", rc3, tail3))
 
-    rc2, tail2 = _run(py, ["tests/featureTest/verify_e2e_scenario2_handwritten.py"], timeout=1800)
-    subs.append(("scenario2", _verdict(rc2)))
-    logs.append("· 场景2（手搓用例 → generate → 全量执行）：exit %d\n%s" % (rc2, tail2))
+    # 场景2（手搓用例驱动）—— V8.3 范围外：本版只交付「AI 订单→开票」一条场景 + 其 AI 用例脚本，
+    # cases/ 下没有手搓用例 ⇒ 本场景无输入，无从验收（脚本已随之删除）。
+    # 后续版本新增手搓用例时再补回。按本文件既有口径如实登记为 skip（跳过必须可见，不许悄悄消失）。
+    subs.append(("scenario2", "ok_skipped"))
+    logs.append("· 场景2（手搓用例 → generate → 全量执行）：**V8.3 不适用** —— 本版 `cases/` 下"
+                "没有手搓用例（只有 AI 订单→开票那一条），本场景无输入、无从验收；"
+                "后续版本新增手搓用例时再补回这项二类验收")
 
     if skip_ai:
         subs.append(("scenario1", _verdict(3, allow_skip=True)))
@@ -196,7 +202,7 @@ def _print_plan(skip_ai: bool, with_record: bool) -> None:
             mark = "   ← 场景1 将被跳过（--skip-ai）" if skip_ai else "   ← 场景1：离线回放（日常口径）"
             print(f"        ├ scenario3  录制回放验证：体检 + 负向（零成本）"
                   f"{'＋录制闭环（--with-record）' if with_record else ''}")
-            print(f"        ├ scenario2  cli run 全量（手写用例驱动）")
+            print(f"        ├ scenario2  手搓用例驱动 —— V8.3 不适用（本版无手搓用例）")
             print(f"        └ scenario1  verify_e2e_scenario3_replay.py{mark}")
     if skip_ai:
         print("      ⚠️ 跳过场景1 ⇒ 本次验收**不算通过**（SKIP ≠ 通过）")

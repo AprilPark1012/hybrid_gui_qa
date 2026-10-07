@@ -342,8 +342,12 @@ def test_arg_value_supports_equals_form():
 
 def test_ai_explore_accepts_cassette(tmp_path, monkeypatch):
     """ai_explore 把 cassette 透传到异步阶段（同步探测用替身，不启浏览器）。"""
+    # 签名/返回口径与实现对齐（2026-09-30：`_collect_page_context` 现为
+    # `(items, url, pages=None, auth=None)` → `(items, dom_ctx, err)`；
+    # 此前 mock 多出两个返回值、且缺 auth ⇒ ai_explore 传 auth= 时 TypeError）
     monkeypatch.setattr(explorer, "_collect_page_context",
-                        lambda items, url, pages=None: (ITEMS, [], "", [], []))
+                        lambda items, url, pages=None, auth=None:
+                        (ITEMS, "", "", [], []))   # 实现返回 5 元组：(items, dom_ctx, err, ?, row_fields)
     fake = _FakeLLM()
     monkeypatch.setattr("framework.tools.common.config.llm_from_env", lambda: fake)
     emap = explorer.ai_explore(SCENARIO, [], URL, llm_cassette=Cassette(MODE_RECORD, tmp_path))

@@ -56,8 +56,8 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.2.6"
-VERSION_DATE = "2026-09-28"
+VERSION = "8.3"
+VERSION_DATE = "2026-09-30"
 CHANGELOG = [
     dict(
         version="8.2.6", date="2026-09-28", tag="当前版本",
@@ -447,9 +447,10 @@ CHANGELOG = [
             "<b>组名口径</b>：优先用组里的 <code>id</code>，其次取该组第一个占位符的值，最后回落 <code>ds1/ds2…</code>；"
             "重名自动加序号、去掉方括号等字符（否则报告里分不清哪组）",
             "两类判据：<code>tests/frameworkTest/test_data_expand.py</code>（生成器契约，秒级 16 条）+ "
-            "<code>tests/featureTest/verify_data_expand.py</code>（端到端：3 组→3 passed · <b>坏组只红那一行</b> · 单组可跑），"
+            "数据参数化的端到端验证（3 组→3 passed · <b>坏组只红那一行</b> · 单组可跑），"
+            "<b>（V8.3 起该验证脚本已随手写用例一起删除，后续版本新增用例时补回）</b>，"
             "后者进 R7 统一入口",
-            "<b>样板场景</b> <code>scenarios/contracts/contracts_search_by_no.yml</code> 改 3 组数据，照它写即可",
+            "<b>样板场景</b> <code>scenarios/orders/orders_invoice_full_lifecycle.yml</code> 改 3 组数据，照它写即可",
         ],
         changed=[
             "场景 <code>data</code> 字段从「二期 / 一期只解析不展开」变成<b>已支持</b>；"
@@ -948,7 +949,7 @@ CHANGELOG = [
             "<b>cli.py</b>：`_verify_cases` 的两处 subprocess 改用 `run_capture()`；`cmd_run` 给 pytest "
             "子进程注入 UTF-8 口径（否则 cp936 控制台下 conftest 里的 ✓/⚠️ 会 UnicodeEncodeError，跑到一半崩）",
             "`cli.main()` 入口第一件事就是 `force_stdio()`：本进程 + 所有子进程 + 控制台一次性拉齐 UTF-8",
-            "tests/featureTest/verify_assert_kinds.py、tests/featureTest/verify_cross_page.py、tests/frameworkTest/test_cli_flags.py 的跨进程调用同口径改造",
+            "tests/featureTest/verify_cross_page.py、tests/frameworkTest/test_cli_flags.py 的跨进程调用同口径改造",
         ],
         fixed=[
             "<b>--verify 在中文 Windows 上必崩</b>（gbk 解码 UTF-8 子进程输出）—— 三入口（内联 / "
@@ -985,7 +986,10 @@ CHANGELOG = [
             "断言目标两种写法：<b>element</b>（probe 语义名 → 映射确定性 locator，AI 链路可用）与 "
             "<b>selector</b>（手写用例专用 CSS/Playwright 选择器，如 li:has-text('买牛奶')）",
             "<b>tests/</b> 框架自测目录：CLI 参数契约 + 断言 kind→代码翻译契约（秒级，不需浏览器）",
-            "<b>tests/featureTest/verify_assert_kinds.py</b> 正/负向端到端脚本：11 种 kind + 4 类结构性错误全部实测",
+            '断言种类（11 种 kind + 4 类结构性错误）的正/负向端到端实测'
+            '<br><span class="muted">（V8.3 起原 <span class="code-inline">verify_assert_kinds.py</span> '
+            '已随手写用例删除；每条断言「期望值写错时必须 FAIL」的防假绿口径保留在 '
+            '<span class="code-inline">tests/frameworkTest/</span> 内）</span>',
             "用例：cases/assert_kinds_*.json（search 全类型 / reset 验 value 清空 / modal 验 visible / todo 验 checked）",
             "demo 合同页加一个「导出（未接入）」禁用按钮 —— 让 enabled/disabled 断言有真页覆盖",
         ],
@@ -1182,7 +1186,7 @@ ARTICLE_HANDCRAFT = """<!-- ========== 4. 场景文件与用例文件：怎么�
 
   <h4 style="margin:18px 0 4px">最小可跑样例（照着改就行）</h4>
   <pre class="tree"># 一个文件 = 一个场景；文件名 = 场景 id
-id: contracts_search_by_no
+id: orders_invoice_full_lifecycle
 title: 合同列表 · 按编号搜索
 description: 输入合同编号片段 → 点搜索 → 确认列表出现对应编号的记录
 tags: [合同, 搜索, smoke]
@@ -1249,7 +1253,7 @@ assert_guard:
 python -m framework.cli probe                 # → output/element_maps/probe_*.json
 
 # ② 复制一个最像的现成场景，改 id / scenario / business_context
-cp scenarios/contracts/contracts_search_by_no.yml scenarios/contracts/&lt;你的场景id&gt;.yml
+cp scenarios/orders/orders_invoice_full_lifecycle.yml scenarios/contracts/&lt;你的场景id&gt;.yml
 
 # ③ 跑！默认会自动试跑（--verify 默认开）：FAILED → exit 3
 python -m framework.cli explore --ai --scenario-file scenarios/contracts/&lt;你的场景id&gt;.yml
@@ -1332,8 +1336,8 @@ ls log/&lt;run_id&gt;/                          # 用例日志 / 报告 / trace
   <pre class="tree"># ① 跑 probe，拿到目标控件的语义名
 python -m framework.cli probe
 
-# ② 抄一个最像的现成用例改（手搓样例：cases/manual/hand_enter_search.json）
-cp cases/manual/hand_enter_search.json cases/manual/&lt;你的用例id&gt;.json
+# ② 抄一个最像的现成用例改（样例：cases/orders_invoice_full_lifecycle/<case_id>.json）
+cp cases/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_140528.json cases/manual/&lt;你的用例id&gt;.json
 #    必改：case_id 与文件名一致 · name 给人看 · steps 换成你的动作 · asserts 换成你的判定
 
 # ③ 生成脚本（幂等，可反复跑）
@@ -1349,7 +1353,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <h4 style="margin:18px 0 4px">一个真实的手搓用例（节选，可当模板）</h4>
   <pre class="tree">{
-  "case_id": "hand_enter_search",
+  "case_id": "ai_orders_invoice_full_lifecycle_140528",
   "name": "手搓用例 · 回车触发搜索 + 客户右模糊筛选",
   "base_url": "http://localhost:8000",
   "steps": [
@@ -2035,7 +2039,7 @@ def build() -> str:
 ╚══════════════════════════════════════════════════════════════════════════════════════════════╝
  <b>① 输入（自然语言）</b>
     内联  --scenario "在搜索框输入'1005'点搜索，确认出现 HT-1005"      ← 原样保留的临时用法
-    文件  --scenario-file scenarios/contracts/contracts_search_by_no.yml   ← 场景库（可版本化）
+    文件  --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml   ← 场景库（可版本化）
     批量  --scenario-dir scenarios/ [--tag smoke] [--limit N]              ← 三者互斥，同时给则 exit 2
       └─ cli.py::main() → <b>cli.cmd_explore(rest)</b>
            ├─ scenario.<b>load_scenario_file()</b> / <b>discover_scenarios()</b>   解析+校验 → text/url/page_bg/guard
@@ -2363,7 +2367,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
     <pre class="tree">自然语言场景 ──explore --ai──▶ cases/ai_*.json ─┐
                                               ├─▶ generate ─▶ scripts/ + datasets/ ─▶ run（零 token）
 手搓 cases/*.json ──────────────────────────┘        ▲ 缺项才现场 probe；ElementMap 快照优先</pre>
-    <p><b>怎么用：</b><code>python -m framework.cli explore --ai --scenario-file scenarios/contracts/contracts_search_by_no.yml</code> → <code>python -m framework.cli generate</code> → <code>python -m framework.cli run --workers 2</code></p>
+    <p><b>怎么用：</b><code>python -m framework.cli explore --ai --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml</code> → <code>python -m framework.cli generate</code> → <code>python -m framework.cli run --workers 2</code></p>
     <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
@@ -2452,7 +2456,7 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
         <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_data_expand.py</span>（16 条：占位符展开与固化）· <span class="code-inline">tests/frameworkTest/test_assert_kinds_render.py</span>（25 条：11 种断言渲染正确）· <span class="code-inline">tests/frameworkTest/test_case_quality_gate.py</span>（13 条：用例质量闸门）· <span class="code-inline">tests/frameworkTest/test_generate_quality_gate.py</span>（4 条）</li>
-        <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_data_expand.py</span>（全真跑）· <span class="code-inline">tests/featureTest/verify_assert_kinds.py</span>（<b>防假绿铁律：每条断言在「期望值写错」时必须 FAIL</b>）</li>
+        <li><b>二类：</b>全真跑的端到端验证脚本（<span class="code-inline">tests/featureTest/verify_*.py</span>）· <b>防假绿铁律：每条断言在「期望值写错」时必须 FAIL</b><br><span class="muted">（V8.3 起数据参数化与断言种类两项的独立脚本已随手写用例删除，本版交付面见发行说明「二类验收面」一节）</span></li>
       </ul>
     </div>
   </div>
@@ -2775,8 +2779,8 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
 <span class="prompt">$</span> python -m framework.cli run --workers 2 <span class="cmt"># ③ 并发执行 + 资源预检(内存不够自动降级)</span>
 
 <span class="prompt">$</span> python -m framework.cli run --debug  <span class="cmt"># ③' 调试开关：有屏幕弹浏览器；没屏幕录视频(webm)+逐步截图</span>
-<span class="prompt">$</span> python -m framework.cli run --debug --case search_mixed <span class="cmt"># ③'' 只调试一条（--case 可重复；不传=整包跑）</span>
-<span class="prompt">$</span> python -m framework.cli run --debug --slowmo 500 --case search_mixed <span class="cmt"># ③''' 放慢 500ms/动作，肉眼跟步</span>
+<span class="prompt">$</span> python -m framework.cli run --debug --case ai_orders_invoice_full_lifecycle_140528 <span class="cmt"># ③'' 只调试一条（--case 可重复；不传=整包跑）</span>
+<span class="prompt">$</span> python -m framework.cli run --debug --slowmo 500 --case ai_orders_invoice_full_lifecycle_140528 <span class="cmt"># ③''' 放慢 500ms/动作，肉眼跟步</span>
 <span class="prompt">$</span> python -m framework.cli run --force-workers <span class="cmt"># ③'' 无视资源预检(有 OOM 风险,慎用)</span>
 
 <span class="prompt">$</span> python -m framework.cli explore --ai --scenario "输入1005点搜索确认出现HT-1005"

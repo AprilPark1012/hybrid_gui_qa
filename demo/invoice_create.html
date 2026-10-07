@@ -40,6 +40,11 @@
   .block { background: #fff; margin: 12px 16px; border: 1px solid #e2e4e8; border-radius: 3px; padding: 12px 16px; }
   .block h3 { margin: 0 0 12px; font-size: 14px; border-left: 3px solid #1668dc; padding-left: 8px; }
   .field { display: flex; align-items: center; margin-bottom: 10px; }
+  /* 需求㛋（2026-09-29）：必填项统一红色星号，**星号在标签前**（如 *物料编码）*/
+  .req { color: #d4380d; font-weight: 600; margin-right: 2px; }
+  /* 需求㛌（2026-09-29）：提交时未填的必填项 ⇒ 红框高亮（用户一输入/选择就自动去掉）*/
+  .err { border-color: #d4380d !important; background: #fff2f0 !important;
+         box-shadow: 0 0 0 2px rgba(212, 56, 13, .15) !important; }
   .field > .label { flex: 0 0 96px; text-align: right; padding-right: 8px; color: #4b5058; }   /* 独立 div label */
   .field .ctl { flex: 1 1 auto; }
   .field input, .field select { width: 100%; height: 28px; padding: 0 8px; border: 1px solid #c9ccd2; border-radius: 3px; background: #fff; font: inherit; }
@@ -55,6 +60,15 @@
   .hint { color: #888; font-size: 12px; margin: 6px 0 0; }
   #inv-status { padding: 8px 16px; color: #1668dc; min-height: 20px; }
   #from-order-hint { color: #1668dc; font-size: 12px; margin: 0 16px; }
+  /* 2026-09-29（需求）：订单编号的联想下拉（与订单页同款形态）*/
+  .pick-row { display: flex; gap: 6px; align-items: flex-start; }
+  .pick-row .grow { flex: 1 1 auto; position: relative; }
+  .dropdown { position: absolute; left: 0; right: 0; top: 30px; z-index: 30; margin: 0; padding: 4px 0;
+              list-style: none; background: #fff; border: 1px solid #c9ccd2; border-radius: 3px;
+              box-shadow: 0 2px 8px rgba(0,0,0,.12); max-height: 220px; overflow: auto; }
+  .dropdown li { padding: 4px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dropdown li:hover { background: #f0f6ff; }
+  .dropdown li.empty { color: #999; cursor: default; }
 </style>
 </head>
 <body data-hybrid-ready="0">
@@ -67,21 +81,36 @@
     <!-- 需求⑮：登录身份 + 超管切换角色的头像（auth.js 渲染） -->
     <div id="nav-user" class="nav-user"></div>
   </div>
-  <p class="hint" id="from-order-hint" v-if="fromOrder">来源订单：{{ fromOrder }} —— 业务单元 / 销售员 / 客户 已自动带入{{ contractNo ? '（合同编号 ' + contractNo + '）' : '' }}</p>
+  <p class="hint" id="from-order-hint" v-if="fromOrder">来源订单 {{ fromOrder }}：合同编号 / 业务单元 / 销售员 / 客户 已自动带入基础信息（也可在「订单编号」里重新搜索选择其它订单）</p>
 
   <!-- ===== 基础信息（7 项，每项在 div 内、层级 >5 ≤12）===== -->
   <section class="block" id="form-inv-basic" data-testid="form-inv-basic" aria-label="基础信息">
     <h3>基础信息</h3>
     <div class="grid2">
       <div class="field" v-for="fl in fields" :key="fl.key">
-        <div class="label">{{ fl.label }}</div>
+        <div class="label"><span v-if="fl.required" class="req">*</span>{{ fl.label }}</div>
         <div class="ctl f1"><div class="f2"><div class="f3"><div class="f4"><div class="f5"><div class="f6">
           <select v-if="fl.options" :id="fl.id" :name="fl.key" :title="fl.label" :aria-label="fl.label" v-model="form[fl.key]">
             <option v-if="!fl.required" value="">请选择</option>
             <option v-for="o in fl.options" :key="o.v" :value="o.v">{{ o.t }}</option>
           </select>
+          <!-- 2026-09-29（需求）：订单编号 = 可模糊搜索的联想输入（选中订单自动带入合同编号等）；
+               合同编号 = 只读（由选中的订单自动填入，不允许手改）-->
+          <template v-else-if="fl.suggest">
+            <div class="pick-row">
+              <div class="grow">
+                <input :id="fl.id" :name="fl.key" type="text" :title="fl.label" :aria-label="fl.label"
+                       :placeholder="fl.ph" autocomplete="off" v-model="form[fl.key]"
+                       @input="onOrderSuggest($event.target.value)" @focus="onOrderSuggest($event.target.value)">
+                <ul class="dropdown" id="sug-order-no" v-show="sug.open">
+                  <li v-for="s in sug.items" :key="s.no" @mousedown.prevent="chooseOrder(s)">{{ s.label }}</li>
+                  <li v-if="sug.open && !sug.items.length" class="empty">无匹配订单</li>
+                </ul>
+              </div>
+            </div>
+          </template>
           <input v-else :id="fl.id" :name="fl.key" type="text" :title="fl.label" :aria-label="fl.label"
-                 :placeholder="fl.ph" autocomplete="off" v-model="form[fl.key]">
+                 :placeholder="fl.ph" autocomplete="off" v-model="form[fl.key]" :readonly="fl.readonly">
         </div></div></div></div></div></div>
       </div>
     </div>
@@ -100,8 +129,8 @@
 
     <!-- div2 + div3：表头列 + 数据行 -->
     <div class="inv-lines-grid" id="inv-lines-grid">
-      <div class="head">操作</div><div class="head">期次号</div><div class="head">发票行类型</div>
-      <div class="head">数量</div><div class="head">单位</div>
+      <div class="head">操作</div><div class="head"><span class="req">*</span>期次号</div><div class="head"><span class="req">*</span>发票行类型</div>
+      <div class="head"><span class="req">*</span>数量</div><div class="head">单位</div>
 
       <template v-for="(ln, idx) in lines" :key="idx">
         <div class="cell"><button class="btn danger" type="button" @click="removeLine(idx)">删除</button></div>
@@ -166,16 +195,22 @@ createApp({
       fromOrder: FROM_ORDER, contractNo: '', status: '', periods: [], lineTypes: [], units: ['个', '件', '套', '千克'],
       closedState: '已关闭',   // 需求⑪：以 /api/health 的 closed_state 为准（不写死）
       orderBlocked: false,     // 需求⑪：来源订单不是「已关闭」⇒ 拦截（禁保存）
+      // 2026-09-29（需求）：基础信息新增「订单编号」（可模糊搜索联想）+「合同编号」（只读，选中订单自动带入）
       fields: [
+        { key: 'order_no',    label: '订单编号', id: 'i-order-no',    ph: '订单编号（输入即模糊搜索，选中自动带入合同编号）', suggest: true },
+        { key: 'contract_no', label: '合同编号', id: 'i-contract-no', ph: '由选中的订单自动带入', readonly: true },
         { key: 'bu',           label: '业务单元', id: 'i-bu',       options: [], required: true },
-        { key: 'no',           label: '发票号',   id: 'i-no',       ph: '留空由服务端自动分配', required: true },
+        // 2026-09-29（需求）：发票号由**系统自动生成**（/api/invoice/next_no）⇒ 只读，不允许手改
+        { key: 'no',           label: '发票号',   id: 'i-no',       ph: '系统自动生成（不可修改）', readonly: true, required: true },
         { key: 'invoice_type', label: '发票类型', id: 'i-type',     options: [], required: true },
         { key: 'invoice_date', label: '发票日期', id: 'i-date',     ph: 'YYYY-MM-DD', required: true },
         { key: 'salesman',     label: '销售员',   id: 'i-salesman', options: [], required: true },
         { key: 'currency',     label: '币种',     id: 'i-currency', options: [], required: true },
         { key: 'cust',         label: '客户',     id: 'i-cust',     options: [], required: true },
       ],
-      form: { bu: '', no: '', invoice_type: '', invoice_date: today(), salesman: '', currency: 'CNY', cust: '' },
+      form: { order_no: FROM_ORDER, contract_no: '', bu: '', no: '', invoice_type: '',
+              invoice_date: today(), salesman: '', currency: 'CNY', cust: '' },
+      sug: { open: false, items: [] },   // 2026-09-29：订单编号联想下拉的状态
       lines: [{ period: '1', line_type: '', qty: '', unit: '个' }],
     };
   },
@@ -230,16 +265,51 @@ createApp({
             markReady();
             return;
           }
-          this.form.bu = o.bu || this.form.bu;
-          this.form.salesman = o.salesman || this.form.salesman;
-          this.form.cust = o.cust || this.form.cust;
-          this.contractNo = o.contract_no || '';
-          this.status = `已从订单 ${o.no} 带入：业务单元 ${o.bu} · 销售员 ${o.salesmanName || o.salesman} · 客户 ${o.custName || o.cust}`;
+          this.form.order_no = o.no;      // 2026-09-29：订单编号现在是基础信息字段（不只藏在 URL 里）
+          this.applyOrder(o);            // 合同编号（只读）+ 业务单元 / 销售员 / 客户 一起带入
         } else {
           this.status = `未找到来源订单 ${this.fromOrder}（未带入任何信息）`;
         }
       }
       markReady();
+    },
+    /* ---------- 2026-09-29（需求）：订单编号联想（模糊搜索）⇒ 选中后自动填「合同编号」（只读）---------- */
+    async onOrderSuggest(value) {
+      this.form.order_no = value;              // 手输也认（用户可能直接填完整编号）
+      const kw = String(value || '').trim();
+      if (!kw) { this.sug = { open: false, items: [] }; return; }
+      let d = {};
+      try {
+        d = await (await fetch(apiUrl('/api/orders?no=' + encodeURIComponent(kw) + '&size=20'))).json();
+      } catch (e) { this.sug = { open: false, items: [] }; return; }
+      const items = (d.items || []).map(o => ({
+        no: o.no, contract_no: o.contract_no || '', bu: o.bu, salesman: o.salesman, cust: o.cust,
+        salesmanName: o.salesmanName, custName: o.custName, status: o.status || '',
+        label: `${o.no} · ${o.name} · ${o.status || '未知'}${o.contract_no ? ' · 合同 ' + o.contract_no : ''}`,
+      }));
+      this.sug = { open: true, items };
+    },
+    chooseOrder(o) {
+      this.sug = { open: false, items: [] };
+      this.form.order_no = o.no;
+      // 需求⑪：只有「已关闭」的订单能开票 ⇒ 选中当时就校验（别等保存才报）
+      if ((o.status || '') !== this.closedState) {
+        this.orderBlocked = true;
+        this.form.contract_no = '';
+        this.status = `订单 ${o.no} 当前状态为「${o.status || '未知'}」，`
+                    + `只有「${this.closedState}」的订单才能开票 —— 已拦截（不能保存）`;
+        return;
+      }
+      this.orderBlocked = false;
+      this.applyOrder(o);
+    },
+    applyOrder(o) {
+      this.form.bu = o.bu || this.form.bu;
+      this.form.salesman = o.salesman || this.form.salesman;
+      this.form.cust = o.cust || this.form.cust;
+      this.form.contract_no = o.contract_no || '';      // 合同编号**只读**，只能由订单带入
+      this.status = `已从订单 ${o.no} 带入：合同编号 ${o.contract_no || '—'} · 业务单元 ${o.bu}`
+                  + ` · 销售员 ${o.salesmanName || o.salesman || '—'} ｜ 客户 ${o.custName || o.cust || '—'}`;
     },
     /* ---- 发票行：新增 / 删除 / 校验 / 重置 ---- */
     addLine() {
@@ -254,6 +324,10 @@ createApp({
     checkLines() {
       const bad = this.lines.map((l, i) => (!l.period || !l.line_type || !String(l.qty || '').trim()) ? (i + 1) : null)
                             .filter(Boolean);
+      if (bad.length) {
+        markRowsMissing(bad.map(n => n - 1), ['period', 'line_type', 'qty'],
+                        document.querySelector('#inv-lines-grid'));   // 需求㛌：未填行高亮
+      }
       this.status = bad.length ? `行必填项未填全（第 ${bad.join('、')} 行）`
                                : `行校验通过：共 ${this.lines.length} 行`;
       return !bad.length;
@@ -265,25 +339,69 @@ createApp({
     /* ---- 保存（创建发票）⇒ 回列表 ---- */
     async submitInvoice() {
       if (this.orderBlocked) {   // 需求⑪：来源订单未关闭 ⇒ 不放行（服务端 400 兜底）
-        this.status = `来源订单 ${this.fromOrder} 不是「${this.closedState}」，不能开票`;
+        this.status = `来源订单 ${this.form.order_no || this.fromOrder} 不是「${this.closedState}」，不能开票`;
         return;
       }
       const missing = this.fields.filter(fl => fl.required && !String(this.form[fl.key] || '').trim()).map(fl => fl.key);
-      if (missing.length) { this.status = '请填写全部必填字段（' + missing.join('、') + '）'; return; }
+      if (missing.length) {
+        // 需求㛌：未填字段高亮 + 聚焦第一个（限定在基础信息区，避免与发票行同名字段串味）
+        markMissing(missing.map(k => '#' + ((this.fields.find(fl => fl.key === k) || {}).id)),
+                    document.querySelector('#form-inv-basic'));
+        this.status = '请填写全部必填字段（' + missing.join('、') + '）'; return;
+      }
       if (!this.checkLines()) return;
-      const payload = { ...this.form, contract_no: this.contractNo, from_order: this.fromOrder, lines: this.lines };
+      // 2026-09-29（需求）：合同编号 / 订单编号都来自基础信息字段（合同编号只读、由订单带入）
+      const payload = { ...this.form, contract_no: this.form.contract_no,
+                        from_order: this.form.order_no, lines: this.lines };
       const r = await fetch(apiUrl('/api/invoices'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { this.status = d.error || ('保存失败（HTTP ' + r.status + '）'); return; }
       this.status = `发票 ${d.no} 已创建（${d.lines ? d.lines.length : 0} 行），正在返回列表…`;
-      location.href = '/invoice_list.html' + (PART ? '?w=' + encodeURIComponent(PART) : '');
+      location.href = DEMO_AUTH.href('/invoice_list.html' + (PART ? '?w=' + encodeURIComponent(PART) : ''));
     },
   },
 }).mount('#app');
 // 需求⑮：登录与角色（创建发票需发票管理员；服务端同口径再校验）
 DEMO_AUTH.init();
+</script>
+<script>
+/* 需求㛌（2026-09-29）：表单提交时把**未填的必填项**高亮出来（红框），并滚动/聚焦到第一个未填项；
+   用户一旦输入或选择，该项的高亮自动清除。keys 用控件的 name（各页控件的 name = 字段 key）。 */
+function markMissing(keys, root) {
+  root = root || document;
+  root.querySelectorAll('.err').forEach(function (e) { e.classList.remove('err'); });
+  var els = [];
+  (keys || []).forEach(function (k) {
+    if (!k) return;
+    // 传 CSS 选择器（'#inp-name'）直接用；传字段名则先按 name 再按 id 找
+    var e = /^[#.\[]/.test(k) ? root.querySelector(k)
+                               : (root.querySelector('[name="' + k + '"]') || root.querySelector('#' + k));
+    if (e) els.push(e);
+  });
+  els.forEach(function (e) { e.classList.add('err'); });
+  if (els[0]) { try { els[0].scrollIntoView({ block: 'center' }); els[0].focus(); } catch (err) {} }
+  return els.length;
+}
+/* 行级（订单行 / 发票行）：idxList = 0 起的行号数组，keys = 行内字段名 */
+function markRowsMissing(idxList, keys, root) {
+  root = root || document;
+  (idxList || []).forEach(function (i) {
+    (keys || []).forEach(function (k) {
+      var els = root.querySelectorAll('[name="' + k + '"]');
+      var el = els[i];
+      if (el && !String(el.value || '').trim()) el.classList.add('err');
+    });
+  });
+}
+(function () {
+  ['input', 'change'].forEach(function (t) {
+    document.addEventListener(t, function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('err')) e.target.classList.remove('err');
+    }, true);
+  });
+})();
 </script>
 </body>
 </html>

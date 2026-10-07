@@ -1,6 +1,6 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.2.6**（2026-09-28）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
+> 当前版本 **V8.3**（2026-09-30）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
 > · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/) · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
 
 **一句话**：把 **Browser Use（AI 智能探索）** 和 **Playwright（确定性执行）** 组合成一套混合测试框架 ——
@@ -60,7 +60,7 @@ python -m demo.app         # http://localhost:8000：合同/订单列表页 + �
 ```bash
 python -m framework.cli all --workers 2       # probe → generate → run 一条龙（确定性，零 token）
 python -m framework.cli run --debug           # 调试开关：有屏幕弹浏览器；没屏幕录视频 + 逐步截图
-python -m framework.cli run --case search_mixed        # 只跑指定用例（--case 可重复）
+python -m framework.cli run --case ai_orders_invoice_full_lifecycle_140528   # 只跑指定用例（--case 可重复）
 python -m framework.cli explore --ai --scenario "在搜索框输入'1005'点搜索，确认出现 HT-1005"
                                               # AI 链路：自然语言 → cases/<场景id>/ai_*.json（落盘后默认试跑）
 python -m framework.cli prune --dry-run       # 归档保留（log/ 与 output/verify/ 按 30 个 ∪ 7 天清理）
@@ -75,6 +75,33 @@ python -m pytest tests/frameworkTest/ -q                    # ① 框架自测�
 python tests/featureTest/run_verifications.py             # ② 端到端特性验证：需 demo（会自己起停；SKIP ≠ 通过）
 python tests/featureTest/run_acceptance.py                # ③ 四项验收一条命令（闸门 → 新鲜度 → 自测 → E2E → 特性）
 ```
+
+⚠️ **跑那条 AI 端到端用例（`ai_orders_invoice_full_lifecycle_140528`）必须带 `HYBRID_CASE_TIMEOUT=600`**：
+
+```bash
+HYBRID_CASE_TIMEOUT=600 HYBRID_STRICT_LOCATE=1 \
+  python -m framework.cli run --case ai_orders_invoice_full_lifecycle_140528
+```
+
+**为什么**：该用例含 **150 秒真等待**（等订单自动关闭并落库，是 demo 的真实状态流转，不是卡住）。
+默认上限 120s 会在半途掐断 —— **表现像用例失败，其实是超时设小了**。
+
+**期望值对照（V8.3 基准 · 本机 1.87G 无 swap 实测）**：
+
+| 命令 | 期望 | 耗时 |
+|---|---|---|
+| 上面那条端到端 | `1 passed`（48 步 / 8 断言） | ~185s |
+| `pytest tests/frameworkTest -q` | `675 passed`，0 failed | ~30s |
+| `run_verifications.py` | 绝大部分通过；**唯一遗留 `verify_slow_target`**（慢环境缺陷，见 BACKLOG L22） | ~14 min |
+| `run_acceptance.py` | 四项闸门全过 | — |
+
+**手工走一遍（比看日志直观，5 步）**：
+
+1. 浏览器开 `http://localhost:8000/orders.html?demo_role=order_admin`
+2. 「+ 新建订单」→ 填 4 个行必填项（物料/产品/数量/行类型）→ 行保存 → 表单保存 → 提交
+3. **等 150 秒**（订单自动关闭并落库 —— 真实状态流转，不是卡住）
+4. 切角色到**发票管理员** → 订单列表勾选刚建那单 → 「去开票」→ 填客户/销售员/行类型/数量 → 行保存 → 提交发票
+5. 去发票列表按订单名称搜 —— **能搜到那张发票** = 整条链路通 ✅
 
 ### 3. 配 DeepSeek key（**只有 AI 链路需要**）
 
@@ -122,7 +149,7 @@ output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 
 
 **断言 11 种**（`asserts[].kind`，缺省 = `text`）：`text` · `visible`/`hidden` · `count` · `attr` ·
 `value` · `url` · `checked`/`unchecked` · `enabled`/`disabled`。定位用 `element`（探测语义名）或
-`selector`（手写用例专用，**AI 链路禁用**）。契约与示例见培训页第 4 章 + `cases/manual/assert_kinds_*.json`。
+`selector`（手写用例专用，**AI 链路禁用**）。契约与示例见培训页第 4 章；样例用例见 `cases/orders_invoice_full_lifecycle/`（AI 用例）与 `cases/manual/`（手搓用例，按需自建）。
 
 ## 常见坑
 
@@ -138,6 +165,10 @@ output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 
 6. **别并发跑浏览器**（内存红线）：跑前确认 `MemAvailable ≥ 550MB`，不够就降并发，别用 `--force-workers` 硬闯。
 7. **生成物别手改**：`scripts/generated/` 是 `generate` 的产物；改了模板要重跑 `generate`（模板是唯一来源）。
 8. **跨进程/落盘文本一律显式 UTF-8**（中文 Windows 默认 gbk，出过交付事故）。
+9. **改过框架的生成/探测代码后，必须先删产物再重跑**：`rm -f scripts/generated/*/*.py && python -m framework.cli generate`。
+   原因：`generate` 的变化检测**认用例文件、不认框架代码升级** —— 不删会**静默跑旧产物**，白跑还看不出原因。
+10. **demo 预置数据口径**：订单 **300 条（15 页 × 20）**、合同 200 条。跑测试会造脏数据，建议先复置：
+    `curl -X POST 'http://localhost:8000/api/reset?purge=1'`（demo 自带隔离入口，**会先自动备份**）。
 
 **报错 → 怎么办**：
 

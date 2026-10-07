@@ -1,5 +1,6 @@
 """弹层（picker）探测 · 端到端验证（2026-09-14 AprilPark1012需求①配套）。
 
+# HYBRID_DAILY_SKIP: V8.3 范围外 —— 断言绑 demo 弹层里「选择」按钮的旧收集方式（09-29 改版后探到 0/6）。后续版本按新结构重写后恢复。
 为什么单独一个脚本、不叫 test_*.py：
   它要开真浏览器把 demo 的「新建合同 → 选择客户 → 客户列表层」走一遍，
   跟主用例套件（scripts/test_cases.py）跑在一起会抢内存、互相干扰
@@ -81,7 +82,9 @@ def main() -> int:
     with sync_playwright() as p:
         b = p.chromium.launch(**launch_opts(headless=True))
         pg = b.new_context().new_page()
-        pg.goto(DEMO)
+        # 需求⑮（2026-09-28）起业务页有登录墙 ⇒ 自动化入口必须带 ?demo_role=
+        # （不带会被重定向到 login.html，探测到的是登录页控件 ⇒ 实测导致后续 30s 超时）
+        pg.goto(DEMO + "/?demo_role=contract_admin")
         pg.wait_for_load_state("networkidle")
         base = probe_page(pg)
         check(len(base) > 0, "基础页探测非空", f"({len(base)} 个控件)")

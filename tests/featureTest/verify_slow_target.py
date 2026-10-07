@@ -50,6 +50,13 @@ PROXY_PORT = int(os.environ.get("VERIFY_PROXY_PORT", "8012"))
 DELAY_MS = int(os.environ.get("SLOW_MS", "300"))
 MIN_MEM_MB = int(os.environ.get("VERIFY_MIN_MEM_MB", "650"))    # 1 个 headless Chromium ≈515MB + 余量
 
+def _case_exists(cid: str) -> bool:
+    """现存用例里有没有这条（P20 起用例按场景分目录）。"""
+    return any((ROOT / "cases").rglob(f"{cid}.json"))
+
+
+# ⚠️ V8.3：下面这些用例已按用户口径清理（本版只留「AI 订单→开票」那一条）⇒ 用前先过滤，
+#    全不存在时**跑全部现存用例**（能力不变：仍验「慢目标下必须全绿」，只是用例集换了）。
 KEY_CASES = [
     "create_bu_a_c1",                         # 弹层选择（客户列表层里选一行）
     "cross_page_detail",                      # 跨页 + 全量断言
@@ -153,7 +160,13 @@ def main() -> int:
               f"这不是通过 —— 等内存释放后重跑。")
         return 3
 
-    selection = [] if full else ["-k", " or ".join(f"test_{c}" for c in KEY_CASES)]
+    _present = [c for c in KEY_CASES if _case_exists(c)]
+    _gone = [c for c in KEY_CASES if c not in _present]
+    if _gone:
+        print(f"[gate] ℹ️  {len(_gone)} 条关键用例已按口径清理、不参与：{', '.join(_gone)}")
+    if not _present:
+        print("[gate] ℹ️  关键用例清单已全数清理 ⇒ 改为对**现存全部用例**跑慢目标闸门")
+    selection = [] if (full or not _present) else ["-k", " or ".join(f"test_{c}" for c in _present)]
     demo = None
     proxy = None
     rc = 1
@@ -176,11 +189,19 @@ def main() -> int:
 
         # 3) 用**同一批生成脚本**指向代理跑（HYBRID_BASE_URL 覆盖目标地址）
         run_env = dict(os.environ)
+        # 慢目标下要把「有界等待的预算」一起放大，否则红的是**等待不够**、不是能力有问题：
+        # 实测（2026-09-30）每请求 +300ms 时，"新增第 2 个订单行"后等行内输入框
+        # 5s 仍是 0 个 ⇒ 退语义兜底 ⇒ 用例在详情页就挂了。
+        # 注意口径：放大的是**上限**（仍是轮询到就继续，不是固定 sleep），符合「不引入固定 sleep」原则。
+        _scale = max(1, DELAY_MS // 100)                     # 300ms/请求 ⇒ 3 倍
         run_env.update({
             "HYBRID_BASE_URL": f"http://127.0.0.1:{PROXY_PORT}",
             "HYBRID_RESET_URL": f"http://127.0.0.1:{PROXY_PORT}/api/reset",
             "HYBRID_RUN_ID": f"slowgate_{time.strftime('%Y%m%d_%H%M%S')}",
+            "HYBRID_LOCATE_TIMEOUT": str(5000 * _scale),
+            "HYBRID_READY_TIMEOUT": str(15000 * _scale),
         })
+        print(f"[gate] 有界等待预算按延迟放大 {_scale}×：locate={5000 * _scale}ms ready={15000 * _scale}ms")
         (ROOT / "log" / run_env["HYBRID_RUN_ID"]).mkdir(parents=True, exist_ok=True)   # pytest-html 不建父目录
         cmd = [PY, "-m", "pytest", "scripts/generated", "-q", "-p", "no:cacheprovider",
                f"--html=log/{run_env['HYBRID_RUN_ID']}/report.html"] + selection

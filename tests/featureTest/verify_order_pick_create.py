@@ -1,5 +1,6 @@
 """订单页 · 弹层两种选中方式 + 临时新建回填（2026-09-18 需求②③）端到端验证。
 
+# HYBRID_DAILY_SKIP: V8.3 范围外 —— 依赖 demo 旧入口 btn-new（09-29 改版后不存在）。后续版本按新入口重写后恢复。
 跑法（需要 demo 在 8000 上：python -m demo.app）：
     cd ~/hybrid_gui_qa && source .venv/bin/activate
     python tests/featureTest/verify_order_pick_create.py
@@ -138,7 +139,9 @@ def run() -> None:
         page = ctx.new_page()
         try:
             _reset()
-            page.goto(DEMO + "/orders.html")
+            # 需求⑮（2026-09-28）起业务页有登录墙 ⇒ 自动化入口必须带 ?demo_role=
+            # 且「新建订单」只有**订单管理员**能点（权限不足会置灰 + 弹提示）
+            page.goto(DEMO + "/orders.html?demo_role=order_admin")
             _ready(page)
             page.click("#btn-new-order")
             check(page.locator("#modal-new-order").is_visible(), "新建订单弹窗已打开")

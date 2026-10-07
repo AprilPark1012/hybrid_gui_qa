@@ -216,7 +216,7 @@ def test_runner_lists_exactly_the_repo_verify_scripts():
 def test_runner_only_filter_and_unknown_flag():
     r = _run_runner(["--only", "html_sync", "--list"])
     assert r.returncode == 0 and "verify_html_sync.py" in r.stdout, r.stdout
-    assert "verify_assert_kinds.py" not in r.stdout, "过滤没生效"
+    assert "verify_scope_locate.py" not in r.stdout, "过滤没生效"
     bad = _run_runner(["--onlyy", "x"])
     assert bad.returncode == 2, f"未知参数必须 exit 2（脚本调用方不能把「没跑」当成功），实际 {bad.returncode}"
 

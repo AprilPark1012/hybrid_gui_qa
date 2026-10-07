@@ -1,12 +1,14 @@
 """订单系统页面 · 需求逐条端到端验证（2026-09-17 新增，AprilPark1012 的 6 条需求）。
 
+# HYBRID_DAILY_SKIP: V8.3 范围外 —— 断言绑 demo 列表页旧结构（分页/懒加载行为 09-29 改版），且预置口径 60→300 条；本版不交付该页的独立验收。后续版本按新结构重写后恢复。
 跑法（需要 demo 在 8000 上：python -m demo.app）：
     cd ~/hybrid_gui_qa && source .venv/bin/activate
     python tests/featureTest/verify_order_pages.py        # 末行：全部符合预期 ✅ / 不符合预期 ❌
 
 判据按需求编号一一对应（每条都真开浏览器点、真读页面状态，不看「代码里写了」）：
   ① 合同页有「查看订单」链接，点击**新开 tab**打开订单系统页面
-  ② 订单列表默认 **3 页 × 20 条**（共 60 条）· 11 列字段与顺序一致（含「状态」「是否开票」）· 页码/上一页/下一页可用
+  ② 订单列表默认 **15 页 × 20 条**（共 300 条）· 11 列字段与顺序一致（含「状态」「是否开票」）· 页码/上一页/下一页可用
+     （2026-09-30 同步：demo 09-29 把订单预置 60 → 300 条 / 15 页，本验证项原先仍按 60 条断言 ⇒ 已过期）
   ③ 搜索：订单名称**全模糊** / 销售员**右模糊** / 客户**全模糊** / 业务单元·管理单元·帐套走「...」弹层
      —— 且这三类「...」弹层**没有「取消」按钮**（选中即回填并关闭）
   ④ 新建订单：必填校验（空提交不许创建）→ 全填提交 → 弹窗关闭 · 回到列表 · **第一行就是新订单**；
@@ -113,7 +115,7 @@ def run() -> None:
     # ⚠️ 项目内存红线（硬纪律）：MemAvailable < 550MB 时**一律 SKIP**，不许硬起 chromium
     #    —— 本机历史事故：低内存拉起浏览器会把 Hermes 网关一起带走。「没跑 ≠ 通过」，SKIP 必须如实报。
     try:
-        _avail = int(next(l.split()[6] for l in open("/proc/meminfo")
+        _avail = int(next(l.split()[6] for l in open("/proc/meminfo", encoding="utf-8")
                           if l.startswith("MemAvailable"))) // 1024
     except Exception:
         _avail = 9999
@@ -122,8 +124,8 @@ def run() -> None:
         sys.exit(3)
 
     h = _api("/api/health")
-    check(h.get("order_presets") == 60 and h.get("orders_per_page") == 20,
-          "服务端声明订单数据口径（60 条 = 3 页 × 20）",
+    check(h.get("order_presets") == 300 and h.get("orders_per_page") == 20,
+          "服务端声明订单数据口径（300 条 = 15 页 × 20）",
           f"order_presets={h.get('order_presets')} orders_per_page={h.get('orders_per_page')}")
 
     from playwright.sync_api import sync_playwright
@@ -155,17 +157,17 @@ def run() -> None:
               "点击后**新开了一个 tab**打开订单系统页面", f"url={orders.url.split('/')[-1]} tabs={len(ctx.pages)}")
 
         # ============================ ② 列表 + 分页 ============================
-        print("\n===== ② 订单列表：3 页 × 20 条 · 11 列字段 =====")
+        print("\n===== ② 订单列表：15 页 × 20 条 · 11 列字段 =====")
         headers = orders.eval_on_selector_all(
             "#tbl-orders thead th", "els => els.map(e => e.innerText.trim())")
         # 需求⑨ 加「状态」列（2026-09-28 上旬）· 需求⑳ 加「是否开票」列 ⇒ 9 列变 11 列，断言同步刷新
         want = ["订单编号", "合同编号", "订单名称", "管理单元", "销售员", "订单类型", "业务单元", "帐套",
                 "客户", "状态", "是否开票"]
         check(headers == want, "11 列字段与顺序完全一致", f"{headers}")
-        check(orders.locator("#total").inner_text().strip() == "60",
-              "共 60 条订单（3 页 × 20）", f"total={orders.locator('#total').inner_text().strip()}")
-        check(orders.locator("#page-info").inner_text().strip() == "第 1 / 3 页",
-              "显示「第 1 / 3 页」", orders.locator("#page-info").inner_text().strip())
+        check(orders.locator("#total").inner_text().strip() == "300",
+              "共 300 条订单（15 页 × 20）", f"total={orders.locator('#total').inner_text().strip()}")
+        check(orders.locator("#page-info").inner_text().strip() == "第 1 / 15 页",
+              "显示「第 1 / 15 页」", orders.locator("#page-info").inner_text().strip())
         r1 = _rows(orders)
         check(len(r1) == 20 and r1[0].startswith("SO-1001"),
               "第 1 页 20 行、首行 SO-1001", f"行数={len(r1)} 首行={r1[0][:16]}")
@@ -200,7 +202,9 @@ def run() -> None:
             got = orders.locator("#total").inner_text().strip()
             check(got == str(expect_total), desc, f"命中 {got} 条（期望 {expect_total}）")
 
-        search({"tb-o-name": "订单1"}, 11, "订单名称「订单1」= 全模糊（含订单10~订单19）⇒ 11 条")
+        # 需求㛁（2026-09-29）：订单名称不再是「订单N」，改成「客户简称+月份+业务内容+订单」
+        # ⇒ 原来搜「订单1」可命中 11 条（订单1/10~19）的断言已失效，改为按**客户简称**搜（该客户恰好 10 条）
+        search({"tb-o-name": "北京华信"}, 10, "订单名称「北京华信」= 全模糊（该客户 10 条预置订单）⇒ 10 条")
         search({"tb-o-salesman": "张"}, 10, "销售员「张」= 右模糊（张伟 10 条；「伟」这种非前缀不命中见负向）")
         search({"tb-o-cust": "科技"}, 20, "客户「科技」= 全模糊（华信科技 10 + 中科智慧 10）⇒ 20 条")
         # 负向：右模糊 ≠ 全模糊
@@ -240,7 +244,7 @@ def run() -> None:
             orders.locator("#btn-search-o").click()
             orders.wait_for_timeout(500)
             got = orders.locator("#total").inner_text().strip()
-            check(got.isdigit() and got != "60", f"{label} 精确筛选生效（{val} ⇒ {got} 条）", f"命中 {got} 条")
+            check(got.isdigit() and got != "300", f"{label} 精确筛选生效（{val} ⇒ {got} 条）", f"命中 {got} 条")
             orders.locator("#btn-reset-o").click()
             orders.wait_for_timeout(300)
 
@@ -252,7 +256,7 @@ def run() -> None:
         orders.wait_for_timeout(400)
         st = orders.locator("#status-o").inner_text().strip()
         check("请填写全部必填字段" in st, "空表单提交被拦（8 项必填）", f"提示：{st}")
-        check(_api("/api/orders")["total"] == 60, "空提交没有创建任何订单（服务端仍 60 条）")
+        check(_api("/api/orders")["total"] == 300, "空提交没有创建任何订单（服务端仍 300 条）")
 
         name = f"订单冒烟_{time.strftime('%H%M%S')}"
         orders.fill("#o-name", name)

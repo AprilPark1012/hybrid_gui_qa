@@ -1,0 +1,39 @@
+/* 合同表单共享设计（2026-09-29 需求㉜）
+   —— 抽出「新建合同」（contract_new.html，jQuery 实现）与「编辑合同」（contract_edit.html，Vue 实现）
+      两个页面的**共同表单设计**：字段表格布局 / 控件尺寸 / 客户选择弹层 / 按钮区 / 状态行。
+   改这里 = 两个页面一起变（这就是「共用一部分设计」的落点）。
+   注意：**不含**任何页面的业务脚本，纯样式。 */
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.6 "Microsoft YaHei", system-ui, sans-serif; background: #f5f6f8; color: #1f2329; }
+  .page { padding: 10px 12px; }
+  .title { font-weight: 700; font-size: 14px; padding: 2px 0 8px; border-bottom: 2px solid #1668dc; margin-bottom: 10px; }
+  table.form { width: 100%; border-collapse: collapse; background: #fff; }
+  table.form td { border: 1px solid #e2e4e8; padding: 6px 8px; vertical-align: middle; }
+  table.form td.lbl { width: 88px; background: #fafbfc; color: #333; text-align: right; }
+  /* 需求㛋（2026-09-29）：必填项统一红色星号，**星号在标签前**（如 *物料编码）——三页共用这一份 */
+  .req { color: #d4380d; font-weight: 600; margin-right: 2px; }
+  /* 需求㛌（2026-09-29）：提交时未填的必填项 ⇒ 红框高亮（用户一输入/选择就自动去掉）*/
+  .err { border-color: #d4380d !important; background: #fff2f0 !important;
+         box-shadow: 0 0 0 2px rgba(212, 56, 13, .15) !important; }
+  table.form input[type=text] { height: 26px; padding: 0 6px; border: 1px solid #c9ccd2; border-radius: 3px; width: 100%; }
+  table.form select { height: 26px; padding: 0 4px; border: 1px solid #c9ccd2; border-radius: 3px; }
+  .pick-row { display: flex; gap: 6px; align-items: center; }
+  .btn { height: 26px; padding: 0 12px; border: 1px solid #c9ccd2; background: #fff; border-radius: 3px; cursor: pointer; }
+  .btn.primary { background: #1668dc; border-color: #1668dc; color: #fff; }
+  .actions { margin-top: 10px; display: flex; gap: 8px; justify-content: flex-end; }
+  #status { margin-top: 8px; color: #8a8f99; font-size: 12px; min-height: 18px; }
+
+  /* 本页内的客户选择弹层（jQuery 控制显隐） */
+  #modal-cust-pick { position: fixed; inset: 0; background: rgba(0, 0, 0, .28); display: none; z-index: 40; }
+  #modal-cust-pick .box { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+                          width: 92%; background: #fff; border: 1px solid #c9ccd2; border-radius: 4px; padding: 10px 12px; }
+  #modal-cust-pick h4 { margin: 0 0 8px; font-size: 13px; }
+  #modal-cust-pick .bar { display: flex; gap: 6px; margin-bottom: 8px; }
+  #modal-cust-pick .bar input { flex: 1; height: 26px; padding: 0 6px; border: 1px solid #c9ccd2; border-radius: 3px; }
+  #tbl-pick-cust { width: 100%; border-collapse: collapse; }
+  #tbl-pick-cust th, #tbl-pick-cust td { border: 1px solid #e2e4e8; padding: 5px 8px; text-align: left; }
+  #tbl-pick-cust th { background: #fafbfc; font-weight: 600; }
+  #tbl-pick-cust tbody tr:hover { background: #f0f6ff; }
+  td.cell-pick { cursor: pointer; }
+  td.cell-pick:hover { background: #e6f2ff; text-decoration: underline; }
+  .hint { color: #888; font-size: 12px; }

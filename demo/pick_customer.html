@@ -13,6 +13,9 @@
     ② 埋点口径 C：只有**顶层容器**带 data-testid；行/单元格/行内按钮一律不带
     ③ 接口：GET /api/customers（支持 ?w=<分区>）—— 与父页同一分区
     ④ 选中回传：同源 postMessage 给父窗口 {type:'pick-customer', name, addr}
+    ⑤ 选中方式（需求㉔）：**点「客户名称」或「地址」单元格 等同于点「选择」按钮** ——
+       三个入口都调同一个 pick(c)（不新增第二条回传路径）⇒ 而「选择」按钮保留不动。
+       单元格不加 data-testid / title（埋点口径 C + 不让 title 混进语义名）。
 -->
 <script src="vendor/vue.global.prod.js"></script>
 <script src="auth.js"></script>
@@ -30,6 +33,9 @@
   th { background: #fafbfc; font-weight: 600; }
   tbody tr:hover { background: #f0f6ff; }
   tbody tr.sel { background: #e6f2ff; }
+  /* 需求㉔：名称 / 地址单元格可点选中（视觉上要看得出来能点） */
+  td.cell-pick { cursor: pointer; }
+  td.cell-pick:hover { background: #e6f2ff; text-decoration: underline; }
   .hint { color: #888; font-size: 12px; }
 </style>
 </head>
@@ -55,8 +61,8 @@
     </thead>
     <tbody>
       <tr v-for="(c, i) in rows" :key="c.name" :class="{ sel: picked === c.name }">
-        <td data-field="custName">{{ c.name }}</td>
-        <td data-field="custAddr">{{ c.addr }}</td>
+        <td class="cell-pick" data-field="custName" @click="pick(c)">{{ c.name }}</td>
+        <td class="cell-pick" data-field="custAddr" @click="pick(c)">{{ c.addr }}</td>
         <td><button class="btn" type="button" @click="pick(c)">选择</button></td>
       </tr>
       <tr v-if="!rows.length"><td colspan="3" class="hint">没有匹配的客户</td></tr>
@@ -64,7 +70,8 @@
   </table>
 
   <p class="hint" id="pick-hint" style="margin-top:8px">
-    选中后会把客户名回传给合同页（同源 postMessage）· 当前分区：{{ part || 'default' }}
+    选中后会把客户名回传给合同页（同源 postMessage）· 点「客户名称」/「地址」或「选择」按钮均可选中 ·
+    当前分区：{{ part || 'default' }}
   </p>
 </div>
 
@@ -104,6 +111,7 @@ createApp({
     pick(c) {
       this.picked = c.name;
       // 同源回传：父窗口接收后填入「客户」字段并关闭弹层
+      // 需求㉔：三个入口（名称单元格 / 地址单元格 / 「选择」按钮）共用这一个方法 ⇒ 回传路径只有一条
       window.parent.postMessage({ type: 'pick-customer', name: c.name, addr: c.addr }, '*');
     },
   },

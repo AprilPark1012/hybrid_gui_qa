@@ -38,7 +38,7 @@
 
 **用法**：
   python tests/featureTest/rerecord_cassettes.py --list          # 列出场景与录像现状（零成本）
-  python tests/featureTest/rerecord_cassettes.py --scenario contracts_search_by_no   # 重录一个
+  python tests/featureTest/rerecord_cassettes.py --scenario orders_invoice_full_lifecycle   # 重录一个
   python tests/featureTest/rerecord_cassettes.py --all           # 重录全部（会真调 LLM，慢）
   python tests/featureTest/rerecord_cassettes.py --all --verify  # 重录完顺带跑场景3 体检
 

@@ -33,6 +33,11 @@
   .block h3 { margin: 0 0 12px; font-size: 14px; border-left: 3px solid #1668dc; padding-left: 8px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
   .field { display: flex; align-items: center; margin-bottom: 10px; }
+  /* 需求㛋（2026-09-29）：必填项统一红色星号，**星号在标签前**（如 *物料编码）*/
+  .req { color: #d4380d; font-weight: 600; margin-right: 2px; }
+  /* 需求㛌（2026-09-29）：提交时未填的必填项 ⇒ 红框高亮（用户一输入/选择就自动去掉）*/
+  .err { border-color: #d4380d !important; background: #fff2f0 !important;
+         box-shadow: 0 0 0 2px rgba(212, 56, 13, .15) !important; }
   .field > .label { flex: 0 0 96px; text-align: right; padding-right: 8px; color: #4b5058; }
   .field .ctl { flex: 1 1 auto; }
   .field input, .field select { width: 100%; height: 28px; padding: 0 8px; border: 1px solid #c9ccd2; border-radius: 3px; background: #fff; font: inherit; }
@@ -71,7 +76,7 @@
     <h3>基础信息</h3>
     <div class="grid2">
       <div class="field" v-for="f in basicFields" :key="f.key">
-        <div class="label">{{ f.label }}</div>
+        <div class="label"><span v-if="f.required" class="req">*</span>{{ f.label }}</div>
         <div class="ctl b1"><div class="b2"><div class="b3"><div class="b4"><div class="b5"><div class="b6">
           <template v-if="f.type === 'select'">
             <select :id="f.id" :name="f.key" :title="f.label" :aria-label="f.label"
@@ -96,8 +101,8 @@
               :disabled="!editing" @click="addLine">新增行</button>
     </div>
     <div class="lines-grid" id="inv-lines-grid">
-      <div class="head">操作</div><div class="head">行号</div><div class="head">期次号</div>
-      <div class="head">发票行类型</div><div class="head">数量</div><div class="head">单位</div>
+      <div class="head">操作</div><div class="head">行号</div><div class="head"><span class="req">*</span>期次号</div>
+      <div class="head"><span class="req">*</span>发票行类型</div><div class="head"><span class="req">*</span>数量</div><div class="head">单位</div>
       <template v-for="(ln, idx) in lines" :key="idx">
         <div class="cell">
           <button class="btn danger" type="button" :disabled="!editing" @click="removeLine(idx)">删除</button>
@@ -133,7 +138,10 @@
   <!-- ===== 右下角：返回 / 编辑（编辑态下同一个按钮变「保存」）===== -->
   <div class="actions">
     <button id="btn-inv-back" class="btn" type="button" @click="goBack">返回</button>
-    <button id="btn-inv-edit" class="btn primary" type="button" @click="onEditOrSave">{{ editing ? '保存' : '编辑' }}</button>
+    <!-- 2026-09-29（需求）：发票编辑/保存需要**发票管理员**角色 -->
+    <button id="btn-inv-edit" class="btn primary" type="button" data-perm="create_invoice"
+            data-perm-tip="「编辑发票」需要发票管理员角色：当前不是发票管理员，不能编辑发票（可用右上角头像切换角色）"
+            @click="onEditOrSave">{{ editing ? '保存' : '编辑' }}</button>
   </div>
 </div>
 
@@ -156,13 +164,13 @@ createApp({
       no: NO, row: {}, form: {}, lines: [], units: ['个', '件', '套', '千克'],
       editing: false, canEdit: false, me: null, status: '', dicts: {},
       basicFields: [
-        { key: 'bu',           label: '业务单元', id: 'iv-bu',       type: 'select', dict: 'bu' },
+        { key: 'bu',           label: '业务单元', id: 'iv-bu',       type: 'select', dict: 'bu', required: true },
         { key: 'no',           label: '发票号',   id: 'iv-no',       locked: true },
-        { key: 'invoice_type', label: '发票类型', id: 'iv-type',     type: 'select', dict: 'invoice_type' },
-        { key: 'invoice_date', label: '发票日期', id: 'iv-date' },
-        { key: 'salesman',     label: '销售员',   id: 'iv-salesman', type: 'select', dict: 'salesman' },
-        { key: 'currency',     label: '币种',     id: 'iv-currency', type: 'select', dict: 'currency' },
-        { key: 'cust',         label: '客户',     id: 'iv-cust',     type: 'select', dict: 'cust' },
+        { key: 'invoice_type', label: '发票类型', id: 'iv-type',     type: 'select', dict: 'invoice_type', required: true },
+        { key: 'invoice_date', label: '发票日期', id: 'iv-date', required: true },
+        { key: 'salesman',     label: '销售员',   id: 'iv-salesman', type: 'select', dict: 'salesman', required: true },
+        { key: 'currency',     label: '币种',     id: 'iv-currency', type: 'select', dict: 'currency', required: true },
+        { key: 'cust',         label: '客户',     id: 'iv-cust',     type: 'select', dict: 'cust', required: true },
         { key: 'contract_no',  label: '合同编号', id: 'iv-contract', locked: true },
       ],
     };
@@ -224,11 +232,22 @@ createApp({
       this.status = `已删除第 ${idx + 1} 行`;
     },
     async save() {
-      const missing = this.basicFields.filter(f => !f.locked && !String(this.form[f.key] || '').trim()).map(f => f.label);
-      if (missing.length) { this.status = '请填写全部必填字段：' + missing.join('、'); return; }
+      const missKeys = this.basicFields.filter(f => !f.locked && !String(this.form[f.key] || '').trim()).map(f => f.key);
+      if (missKeys.length) {
+        // 需求㛌：未填字段高亮 + 聚焦第一个
+        markMissing(missKeys.map(k => '#' + ((this.basicFields.find(f => f.key === k) || {}).id)),
+                    document.querySelector('#form-inv-basic'));
+        const LBL = {}; this.basicFields.forEach(f => { LBL[f.key] = f.label; });
+        this.status = '请填写全部必填字段：' + missKeys.map(k => LBL[k] || k).join('、');
+        return;
+      }
       const bad = this.lines.map((l, i) => (!l.period || !l.line_type || !String(l.qty || '').trim()) ? (i + 1) : null)
                             .filter(Boolean);
-      if (bad.length) { this.status = `行必填项未填全（第 ${bad.join('、')} 行）`; return; }
+      if (bad.length) {
+        markRowsMissing(bad.map(n => n - 1), ['period', 'line_type', 'qty'],
+                        document.querySelector('#inv-lines-grid'));   // 需求㛌
+        this.status = `行必填项未填全（第 ${bad.join('、')} 行）`; return;
+      }
       const r = await fetch(apiUrl('/api/invoice/update'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ no: this.no, fields: this.form, lines: this.lines }),
@@ -243,6 +262,43 @@ createApp({
     goBack() { location.href = DEMO_AUTH.url('/invoice_list.html'); },
   },
 }).mount('#app');
+</script>
+<script>
+/* 需求㛌（2026-09-29）：表单提交时把**未填的必填项**高亮出来（红框），并滚动/聚焦到第一个未填项；
+   用户一旦输入或选择，该项的高亮自动清除。keys 用控件的 name（各页控件的 name = 字段 key）。 */
+function markMissing(keys, root) {
+  root = root || document;
+  root.querySelectorAll('.err').forEach(function (e) { e.classList.remove('err'); });
+  var els = [];
+  (keys || []).forEach(function (k) {
+    if (!k) return;
+    // 传 CSS 选择器（'#inp-name'）直接用；传字段名则先按 name 再按 id 找
+    var e = /^[#.\[]/.test(k) ? root.querySelector(k)
+                               : (root.querySelector('[name="' + k + '"]') || root.querySelector('#' + k));
+    if (e) els.push(e);
+  });
+  els.forEach(function (e) { e.classList.add('err'); });
+  if (els[0]) { try { els[0].scrollIntoView({ block: 'center' }); els[0].focus(); } catch (err) {} }
+  return els.length;
+}
+/* 行级（订单行 / 发票行）：idxList = 0 起的行号数组，keys = 行内字段名 */
+function markRowsMissing(idxList, keys, root) {
+  root = root || document;
+  (idxList || []).forEach(function (i) {
+    (keys || []).forEach(function (k) {
+      var els = root.querySelectorAll('[name="' + k + '"]');
+      var el = els[i];
+      if (el && !String(el.value || '').trim()) el.classList.add('err');
+    });
+  });
+}
+(function () {
+  ['input', 'change'].forEach(function (t) {
+    document.addEventListener(t, function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('err')) e.target.classList.remove('err');
+    }, true);
+  });
+})();
 </script>
 </body>
 </html>

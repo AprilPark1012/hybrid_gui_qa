@@ -25,6 +25,7 @@ import time             # 2026-09-14：弹层/弹窗探测改成「有界轮询�
 from pydantic import BaseModel, Field
 from framework.tools.probe.element_map import ElementMap, TestStep, ElementRef
 from framework.tools.common.browser import launch_opts
+from framework.tools.run.login import ensure_logged_in      # P22 批 5：登录前置
 from framework.tools.common.textutil import collapse_ws  # 事故②：accessible name 口径归一化
 
 
@@ -338,7 +339,15 @@ class AiExploreError(RuntimeError):
     """
 
 
-def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None = None):
+def _base_of(url: str) -> str:
+    """取 `scheme://host[:port]`（登录接口的相对路径要拼在它后面）。"""
+    import urllib.parse as _up
+    u = _up.urlsplit(url or "")
+    return f"{u.scheme}://{u.netloc}" if u.scheme and u.netloc else (url or "")
+
+
+def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None = None,
+                          auth: dict | None = None):
     """【同步】探测页面上下文：基础控件 + 弹窗内控件 + 富 DOM 上下文。返回 (items, dom_ctx, err)。
 
     跨页流程（P3）：pages 给 ≥2 页时走 `_collect_pages_context`（一个浏览器顺序探每页 + 同名唯一化）；
@@ -353,19 +362,35 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
     现在拆成两个阶段：同步探测 → 异步 LLM 规划。
     """
     if pages and len(pages) > 1:
-        return _collect_pages_context(pages, items)
+        return _collect_pages_context(pages, items, auth=auth)
 
     from playwright.sync_api import sync_playwright
     from framework.tools.probe.probe import probe_page, probe_row_fields
     try:
         with sync_playwright() as p:
             b = p.chromium.launch(**launch_opts(headless=True))
-            pg = b.new_page()
-            pg.goto(url)
-            pg.wait_for_load_state("networkidle")
+            ctx = b.new_context()
+            # P22 批 5（方案 H）：**登录前置** —— demo 加登录后，未登录访问业务页会被 auth.js 踢到
+            # /login.html ⇒ 探针只能探到登录页控件（"看着探成功、其实什么都没探到"）。
+            _lg = ensure_logged_in(ctx, _base_of(url), auth or {})
+            if _lg.get("attempted"):
+                print("      [explore] 🔑 登录前置：" + ("ok" if _lg.get("ok") else
+                      f"⚠️ 失败 → {_lg.get('reason')}（探到的可能是登录页控件）"))
+            pg = ctx.new_page()
+            pg.goto(url, wait_until="domcontentloaded")
+            # P22 批 3（实测 2026-09-29）：**别用 networkidle 等这个 demo 的页面** ——
+            # 页面里的 fetch（auth.js 的 /api/me）在 Chromium 侧会挂着不 finished
+            # ⇒ networkidle 永不达成 ⇒ 30s 超时抛错（login.html 实测必超时；原实现还没有 try/except）。
+            # 口径：优先等页面自己的就绪契约（与 _goto / 生成物同源），拿不到再给个有界缓冲。
+            try:
+                pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
+            except Exception:
+                pg.wait_for_timeout(500)
             base = probe_page(pg)
-            modal_items = _try_collect_modal_items(pg, base)     # 点开弹窗补表单控件
-            page_items = _merge_items(base, modal_items)
+            from framework.tools.probe.expandable import expand_and_collect   # P22：可展开容器
+            menu_items = expand_and_collect(pg, base)            # 点开隐藏菜单再探一轮（自动关掉）
+            modal_items = _try_collect_modal_items(pg, base + menu_items)   # 点开弹窗补表单控件
+            page_items = _merge_items(_merge_items(base, menu_items), modal_items)
             dom_ctx = _collect_dom_context(pg)                   # 富 DOM 上下文（索引/可见性/状态）
             row_fields = probe_row_fields(pg)                    # 行内列清单（供 AI 做「行内定位」）
             b.close()
@@ -376,7 +401,50 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
         return items, [], f"{type(e).__name__}: {str(e)[:160]}", [], []
 
 
-def _collect_pages_context(pages: list[dict], items: list[dict]):
+def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: int = 5000) -> list[str]:
+    """探测前执行该页声明的**前置动作**（P22 批 5 缺口 ④⑤）。
+
+    为什么需要：有些控件只在"做了某个动作之后"才存在 ——
+      · 合同列表页的「新建订单」弹层：不先选中合同，点它只弹「请选择某个合同」，弹层压根不开；
+      · 订单详情页的行控件：要先点「编辑」进编辑态、再点「新增行」才出现。
+    探针默认"打开页面就看一遍"永远看不到它们 ⇒ AI 拿不到语义名 ⇒ 用例引用不了
+    （批 5 实测：行必填没填 ⇒ 保存无效 ⇒ 提交被拦，状态恒「已新建」）。
+
+    口径（宁可少一份清单，也不乱点）：
+      · 每项只按**控件的 accessibility name** 找（button 优先，其次文本）；
+        **不接受 CSS selector** —— 与"不给 AI 猜 CSS"同一条铁律；
+      · 找不到/点不动 ⇒ **如实告警并继续**（不猜别的控件、不换做法）；
+      · 有界：最多 5 步、每步有界超时。
+    返回：实际点成功的名字（给日志与判据用）。
+    """
+    done: list[str] = []
+    steps = [str(x).strip() for x in (pre or []) if str(x).strip()]
+    if not steps:
+        return done
+    if len(steps) > 5:
+        print(f"      [explore] ⚠️ [{page_name}] pre 声明了 {len(steps)} 步（上限 5）→ 只执行前 5 步")
+        steps = steps[:5]
+    for nm in steps:
+        try:
+            loc = pg.get_by_role("button", name=nm)
+            if not loc.count():
+                loc = pg.get_by_text(nm)
+            if not loc.count():
+                print(f"      [explore] ⚠️ [{page_name}] 前置动作「{nm}」没找到 → 跳过"
+                      f"（不猜别的控件去点）")
+                continue
+            loc.first.click(timeout=per_step_ms)
+            pg.wait_for_timeout(350)
+            done.append(nm)
+        except Exception as e:                                        # noqa: BLE001
+            print(f"      [explore] ⚠️ [{page_name}] 前置动作「{nm}」执行失败"
+                  f"（{type(e).__name__}: {str(e)[:80]}）→ 继续后面的步骤")
+    if done:
+        print(f"      [explore] ⏩ [{page_name}] 前置动作已执行：{done}")
+    return done
+
+
+def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | None = None):
     """【同步】跨页探测（P3）：一个浏览器 + 一个 context，按声明顺序 goto 每页。
 
     - 环境约束：本机 1.87G 无 swap ⇒ 绝不为多页多开浏览器/并发探测（顺序 do 才是安全的）。
@@ -395,15 +463,31 @@ def _collect_pages_context(pages: list[dict], items: list[dict]):
         with sync_playwright() as p:
             b = p.chromium.launch(**launch_opts(headless=True))
             ctx = b.new_context()
+            # P22 批 5：登录前置（跨页脚本同样需要，否则每页都落到登录页）
+            _lg = ensure_logged_in(ctx, _base_of((pages or [{}])[0].get("url", "")), auth or {})
+            if _lg.get("attempted"):
+                print("      [explore] 🔑 登录前置：" + ("ok" if _lg.get("ok") else
+                      f"⚠️ 失败 → {_lg.get('reason')}"))
             pg = ctx.new_page()
             for spec in pages:
-                pg.goto(spec["url"])
-                pg.wait_for_load_state("networkidle")
+                # P22 批 5：探测期优先用场景声明的探测地址（运行期才有值的页面，探测期对象不存在）
+                pg.goto(spec.get("probe_url") or spec["url"], wait_until="domcontentloaded")
+                try:      # P22 批 3：同单页路径 —— networkidle 在本 demo 上不可靠（fetch 悬挂）
+                    pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
+                except Exception:
+                    pg.wait_for_timeout(500)
+                # P22 批 5：该页声明的**前置动作**（弹层要先选合同、行控件要先点新增行）
+                # —— 不做前置，这些控件一次都探不到，AI 也就拿不到它们的语义名。
+                _run_pre_actions(pg, spec.get("pre"), spec.get("name", ""))
                 base = probe_page(pg, page_name=spec["name"])
-                modal_items = _try_collect_modal_items(pg, base)
+                from framework.tools.probe.expandable import expand_and_collect   # P22：可展开容器
+                menu_items = expand_and_collect(pg, base)     # 点开隐藏菜单再探一轮（自动关掉）
+                for it in menu_items:
+                    it["page"] = spec["name"]
+                modal_items = _try_collect_modal_items(pg, base + menu_items)
                 for it in modal_items:
                     it["page"] = spec["name"]
-                merged_one = _merge_items(base, modal_items)
+                merged_one = _merge_items(_merge_items(base, menu_items), modal_items)
                 per_page.append((spec["name"], merged_one))
                 for d in _collect_dom_context(pg):
                     d["page"] = spec["name"]
@@ -429,7 +513,7 @@ def _collect_pages_context(pages: list[dict], items: list[dict]):
 def ai_explore(
     scenario: str, items: list[dict], url: str, allow_mock_fallback: bool = False,
     page_bg: str = "", guard: str = "", pages: list[dict] | None = None,
-    llm_cassette=None, cassette_strict: bool = False,
+    llm_cassette=None, cassette_strict: bool = False, auth: dict | None = None,
 ) -> ElementMap:
     """【LLM 语义识别】理解意图、规划步骤、挑元素（ChatDeepSeek 直连编排，非 Agent）。
 
@@ -450,7 +534,9 @@ def ai_explore(
 
     # ① 同步阶段：Playwright 探测（基础控件 + 弹窗内控件 + 富 DOM 上下文）
     # 必须在事件循环【之外】做 —— Playwright Sync API 不能在 asyncio loop 里跑。
-    ctx = _collect_page_context(items, url, pages=pages)
+    # P22 批 5：登录前置声明由**调用方**传进来（`scenario` 参数是字符串，拿不到对象上的 auth_spec
+    # —— 实测踩过：这里 getattr 永远是 None ⇒ 跨页探测全落登录页 ⇒ AI 31 步元素全空）。
+    ctx = _collect_page_context(items, url, pages=pages, auth=auth or {})
     page_items, dom_ctx, err = ctx[0], ctx[1], ctx[2]
     collisions = ctx[3] if len(ctx) > 3 else []
     # 表格行内列清单（2026-09-17）：喂给 AI 做行内定位 —— 没有它，AI 只能猜 CSS（本项目铁律：绝不让 LLM 产 selector）
@@ -910,7 +996,12 @@ def _try_collect_modal_items(pg, base_items: list[dict]) -> list[dict]:
         btn = pg.get_by_role("button", name=collapse_ws(opener.get("name")))  # 事故②
         if btn.count() != 1:
             return []
-        btn.first.click()
+        # P22 批 3：置灰按钮（超管点「+ 新建订单」）会让常规点击 30s 超时 ⇒ 整段探测中断
+        if not _probe_click(btn.first, timeout=8000):
+            print(f"      [explore] ⚠️ 点不开「{_one_line(opener.get('name') or '')}」"
+                  f"（常规与置灰降级都失败）→ 跳过弹窗补充（不影响其余探测）")
+            return []
+        _dismiss_tips(pg)          # 权限拦截会弹提示浮层 ⇒ 由触发方收掉，别挡后面的探测
 
         # ---- 第 1 层：弹窗本体（沿用原有 test_id 特征过滤 ⇒ 老页面行为不变）----
         # 2026-09-14：固定 sleep(300) → 有界轮询（弹窗渲染可能慢于 300ms，见 _LAYER_RENDER_WAIT_S 注释）
@@ -1054,6 +1145,49 @@ def _wait_fresh_items(pg, absorb, timeout_s: float = _LAYER_RENDER_WAIT_S) -> li
         pg.wait_for_timeout(_LAYER_POLL_MS)
 
 
+def _dismiss_tips(pg) -> None:
+    """关掉**探测期自己触发**的顶部提示浮层（`#demo-tip`）—— P22 批 3。
+
+    为什么需要：权限不足的按钮点了会弹 `DEMO_TIPS` 浮层（顶部居中 · `position: fixed`）
+    ⇒ 它会遮挡页面顶部元素，让后续探测/点击撞上「intercepts pointer events」
+    （与 2026-09-22「弹窗没关挡住工具栏」同一类坑）。**框架触发的副作用必须由框架收掉。**
+    """
+    try:
+        tip = pg.locator("#demo-tip")
+        if tip.count() == 1 and tip.is_visible():
+            pg.evaluate("() => { const t = document.getElementById('demo-tip');"
+                        " if (t) t.style.display = 'none'; }")
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
+def _probe_click(loc, *, timeout: int = 5000) -> bool:
+    """探测期点击：**先常规，只在"确定被禁用"时才 force**（P22 批 3 · 缺口 1c）。
+
+    起因（实测真值 2026-09-29 22:2x）：超管身份下「+ 新建订单」是 `aria-disabled="true"`
+    （`auth.js:148-151` 故意不设 disabled）⇒ Playwright 常规点击重试到 **30s 超时**
+    ⇒ `_try_collect_modal_items` 整体中断 ⇒ **弹层控件整份丢失**（"已收集 0 项"）
+    —— 正是"看着正常、其实没在干活"那一类静默失效。
+
+    为什么**不一刀切 force**：force 会跳过可操作性检查 ⇒ 把"点不动"（被遮挡 / 未稳定）
+    的失败变成"点了但没生效"的**静默无效**，那是更坏的假绿。只对**声明式置灰**
+    （`aria-disabled=true` 或 `.perm-off`）用 force —— 那时点击的真实后果只是弹个提示、不改数据。
+    """
+    try:
+        aria_off = (loc.get_attribute("aria-disabled") == "true")
+        perm_off = "perm-off" in (loc.get_attribute("class") or "")
+    except Exception:                                          # noqa: BLE001
+        aria_off, perm_off = False, False
+    try:
+        if aria_off or perm_off:
+            loc.click(force=True, timeout=timeout)
+        else:
+            loc.click(timeout=timeout)
+        return True
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
 def is_layer_opener(it: dict) -> bool:
     """这个控件点了会不会弹出「下一层」（picker 层）？—— 判定要覆盖无名按钮。
 
@@ -1114,7 +1248,8 @@ def _open_layer_and_collect(pg, cand: dict, absorb, collected: list | None = Non
         if not loc.first.is_visible():
             print(f"      [explore] ℹ️ 弹层候选「{shown}」当前不可见（层已关/被遮挡）→ 跳过")
             return False
-        loc.first.click(timeout=5000)
+        _probe_click(loc.first, timeout=5000)      # P22 批 3：置灰/遮挡时不至于整段中断
+        _dismiss_tips(pg)
         fresh = _wait_fresh_items(pg, absorb)
         if not fresh:
             # ★2026-09-22：**关了再退**。以前这里直接 return False ⇒ 层留在打开状态，

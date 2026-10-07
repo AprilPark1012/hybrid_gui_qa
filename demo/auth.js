@@ -87,6 +87,26 @@
     },
     /* 页面间跳转带上身份（订单详情/合同详情/开票页之间的跳转用） */
     href(path) { return this.url(path); },
+    /* 需求㚀：`?demo_role=` 直连的兜底 —— 给所有 <a> 跳转自动补上 demo_role。
+       为什么需要：真实登录用户靠 localStorage 的 token 跳页不掉登录；而**自动化/演示**用
+       `?demo_role=` 直连时，页面里硬编码的 href（「查看订单」「返回」、订单/合同编号链接…）
+       都不带身份 ⇒ 一跳就掉 login.html（2026-09-29 实测：「去开票」跳到
+       login.html?next=%2Finvoice_create.html…）。这里一处兜底，事件委托覆盖**动态渲染**的 a。 */
+    patchLinks() {
+      if (!this.demoRole()) return;
+      document.addEventListener('click', (ev) => {
+        const a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+        if (!a) return;
+        const raw = a.getAttribute('href') || '';
+        if (!raw || raw.charAt(0) === '#' || raw.indexOf('javascript:') === 0) return;
+        if (raw.indexOf('demo_role=') >= 0) return;
+        let u;
+        try { u = new URL(raw, location.href); } catch (e) { return; }
+        if (u.origin !== location.origin) return;                 // 外链不动
+        u.searchParams.set('demo_role', this.demoRole());
+        a.setAttribute('href', u.pathname + '?' + u.searchParams.toString());
+      }, true);                                                    // capture：先改 href 再让默认行为发生
+    },
     async login(username, password) {
       const r = await fetch('/api/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -209,11 +229,12 @@
       this.injectCss();
       const me = await this.load();
       if (!me) {
-        if (o.allowAnonymous || this.demoRole()) { this.applyGating(); return null; }
+        if (o.allowAnonymous || this.demoRole()) { this.applyGating(); this.patchLinks(); return null; }
         location.href = this.loginUrl();
         return null;
       }
       this.applyGating();
+      this.patchLinks();          // 需求㚀：跳转兜底带身份（demo_role 直连模式）
       this.mountTopbar(o.host);
       return me;
     },

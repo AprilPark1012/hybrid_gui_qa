@@ -8,6 +8,10 @@
     ① VueJS 实现、支持懒加载与动态生成、标准属性（id/class/title/placeholder/readonly/autocomplete）+ 自定义属性（data-*）
     ② 搜索栏对齐；**每个搜索条件的 label 是独立 div，label 内不含任何子控件**；每个控件包在多层 div（>5 层、≤12 层）
     ③ 「…」选客户 ⇒ 弹出「选择客户」**iframe**（同源 pick_customer.html，Vue 实现），进 iframe 才能选
+    ③b 新建合同 ⇒ 弹出「新建合同」**iframe**（同源 contract_new.html，**jQuery 实现** = 老技术栈弹层，需求㉖）
+    ④ 懒加载（需求㉗）：预置 200 条 · **容器内滚动**（#grid-scroll）触底追加，每批 30 条；
+      行数标记 #tbody-contracts[data-hybrid-rows]；分页条 #page-info / #pager（与订单页同款）；
+      筛选改由**服务端**做（/api/contracts?page&size&kw&cust&mu&file&type&bu ⇒ 分页对象）
 
   契约（不许破 —— references/demo-refactor-contract.md）：
     · 就绪契约 body[data-hybrid-ready] 0 → 1（数据渲染完成）
@@ -26,7 +30,6 @@
   .topbar h2 { font-size: 16px; margin: 0; }
   .topbar .total { color: #4b5058; }
   .topbar .spacer { flex: 1 1 auto; }
-  #link-orders { font-size: 13px; color: #2f6fed; }
   #btn-new { height: 30px; padding: 0 14px; background: #1668dc; color: #fff; border: 1px solid #1668dc; border-radius: 3px; cursor: pointer; }
 
   /* 搜索工具栏：样式对齐 —— 每个条件等宽、label 等宽、控件等宽 */
@@ -46,8 +49,12 @@
   .btn.primary { background: #1668dc; border-color: #1668dc; color: #fff; }
   .btn[disabled] { color: #b6b9bf; background: #f2f3f5; cursor: not-allowed; }
 
-  /* 表格 */
+  /* 表格（需求㉗：容器内滚动 ⇒ 滚动触底懒加载，每批 30 条） */
   .grid-wrap { padding: 12px 16px; }
+  #grid-scroll { height: 420px; overflow-y: auto; background: #fff;
+                 border: 1px solid #e2e4e8; border-radius: 3px; }
+  .pager-bar { display: flex; align-items: center; gap: 14px; padding: 8px 12px; margin-top: 8px;
+               border: 1px solid #e2e4e8; background: #fafbfc; color: #4b5058; font-size: 12px; }
   table { width: 100%; border-collapse: collapse; background: #fff; }
   th, td { border: 1px solid #e2e4e8; padding: 6px 9px; text-align: left; }
   th { background: #fafbfc; font-weight: 600; }
@@ -59,6 +66,15 @@
            align-items: center; justify-content: center; z-index: 10; }
   .modal-box { background: #fff; border-radius: 4px; width: 460px; max-height: 88vh; overflow: auto; padding: 16px; }
   .modal-box.wide { width: 620px; }
+  .modal-box iframe { width: 100%; height: 420px; border: 1px solid #e2e4e8; border-radius: 3px; background: #fff; }
+  /* 需求㛅（2026-09-29）：合同类弹层放大到「首屏能看完」——
+     宽 = min(1280px, 94vw)、高 = 90vh，iframe 用 flex 撑满剩余高度（高度不再写死），
+     内容区交给 iframe 自己排版 ⇒ 详情 7 行 + 按钮 + 搜索框、新建/编辑 7 个字段都能一屏看完。 */
+  .modal-box.xl { width: min(1280px, 94vw) !important; height: 90vh; max-height: 90vh !important;
+                  display: flex; flex-direction: column; overflow: hidden; }
+  .modal-box.xl > h3 { flex: 0 0 auto; }
+  .modal-box.xl > iframe { flex: 1 1 auto; height: auto !important; min-height: 0; width: 100%; }
+  .modal-box.xl > .modal-actions { flex: 0 0 auto; }
   .modal-box h3 { margin: 0 0 12px; font-size: 15px; }
   .field { display: flex; align-items: center; margin-bottom: 10px; }
   .field > .label { flex: 0 0 84px; text-align: right; padding-right: 8px; color: #4b5058; }  /* 独立 div label */
@@ -77,14 +93,11 @@
     <!-- 共 N 条合同（2026-09-17 起的老口径，P21.2 重写时丢失、2026-09-28 找回）：
          数字 = **筛选后的行数**（老实现 `total.textContent = data.length`）
          ⇒ 两个场景的断言护栏 must_contain「条合同」依赖这行文本，别删 -->
-    <div class="total">共 <span id="total">{{ rows.length }}</span> 条合同</div>
+    <div class="total">共 <span id="total">{{ total }}</span> 条合同</div>
     <div class="spacer"></div>
-    <!-- 订单系统入口（2026-09-17 需求①，同批丢失、2026-09-28 找回）：
-         点击**新开一个 tab** 打开订单列表页 orders.html（框架靠 role=link name=查看订单 定位） -->
-    <a id="link-orders" href="/orders.html" target="_blank" rel="noopener">查看订单</a>
-    <button id="btn-new" type="button" data-perm="create_contract"
-            data-perm-tip="「新建合同」需要合同管理员角色：当前不是合同管理员，不能新建合同（可用右上角头像切换角色）"
-            @click="openNew">+ 新建合同</button>
+    <!-- 需求㛉（2026-09-29）：右上角的「查看订单」超链接**已删除**（连同 #link-orders 的样式）。
+         要按合同去订单系统，用搜索区的「查看订单」按钮（先单选某条合同 ⇒ 新开订单页并自动带入合同编号）。 -->
+    <!-- 需求㛇-2（2026-09-29）：「+ 新建合同」按钮已挪到**搜索按钮右边**（见 .tb-actions），此处不再重复放 -->
     <!-- 需求⑮：登录身份 + 超管切换角色的头像（auth.js 渲染） -->
     <div id="nav-user" class="nav-user"></div>
   </div>
@@ -99,9 +112,9 @@
             <div class="pick-row">
               <input :id="c.id" :name="c.key" type="text" :title="c.label" :aria-label="c.label"
                      :placeholder="c.ph" autocomplete="off" v-model="f[c.key]"
-                     @keyup.enter="load">
+                     @keyup.enter="search(1)">
               <button type="button" class="pick" :id="c.btnId" :title="'选择' + c.label"
-                      @click="openPick('cust-search')">...</button>
+                      @click="openPick()">...</button>
             </div>
           </template>
           <template v-else-if="c.type === 'select'">
@@ -112,111 +125,97 @@
           </template>
           <template v-else>
             <input :id="c.id" :name="c.key" type="text" :title="c.label" :aria-label="c.label"
-                   :placeholder="c.ph" autocomplete="off" v-model="f[c.key]" @keyup.enter="load">
+                   :placeholder="c.ph" autocomplete="off" v-model="f[c.key]" @keyup.enter="search(1)">
           </template>
         </div></div></div></div>
       </div></div></div></div>
     </div>
 
     <div class="tb-actions">
-      <button id="btn-search" class="btn primary" type="button" @click="load">搜索</button>
+      <button id="btn-search" class="btn primary" type="button" @click="search(1)">搜索</button>
+      <!-- 需求㛇-2（2026-09-29）：右上角的「+ 新建合同」**挪到搜索按钮右边**（id 保持 btn-new，兼容既有用例/脚本）-->
+      <button id="btn-new" class="btn primary" type="button" data-perm="create_contract"
+              data-perm-tip="「新建合同」需要合同管理员角色：当前不是合同管理员，不能新建合同（可用右上角头像切换角色）"
+              @click="openNew">+ 新建合同</button>
+      <!-- 需求㛇-3：单选选中某条合同才能新建订单（未选 ⇒ 提示「请选择某个合同」），弹层里自动带入合同信息 -->
+      <button id="btn-new-order" class="btn primary" type="button" data-perm="create_order"
+              data-perm-tip="「新建订单」需要订单管理员角色：当前不是订单管理员，不能新建订单（可用右上角头像切换角色）"
+              @click="openNewOrder">新建订单</button>
+      <!-- 需求㛈-2：单选选中的合同 ⇒ 新开订单系统页并带上合同编号，自动把该合同的订单搜出来 -->
+      <button id="btn-view-orders" class="btn" type="button" @click="viewOrders">查看订单</button>
       <button id="btn-reset" class="btn" type="button" @click="reset">重置</button>
       <button id="btn-export" class="btn" type="button" disabled title="导出功能未接入">导出</button>
     </div>
   </div>
 
-  <!-- ===== 合同列表（顶层容器 = 唯一允许埋点处） ===== -->
+  <!-- ===== 合同列表（顶层容器 = 唯一允许埋点处）· 需求㉗：容器内滚动 + 懒加载（每批 30 条）===== -->
   <div class="grid-wrap">
-    <table id="tbl-contracts" data-testid="tbl-contracts" aria-label="合同列表">
-      <thead>
-        <tr>
-          <th>合同编号</th><th>合同名称</th><th>管理单元</th><th>帐套</th>
-          <th>合同类型</th><th>客户</th><th>业务单元</th>
-        </tr>
-      </thead>
-      <tbody id="tbody-contracts">
-        <tr v-for="c in rows" :key="c.no">
-          <td data-field="contractNo"><a :href="'/contract_detail.html?no=' + c.no">{{ c.no }}</a></td>
-          <td data-field="contractName">{{ c.name }}</td>
-          <td data-field="managementUnit">{{ c.mu }}</td>
-          <td data-field="folder">{{ c.file }}</td>
-          <td data-field="contractType">{{ c.type }}</td>
-          <td data-field="customer" :data-cust="c.cust">{{ custName(c) }}</td>
-          <td data-field="businessUnit">{{ c.bu }}</td>
-        </tr>
-        <tr v-if="!rows.length"><td colspan="7">没有匹配的合同</td></tr>
-      </tbody>
-    </table>
+    <div id="grid-scroll" ref="gridScroll" @scroll="onScroll">
+      <table id="tbl-contracts" data-testid="tbl-contracts" aria-label="合同列表">
+        <thead>
+          <tr>
+            <th>选择</th><th>合同编号</th><th>合同名称</th><th>管理单元</th><th>帐套</th>
+            <th>合同类型</th><th>客户</th><th>业务单元</th>
+          </tr>
+        </thead>
+        <!-- 懒加载追加：行数标记 data-hybrid-rows（框架/用例可等这个数变化判断「这一批渲染完了」） -->
+        <tbody id="tbody-contracts" :data-hybrid-rows="rows.length">
+          <tr v-for="c in rows" :key="c.no">
+            <td data-field="pick"><input type="radio" name="pick-contract" :id="'rc-' + c.no"
+                                         :value="c.no" v-model="pickedContract"
+                                         :title="'选择合同 ' + c.no" :aria-label="'选择合同 ' + c.no"></td>
+            <td data-field="contractNo"><a :href="'/contract_detail.html?no=' + c.no" @click.prevent="openDetail(c.no)">{{ c.no }}</a></td>
+            <td data-field="contractName">{{ c.name }}</td>
+            <td data-field="managementUnit">{{ c.mu }}</td>
+            <td data-field="folder">{{ c.file }}</td>
+            <td data-field="contractType">{{ c.type }}</td>
+            <td data-field="customer" :data-cust="c.cust">{{ custName(c) }}</td>
+            <td data-field="businessUnit">{{ c.bu }}</td>
+          </tr>
+          <tr v-if="!rows.length"><td colspan="8">没有匹配的合同</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pager-bar">
+      <span id="page-info" data-testid="page-info">已加载 {{ rows.length }} / {{ total }} 条（第 {{ page }} / {{ pages }} 页）</span>
+      <span id="pager" data-testid="pager">{{ pagerText }}</span>
+    </div>
   </div>
   <div id="status" data-testid="status">{{ status }}</div>
 
-  <!-- ===== 新建合同弹窗 ===== -->
+  <!-- ===== 新建合同：**iframe**（需求㉖）—— 弹层页是 jQuery 实现的「老系统式」表单页 ===== -->
   <div id="modal-new" class="modal" data-testid="modal-new" v-if="showNew">
-    <div class="modal-box">
+    <div class="modal-box wide xl">
       <h3>新建合同</h3>
-
-      <div class="field">
-        <div class="label">合同名称</div>
-        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
-          <input id="inp-name" name="contractName" type="text" title="合同名称" aria-label="合同名称"
-                 placeholder="请输入合同名称" autocomplete="off" v-model="form.name">
-        </div></div></div></div></div></div>
-      </div>
-
-      <div class="field">
-        <div class="label">管理单元</div>
-        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
-          <select id="sel-mu" name="managementUnit" title="管理单元" aria-label="管理单元" v-model="form.mu">
-            <option value="">请选择</option>
-            <option value="0021">0021</option><option value="0451">0451</option><option value="1031">1031</option>
-          </select>
-        </div></div></div></div></div></div>
-      </div>
-
-      <div class="field">
-        <div class="label">帐套</div>
-        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
-          <select id="sel-fs" name="folder" title="帐套" aria-label="帐套" v-model="form.file">
-            <option value="">请选择</option>
-            <option value="001">001</option><option value="002">002</option><option value="003">003</option>
-          </select>
-        </div></div></div></div></div></div>
-      </div>
-
-      <div class="field">
-        <div class="label">合同类型</div>
-        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
-          <select id="sel-type" name="contractType" title="合同类型" aria-label="合同类型" v-model="form.type">
-            <option value="">请选择</option>
-            <option value="合同">合同</option><option value="po">po</option><option value="预po">预po</option>
-          </select>
-        </div></div></div></div></div></div>
-      </div>
-
-      <div class="field">
-        <div class="label">客户</div>
-        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
-          <div class="pick-row">
-            <input id="inp-c" name="customer" type="text" title="客户" aria-label="客户"
-                   placeholder="请选择客户" readonly autocomplete="off" v-model="form.cust">
-            <button id="btn-pick-c" class="btn" type="button" title="选择客户" @click="openPick('cust')">选择客户</button>
-          </div>
-        </div></div></div></div></div></div>
-      </div>
-
-      <div class="field">
-        <div class="label">业务单元</div>
-        <div class="ctl n1"><div class="n2"><div class="n3"><div class="n4"><div class="n5"><div class="n6">
-          <select id="sel-b" name="businessUnit" title="业务单元" aria-label="业务单元" v-model="form.bu">
-            <option value="">请选择</option>
-            <option value="bu_a">bu_a</option><option value="bu_b">bu_b</option><option value="bu_c">bu_c</option>
-          </select>
-        </div></div></div></div></div></div>
-      </div>
-
+      <iframe id="frame-contract-new" :src="newFrameSrc" title="新建合同" name="frame-contract-new"></iframe>
       <div class="modal-actions">
-        <button id="btn-cancel" class="btn" type="button" @click="showNew = false">取消</button>
-        <button id="btn-submit" class="btn primary" type="button" @click="submit">提交</button>
+        <button id="btn-new-close" class="btn" type="button" @click="closeNew">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 合同详情 / 编辑合同：**iframe**（需求㉜，2026-09-29）=====
+       点合同编号 ⇒ 本弹层打开详情（contract_detail.html，Vue 实现）；
+       详情里点「编辑」⇒ **同一个弹层**里的 iframe 换成编辑页（contract_edit.html，Vue 实现，与新建页共用表单设计） ===== -->
+  <div id="modal-detail" class="modal" data-testid="modal-detail" v-if="showDetail">
+    <div class="modal-box wide xl">
+      <h3>{{ detailSrc.indexOf('contract_edit.html') >= 0 ? '编辑合同' : '合同详情' }}</h3>
+      <iframe id="frame-contract-detail" :src="detailSrc" title="合同详情" name="frame-contract-detail"></iframe>
+      <div class="modal-actions">
+        <button id="btn-detail-close" class="btn" type="button" @click="closeDetail">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 新建订单：**iframe**（需求㛇-3，2026-09-29）=====
+       单选选中某条合同 ⇒ 点「新建订单」⇒ 本弹层打开 order_new.html，并把该合同的
+       编号 / 客户 / 业务单元 / 管理单元 / 帐套 自动带进去；未选中时不给弹层、直接提示「请选择某个合同」===== -->
+  <div id="modal-new-order" class="modal" data-testid="modal-new-order" v-if="showNewOrder">
+    <div class="modal-box wide xl">
+      <h3>新建订单</h3>
+      <iframe id="frame-order-new" :src="newOrderSrc" title="新建订单" name="frame-order-new"></iframe>
+      <div class="modal-actions">
+        <button id="btn-new-order-close" class="btn" type="button" @click="closeNewOrder">关闭</button>
       </div>
     </div>
   </div>
@@ -239,6 +238,7 @@ const { createApp } = Vue;
 // 分区号（F6 契约）：**框架用 context.add_init_script 注入 window.__HYBRID_W**（pytest-xdist 每 worker 一个分区）
 // ⇒ 必须优先读它；手工浏览时退回 URL 的 ?w=<分区>。只读 ?w= 会让框架驱动时全落 default 分区，并发互相踩。
 const PART = String(window.__HYBRID_W || '').trim() || (new URLSearchParams(location.search).get('w') || '');
+const SIZE = 30;   // 需求㉗：懒加载每批 30 条（对应服务端 /api/contracts 的 size 参数）
 function markBusy() { document.body.dataset.hybridReady = '0'; }
 function markReady() { document.body.dataset.hybridReady = '1'; }
 function apiUrl(path) {
@@ -261,21 +261,49 @@ createApp({
         { key: 'bu',    label: '业务单元', id: 'sel-bu',       type: 'select', ph: '全部业务单元', options: BUS.map(v => ({ v, t: v })) },
       ],
       f: { kw: '', cust: '', mu: '', file: '', type: '', bu: '' },
-      rows: [], all: [], customers: [], status: '',
-      showNew: false, showCust: false, pickTarget: '', frameSrc: '',
-      form: { name: '', mu: '', file: '', type: '', cust: '', bu: '' },
+      rows: [], total: 0, page: 1, pages: 1, loading: false, pagerText: '', customers: [], status: '',
+      showNew: false, showCust: false, frameSrc: '', newFrameSrc: '',
+      showDetail: false, detailSrc: '', detailNo: '',
+      showNewOrder: false, newOrderSrc: '', pickedContract: '',   // 需求㛇：单选中的合同 + 新建订单弹层
     };
   },
   mounted() {
     window.addEventListener('message', (e) => {
       const d = e.data || {};
       if (d.type === 'pick-customer') {
-        if (this.pickTarget === 'cust-search') { this.f.cust = d.name; }
-        else { this.form.cust = d.name; }
+        // 需求㉖：新建表单搬到 iframe 后，父页只剩「搜索区」这一个选客户入口 ⇒ 一律回填搜索条件
+        this.f.cust = d.name;
         this.closeCust();
+      } else if (d.type === 'contract-created') {
+        // 子页（iframe）创建成功 ⇒ 关弹层 + 刷新列表 + 状态行（tips 由 status 的 watch 负责）
+        this.status = '已创建合同 ' + (d.no || d.name);
+        this.closeNew();
+        this.search(1);
+      } else if (d.type === 'contract-cancel') {
+        this.closeNew();
+      } else if (d.type === 'contract-edit-request') {
+        // 需求㉜：详情 iframe 里点「编辑」⇒ 同一个弹层内的 iframe 换成编辑页（不叠层）
+        this.openEdit(d.no);
+      } else if (d.type === 'contract-detail-open') {
+        this.openDetail(d.no);                 // 详情页里搜到别的编号 ⇒ 换本弹层的内容
+      } else if (d.type === 'contract-detail-close') {
+        this.closeDetail();                    // 详情页里的「关闭」
+      } else if (d.type === 'contract-updated') {
+        // 编辑保存成功 ⇒ 刷新列表 + 弹层切回详情（能看到新值）+ 状态行
+        this.status = '已保存合同 ' + (d.no || d.name);
+        this.detailSrc = this.detailUrl(d.no || this.detailNo, 'detail');
+        this.search(1);
+      } else if (d.type === 'contract-edit-cancel') {
+        this.detailSrc = this.detailUrl(this.detailNo, 'detail');   // 取消编辑 ⇒ 退回详情
+      } else if (d.type === 'order-created') {
+        // 需求㛇-3：合同页新建订单成功 ⇒ 关弹层 + 状态行（新订单在订单系统里可见）
+        this.status = '已新建订单 ' + (d.no || '') + (d.contract_no ? '（合同 ' + d.contract_no + '）' : '');
+        this.closeNewOrder();
+      } else if (d.type === 'order-cancel') {
+        this.closeNewOrder();
       }
     });
-    this.load();
+    this.search(1);
   },
   watch: {
     // 需求⑱：所有校验/提示信息都弹一个「弹出框 tips」；
@@ -283,53 +311,93 @@ createApp({
     status(v) { if (v) window.DEMO_TIPS.show(v); },
   },
   methods: {
-    async load() {
+    /* ---------- 列表：服务端筛选 + 分页懒加载（需求㉗，与订单页同款形态）---------- */
+    async fetchPage(page) {
+      const qs = new URLSearchParams({ page: String(page), size: String(SIZE) });
+      for (const [k, v] of Object.entries(this.f)) {
+        const t = (v || '').trim();
+        if (t) qs.set(k, t);            // 筛选项与服务端同源：kw/cust/mu/file/type/bu
+      }
+      const info = await (await fetch(apiUrl('/api/contracts?' + qs.toString()))).json();
+      this.total = info.total; this.pages = info.pages; this.page = info.page;
+      return info.items || [];
+    },
+    async search(page) {
       markBusy();
-      this.customers = await (await fetch(apiUrl('/api/customers'))).json();
-      this.all = await (await fetch(apiUrl('/api/contracts'))).json();
-      this.rows = this.filterRows(this.all);
+      this.pickedContract = '';   // 需求㛇-3：列表刷新后清空单选（避免带着已不在列表里的合同去「新建订单」）
+      this.loading = true; this.pagerText = '加载中…';
+      if (!this.customers.length) this.customers = await (await fetch(apiUrl('/api/customers'))).json();
+      this.rows = await this.fetchPage(page || 1);
+      this.loading = false; this.updatePager();
       markReady();
     },
-    custName(c) { const t = this.customers.find(x => x.name === c.cust || x.no === c.cust); return t ? t.name : c.cust; },
-    filterRows(list) {
-      const kw = (this.f.kw || '').trim(), cust = (this.f.cust || '').trim().toLowerCase();
-      return list.filter(c => {
-        if (kw && !(c.no.includes(kw) || (c.name || '').includes(kw) || (c.mu || '').includes(kw)
-                 || (c.file || '').includes(kw) || (c.type || '').includes(kw))) return false;
-        // 客户：右模糊（前缀）匹配 —— 客户名称前缀 或 客户编号前缀
-        if (cust) {
-          const nm = this.custName(c).toLowerCase(), cd = (c.cust || '').toLowerCase();
-          if (!(nm.startsWith(cust) || cd.startsWith(cust))) return false;
-        }
-        if (this.f.mu && c.mu !== this.f.mu) return false;
-        if (this.f.file && c.file !== this.f.file) return false;
-        if (this.f.type && c.type !== this.f.type) return false;
-        if (this.f.bu && c.bu !== this.f.bu) return false;
-        return true;
-      });
+    // 容器滚动到底部 ⇒ 追加下一批（触底判定留 40px 余量）
+    async onScroll() {
+      const el = this.$refs.gridScroll;
+      if (!el || this.loading || this.page >= this.pages) return;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
+        this.loading = true; this.pagerText = '加载中…';
+        const more = await this.fetchPage(this.page + 1);
+        this.rows = this.rows.concat(more);
+        this.loading = false; this.updatePager();
+      }
     },
-    reset() { this.f = { kw: '', cust: '', mu: '', file: '', type: '', bu: '' }; this.load(); },
-    openNew() { this.form = { name: '', mu: '', file: '', type: '', cust: '', bu: '' }; this.showNew = true; },
-    // 打开「选择客户」iframe（搜索栏用的按钮 ⇒ 回填搜索条件；弹窗里的按钮 ⇒ 回填表单）
-    openPick(which) {
-      this.pickTarget = (which === 'cust-search') ? 'cust-search' : 'cust';
+    updatePager() { this.pagerText = this.page >= this.pages ? '已全部加载' : '滚动到底部加载更多'; },
+    // ⚠️ 客户对象的主键是 `id`（/api/customers 返回 id/name/addr）—— 这里曾写成 `x.no`，
+    // 导致查找恒失败、客户列回落成客户编号「c1」、客户前缀筛选也全不命中（2026-09-29 修）。
+    custName(c) { const t = this.customers.find(x => x.id === c.cust || x.no === c.cust); return t ? t.name : c.cust; },
+    reset() { this.f = { kw: '', cust: '', mu: '', file: '', type: '', bu: '' }; this.search(1); },
+    // 需求㉖：新建合同 = iframe 页（jQuery 实现）——父页只负责开/关 + 收子页回传后刷新列表
+    openNew() {
+      this.newFrameSrc = 'contract_new.html?' + this.childQuery();
+      this.showNew = true;
+    },
+    closeNew() { this.showNew = false; this.newFrameSrc = ''; },
+    /* ---------- 合同详情 / 编辑（需求㉜，2026-09-29）：弹层 iframe；「编辑」= 同弹层换 src ---------- */
+    detailUrl(no, mode) {
+      const base = mode === 'edit' ? 'contract_edit.html?' : 'contract_detail.html?';
+      return base + 'no=' + encodeURIComponent(no) + '&embed=1&' + this.childQuery();
+    },
+    openDetail(no) {
+      this.detailNo = no; this.detailSrc = this.detailUrl(no, 'detail'); this.showDetail = true;
+    },
+    openEdit(no) {
+      if (no) this.detailNo = no;
+      this.detailSrc = this.detailUrl(this.detailNo, 'edit');
+      this.showDetail = true;                  // 同一个弹层，只换 iframe
+    },
+    closeDetail() { this.showDetail = false; this.detailSrc = ''; },
+    /* ---------- 需求㛇-3：合同列表页「新建订单」---------- */
+    openNewOrder() {
+      if (!this.pickedContract) { this.status = '请选择某个合同'; return; }   // 需求原话：未选中就点 ⇒ 这么提示
+      this.newOrderSrc = 'order_new.html?contract_no=' + encodeURIComponent(this.pickedContract)
+                       + '&' + this.childQuery();
+      this.showNewOrder = true;
+    },
+    closeNewOrder() { this.showNewOrder = false; this.newOrderSrc = ''; },
+    /* ---------- 需求㛈-2：按选中的合同去订单系统查它的订单 ---------- */
+    viewOrders() {
+      if (!this.pickedContract) { this.status = '请选择某个合同'; return; }   // 与「新建订单」同口径
+      window.open(DEMO_AUTH.href('/orders.html?contract_no=' + encodeURIComponent(this.pickedContract)),
+                  '_blank', 'noopener');
+      this.status = '已打开订单系统，按合同编号 ' + this.pickedContract + ' 查询';
+    },
+    // iframe 子页的参数：**必须把身份带下去**（否则子页里的 POST 会被服务端 401/403）+ 分区
+    childQuery() {
       const q = new URLSearchParams();
       if (PART) q.set('w', PART);
+      const role = DEMO_AUTH.demoRole();
+      if (role) q.set('demo_role', role);
+      else if (DEMO_AUTH.token) q.set('token', DEMO_AUTH.token);
       q.set('_t', String(Date.now()));
-      this.frameSrc = 'pick_customer.html?' + q.toString();
+      return q.toString();
+    },
+    // 打开「选择客户」iframe（搜索区按钮）
+    openPick() {
+      this.frameSrc = 'pick_customer.html?' + this.childQuery();
       this.showCust = true;
     },
     closeCust() { this.showCust = false; this.frameSrc = ''; },
-    async submit() {
-      if (!this.form.name) { this.status = '请填写合同名称'; return; }
-      const r = await fetch(apiUrl('/api/contracts'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: this.form.name, mu: this.form.mu, file: this.form.file,
-                               type: this.form.type, cust: this.form.cust, bu: this.form.bu }),
-      });
-      if (r.ok) { const c = await r.json(); this.status = '已创建合同 ' + (c.no || c.name); this.showNew = false; await this.load(); }
-      else { this.status = '创建失败：' + r.status; }
-    },
   },
 }).mount('#app');
 // 需求⑮：登录与角色（未登录 ⇒ 跳 /login.html；已登录 ⇒ 按 data-perm 置灰 + 右上角头像）

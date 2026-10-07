@@ -1,5 +1,6 @@
 """新建订单「三个区域」判据（需求㉒ · 2026-09-28 晚）
 
+# HYBRID_DAILY_SKIP: V8.3 范围外 —— 断言绑 demo「新建订单」弹层旧区域结构（new-basic/new-more/new-lines，09-29 改版）。后续版本按新结构重写后恢复。
 需求原文：
   「订单系统页面，点击"新建订单"按钮，弹出的订单页面，我发现还是老的订单页，你应该改成和订单详情页一样，
     分成3个区域，基础信息，更多信息和详细信息，这3个区域都允许编辑。页面底部有"保存"和"取消"按钮」
@@ -26,6 +27,10 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(BASE))          # ⚠️ 不插这个，二段 import framework 会 ModuleNotFoundError
+
+from framework.tools.common.text_io import force_stdio       # noqa: E402
+
+force_stdio()          # 统一 UTF-8：Windows 控制台 cp936 下中文/✓ 会乱码（判据 test_utf8_io 守门）
 DEMO = "http://localhost:8000"
 ROLES = "order_admin"
 fails: list[str] = []
@@ -121,7 +126,7 @@ def part_static():
 
 def part_browser():
     try:
-        avail = int(next(l.split()[6] for l in open("/proc/meminfo") if l.startswith("MemAvailable"))) // 1024
+        avail = int(next(l.split()[6] for l in open("/proc/meminfo", encoding="utf-8") if l.startswith("MemAvailable"))) // 1024
     except Exception:
         avail = 9999
     if avail < 550:

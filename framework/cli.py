@@ -178,11 +178,19 @@ def cmd_probe():
     from playwright.sync_api import sync_playwright
     import json
     from framework.tools.explore.explorer import _try_collect_modal_items, _merge_items
+    from framework.tools.probe.expandable import expand_and_collect
     with sync_playwright() as p:
         b = p.chromium.launch(**launch_opts(headless=True))
         pg = b.new_page()
         pg.goto(TARGET_URL)
         items = probe_page(pg)
+        # P22（2026-09-29）：**可展开容器**（隐藏菜单/下拉）补探 —— 不点开就永远探不到里面的项
+        # （典型形态 = demo 右上角角色菜单 #nu-menu，初始 display:none ⇒ 切角色步骤以前无控件可引用）。
+        # 点开后自动关掉：探测是**只读动作**，框架开的必须由框架关。
+        menu_items = expand_and_collect(pg, items)
+        for it in menu_items:
+            it["source"] = "menu"
+        items = _merge_items(items, menu_items)
         layer_items = _try_collect_modal_items(pg, items)      # 弹窗 + 嵌套弹层
         for it in layer_items:
             it["source"] = "layer"
@@ -192,9 +200,12 @@ def cmd_probe():
     out.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
     prune_snapshots(quiet_if_none=True)          # 归档保留策略（静默：无可清理就不打印）
     n_layer = sum(1 for it in items if it.get("source") == "layer")
-    print(f"[probe] 探测到 {len(items)} 个交互元素（其中弹窗/弹层内 {n_layer} 个）→ {out}")
+    n_menu = sum(1 for it in items if it.get("source") == "menu")
+    print(f"[probe] 探测到 {len(items)} 个交互元素"
+          f"（其中可展开菜单内 {n_menu} 个 · 弹窗/弹层内 {n_layer} 个）→ {out}")
     for it in items:
-        mark = "🔸" if it.get("source") == "layer" else "  "
+        mark = ("🔹" if it.get("source") == "menu"
+                else ("🔸" if it.get("source") == "layer" else "  "))
         print(f"      {mark} - {it['semantic_name']:<20} [{it['role']:<8}] "
               f"name={it['name']!r} ph={it['placeholder']!r} test_id={it['test_id']!r}")
 
@@ -359,7 +370,8 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
                  guard_text: str = "", guard_spec: dict | None = None,
                  case_id: str | None = None, extra: dict | None = None,
                  to_cases: bool = True, mock_fallback: bool = False,
-                 pages: list[dict] | None = None, cassette=None, cassette_strict: bool = False):
+                 pages: list[dict] | None = None, cassette=None, cassette_strict: bool = False,
+                 auth: dict | None = None):
     """跑一次 AI 语义识别（+ 可选落 cases/）。返回 (emap, case_path | None, warns)。
 
     pages（P3 跨页）：[{"name","url","page"}, ...]；给了 ≥2 页就按跨页模式探测与规划，
@@ -372,7 +384,7 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
     # 第二次探测失败，叠加 ai_explore 里的静默兜底 ⇒ AI 只能看到基础控件（弹窗字段全丢）。
     emap = ai_explore(scenario_text, [], url, allow_mock_fallback=mock_fallback,
                       page_bg=page_bg, guard=guard_text, pages=pages, llm_cassette=cassette,
-                      cassette_strict=cassette_strict)
+                      cassette_strict=cassette_strict, auth=auth)
     print(f"{prefix}[explore] 生成 ElementMap: {len(emap.steps)} 步")
     for st in emap.steps:
         el = st.element
@@ -515,7 +527,9 @@ def cmd_explore(rest: list[str] = None):
         for sc in scs:
             for w in sc.warnings:
                 print(f"  ⚠️ [{sc.id}] {w}")
-            jobs.append(_job_from_scenario(sc, sc.scenario))
+            # P22 批 5：把场景的**登录前置声明**带进 job —— 不带的话跨页探测每页都只拿到登录页控件
+        #（实测 2026-09-30：7 页全是 7 个控件 ⇒ AI 的 31 个步骤 element 全为空）
+        jobs.append({**_job_from_scenario(sc, sc.scenario), "auth": sc.auth_spec()})
     elif sfile:
         from pathlib import Path
         from framework.tools.generate.scenario import ScenarioError, load_scenario_file
@@ -529,7 +543,9 @@ def cmd_explore(rest: list[str] = None):
         print(f"[explore] 场景文件: {sfile}（id={sc.id}"
               + (f", tags={','.join(sc.tags)}" if sc.tags else "")
               + (f", priority={sc.priority}" if sc.priority else "") + "）")
-        jobs.append(_job_from_scenario(sc, sc.scenario))
+        # P22 批 5：把场景的**登录前置声明**带进 job —— 不带的话跨页探测每页都只拿到登录页控件
+        #（实测 2026-09-30：7 页全是 7 个控件 ⇒ AI 的 31 个步骤 element 全为空）
+        jobs.append({**_job_from_scenario(sc, sc.scenario), "auth": sc.auth_spec()})
     else:
         jobs.append(dict(
             label="", text=inline or "在合同列表页面的搜索框输入'合同1'，然后点击搜索按钮查看结果。",
@@ -549,7 +565,7 @@ def cmd_explore(rest: list[str] = None):
                 guard_text=job["guard_text"], guard_spec=job["guard_spec"],
                 case_id=job["case_id"], extra=job["extra"],
                 to_cases=to_cases, mock_fallback=mock_fallback, pages=job.get("pages"),
-                cassette=cassette, cassette_strict=cassette_strict)
+                cassette=cassette, cassette_strict=cassette_strict, auth=job.get("auth"))
         except AiExploreError as e:
             print(f"[explore] ❌ 【{job['label'] or '内联'}】{e}")
             raise SystemExit(2) from None

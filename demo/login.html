@@ -21,6 +21,11 @@
   .field { display: flex; align-items: center; margin-bottom: 12px; }
   .field > .label { flex: 0 0 64px; text-align: right; padding-right: 8px; color: #4b5058; }
   .field .ctl { flex: 1 1 auto; }
+  /* 需求㛋（2026-09-29）：必填项统一红色星号，**星号在标签前**（如 *物料编码）*/
+  .req { color: #d4380d; font-weight: 600; margin-right: 2px; }
+  /* 需求㛌（2026-09-29）：提交时未填的必填项 ⇒ 红框高亮（用户一输入/选择就自动去掉）*/
+  .err { border-color: #d4380d !important; background: #fff2f0 !important;
+         box-shadow: 0 0 0 2px rgba(212, 56, 13, .15) !important; }
   .field input { width: 100%; height: 30px; padding: 0 8px; border: 1px solid #c9ccd2; border-radius: 3px; font: inherit; }
   #btn-login { width: 100%; height: 32px; margin-top: 4px; background: #1668dc; color: #fff;
                border: 1px solid #1668dc; border-radius: 3px; cursor: pointer; font: inherit; }
@@ -39,14 +44,14 @@
   <div class="sub">合同 / 订单 / 发票 三个模块 + 超级管理员</div>
 
   <div class="field">
-    <div class="label">账号</div>
+    <div class="label"><span class="req">*</span>账号</div>
     <div class="ctl l1"><div class="l2"><div class="l3"><div class="l4"><div class="l5"><div class="l6">
       <input id="login-user" name="username" type="text" title="账号" aria-label="账号"
              placeholder="请输入账号" autocomplete="username">
     </div></div></div></div></div></div>
   </div>
   <div class="field">
-    <div class="label">密码</div>
+    <div class="label"><span class="req">*</span>密码</div>
     <div class="ctl l1"><div class="l2"><div class="l3"><div class="l4"><div class="l5"><div class="l6">
       <input id="login-pwd" name="password" type="password" title="密码" aria-label="密码"
              placeholder="请输入密码" autocomplete="current-password">
@@ -91,7 +96,10 @@ document.getElementById('account-rows').addEventListener('click', (e) => {
 async function doLogin() {
   const u = $('login-user').value.trim();
   const p = $('login-pwd').value;
-  if (!u || !p) { $('login-status').textContent = '账号和密码都要填'; return; }
+  if (!u || !p) {
+    markMissing([!u && '#login-user', !p && '#login-pwd'].filter(Boolean));   // 需求㛌：未填的高亮 + 聚焦
+    $('login-status').textContent = '账号和密码都要填'; return;
+  }
   $('login-status').style.color = '#1668dc';
   $('login-status').textContent = '登录中…';
   const d = await DEMO_AUTH.login(u, p);
@@ -125,6 +133,43 @@ new MutationObserver(() => {
   const el = document.getElementById('login-status');
   if (el && el.textContent.trim()) window.DEMO_TIPS.show(el.textContent.trim());
 }).observe(document.getElementById('login-status'), { childList: true, characterData: true, subtree: true });
+</script>
+<script>
+/* 需求㛌（2026-09-29）：表单提交时把**未填的必填项**高亮出来（红框），并滚动/聚焦到第一个未填项；
+   用户一旦输入或选择，该项的高亮自动清除。keys 用控件的 name（各页控件的 name = 字段 key）。 */
+function markMissing(keys, root) {
+  root = root || document;
+  root.querySelectorAll('.err').forEach(function (e) { e.classList.remove('err'); });
+  var els = [];
+  (keys || []).forEach(function (k) {
+    if (!k) return;
+    // 传 CSS 选择器（'#inp-name'）直接用；传字段名则先按 name 再按 id 找
+    var e = /^[#.\[]/.test(k) ? root.querySelector(k)
+                               : (root.querySelector('[name="' + k + '"]') || root.querySelector('#' + k));
+    if (e) els.push(e);
+  });
+  els.forEach(function (e) { e.classList.add('err'); });
+  if (els[0]) { try { els[0].scrollIntoView({ block: 'center' }); els[0].focus(); } catch (err) {} }
+  return els.length;
+}
+/* 行级（订单行 / 发票行）：idxList = 0 起的行号数组，keys = 行内字段名 */
+function markRowsMissing(idxList, keys, root) {
+  root = root || document;
+  (idxList || []).forEach(function (i) {
+    (keys || []).forEach(function (k) {
+      var els = root.querySelectorAll('[name="' + k + '"]');
+      var el = els[i];
+      if (el && !String(el.value || '').trim()) el.classList.add('err');
+    });
+  });
+}
+(function () {
+  ['input', 'change'].forEach(function (t) {
+    document.addEventListener(t, function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('err')) e.target.classList.remove('err');
+    }, true);
+  });
+})();
 </script>
 </body>
 </html>

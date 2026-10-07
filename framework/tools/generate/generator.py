@@ -152,9 +152,18 @@ _ASSERT_KINDS = {
     # 2026-09-17 新增：直接验「表格第一行的某列」——覆盖「新建后列表第一条记录就是它」这类需求
     # （文本断言只能证明名字出现过，证明不了「它就是第一条」）
     "first_row",
+    # P22 批 4（2026-09-29）新增：**等待式断言** —— 在有界时间内轮询直到出现该文本。
+    # 起因：订单提交后要 150 秒才自动流转到「已关闭」，而 `text` 断言的等待硬编码 5s
+    #（`_assert_text` 里 `wait_for(timeout=5000)`）；更要紧的是 demo 列表页**不会自己刷新**
+    #（grep setInterval/setTimeout/refresh = 0 处）⇒ 光调超时也等不到，必须能"每轮重新取数"。
+    "wait_text",
 }
 # 需要 expect 的 kind（期望值）
-_ASSERT_NEED_EXPECT = {"text", "count", "attr", "value", "url", "first_row"}
+_ASSERT_NEED_EXPECT = {"text", "count", "attr", "value", "url", "first_row", "wait_text"}
+
+# P22 批 4：`wait_text` 口径常量
+_WAIT_TEXT_DEFAULT_MS = 30000                        # 有界默认（绝不无限等）
+_WAIT_TEXT_REFRESH = {"none", "reload", "research"}   # 每轮重新取数的三种方式
 # 需要定位（selector 或 element→loc_map）的 kind
 #   ⚠️ first_row 不在其中：它用 `row_field`（列名）定位第一行的那一列，不需要 element/selector
 _ASSERT_NEED_LOC = {"visible", "hidden", "count", "attr", "value",
@@ -222,6 +231,24 @@ def _render_assert(a: dict, loc_map: dict, cross_page: bool = False,
     d = f"{desc!r}"
     if kind == "text":
         return [f"    _assert_text(page, {payload}, {d})"]
+    if kind == "wait_text":
+        # P22 批 4：等待式断言 —— 超时非法 / refresh 非法都**当场判失败**（不许静默取默认）
+        # P22 批 5：`selector` 限定「在哪个范围内等这段文本」。不给就会全页 get_by_text，
+        # 命中**隐藏**的下拉选项（demo 状态筛选的 <option value="已关闭">）⇒ 必超时。
+        _wt_sel = repr(str(a.get("selector") or ""))
+        tm = a.get("timeout_ms", _WAIT_TEXT_DEFAULT_MS)
+        if isinstance(tm, bool) or not isinstance(tm, int) or tm <= 0:
+            return [f"    pytest.fail('断言 kind=wait_text 的 timeout_ms 非法（须为正整数毫秒）：'"
+                    f" + {str(a.get('timeout_ms'))!r}, pytrace=False)"]
+        rf = a.get("refresh")
+        if rf is not None:
+            if not isinstance(rf, str) or rf not in _WAIT_TEXT_REFRESH:
+                return [f"    pytest.fail('断言 kind=wait_text 的 refresh 非法"
+                        f"（只允许 none / reload / research）：' + {str(rf)!r}, pytrace=False)"]
+            return [f"    _assert_wait_text(page, {payload}, timeout_ms={tm},"
+                    f" refresh={rf!r}, desc={d}, selector={_wt_sel})"]
+        return [f"    _assert_wait_text(page, {payload}, timeout_ms={tm}, desc={d},"
+                f" selector={_wt_sel})"]
     if kind == "url":
         return [f"    _assert_url(page, {payload}, {d})"]
     if kind == "visible":
@@ -240,7 +267,7 @@ def _render_assert(a: dict, loc_map: dict, cross_page: bool = False,
 
 
 # ---------------- 生成一个用例的 pytest 函数 ----------------
-def _primary_lambda(expr: str) -> str:
+def _primary_lambda(expr: str, occurrence: int | None = None) -> str:
     """把定位表达式渲染成 `lambda p: …`（生成物里的 `primary=`）。
 
     约定：表达式是**后缀**形态（`get_by_test_id("x").locator("tr")`）⇒ 拼成 `p.<后缀>`。
@@ -248,9 +275,12 @@ def _primary_lambda(expr: str) -> str:
     否则渲染成 `p._drill(p, …)`（页面对象上没这方法 ⇒ 运行必 AttributeError）。
     ★2026-09-22（P16 批 5）实测踩到：加 `_drill` 那版生成物全部是 `p._drill(...)`。
     """
-    if expr.startswith("_drill("):
-        return f"lambda p: {expr}"
-    return f"lambda p: p.{expr}"
+    base = f"lambda p: {expr}" if expr.startswith("_drill(") else f"lambda p: p.{expr}"
+    if occurrence is None:
+        return base
+    # P22 批 5：同一语义名有多个实例（表单第 1/2 行的「数量」）⇒ 用例用 `occurrence: N` 表达
+    # "第 N 个"。**这是通用表达**：框架只认序号，不认识"哪个控件第几个"这类业务事实。
+    return f"lambda p: ({base})(p).nth({int(occurrence) - 1})"
 
 
 def _py_str(value) -> str:
@@ -273,8 +303,132 @@ def _collapse_ws(value) -> str:
     return " ".join(str("" if value is None else value).split())
 
 
-def _semantic_to_locator_expr(it: dict) -> str:
+# ---- P22 批 5：`by` 显式定位方式（2026-09-30）----
+# 为什么需要：有些控件的**可见文本会随状态变**（如角色切换按钮：超管身份下探到 "超"，
+# 执行时身份已变、按钮显示 "super · 订单管理员"）⇒ 逐字找不到。但它的 title（探针记作
+# help_text）**跨状态不变**，是稳定锚。用例可用 `by: title` 显式指定，而不是靠猜。
+# 白名单固定；非法值**生成期报错**（静默忽略 = 产物看着合法、实际没用上，属最忌的假绿）。
+# 用例步骤 `by` 的可用值：
+# - 走**元素清单**的锚：title / label / placeholder / testid / alt（值从探测到的元素字典取）
+# - **直接给值**（清单里没有的控件也能定位，实测开票页表单字段根本没被探到）：role / css
+#   ⇒ 用 role/css 时必须在步骤里给 value（role 还要给 role 名），见 `_step_direct_locator_expr`。
+_BY_WHITELIST = ("title", "label", "placeholder", "testid", "alt", "role", "css")
+
+# by → (元素字段候选, 渲染函数)
+_BY_FIELDS = {
+    "title": (("title", "help_text"), "get_by_title"),
+    "label": (("label",), "get_by_label"),
+    "placeholder": (("placeholder",), "get_by_placeholder"),
+    "testid": (("test_id", "testid"), "get_by_test_id"),
+    "alt": (("alt", "alt_text"), "get_by_alt_text"),
+}
+
+
+def _validate_by(by) -> str | None:
+    """校验 `by`（None/空 ⇒ 走默认 Tier1 顺序）。非法值当场抛 ValueError。"""
+    v = str(by or "").strip().lower()
+    if not v:
+        return None
+    if v not in _BY_WHITELIST:
+        raise ValueError(
+            f"用例里 by={by!r} 不在白名单 {_BY_WHITELIST} 内 —— "
+            f"写 element 的定位方式时只能用这些（如 by: title）")
+    return v
+
+
+# 行内定位（row_text + cell_field）支持的 op —— 生成期与运行期共用一份口径。
+# 2026-09-30 P22 批 5：原只支持 click/click_new_tab，实测跨角色链路最后一段要**勾选订单行**
+# 才能点「去开票」（选哪行只能靠行锚表达：订单号是服务端动态分配的，探测清单里没有它的语义名）
+# ⇒ 补 check/uncheck/fill。这是行内定位的**通用**缺口，不是某个用例的特例。
+_ROW_CELL_OPS = ("click", "click_new_tab", "check", "uncheck", "fill")
+
+# ---- 用例步骤的「直接定位」（2026-09-30 P22 批 5）----
+# 为什么需要：探测**覆盖不到**的控件（实测：开票页 element_map 里只有 3 个元素，
+# 客户/销售员/发票行字段一个都没探到）⇒ AI 看不见它们、用例没法用语义名引用。
+# 用例应当能按控件**自身的稳定属性**直接定位 ⇒ 与"语义名"路径互补，且框架层零业务词。
+_BY_STEP_WHITELIST = ("label", "title", "placeholder", "testid", "role", "css")
+
+
+def _step_direct_locator_expr(by, value, role_name):
+    """用例步骤直接定位：by + value ⇒ Playwright 定位表达式（纯拼串，不碰页面）。"""
+    import json as _json
+    b = str(by or "").strip().lower()
+    if b not in _BY_STEP_WHITELIST:
+        raise ValueError(f"步骤的 by={by!r} 不在白名单 {_BY_STEP_WHITELIST} 内")
+    v = str(value or "")
+    if not v:
+        raise ValueError(f"步骤写了 by={b!r} 就必须同时给 value（否则会渲染出匹配一切的定位）")
+    q = _json.dumps(v, ensure_ascii=False)      # 值里的引号/反斜杠必须转义
+    # ⚠️ 返回**后缀形态、不带 `p.`** —— 与 `_semantic_to_locator_expr` 同口径：
+    #    `_primary_lambda` 负责拼 `lambda p: p.<后缀>`（及 `.nth(N-1)`）。
+    #    这里自己带 `p.` 会渲染成 `p.p.get_by_title(...)` ⇒ 运行期 AttributeError
+    #    （实测：primary 报错被吞、退语义兜底、用例在**更早的步骤**上就挂了）。
+    if b == "label":
+        return f"get_by_label({q})"
+    if b == "title":
+        return f"get_by_title({q})"
+    if b == "placeholder":
+        return f"get_by_placeholder({q})"
+    if b == "testid":
+        return f"get_by_test_id({q})"
+    if b == "role":
+        rn = str(role_name or "").strip()
+        if not rn:
+            raise ValueError("by=role 时必须给 role（如 button / textbox）")
+        return f"get_by_role({_json.dumps(rn)}, name={q})"
+    return f"locator({q})"      # css
+
+
+# 行内定位「列」的指定方式：field（td[data-field=]，缺省）/ header（按表头文本）/ index（第 N 列，0 基）。
+# 为什么需要 header/index：有些列**没有 data-field** —— 实测订单列表的勾选列是
+# `<td class="pick-cell">`，表头 `<th class="pick-head">` 还没文本 ⇒ 只能按列序定位。
+_CELL_BY_WHITELIST = ("field", "header", "index")
+
+
+def _is_row_cell_step(st: dict) -> bool:
+    """是不是「行内定位」步骤：有行锚（row_text）+ **任一**列指定方式。
+
+    ⚠️ 为什么要有它：这个判定以前在**两处**各写了一遍（渲染分支 + 映射质量闸），
+    且都只认 `cell_field` ⇒ 补了 `cell_by`（header/index，给没有 data-field 的列用）之后，
+    闸门把这类步骤误判成"没给 element" ⇒ 直接拒绝产出任何产物
+    （2026-09-30 实测：step36 check 因勾选列改用 cell_by=index 而被拦）。
+    ⇒ 收敛成一份，杜绝两条路径再漂移。
+    """
+    return bool(st.get("row_text")) and bool(st.get("cell_field") or st.get("cell_by"))
+
+
+def _row_col_step(cell_field, cell_by, cell_index) -> dict:
+    """构造 `locate_in_scope` 的 col step（**口径单一来源**：生成期与运行期共用）。"""
+    by = str(cell_by or "field").strip().lower() or "field"
+    if by not in _CELL_BY_WHITELIST:
+        raise ValueError(
+            f"行内定位的 cell_by={cell_by!r} 不在白名单 {_CELL_BY_WHITELIST} 内")
+    if by == "index":
+        if cell_index is None:
+            raise ValueError("cell_by=index 时必须同时给 cell_index（第几列）")
+        n = int(cell_index)
+        # ⚠️ 口径是 **1 基**（与 scope_locate 的 col.index 一致：第 N 列 ⇒ .nth(N-1)）。
+        # 传 0 会算成 .nth(-1) = **最后一列** ⇒ 静默取错列（实测：想要勾选列却拿到"是否开票"，
+        # 报的错还是 "Not a checkbox"，看着像另一个问题，极难查）。所以必须在这里拦住。
+        if n < 1:
+            raise ValueError(
+                f"cell_index 是**从 1 起**的列序号（第 1 列 = 1），收到 {n} ⇒ 会取到最后一列，必须拦下")
+        return {"axis": "col", "by": "index", "value": n}
+    val = str(cell_field or "")
+    if not val:
+        raise ValueError(f"cell_by={by!r} 时必须给 cell_field（field=列字段名 / header=表头文本）")
+    return {"axis": "col", "by": by, "value": val}
+
+
+def _semantic_to_locator_expr(it: dict, scope: str = "", by=None) -> str:
     """probe 元素字典 → Playwright 定位表达式（确定性，Tier1 顺序）。
+
+    `scope="page"`（P22 批 5 方案①）：**不锚任何容器**，直接在全页范围用元素自身的
+    role+name（退而 placeholder→title→text）表达 —— 用于「同名控件分布在不同区域」的情形：
+    实测订单详情页有两个「保存」（`#btn-save-lines` 在「详细信息」区、`#btn-detail-edit` 在顶部
+    —— 后者编辑态下文案才变「保存」）。容器锚路径只能表达区内那一个，全页第二个取不到。
+    注意：**不锚容器会让歧义面变大** ⇒ 只由用例显式声明 `scope="page"` 时才走这条，
+    且配合 `occurrence`（第 N 个）使用；框架不替用户猜。
 
     返回的是**后缀**表达式（生成物里写成 `lambda p: p.<expr>`）——与 `scope_locate.path_expr()`
     的"完整表达式（带 `page.`，可直接粘进控制台）"口径不同，所以下面要裁掉前缀。
@@ -284,7 +438,20 @@ def _semantic_to_locator_expr(it: dict) -> str:
     因为真实系统（以及批 4 之后的 demo）**子元素没有埋点**，只认顶层锚点。
     顶层元素的 `path` 是 None ⇒ 这里不触发 ⇒ 既有生成物形态不变。
     """
-    if it.get("anchor") and it.get("path"):
+    by = _validate_by(by)
+    if by:
+        fields, fn = _BY_FIELDS[by]
+        val = ""
+        for f in fields:
+            val = str(it.get(f) or "").strip()
+            if val:
+                break
+        if not val:
+            raise ValueError(
+                f"用例要求 by={by!r} 定位，但元素 {it.get('semantic_name')!r} 没有 "
+                f"{'/'.join(fields)} 值 ⇒ 会产出无效定位（生成期就停，不落盘垃圾产物）")
+        return f"{fn}({_py_str(val)})"
+    if scope != "page" and it.get("anchor") and it.get("path"):
         from framework.tools.probe.scope_locate import path_expr
         drill = path_expr(it.get("anchor"), it.get("path"))
         if drill and drill.startswith("page."):
@@ -311,12 +478,39 @@ def _semantic_to_locator_expr(it: dict) -> str:
     raise RuntimeError(f"元素 {it.get('semantic_name')} 无可用定位语义")
 
 
+def _page_scope_expr(expr: str) -> str:
+    """容器锚表达式 → **全页**表达式：剥掉最前面的 `locator(...)` 段（P22 批 5 方案①）。
+
+    定位表达式的形态是「容器 + 目标」，如
+      `locator('section[aria-label="详细信息"]').get_by_text("保存", exact=True)`
+    ⇒ 去掉容器段就是同一个控件的**全页**表达：`get_by_text("保存", exact=True)`。
+    本来就全页（以 `get_by_*` 开头）的原样返回；`_drill(...)` 这类运行期下钻无法静态剥离 ⇒ 返回空串
+    （调用方据此当场失败，不猜）。
+    """
+    s = (expr or "").strip()
+    if not s.startswith("locator("):
+        return s if "get_by_" in s else ""
+    depth = 0
+    for i, ch in enumerate(s):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                rest = s[i + 1:]
+                if rest.startswith("."):
+                    rest = rest[1:]
+                return rest if "get_by_" in rest else ""
+    return ""
+
+
 def _brace_safe(text) -> str:
     """把要嵌进「生成代码里的 f-string」的文本转义大括号（见 _log 那处注释）。"""
     return str(text).replace("{", "{{").replace("}", "}}")
 
 
-def _render_pytest_case(case: dict, loc_map: dict) -> str:
+def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
+                        it_map: dict | None = None) -> str:
     """把单个 cases 用例渲染成一个 pytest test 函数（locator 内联确定性定位）。
 
     断言位置（P3）：`asserts[i].after_step = N`（1 起）→ 渲染在第 N 步之后**原地执行**；
@@ -374,7 +568,7 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
                 lines.append(f"    _goto(page, _data({_gref!r}, ctx))")
             else:
                 lines.append(f"    _goto(page, {st.get('url', case.get('base_url'))!r})")
-        elif st.get("row_text") and st.get("cell_field"):
+        elif _is_row_cell_step(st):
             # ---- 行内定位步骤（按行内容锚行 + 取该行某列）----
             # 为什么需要：新建记录的编号是**服务端动态分配**的 ⇒ AI 无法按语义名引用那一条，
             # 只能「行锚文本（刚输入的名称）+ 列字段」组合定位。
@@ -382,14 +576,18 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
             if row_ref is None:
                 lines.append(f"    pytest.fail({'行内定位步骤缺少 row_text 数据引用（generator 内部错误）'!r},"
                              f" pytrace=False)")
-            elif op in ("click", "click_new_tab"):
+            elif op in _ROW_CELL_OPS:
                 tabs_arg = "_t" if op == "click_new_tab" else "None"
+                val_arg = f", value=_data({st['_payload_ref']!r}, ctx)" if op == "fill" else ""
+                cb = f", cell_by={str(st['cell_by'])!r}" if st.get("cell_by") else ""
+                ci = f", cell_index={int(st['cell_index'])}" if st.get("cell_index") is not None else ""
                 expr = (f'_click_row_cell(page, row_text=_data({row_ref!r}, ctx), '
-                        f'cell_field={str(st["cell_field"])!r}, tabs={tabs_arg})')
+                        f'cell_field={str(st.get("cell_field") or "")!r}, tabs={tabs_arg}, '
+                        f'op={str(op)!r}{val_arg}{cb}{ci})')
                 lines.append(f'    page = {expr}' if op == "click_new_tab" else f'    {expr}')
             else:
-                lines.append(f"    pytest.fail({'行内定位只支持 click / click_new_tab，当前 op=' + str(op)!r},"
-                             f" pytrace=False)")
+                _msg = "行内定位不支持该 op=" + repr(op) + "（白名单：" + repr(_ROW_CELL_OPS) + "）"
+                lines.append("    pytest.fail(" + repr(_msg) + ", pytrace=False)")
         else:
             elem = st.get("element", "")
             if is_cross_page and elem and elem in dup_raw:
@@ -398,8 +596,55 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
                 lines.append(f"    _log(page, \"cross_page_ambiguous\", '跨页重名原始名: {elem}')")
                 lines.append(f"    pytest.fail({reason!r}, pytrace=False)")
                 continue
-            loc = loc_map.get(elem) if elem not in _AMBIGUOUS_NAMES else None
-            if elem in _AMBIGUOUS_NAMES:
+            # P22 批 5 方案①：步骤可显式声明 `scope="page"` ⇒ 不锚容器、全页按 role/name 取第 N 个。
+            _scope = st.get("scope")
+            if _scope not in (None, "", "page"):
+                lines.append(f"    _log(page, \"bad_scope\", 'scope 非法: {_scope}')")
+                lines.append(f"    pytest.fail('scope 非法：{_scope!r}（只支持 page；缺省=容器锚）—— "
+                             f"不许静默退回容器锚，那会点了别的控件', pytrace=False)")
+                continue
+            if _scope == "page":
+                loc = _page_scope_expr(loc_map.get(elem) or "") or None
+                if loc is None:
+                    lines.append(f"    _log(page, \"unmapped_page\", '全页表达缺失: {elem}')")
+                    lines.append(f"    pytest.fail('元素缺少「全页」定位表达：{elem!r}（探测快照里没有它）',"
+                                 f" pytrace=False)")
+                    continue
+            else:
+                loc = loc_map.get(elem) if elem not in _AMBIGUOUS_NAMES else None
+            # P22 批 5：步骤可显式声明 `by`（title/label/placeholder/testid/alt）——
+            # 用于「可见文本会随状态变、而稳定锚不变」的控件（如角色切换按钮：超管身份下探到
+            # "超"，执行时身份已变、按钮显示 "super · 订单管理员" ⇒ 逐字找不到）。
+            # 有 `by` ⇒ **用元素字典现场重算定位**，覆盖 loc_map 里烘干的表达式。
+            _by = _validate_by(st.get("by"))
+            if _by:
+                _it = (it_map or {}).get(elem) or {}
+                _has = bool(_it.get(_by) or (_it.get("help_text") if _by == "title" else None))
+                if not _has and st.get("by_value"):
+                    # ★ 探测**覆盖不到**的控件（实测：开票页只探到 3 个元素，客户/销售员/发票行
+                    #   字段全没探到）⇒ 用例直接给稳定属性的值（label/title/placeholder/testid/role/css），
+                    #   不必先有清单。框架层零业务词：值来自用例、写法通用。
+                    # ⚠️ 只设 `loc`、**不要自己拼 lambda**：下面的 `_primary_lambda(loc, _occ)` 是
+                    #   统一出口（它负责 `lambda p: <expr>` 与 `.nth(N-1)`）。自己再包一层会变成
+                    #   `p.p.get_by_title(...)` —— 实测踩过（primary 报错被吞 ⇒ 退到语义兜底 ⇒
+                    #   整个用例在更早的步骤上就挂了，看着像别的问题）。
+                    try:
+                        loc = _step_direct_locator_expr(_by, st.get("by_value"), st.get("role"))
+                    except Exception as _e:                            # noqa: BLE001
+                        msg = f"by 直接定位失败：by={_by!r} by_value={st.get('by_value')!r} → {_e}"
+                        lines.append(f"    _log(page, \"bad_by\", {str(_by)!r})")
+                        lines.append(f"    pytest.fail({msg!r}, pytrace=False)")
+                        continue
+                else:
+                    try:
+                        loc = _semantic_to_locator_expr(_it, scope=_scope or "", by=_by)
+                    except Exception as _e:                            # noqa: BLE001
+                        msg = (f"by 定位失败：element={elem!r} by={_by!r} → {_e}"
+                               f"（清单里没这个锚；可在步骤里加 by_value 直接给属性值）")
+                        lines.append(f"    _log(page, \"bad_by\", {str(_by)!r})")
+                        lines.append(f"    pytest.fail({msg!r}, pytrace=False)")
+                        continue
+            if _scope != "page" and elem in _AMBIGUOUS_NAMES:
                 reason = (f"语义名歧义：{elem!r} 在多页命中不同 locator → 无法确定该用哪一个"
                           f"（generate 日志有 ⚠️ 多页命中）→ 请改成唯一名，或改用 selector 精确定位；"
                           f"绝不猜一个可能点错的 locator")
@@ -415,12 +660,37 @@ def _render_pytest_case(case: dict, loc_map: dict) -> str:
                 lines.append(f"    _log(page, \"unmapped\", '元素未映射: {elem}')")
                 lines.append(f"    pytest.fail({reason!r}, pytrace=False)")
                 continue
-            primary = _primary_lambda(loc)
+            _occ = st.get("occurrence")
+            if _occ is not None and (isinstance(_occ, bool) or not isinstance(_occ, int) or _occ < 1):
+                lines.append("    _log(page, \"bad_occurrence\", 'occurrence 非法')")
+                lines.append("    pytest.fail('occurrence 非法：应为从 1 起的整数"
+                             "（同一语义名的第 N 个实例）' + repr(" + f"{str(_occ)!r}" + "), pytrace=False)")
+                continue
+            primary = _primary_lambda(loc, _occ)
             semantic = repr(elem) if elem else "None"
-            if op in ("fill", "select"):
+            if op == "select" and st.get("index") is not None:
+                # P22 批 5：按序号选第 N 项（0 基）。为什么不用 value：demo 的 select 选项是
+                # bu_a/bu_b 之类，而「选第一项」被写成 value="1" ⇒ select_option 报
+                # 「did not find some options」30s 超时（2026-09-30 真值）。
+                if st.get("value") not in (None, ""):
+                    reason = (f"select 步骤同时给了 index={st['index']} 与 value={st['value']!r} "
+                              f"→ 无法确定按哪个选；第 N 项请只留 index，指定值请只留 value")
+                    lines.append("    _log(page, \"bad_select\", 'select 参数冲突: index + value')")
+                    lines.append(f"    pytest.fail({reason!r}, pytrace=False)")
+                else:
+                    lines.append(f'    _act(page, "select", semantic={semantic}, '
+                                 f'primary={primary}, index={int(st["index"])})')
+            elif op in ("fill", "select"):
                 ref = st["_payload_ref"]
                 lines.append(f'    _act(page, "{op}", semantic={semantic}, '
                              f'primary={primary}, value=_data({ref!r}, ctx))')
+            elif op == "click" and st.get("force"):
+                # P22 批 3：显式声明「这个按钮当前可能是置灰的，我要点它看提示」⇒ 传 force
+                # （跳过 Playwright 的可操作性检查）。⚠️ 只有**手写用例**能这么写：
+                # AI 链路若给用例带上 force，会被质量闸拦下（眼见 test_force_click_guard.py）——
+                # 一律 force 会把「点不动」的失败变成静默无效，那比失败更坏。
+                lines.append(f'    _act(page, "click", semantic={semantic}, primary={primary},'
+                             f' force=True)')
             elif op in ("click", "check", "press_enter"):
                 lines.append(f'    _act(page, "{op}", semantic={semantic}, primary={primary})')
             elif op == "click_new_tab":
@@ -496,6 +766,12 @@ _CONFLICT_BASES: dict[str, list[str]] = {}   # base 名 → 该同名冲突组�
 _DUP_RAW_NAMES: set[str] = set()        # 跨页重复过的**原始名**（跨页用例必须写成 原名@页名）
 _DUP_PAGES: dict[str, set[str]] = {}    # 原始名 → 出现过的页名集合（按用例过滤的判据，见下）
 
+# 名字 → 探到的元素字典（步骤级 `by` 定位要用）。
+# ⚠️ 为什么是模块级：写入点在"探测"函数里、读取点在"渲染"函数里，**两个作用域不通** ——
+#    实测把它写成探测块内的局部变量 ⇒ 走快照路径（不现场探测）时渲染处 `UnboundLocalError`
+#    （判据 test_generate_quality_gate 当场抓到）。与 `_DUP_PAGES` 同模式：探测前 clear、读处直接用。
+_LIVE_IT: dict[str, dict] = {}
+
 
 def _record_conflict_bases(items: list[dict]) -> None:
     """记下「同名冲突组」：base 名 → 该组各控件**现在的名字**（≥2 个才记）。
@@ -551,7 +827,9 @@ def _collect_declared_pages(cases: list[dict]) -> list[tuple[str, str]]:
     for c in cases:
         for pg in (c.get("pages") or []):
             pname = str(pg.get("name") or "")
-            url = str(pg.get("url") or "")
+            # P22 批 5：探测优先用场景声明的**探测地址**（页面 url 带运行期才有的值时，
+            # 探测期那个对象不存在 ⇒ 会探到空页）。框架只认这个概念，具体值由场景给。
+            url = str(pg.get("probe_url") or pg.get("url") or "")
             if not url:
                 continue
             if url in by_url:
@@ -565,7 +843,48 @@ def _collect_declared_pages(cases: list[dict]) -> list[tuple[str, str]]:
     return out
 
 
-def _probe_declared_pages(pages: list[tuple[str, str]]) -> tuple[dict, set[str], dict[str, set[str]]]:
+def _base_url_of(url: str) -> str:
+    """取 `scheme://host[:port]`（登录接口的相对路径要拼在它后面）。P22 批 5。"""
+    import urllib.parse as _up
+    u = _up.urlsplit(url or "")
+    return f"{u.scheme}://{u.netloc}" if u.scheme and u.netloc else (url or "")
+
+
+def _ensure_login_for(ctx, url: str, auth: dict | None) -> None:
+    """探测期的**登录前置统一入口**（P22 批 5）。
+
+    为什么要收成一个入口：现场探测有**两条路径**（① 单页惯例探测 ② 声明页探测），
+    各自 import / 各自判断会让"漏一处"变成静默失效（实测踩过：import 只加在 ① 所在的函数里
+    ⇒ 另一处 `NameError: ensure_logged_in is not defined`，而且被映射闸门描述成"现场 probe 失败"，
+    看着像环境问题）。
+    """
+    from framework.tools.run.login import ensure_logged_in
+    r = ensure_logged_in(ctx, _base_url_of(url), auth or {})
+    if r.get("attempted"):
+        print("[generate] 🔑 登录前置：" + ("ok" if r.get("ok")
+              else f"⚠️ 失败 → {r.get('reason')}（探测可能只拿到登录页控件）"))
+
+
+def _scenario_auth_of(rel_path: str) -> dict:
+    """按 case 的 `source_scenario`（以仓库根为基准的相对路径）回读场景文件的 `auth:` 段。
+
+    P22 批 5（方案 H）：generate 的**现场探测**与产物侧 harness 都需要这份声明 —— 两处都从这里取，
+    不各写一份（漏一处 ⇒ 探测只拿到登录页控件 / 执行整条落在登录页）。读不到就返回 {} 并**出声**。
+    """
+    rel = (rel_path or "").strip()
+    if not rel:
+        return {}
+    try:
+        from framework.tools.generate.scenario import load_scenario_file
+        from framework.tools.common.config import SCENARIOS_DIR
+        return load_scenario_file(SCENARIOS_DIR.resolve().parent / rel).auth_spec()
+    except Exception as e:                                          # noqa: BLE001
+        print(f"[generate] ⚠️ 读场景 {rel} 的 auth 段失败：{type(e).__name__}: {e}")
+        return {}
+
+
+def _probe_declared_pages(pages: list[tuple[str, str]],
+                          auth: dict | None = None) -> tuple[dict, set[str], dict[str, set[str]]]:
     """按用例声明的页面逐页现场探测（P3 跨页补齐），返回 (loc_map, ambiguous_names, dup_pages)。
 
     · 一个浏览器 + 一个 context 顺序 goto（本机 1.87G 无 swap，绝不为多页多开/并发）；
@@ -580,6 +899,7 @@ def _probe_declared_pages(pages: list[tuple[str, str]]) -> tuple[dict, set[str],
     from playwright.sync_api import sync_playwright
     from framework.tools.probe.probe import probe_page, uniquify_across_pages
     from framework.tools.common.browser import launch_opts
+    # P22 批 5：登录前置走 _ensure_login_for（模块级统一入口，不在这里 import）
 
     if len(pages) > 3:
         print(f"[generate] ⚠️ 现场探测 {len(pages)} 个页面（>3）——耗时与内存都会涨，"
@@ -588,10 +908,18 @@ def _probe_declared_pages(pages: list[tuple[str, str]]) -> tuple[dict, set[str],
     with sync_playwright() as p:
         b = p.chromium.launch(**launch_opts(headless=True))
         ctx = b.new_context()
+        # P22 批 5（方案 H）：**登录前置** —— 与 explore 侧同源（framework/tools/run/login.py）。
+        # 不做这一步，现场探测只会拿到登录页那 7 个控件 ⇒ 手写用例集体报「元素未映射」。
+        _ensure_login_for(ctx, (pages or [("", "")])[0][1], auth)         # P22 批 5：统一入口
         pg = ctx.new_page()
         for pname, url in pages:
-            pg.goto(url)
-            pg.wait_for_load_state("networkidle")
+            pg.goto(url, wait_until="domcontentloaded")
+            # P22 批 3：别用 networkidle（本 demo 页面里的 fetch 会挂着 ⇒ 永不 idle ⇒ 30s 超时）；
+            # 等页面自己的就绪契约，拿不到再给有界缓冲。
+            try:
+                pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
+            except Exception:                                      # noqa: BLE001
+                pg.wait_for_timeout(500)
             items = probe_page(pg, page_name=pname or None)
             # 2026-09-14：改用与 explore **同一套**弹窗/弹层探测（含嵌套 picker 层，探完会关掉）。
             # 以前这里自己点一遍「新建」按钮、只探一层、而且**不关弹窗**：
@@ -633,7 +961,10 @@ def _probe_declared_pages(pages: list[tuple[str, str]]) -> tuple[dict, set[str],
                   f"（{loc_map[name]} vs {expr}）→ 用到它时显式失败（请改成唯一名或改用 selector）")
             continue
         loc_map[name] = expr
-    return loc_map, ambiguous, dup_pages
+    # P22 批 5：另返回「语义名 → 元素字典」——步骤声明 `by` 时要拿元素的稳定锚
+    # （title/label/…）现场重算定位，而 loc_map 里只有烘干的表达式。
+    it_map = {it["semantic_name"]: it for it in merged_items}
+    return loc_map, ambiguous, dup_pages, it_map
 
 
 # ---------------- L1 数据参数化「真展开」（2026-09-21）----------------
@@ -818,16 +1149,42 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
 
     missing = needed - set(loc_map)
     declared_pages = _collect_declared_pages(cases)
+    # P22 批 5：现场探测的**登录前置声明** —— ① 单页惯例探测 与 ② 声明页探测**共用这一份**
+    #（从 cases 第一个非空 `source_scenario` 回读场景 yml 的 auth 段）。
+    _decl_auth: dict = {}
+    for _c0 in cases:
+        # P22 批 5：**两条路都支持** —— 用例自带 `auth`（手搓用例的常见形态）优先，
+        # 其次按 `source_scenario` 回读场景 yml 的 `auth:` 段。
+        # （为什么不能只认场景：手搓用例不来自场景 ⇒ 实测回读为空 ⇒ 现场探测没登录态 ⇒ 只探到登录页控件。）
+        _decl_auth = (dict(_c0.get("auth") or {})
+                      or _scenario_auth_of(str(_c0.get("source_scenario") or "")))
+        if _decl_auth:
+            break
+    if _decl_auth:
+        print(f"[generate] 🔑 场景声明了登录前置（{_decl_auth.get('username')}）⇒ 现场探测将带登录态")
     probe_error: str | None = None
     if live_probe or missing:
         try:
             live: dict[str, str] = {}
+            _LIVE_IT.clear()                   # 见模块级注释：跨作用域传递
+            live_it = _LIVE_IT                 # 同一对象：下面的 setdefault/update 都写进它
             # ① 单页惯例探测（TARGET_URL + 弹窗补充）—— **始终执行**，保证老用例的原始名不受跨页影响
             with sync_playwright() as p:
                 b = p.chromium.launch(**launch_opts(headless=True))
-                pg = b.new_page()
-                pg.goto(TARGET_URL)
-                pg.wait_for_load_state("networkidle")
+                ctx = b.new_context()
+                # P22 批 5：**登录前置**（与 explore / 产物侧同源）。
+                # 为什么必须：`TARGET_URL` 是根路径，demo 加了登录后它就是**登录页** ——
+                # 不登录 ⇒ 这段"补缺口"探测只探到登录页的 7 个控件 ⇒ 缺口照样映射不上
+                #（原先连 context 都没有，`b.new_page()` 根本无从注入 localStorage）。
+                _ensure_login_for(ctx, TARGET_URL, _decl_auth)   # P22 批 5：统一入口
+                pg = ctx.new_page()
+                pg.goto(TARGET_URL, wait_until="domcontentloaded")
+                # P22 批 3：**不用 networkidle** —— login.html 上它必超时 30s
+                #（页面 fetch 挂着永不 idle，实测），改用页面自己的就绪契约 + 有界缓冲。
+                try:
+                    pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
+                except Exception:                                  # noqa: BLE001
+                    pg.wait_for_timeout(500)
                 base_items = probe_page(pg)
                 # 弹窗/弹层补充：**与 explore 共用同一套探测**（_try_collect_modal_items —— 含嵌套
                 # picker 层、探完逐层关闭、无名「...」按钮也能识别）。
@@ -842,12 +1199,14 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
                 _record_conflict_bases(merged_items)
                 for it in merged_items:
                     live.setdefault(it["semantic_name"], _semantic_to_locator_expr(it))
+                    live_it.setdefault(it["semantic_name"], it)
                 b.close()
             # ② 跨页用例：额外按声明的页面逐页探测（补 `原名@页名` 形式的跨页元素）
             if declared_pages:
-                page_live, amb, dup_pages = _probe_declared_pages(declared_pages)
+                page_live, amb, dup_pages, _it_map = _probe_declared_pages(declared_pages, auth=_decl_auth)
                 for k, v in page_live.items():
                     live.setdefault(k, v)
+                live_it.update(_it_map)
                 _AMBIGUOUS_NAMES.clear()
                 _AMBIGUOUS_NAMES.update(amb)
                 _DUP_PAGES.clear()
@@ -884,7 +1243,10 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
         (str(c.get("case_id")), f"step{i + 1} {st.get('op')}（{str(st.get('desc'))[:40]}）没有 element")
         for c in cases for i, st in enumerate(c.get("steps") or [])
         if st.get("op") in ("click", "click_new_tab", "fill", "select", "check", "uncheck")
-        and not st.get("element") and not (st.get("row_text") and st.get("cell_field"))
+        and not st.get("element")
+        and not _is_row_cell_step(st)
+        # 自带定位的步骤（by + value，用于探测覆盖不到的控件）不该被当成"没给 element"
+        and not (st.get("by") and st.get("by_value"))
     ]
     if _empty_elem and not allow_unmapped:
         raise UnmappedElementsError(_empty_elem, locator_sources,
@@ -1016,7 +1378,7 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             continue
         mod.parent.mkdir(parents=True, exist_ok=True)
         mod.write_text(_MODULE_HEADER.format(cid=cid, sid=sid)
-                       + _render_pytest_case(c, loc_map) + "\n", encoding="utf-8")
+                       + _render_pytest_case(c, loc_map, it_map=_LIVE_IT) + "\n", encoding="utf-8")
         changed.append(cid)
 
     # 2-c) 三目录新陈代谢（R7-f）：index 不认识的脚本清掉（孤儿直接红，不留垃圾）
@@ -1037,6 +1399,40 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     # index.json **最后**写（先脚本后索引 ⇒ 中途挂掉也不会出现"索引指向不存在的脚本"）
     index_path.write_text(json.dumps(new_index, ensure_ascii=False, indent=2, sort_keys=True),
                           encoding="utf-8")
+
+    # ---- P22 批 5：写「登录前置表」（case_id → 场景 auth 声明）----
+    # 为什么放产物里：执行侧 harness 需要它才能在 context 建好后注入 token。
+    # 为什么**合并式**写：增量生成只处理变化的那几条 ⇒ 不能把别的场景的 auth 抹掉。
+    # ⚠️ 口令会随声明落进产物：**演示凭据可接受**；真实系统请在场景里用 `password_env`。
+    _auth_path = gen_dir / "_auth.json"
+    try:
+        _auth_tbl = (json.loads(_auth_path.read_text(encoding="utf-8"))
+                     if _auth_path.exists() else {})
+    except Exception:                                              # noqa: BLE001
+        _auth_tbl = {}
+    _scen_auth_cache: dict[str, dict] = {}
+    _auth_added: list[str] = []
+    for _c in cases:
+        _cid, _rel = _c.get("case_id"), str(_c.get("source_scenario") or "")
+        if not _cid:
+            continue
+        if _rel and _rel not in _scen_auth_cache:
+            _scen_auth_cache[_rel] = _scenario_auth_of(_rel)       # P22 批 5：唯一实现，别各写一份
+        # 用例自带 auth（手搓用例）优先，其次场景声明 —— 与 _decl_auth 同一优先级口径
+        _spec = dict(_c.get("auth") or {}) or (_scen_auth_cache.get(_rel) or {})
+        if _spec and _auth_tbl.get(_cid) != _spec:
+            _auth_tbl[_cid] = _spec
+            _auth_added.append(_cid)
+    _live_ids = {_c["case_id"] for _c in cases}                    # 表不许越攒越大
+    _auth_tbl = {k: v for k, v in _auth_tbl.items() if k in _live_ids}
+    if _auth_tbl:
+        _auth_path.write_text(json.dumps(_auth_tbl, ensure_ascii=False, indent=2, sort_keys=True),
+                              encoding="utf-8")
+        if _auth_added:
+            print(f"[generate] 🔑 登录前置写入 {len(_auth_added)} 条：{_auth_added[:4]}"
+                  f"{'…' if len(_auth_added) > 4 else ''}")
+    elif _auth_path.exists():
+        _auth_path.unlink()                                        # 场景都不需要登录 ⇒ 不留死文件
 
     # ---- 产物自洽闸（2026-09-22；P20 扩到分模块产物）：引用的 dataset 必须真实存在 ----
     # 见 DanglingDatasetError 的事故经过：「产物看着合法但跑不通」必须在**生成期**拦住
@@ -1110,7 +1506,9 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       _assert_enabled, _assert_disabled,
                       # 2026-09-17 跨 tab / 行内定位 / 首行断言用的辅助
                       # ⚠️ 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
-                      _Tabs, _click_row_cell, _assert_first_row)
+                      _Tabs, _click_row_cell, _assert_first_row,
+                      # P22 批 4/5：等待式断言（wait_text；批 5 起支持 selector 限定范围）
+                      _assert_wait_text)
 # P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）
 from framework.tools.probe.scope_locate import drill as _drill
 import pytest
@@ -1527,8 +1925,43 @@ class _Tabs:
         return prev
 
 
-def _click_row_cell(page, row_text, cell_field, tabs=None):
-    """**行内定位**：在「包含 row_text 的那一行」里点 cell_field 列的链接（返回新 tab 或 None）。
+# 行内定位「列」的指定方式（与生成期 generator._CELL_BY_WHITELIST **同口径**）：
+# field（td[data-field=]，缺省）/ header（按表头文本）/ index（第 N 列，0 基）。
+# 为什么需要 header/index：有些列没有 data-field —— 实测订单列表勾选列是 `<td class="pick-cell">`，
+# 表头 `<th class="pick-head">` 还没文本 ⇒ 只能按列序定位。
+_CELL_BY_WHITELIST = ("field", "header", "index")
+
+
+def _row_col_step(cell_field, cell_by, cell_index) -> dict:
+    """构造 `locate_in_scope` 的 col step（生成期与运行期共用一份口径）。"""
+    by = str(cell_by or "field").strip().lower() or "field"
+    if by not in _CELL_BY_WHITELIST:
+        raise ValueError(
+            f"行内定位的 cell_by={cell_by!r} 不在白名单 {_CELL_BY_WHITELIST} 内")
+    if by == "index":
+        if cell_index is None:
+            raise ValueError("cell_by=index 时必须同时给 cell_index（第几列）")
+        n = int(cell_index)
+        # ⚠️ 口径是 **1 基**（与 scope_locate 的 col.index 一致：第 N 列 ⇒ .nth(N-1)）。
+        # 传 0 会算成 .nth(-1) = **最后一列** ⇒ 静默取错列（实测：想要勾选列却拿到"是否开票"，
+        # 报的错还是 "Not a checkbox"，看着像另一个问题，极难查）。所以必须在这里拦住。
+        if n < 1:
+            raise ValueError(
+                f"cell_index 是**从 1 起**的列序号（第 1 列 = 1），收到 {n} ⇒ 会取到最后一列，必须拦下")
+        return {"axis": "col", "by": "index", "value": n}
+    val = str(cell_field or "")
+    if not val:
+        raise ValueError(f"cell_by={by!r} 时必须给 cell_field（field=列字段名 / header=表头文本）")
+    return {"axis": "col", "by": by, "value": val}
+
+
+def _click_row_cell(page, row_text, cell_field, tabs=None, op="click", value=None,
+                    cell_by=None, cell_index=None):
+    """**行内定位**：在「包含 row_text 的那一行」里对 cell_field 列做动作（返回新 tab 或 None）。
+
+    `op`（2026-09-30 P22 批 5 新增）：click（默认，点列里的链接）/ check / uncheck / fill。
+    - click 之外的 op 为什么需要：**勾选某一行**（然后点批量按钮）是列表页的常见动作，
+      而"选哪一行"只能靠行锚表达 ⇒ 行内定位必须支持 check/fill，否则只能改用例绕过（丢验证点）。
 
     为什么需要这个能力：新建记录的编号/合同号是**服务端动态分配**的，探测清单里不可能有它的语义名，
     AI 无法按名字引用那一条 ⇒ 只能「按行内容锚定行 + 按列字段取元素」。
@@ -1549,25 +1982,42 @@ def _click_row_cell(page, row_text, cell_field, tabs=None):
             f"行内定位失败：含文本 {row_text!r} 的行命中 {n} 个（要求恰好 1 个）。"
             f" 常见原因：① 这段文本不在任何行里（上一步的新建没成功 / 名称写错）；"
             f" ② 锚文本太短，多行都含它（用更长的独有片段）。")
-    _col = locate_in_scope(rows.first, [{"axis": "col", "by": "field", "value": cell_field}])
+    _col = locate_in_scope(rows.first, [_row_col_step(cell_field, cell_by, cell_index)])
     if not _col["ok"]:
         raise RuntimeError(f"行内列 {cell_field!r} 定位失败：{_col['reason']}")
     cell = _col["locator_obj"]
-    target = cell.get_by_role("link")
-    if target.count() == 0:
-        target = cell
+    if op in ("check", "uncheck"):
+        # 勾选列：目标是单元格里的复选框（没有则退到单元格本身）
+        target = cell.locator("input[type='checkbox']")
+        if target.count() == 0:
+            target = cell
+    elif op == "fill":
+        target = cell.locator("input, textarea")
+        if target.count() == 0:
+            target = cell
+    else:
+        target = cell.get_by_role("link")
+        if target.count() == 0:
+            target = cell
     kn = target.count()
     if kn != 1:
         raise RuntimeError(f"行内列 {cell_field!r} 的目标元素命中 {kn} 个（要求 1 个）")
     _shot(page, f"row_{cell_field}")
 
     def _do():
-        target.click()
+        if op == "check":
+            target.check()
+        elif op == "uncheck":
+            target.uncheck()
+        elif op == "fill":
+            target.fill(value or "")
+        else:
+            target.click()
 
     if tabs is not None:
         return tabs.open_new(_do)
     _do()
-    _log(page, "row_click", f"已点「含 {row_text} 行」的 {cell_field} 列")
+    _log(page, f"row_{op}", f"已对「含 {row_text} 行」的 {cell_field} 列执行 {op}")
     return None
 
 
@@ -1664,6 +2114,42 @@ class _BrowserPool:
                 pass
 
 
+# ---- P22 批 5：登录前置表（case_id → auth 声明）----
+# generate 按场景的 `auth:` 段写进同目录 `_auth.json`；没有该文件 ⇒ 空表 ⇒ 行为与从前**完全一致**。
+_AUTH_TABLE: dict = {}
+try:
+    import json as _json_auth          # 显式 import：harness 顶层没有 json（实测踩过 NameError）
+    import pathlib as _pl_auth
+    _ap = _pl_auth.Path(__file__).resolve().parent / "_auth.json"
+    if _ap.exists():
+        _AUTH_TABLE = _json_auth.loads(_ap.read_text(encoding="utf-8")) or {}
+except Exception as _e_auth:
+    # ⚠️ 兜底**不许把"自己写错"吞成"没有登录前置"**（P19 教训：NameError 被 except 吞掉 ⇒ 静默失效，
+    # 现象是"整条用例跑在登录页上"，排查方向还容易被带偏）。产物里明明有 _auth.json 却读不出来
+    # = 环境/产物坏了 ⇒ **当场抛**，不降级。
+    raise RuntimeError(
+        f"_auth.json 读取失败（{type(_e_auth).__name__}: {_e_auth}）"
+        f" —— 登录前置无法生效，用例会整条跑在登录页上，故当场失败（不静默降级）") from _e_auth
+
+
+def _install_login(context, auth_spec=None):
+    """**登录前置**：context 建好后立刻把 token 注入 localStorage（P22 批 5 · 方案 H）。
+
+    为什么需要：目标系统未登录会跳登录页 ⇒ 用例里的 goto 全落在登录页（整条用例白跑）。
+    没声明（空 spec）⇒ 直接返回 —— 行为与不加这个特性时**完全一致**（零开销）。
+    登录失败**当场抛**：静默继续会变成"整条用例都在登录页上跑"的假象，比失败更坏。
+    """
+    if not auth_spec:
+        return
+    from framework.tools.run.login import ensure_logged_in
+    r = ensure_logged_in(context, _HYBRID_BASE or "http://localhost:8000", auth_spec)
+    if not r.get("ok"):
+        raise RuntimeError(
+            f"登录前置失败（场景声明了 auth，但登录没成功）：{r.get('reason')}"
+            f" —— 未登录态下跑用例没有意义，故当场失败（不静默）")
+    print(f"[setup] 🔑 登录前置 ok（{auth_spec.get('username')}）", flush=True)
+
+
 def _is_headed():
     """调试·有头判定：HYBRID_HEADED=1 且不在 xdist worker 里（worker 一律无头，见 cli.py 注释）。"""
     import os as _os
@@ -1694,6 +2180,7 @@ def page(request, _pool):
         _ctx_kw = {"record_video_dir": str(RUN_LOG_DIR / "videos"),
                    "record_video_size": {"width": 1280, "height": 720}}
     context = browser.new_context(**_ctx_kw)
+    _install_login(context, _AUTH_TABLE.get(_cid) or _AUTH_TABLE.get("*") or {})   # P22 批 5
     if _PARTITION:
         # F6：把分区号注入页面（页面据此把 /api 调用带上 ?w=…）⇒ 并发 worker 各用各的数据
         context.add_init_script("window.__HYBRID_W = " + repr(_PARTITION) + ";")
@@ -1881,7 +2368,17 @@ def _shot(page, tag):
         pass
 
 
-def _act(page, action, semantic=None, primary=None, value=None):
+def _wait_after_action(page) -> None:
+    """（P22 批 3）动作后若页面发生导航/重载，等它就绪。
+
+    ⚠️ **唯一实现在 `framework.tools.run.waits`** —— 这里只转发：生成物与框架二类脚本共用同一份
+    逻辑，避免"两处各写一份、慢慢漂移"（本项目已因这类漂移栽过）。
+    """
+    from framework.tools.run.waits import wait_after_action
+    return wait_after_action(page)
+
+
+def _act(page, action, semantic=None, primary=None, value=None, force=False, index=None):
     """执行动作：主用【确定性 locator】(零探测)；主失效才走语义定位/自愈兜底。
 
     健康页面 → 与改造前完全一致（零额外开销）；页面漂移 → 自动降级/自愈而非硬失败。
@@ -1907,11 +2404,34 @@ def _act(page, action, semantic=None, primary=None, value=None):
             raise RuntimeError(f"确定性 locator 失效且无语义兜底: {action}")
         loc = _loc(semantic, page)
     if action == "click":
-        loc.click()
+        # P22 批 3：① force 只由**手写用例**显式声明（AI 链路被质量闸拦住）；
+        #            ② 点完等页面就绪 —— 「切换为订单管理员」是 location.reload()（auth.js:130），
+        #               旧实现只有 loc.click()、不等任何状态 ⇒ 下一步撞重载竞态（控件还在旧文档上）。
+        loc.click(force=bool(force))
+        # P22 批 4：记下「最近一次搜索点击」—— wait_text(refresh=research) 靠它每轮重新取数
+        if semantic and _is_search_semantic(str(semantic)):
+            global _LAST_SEARCH
+            _LAST_SEARCH = str(semantic)
+        _wait_after_action(page)
     elif action == "fill":
         loc.fill(value if value is not None else "")
     elif action == "select":
-        loc.select_option(value if value is not None else "")
+        if index is not None:
+            # P22 批 5：index = 第 N 个**非空**选项（0 基）。语义为什么这么定：
+            # demo 的 #sel-o-bu/#sel-o-mu/#sel-o-file/#sel-o-cust 第一个 option 是
+            # `<option value="">请选择</option>`（order_new.html:45,51,57,69），而场景里
+            # 「各选第一项」的人话意思显然是「选第一个**真**选项」—— 按字面选 index 0
+            # 会落进「请选择」⇒ 表单校验不过 ⇒ 订单建不出来（2026-09-30 实测卡了两轮）。
+            _opts = loc.locator("option")
+            _real = [i for i in range(_opts.count())
+                     if (_opts.nth(i).get_attribute("value") or "").strip() != ""]
+            if int(index) >= len(_real):
+                raise AssertionError(
+                    f"select 第 {index} 个有效选项不存在（该控件 {_opts.count()} 个选项，"
+                    f"去掉空占位后只有 {len(_real)} 个）")
+            loc.select_option(index=_real[int(index)])
+        else:
+            loc.select_option(value if value is not None else "")
     elif action == "check":
         loc.check()
     elif action == "press_enter":
@@ -1929,8 +2449,8 @@ def _fill(page, hint, value):
     return _act(page, "fill", semantic=hint, value=value)
 
 
-def _select(page, hint, value):
-    return _act(page, "select", semantic=hint, value=value)
+def _select(page, hint, value=None, index=None):
+    return _act(page, "select", semantic=hint, value=value, index=index)
 
 
 def _check(page, hint):
@@ -1955,6 +2475,76 @@ def _assert_text(page, text, desc=""):
 # 约定：全部 web-first（playwright expect 自动重试）；成功统一打印 [CHECK] ✓ 断言: …
 #       并写逐用例日志（调试模式另存一张截图）。
 #       ❗ 缺字段 / 定位不到时，由**生成的脚本** pytest.fail（绝不静默少验一步 = 假绿）。
+
+
+# P22 批 4（2026-09-29）：等待式断言的"最后一次搜索"重放点（refresh=research 用）
+_LAST_SEARCH = None
+
+
+def _is_search_semantic(name: str) -> bool:
+    """语义名看起来像「搜索 / 查询」按钮吗？（`_act` 据此记下重放点）"""
+    n = (name or "").lower()
+    return ("搜索" in n) or ("查询" in n) or ("search" in n)
+
+
+def _replay_last_search(page) -> bool:
+    """重放**最近一次搜索点击**（P22 · refresh=research）。
+
+    为什么需要：demo 列表页不会自己刷新（无 setInterval）⇒ 「等状态流转」必须**重新取数**。
+    口径 = 用同一个语义名再点一次那次搜索按钮；没有记录就如实返回 False（不猜、不假装重放过了）。
+    """
+    if not _LAST_SEARCH:
+        return False
+    try:
+        _act(page, "click", semantic=_LAST_SEARCH)
+        return True
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def _assert_wait_text(page, text, timeout_ms=30000, refresh="none", desc="", selector=""):
+    """**等待式断言**：在有界时间内轮询，直到页面出现该文本（P22 批 4 · 缺口 ②）。
+
+    与 `_assert_text` 的区别：
+      · `_assert_text` 的等待硬编码 5s（只够等页面已渲染的东西）；
+      · 本断言按**业务时间**给上限（如订单 150 秒自动关闭），且能**每轮重新取数** ——
+        demo 列表页不会自己刷新，光把超时调大永远等不到。
+    refresh：none = 只轮询 DOM · reload = 每轮重载当前页 · research = 每轮重放最近一次搜索点击。
+    口径：**有界轮询 + 探到就走**（不是固定 sleep）；到点如实报"等了多久 / 轮询几轮 / 期望什么"。
+    """
+    import time as _t
+    deadline = _t.time() + (timeout_ms / 1000.0)
+    attempts = 0
+    last_err = ""
+    while True:
+        attempts += 1
+        try:
+            if selector:            # 限定范围（如状态列 td[data-field=…]）—— 避开隐藏的下拉选项
+                _sc = page.locator(selector)
+                if _sc.count() >= 1 and str(text) in (str(_sc.first.inner_text() or "")):
+                    _ok(page, desc or f"等到 {selector} 里的文本 {text}",
+                        f"wait_text_{str(text)[:24]}", f"{text} @ {selector}")
+                    return
+            else:
+                loc = page.get_by_text(text)
+                if loc.count() >= 1 and loc.first.is_visible():
+                    _ok(page, desc or f"等到文本 {text}", f"wait_text_{str(text)[:24]}", str(text))
+                    return
+        except Exception as e:                                 # noqa: BLE001
+            last_err = f"{type(e).__name__}: {str(e)[:80]}"
+        if _t.time() >= deadline:
+            raise AssertionError(
+                f"等待超时：{timeout_ms}ms 内页面始终没有出现 {text!r}"
+                f"（轮询 {attempts} 轮 · refresh={refresh}）"
+                + (f"；最后一轮读取异常：{last_err}" if last_err else ""))
+        if refresh == "reload":
+            try:
+                page.reload(wait_until="domcontentloaded")
+            except Exception:                                  # noqa: BLE001
+                pass
+        elif refresh == "research":
+            _replay_last_search(page)
+        page.wait_for_timeout(500)
 
 
 def _ok(page, desc, tag, detail=""):

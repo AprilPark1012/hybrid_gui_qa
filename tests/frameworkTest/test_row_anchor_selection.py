@@ -111,11 +111,12 @@ def _latest_element_map() -> Path | None:
     return files[-1] if files else None
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "L18 批 3 收口：需 demo 重构后重跑 probe + generate，产物才会带上新行锚（当前 ElementMap 仍是整行文本）。"
-    "转绿后请删掉本 xfail 标记。"))
 def test_artifacts_row_anchor_is_not_whole_row_text():
-    """判据 5：ElementMap 里的行锚不得是「整行文本」（当前产物 ⇒ 红，属已知中间态）。"""
+    """判据 5：ElementMap 里的行锚不得是「整行文本」（单元格级口径）。
+
+    2026-09-30 转绿：批 3 重跑 probe + generate 后产物已带单元格级行锚 ⇒
+    按原注释要求去掉 `xfail(strict)` 标记（此前它在 strict 下 XPASS 也是红）。
+    """
     em = _latest_element_map()
     if em is None:
         pytest.skip("没有 output/element_maps/probe_*.json（先跑一次 probe）")

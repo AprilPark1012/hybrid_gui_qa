@@ -72,9 +72,14 @@ def test_failure_wins_over_skip():
 def test_gate_uses_his_scenario_numbering():
     src = GATE.read_text(encoding="utf-8")
     for must in ("verify_e2e_scenario1_online.py",     # 场景1 真 AI
-                 "verify_e2e_scenario2_handwritten.py",  # 场景2 手搓
                  "verify_e2e_scenario3_replay.py"):      # 场景3 录制回放
         assert must in src, f"发版门里没提到 {must}（编号必须与场景定义一致）"
+    # 场景2（手搓用例驱动）：V8.3 起 `cases/` 下没有手搓用例 ⇒ 脚本已删。
+    # 要求入口**如实说明**它的去向（不许悄悄消失、也不许还写着已删的脚本名）。
+    assert "verify_e2e_scenario2_handwritten.py" not in src, \
+        "场景2 的脚本已删，入口不该再引用它的路径"
+    assert "scenario2" in src and "不适用" in src, \
+        "场景2 已删 ⇒ 入口必须如实标注它在本版不适用（跳过要可见）"
     assert "verify_e2e_scenario1_offline.py" not in src, "旧名残留（已按他的编号改名）"
 
 

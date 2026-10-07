@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>新建合同</title>
+<!--
+  新建合同 iframe 页（需求㉖ · 2026-09-29）：合同页点「+ 新建合同」后弹出的新建表单**在 iframe 里**，
+  且本页刻意用 **jQuery** 实现（不是 Vue）——照真实老系统的形态：主页面新框架 + 弹层老技术栈混搭。
+  与父页**同源**（同一 host:port 的静态页）。
+
+  技术：jQuery 3.7.1（本地 vendor，离线可跑）+ 经典 table 布局表单 + 本页内的客户选择弹层。
+
+  契约（不许破 —— 见 references/demo-refactor-contract.md）：
+    ① 就绪契约：body[data-hybrid-ready] 静态 0 ⇒ 初始化完成后置 "1"
+    ② 埋点口径 C：只有**顶层容器**带 data-testid（form-contract-new / modal-cust-pick / status）；
+       行 / 单元格 / 行内按钮 / 表单控件一律不带
+    ③ 分区：优先读框架注入的 window.__HYBRID_W，手工浏览退回 URL 的 ?w=<分区>
+    ④ 身份：引 auth.js；本页允许匿名渲染（未登录也能看表单），但**提交要身份**
+       ⇒ 父页打开本页时把 demo_role / token 一并带下来（否则 POST 会被服务端 401/403）
+    ⑤ 回传：同源 postMessage —— 提交成功 {type:'contract-created', no, name} · 取消 {type:'contract-cancel'}
+       ⇒ 由父页负责关弹层 + 刷新列表
+    ⑥ 客户选择：本页内自带的 jQuery 弹层（不套第三层 iframe）；**点「客户名称」/「地址」/「选择」都能选中**
+       （与选客户 iframe 页同一口径，2026-09-29 需求㉔）
+-->
+<script src="vendor/jquery.min.js"></script>
+<script src="auth.js"></script>
+<link rel="stylesheet" href="vendor/contract-form.css">
+</head>
+<body data-hybrid-ready="0">
+<div class="page" id="app">
+
+  <!-- 表单（顶层容器：唯一带 data-testid 的地方之一） -->
+  <div class="title">新建合同</div>
+  <table class="form" id="form-contract-new" data-testid="form-contract-new" aria-label="新建合同">
+    <tbody>
+      <tr>
+        <td class="lbl"><span class="req">*</span>合同名称</td>
+        <td>
+          <input id="inp-name" name="contractName" type="text" title="合同名称" aria-label="合同名称"
+                 placeholder="请输入合同名称" autocomplete="off">
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>管理单元</td>
+        <td>
+          <select id="sel-mu" name="managementUnit" title="管理单元" aria-label="管理单元">
+            <option value="">请选择</option>
+            <option value="0021">0021</option><option value="0451">0451</option><option value="1031">1031</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>帐套</td>
+        <td>
+          <select id="sel-fs" name="folder" title="帐套" aria-label="帐套">
+            <option value="">请选择</option>
+            <option value="001">001</option><option value="002">002</option><option value="003">003</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>合同类型</td>
+        <td>
+          <select id="sel-type" name="contractType" title="合同类型" aria-label="合同类型">
+            <option value="">请选择</option>
+            <option value="合同">合同</option><option value="po">po</option><option value="预po">预po</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>客户</td>
+        <td>
+          <div class="pick-row">
+            <input id="inp-c" name="customer" type="text" title="客户" aria-label="客户"
+                   placeholder="请选择客户" readonly autocomplete="off">
+            <button id="btn-pick-c" class="btn" type="button" title="选择客户">选择客户</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>业务单元</td>
+        <td>
+          <select id="sel-b" name="businessUnit" title="业务单元" aria-label="业务单元">
+            <option value="">请选择</option>
+            <option value="bu_a">bu_a</option><option value="bu_b">bu_b</option><option value="bu_c">bu_c</option>
+          </select>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="actions">
+    <button id="btn-cancel" class="btn" type="button">取消</button>
+    <!-- 2026-09-29（需求）：提交（新建合同）需要合同管理员角色 -->
+    <button id="btn-submit" class="btn primary" type="button" data-perm="create_contract"
+            data-perm-tip="「提交」需要合同管理员角色：当前不是合同管理员，不能新建合同（可用右上角头像切换角色）">提交</button>
+  </div>
+
+  <div id="status" data-testid="status"></div>
+</div>
+
+<!-- ===== 客户选择弹层（本页内，jQuery 控制显隐；顶层容器 ⇒ 可带 data-testid）===== -->
+<div id="modal-cust-pick" data-testid="modal-cust-pick">
+  <div class="box">
+    <h4>选择客户</h4>
+    <div class="bar">
+      <input id="cust-keyword" name="custKeyword" type="text" title="客户名称关键字"
+             placeholder="输入客户名称关键字" autocomplete="off">
+      <button id="btn-cust-search" class="btn" type="button">搜索</button>
+    </div>
+    <table id="tbl-pick-cust" aria-label="选择客户">
+      <thead><tr><th>客户名称</th><th>地址</th><th>操作</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="hint" style="margin:8px 0 0">点「客户名称」/「地址」或「选择」按钮均可选中 · 选中后回填本页表单</p>
+    <div class="actions"><button id="btn-pick-close" class="btn" type="button">关闭</button></div>
+  </div>
+</div>
+
+<script>
+/* 分区号（F6 契约）：框架用 context.add_init_script 注入 window.__HYBRID_W（xdist 每 worker 一个分区）
+   ⇒ 必须优先读它；手工浏览退回 URL 的 ?w=<分区>。只读 ?w= 会让框架驱动时全落 default 分区。 */
+var PART = String(window.__HYBRID_W || '').trim() || (new URLSearchParams(location.search).get('w') || '');
+var CUSTOMERS = [];      // 客户主数据缓存（选客户弹层用）
+var PICKED = null;       // 已选客户 {id, name, addr}
+
+function markBusy() { document.body.dataset.hybridReady = '0'; }
+function markReady() { document.body.dataset.hybridReady = '1'; }
+function setStatus(msg) { $('#status').text(msg || ''); }
+function url(path) { return DEMO_AUTH.url(PART ? path + (path.indexOf('?') >= 0 ? '&' : '?') + 'w=' + encodeURIComponent(PART) : path); }
+
+$(function () {
+  // ① 就绪：先把客户主数据拉下来（弹层要立刻能用）
+  markBusy();
+  $.getJSON(url('/api/customers'), function (rows) {
+    CUSTOMERS = rows || [];
+    renderPickRows(CUSTOMERS);
+    markReady();
+  }).fail(function () {
+    CUSTOMERS = [];
+    renderPickRows([]);
+    markReady();          // 拉不到也要就绪（页面本身可用，弹层给提示）
+  });
+});
+
+/* ---- 客户选择弹层 ---- */
+function renderPickRows(rows) {
+  var $tb = $('#tbl-pick-cust tbody');
+  $tb.empty();
+  if (!rows.length) { $tb.append('<tr><td colspan="3" class="hint">没有匹配的客户</td></tr>'); return; }
+  rows.forEach(function (c) {
+    var $tr = $('<tr>');
+    $('<td class="cell-pick" data-field="custName">').text(c.name).appendTo($tr);
+    $('<td class="cell-pick" data-field="custAddr">').text(c.addr).appendTo($tr);
+    $('<td>').append($('<button class="btn" type="button">选择</button>').on('click', function () { pickCustomer(c); })).appendTo($tr);
+    // 需求㉔ 口径：名称 / 地址单元格同样可点选
+    $tr.find('td.cell-pick').on('click', function () { pickCustomer(c); });
+    $tb.append($tr);
+  });
+}
+function openPick() { $('#modal-cust-pick').show(); }
+function closePick() { $('#modal-cust-pick').hide(); }
+function pickCustomer(c) {
+  PICKED = c;
+  $('#inp-c').val(c.name);
+  closePick();
+}
+function filterCustomers() {
+  var kw = ($('#cust-keyword').val() || '').trim();
+  renderPickRows(kw ? CUSTOMERS.filter(function (c) {
+    return (c.name || '').indexOf(kw) >= 0 || (c.addr || '').indexOf(kw) >= 0;
+  }) : CUSTOMERS);
+}
+
+$(function () {
+  $('#btn-pick-c').on('click', openPick);
+  $('#btn-pick-close').on('click', closePick);
+  $('#btn-cust-search').on('click', filterCustomers);
+  $('#cust-keyword').on('keyup', function (e) { if (e.key === 'Enter') filterCustomers(); });
+  $('#modal-cust-pick').on('click', function (e) { if (e.target === this) closePick(); });
+
+  // ② 取消 ⇒ 交给父页关掉 iframe 弹层
+  $('#btn-cancel').on('click', function () {
+    window.parent.postMessage({ type: 'contract-cancel' }, '*');
+  });
+
+  // ③ 提交 ⇒ POST /api/contracts（必填校验与页面同口径）⇒ 成功后回传父页刷新列表
+  $('#btn-submit').on('click', function () {
+    var payload = {
+      name: ($('#inp-name').val() || '').trim(),
+      mu: $('#sel-mu').val(), file: $('#sel-fs').val(), type: $('#sel-type').val(),
+      cust: PICKED ? PICKED.id : '', bu: $('#sel-b').val(),
+    };
+    var miss = [];
+    if (!payload.name) miss.push('合同名称');
+    if (!payload.mu) miss.push('管理单元');
+    if (!payload.file) miss.push('帐套');
+    if (!payload.type) miss.push('合同类型');
+    if (!payload.cust) miss.push('客户');
+    if (!payload.bu) miss.push('业务单元');
+    if (miss.length) {
+      // 需求㛌：把未填的字段高亮出来（中文标签 → 控件 name 反查）
+      var KEYMAP = { '合同名称': '#inp-name', '管理单元': '#sel-mu', '帐套': '#sel-fs',
+                     '合同类型': '#sel-type', '客户': '#inp-c', '业务单元': '#sel-b' };
+      markMissing(miss.map(function (x) { return KEYMAP[x]; }).filter(Boolean));
+      setStatus('请填写全部必填字段：' + miss.join('、'));    // 状态行文字保留（自动化按它取值）
+      DEMO_TIPS.show('请填写全部必填字段：' + miss.join('、'), { type: 'warn' });
+      return;
+    }
+    $.ajax({ url: url('/api/contracts'), method: 'POST', contentType: 'application/json',
+             data: JSON.stringify(payload) })
+      .done(function (d) {
+        setStatus('已创建合同 ' + (d.no || d.name));
+        window.parent.postMessage({ type: 'contract-created', no: d.no, name: d.name }, '*');
+      })
+      .fail(function (xhr) {
+        var msg = '创建失败：' + xhr.status + (xhr.responseJSON && xhr.responseJSON.error ? ' ' + xhr.responseJSON.error : '');
+        setStatus(msg);
+        DEMO_TIPS.show(msg, { type: 'error' });
+      });
+  });
+});
+
+// 需求⑮：弹层里的身份 —— 允许匿名渲染（未登录也能看表单），但提交仍需身份；
+// 父页打开本页时会把 demo_role / token 带下来，接口侧照常校验。
+DEMO_AUTH.init({ allowAnonymous: true });
+</script>
+<script>
+/* 需求㛌（2026-09-29）：表单提交时把**未填的必填项**高亮出来（红框），并滚动/聚焦到第一个未填项；
+   用户一旦输入或选择，该项的高亮自动清除。keys 用控件的 name（各页控件的 name = 字段 key）。 */
+function markMissing(keys, root) {
+  root = root || document;
+  root.querySelectorAll('.err').forEach(function (e) { e.classList.remove('err'); });
+  var els = [];
+  (keys || []).forEach(function (k) {
+    if (!k) return;
+    // 传 CSS 选择器（'#inp-name'）直接用；传字段名则先按 name 再按 id 找
+    var e = /^[#.\[]/.test(k) ? root.querySelector(k)
+                               : (root.querySelector('[name="' + k + '"]') || root.querySelector('#' + k));
+    if (e) els.push(e);
+  });
+  els.forEach(function (e) { e.classList.add('err'); });
+  if (els[0]) { try { els[0].scrollIntoView({ block: 'center' }); els[0].focus(); } catch (err) {} }
+  return els.length;
+}
+/* 行级（订单行 / 发票行）：idxList = 0 起的行号数组，keys = 行内字段名 */
+function markRowsMissing(idxList, keys, root) {
+  root = root || document;
+  (idxList || []).forEach(function (i) {
+    (keys || []).forEach(function (k) {
+      var els = root.querySelectorAll('[name="' + k + '"]');
+      var el = els[i];
+      if (el && !String(el.value || '').trim()) el.classList.add('err');
+    });
+  });
+}
+(function () {
+  ['input', 'change'].forEach(function (t) {
+    document.addEventListener(t, function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('err')) e.target.classList.remove('err');
+    }, true);
+  });
+})();
+</script>
+</body>
+</html>

@@ -40,7 +40,7 @@ PY = sys.executable
 CASES = REPO / "cases"
 SCEN_DIR = REPO / "scenarios"
 ARCHIVE = REPO / "output" / f"archived_cases_scen1_{time.strftime('%Y%m%d_%H%M%S')}"
-QUICK_SCENARIO = SCEN_DIR / "contracts" / "contracts_search_by_no.yml"
+QUICK_SCENARIO = SCEN_DIR / "orders" / "orders_invoice_full_lifecycle.yml"
 
 sys.path.insert(0, str(REPO))
 

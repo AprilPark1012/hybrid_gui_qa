@@ -3,14 +3,34 @@
 <head>
 <meta charset="utf-8">
 <title>合同详情</title>
+<!--
+  合同详情页（需求㉜ · 2026-09-29 改为 Vue 实现 + iframe 承载）：
+  · 主入口：合同列表页点**合同编号** ⇒ 弹层 iframe（本页 ?no=HT-xxxx&embed=1）—— 不再跳转整页
+  · 弹层内点「编辑」⇒ 本页发 postMessage，父页把**同一个弹层**里的 iframe 换成 contract_edit.html（不叠层）
+  · 兼容两种宿主：embed=1（弹层 iframe：隐藏顶部栏/返回按钮，关闭由父页承担）
+                    独立页（直接开 URL：保留顶部栏 + 返回按钮 + from=order 关 tab 的老行为）
+  · 本页仍以 /api/contract?no= 的**真实记录**渲染（不再按编号推导，2026-09-14 口径）
+
+  契约（不许破）：
+    ① 就绪契约 body[data-hybrid-ready] 0 → 1
+    ② 埋点口径 C：只有顶层容器带 data-testid（detail-status / btn-edit 所在容器）；行/单元格不带
+    ③ 保留「搜索」控件（#tb-detail-keyword / #btn-detail-search）—— P3「跨页同名唯一化」用例依赖
+       「详情页也有一个名叫『搜索』的按钮」
+    ④ 字段节点 id 保留 d-no / d-name / d-mu / d-file / d-type / d-cust / d-bu（老用例按 id 取值）
+-->
+<script src="vendor/vue.global.prod.js"></script>
+<script src="auth.js"></script>
 <style>
   *{box-sizing:border-box;}
   body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:#f5f6f8;color:#222;}
+  body.embed{background:#fff;}
   .topbar{display:flex;justify-content:space-between;align-items:center;background:#fff;
           border-bottom:1px solid #e3e6ea;padding:14px 22px;}
+  body.embed .topbar{display:none;}
   h1{font-size:18px;margin:0;}
   .wrap{max-width:820px;margin:22px auto;background:#fff;border:1px solid #e3e6ea;
         border-radius:8px;padding:22px 26px;}
+  body.embed .wrap{margin:12px;border-color:#eceef1;}
   table{width:100%;border-collapse:collapse;font-size:14px;}
   th,td{text-align:left;padding:9px 8px;border-bottom:1px solid #eef0f3;}
   th{width:150px;color:#666;font-weight:400;background:#fafbfc;}
@@ -20,59 +40,53 @@
   .primary{background:#2f6fed;border-color:#2f6fed;color:#fff;}
   #status{margin-top:14px;color:#0a0;}
   .empty{color:#c0392b;}
+  .nav-user{margin-left:12px;}
 </style>
 </head>
-<!-- 就绪契约（F1）：静态声明 data-hybrid-ready="0"，数据渲染完成后由 JS 置 "1"；
-     测试框架 goto 之后等它 ⇒ 慢机器/高并发下不再「页面还在取数、脚本已经开始点」。 -->
+<!-- 就绪契约（F1）：静态声明 data-hybrid-ready="0"，数据渲染完成后由 JS 置 "1" -->
 <body data-hybrid-ready="0">
-<!-- 2026-09-14 改造（AprilPark1012拍板需求②）：这页不再**按编号序号推导**字段，而是直接读服务端
-     /api/contract?no=<编号> 的**真实记录** —— 所以新建的合同在详情页看到的是它真正的客户，
-     列表页与详情页的七个字段都是同一条记录、天然一致。
-     查不到编号时如实报「未找到该合同」，**不再给任何编号都编一份出来**（以前 HT-2500
-     这种不存在的编号也会渲染出客户，会让人误以为数据是对的）。 -->
-<div class="topbar">
-  <h1>合同详情</h1>
-  <span>
-    <span id="hint" style="font-size:13px;color:#888;"></span>
-    <!-- 2026-09-17 需求⑥：从订单页点「合同编号」打开时标记来源（此时按钮文案是「返回」且关闭本 tab） -->
-    <span id="from-hint" style="font-size:13px;color:#2f6fed;margin-left:8px;"></span>
-  </span>
-  <!-- 需求⑮：登录身份 + 超管切换角色的头像（auth.js 渲染） -->
-  <div id="nav-user" class="nav-user"></div>
+<div id="app" :class="{embed: embed}">
+  <div class="topbar">
+    <h1>合同详情</h1>
+    <span>
+      <span id="hint" style="font-size:13px;color:#888;">{{ hint }}</span>
+      <span id="from-hint" style="font-size:13px;color:#2f6fed;margin-left:8px;">{{ fromHint }}</span>
+    </span>
+    <div id="nav-user" class="nav-user"></div>
+  </div>
+
+  <div class="wrap">
+    <table aria-label="合同详情">
+      <tbody>
+        <tr><th>合同编号</th><td id="d-no">{{ rec.no || '—' }}</td></tr>
+        <tr><th>合同名称</th><td id="d-name">{{ rec.name || '—' }}</td></tr>
+        <tr><th>管理单元</th><td id="d-mu">{{ rec.mu || '—' }}</td></tr>
+        <tr><th>帐套</th><td id="d-file">{{ rec.file || '—' }}</td></tr>
+        <tr><th>合同类型</th><td id="d-type">{{ rec.type || '—' }}</td></tr>
+        <tr><th>客户</th><td id="d-cust">{{ rec.custName || '—' }}</td></tr>
+        <tr><th>业务单元</th><td id="d-bu">{{ rec.bu || '—' }}</td></tr>
+      </tbody>
+    </table>
+
+    <div class="actions">
+      <!-- embed（弹层 iframe）：返回 = 提示父页关闭弹层；独立页：返回列表 / from=order 时是关 tab -->
+      <a class="btn" id="btn-back" href="/" @click.prevent="onBack">{{ backText }}</a>
+      <!-- 2026-09-29（需求）：编辑需要**合同管理员**角色（超管须先切角色）——服务端 may_edit 是权威闸，这里让用户当场看到原因 -->
+      <button class="primary" id="btn-edit" type="button" data-perm="create_contract"
+              data-perm-tip="「编辑合同」需要合同管理员角色：当前不是合同管理员，不能编辑合同（可用右上角头像切换角色）"
+              @click="onEdit">编辑</button>
+    </div>
+    <!-- 这页也有一个「搜索」—— 故意与列表页同名，用来真页验证 P3 的「跨页同名唯一化」 -->
+    <div class="actions" style="align-items:center;">
+      <input id="tb-detail-keyword" placeholder="输入合同编号搜索其他合同" autocomplete="off"
+             style="font:inherit;flex:1;padding:7px 10px;border:1px solid #cfd4da;border-radius:6px;"
+             v-model.trim="kw" @keyup.enter="onSearch">
+      <button id="btn-detail-search" type="button" @click="onSearch">搜索</button>
+    </div>
+    <div id="status" data-testid="detail-status" :class="{empty: isError}">{{ status }}</div>
+  </div>
 </div>
 
-<div class="wrap">
-  <table aria-label="合同详情">
-    <tbody>
-      <tr><th>合同编号</th><td id="d-no">—</td></tr>
-      <tr><th>合同名称</th><td id="d-name">—</td></tr>
-      <tr><th>管理单元</th><td id="d-mu">—</td></tr>
-      <tr><th>帐套</th><td id="d-file">—</td></tr>
-      <tr><th>合同类型</th><td id="d-type">—</td></tr>
-      <tr><th>客户</th><td id="d-cust">—</td></tr>
-      <tr><th>业务单元</th><td id="d-bu">—</td></tr>
-    </tbody>
-  </table>
-
-  <div class="actions">
-    <!-- 正常入口（从合同列表点进来）：返回列表 = 回合同列表页。
-         注意：2026-09-17 需求⑥ —— 从**订单页**点「合同编号」进来时（?from=order），
-         本按钮文案变成「返回」，点击是**关闭本 tab**（回到订单系统页面）。见下方 applyBackMode()。 -->
-    <a class="btn" id="btn-back" href="/">返回列表</a>
-    <button class="primary" id="btn-edit" type="button">编辑（未接入）</button>
-  </div>
-  <!-- 2026-09-13：这页也有一个「搜索」—— 故意与列表页同名，用来真页验证
-       P3 的「跨页同名唯一化」（探测后自动变成 搜索@列表页 / 搜索@详情页） -->
-  <div class="actions" style="align-items:center;">
-    <input id="tb-detail-keyword"
-           placeholder="输入合同编号搜索其他合同" autocomplete="off"
-           style="font:inherit;flex:1;padding:7px 10px;border:1px solid #cfd4da;border-radius:6px;">
-    <button id="btn-detail-search" type="button">搜索</button>
-  </div>
-  <div id="status" data-testid="detail-status"></div>
-</div>
-
-<script src="auth.js"></script>
 <script>
 // 分区（F6）+ 就绪契约（F1）：与列表页同一套约定（window.__HYBRID_W / body[data-hybrid-ready]）
 const W = (window.__HYBRID_W || '').toString().trim();
@@ -82,83 +96,66 @@ function apiUrl(path){
 }
 function markReady(){ document.body.dataset.hybridReady = '1'; }
 
-const FIELDS = {
-  'd-no':   r => r.no,
-  'd-name': r => r.name,
-  'd-mu':   r => r.mu,
-  'd-file': r => r.file,
-  'd-type': r => r.type,
-  'd-cust': r => r.custName,
-  'd-bu':   r => r.bu,
-};
+const Q = new URLSearchParams(location.search);
+const NO = Q.get('no') || '';
+const EMBED = Q.get('embed') === '1';                       // 弹层 iframe 宿主
+const FROM_ORDER = (Q.get('from') || '') === 'order';       // 需求⑥：从订单页新开 tab 进来
 
-// ---- 来源模式（2026-09-17 需求⑥）----
-// 从订单页点「合同编号」是用 target=_blank **新开 tab** 打开本页（带 ?from=order）：
-//   · 按钮文案「返回列表」→「返回」
-//   · 点击它 **关闭本 tab**（回到订单系统页面）
-// 用 window.close()：只对「脚本打开的窗口」有效 —— 正常路径满足；
-// 若是手工粘 URL 打开的 tab（浏览器不允许脚本关它），锚点默认跳转兜底回订单列表，不会卡死。
-const fromOrder = (new URLSearchParams(location.search).get('from') || '') === 'order';
-function applyBackMode(){
-  if(!fromOrder) return;
-  const back = document.getElementById('btn-back');
-  back.textContent = '返回';
-  back.setAttribute('href', '/orders.html');           // close 被拒时的兜底落点（不 preventDefault）
-  back.addEventListener('click', ()=>{ window.close(); });
-  document.getElementById('from-hint').textContent = '从订单系统打开';
-}
-
-async function render(){
-  const no = new URLSearchParams(location.search).get('no') || '';
-  const st = document.getElementById('status');
-  if(!/^HT-\d+$/.test(no)){
-    st.textContent = '缺少或非法的合同编号（示例：/contract_detail.html?no=HT-1005）';
-    st.className = 'empty';
-    document.getElementById('hint').textContent = '请带 ?no= 参数';
-    markReady();     // 参数非法也算"页面已定局"，否则测试会一直等就绪
-    return;
-  }
-  const resp = await fetch(apiUrl('/api/contract?no=' + encodeURIComponent(no)));
-  if(!resp.ok){
-    // 查不到就如实说 —— 绝不按编号编一份出来（那会让人以为数据是对的）
-    const body = await resp.json().catch(()=>({}));
-    st.textContent = body.error || ('未找到该合同: ' + no);
-    st.className = 'empty';
-    document.getElementById('hint').textContent = no;
-    markReady();     // 查不到也是"已定局"，测试该看到的是 404 文案
-    return;
-  }
-  const r = await resp.json();
-  for(const [id, pick] of Object.entries(FIELDS)){
-    document.getElementById(id).textContent = pick(r);
-  }
-  const dCust = document.getElementById('d-cust');
-  dCust.dataset.cust = r.cust || '';       // 客户编号也留一份，便于按编号核对跨页一致
-  document.getElementById('hint').textContent = r.no;
-  st.textContent = '已加载详情: ' + r.no + ' ' + r.name;
-  markReady();
-}
-applyBackMode();   // 需求⑥：从订单页（?from=order）进来时，按钮变「返回」且点击关本 tab
-render();
-// 需求⑮：登录与角色（未登录 ⇒ 跳 /login.html；已登录 ⇒ 右上角头像）
+const { createApp } = Vue;
+createApp({
+  data() {
+    return {
+      embed: EMBED, no: NO, kw: '',
+      rec: {}, status: '', isError: false,
+      hint: EMBED ? '' : '合同详情',
+      fromHint: FROM_ORDER ? '从订单系统打开' : '',
+    };
+  },
+  computed: {
+    backText() { return EMBED ? '关闭' : (FROM_ORDER ? '返回' : '返回列表'); },
+  },
+  async mounted() {
+    if (EMBED) document.body.classList.add('embed');
+    if (!/^HT-\d+$/.test(this.no)) {
+      this.status = '缺少或非法的合同编号（示例：/contract_detail.html?no=HT-1005）';
+      this.isError = true;
+      this.hint = '请带 ?no= 参数';
+      markReady();                  // 参数非法也算"页面已定局"，否则测试会一直等就绪
+      return;
+    }
+    await this.load();
+    markReady();
+  },
+  methods: {
+    async load() {
+      try {
+        const r = await fetch(apiUrl('/api/contract?no=' + encodeURIComponent(this.no)));
+        if (!r.ok) { this.rec = {}; this.isError = true; this.status = '未找到该合同 ' + this.no; return; }
+        this.rec = await r.json();
+      } catch (e) { this.isError = true; this.status = '取数失败：' + e.message; }
+    },
+    onBack() {
+      if (EMBED) { window.parent.postMessage({ type: 'contract-detail-close' }, '*'); return; }
+      if (FROM_ORDER) { window.close(); return; }        // 脚本打开的 tab 才关得掉；否则走默认 href 兜底
+      location.href = DEMO_AUTH.href('/contracts.html');
+    },
+    // 需求㉜：编辑 ⇒ 弹层内切换（父页换 src）；独立页则真跳转到编辑页
+    onEdit() {
+      if (!this.rec.no) return;
+      if (EMBED) { window.parent.postMessage({ type: 'contract-edit-request', no: this.rec.no }, '*'); return; }
+      const q = new URLSearchParams(location.search); q.delete('embed'); q.set('no', this.rec.no);
+      location.href = DEMO_AUTH.href('/contract_edit.html?' + q.toString());
+    },
+    onSearch() {
+      const t = this.kw.trim();
+      if (!/^HT-\d+$/.test(t)) { this.isError = true; this.status = '请输入合同编号（形如 HT-1005）'; return; }
+      if (EMBED) { window.parent.postMessage({ type: 'contract-detail-open', no: t }, '*'); return; }
+      location.href = DEMO_AUTH.href('/contract_detail.html?no=' + encodeURIComponent(t));
+    },
+  },
+}).mount('#app');
+// 需求⑮：登录与角色（未登录 ⇒ 跳 /login.html；已登录 ⇒ 按 data-perm 置灰 + 右上角头像）
 DEMO_AUTH.init();
-
-// 详情页也可按编号搜索（跳到另一份合同的详情）—— 与列表页的「搜索」同名，
-// 用于验证跨页同名唯一化；点搜索后跳到对应详情（不存在则由上面如实报「未找到」）。
-document.getElementById('btn-detail-search').addEventListener('click', ()=>{
-  const kw = (document.getElementById('tb-detail-keyword').value || '').trim();
-  const m = kw.match(/(\d{4})/);
-  const st = document.getElementById('status');
-  if(!m){ st.textContent = '请输入合同编号（如 1005）'; st.className=''; return; }
-  location.href = '/contract_detail.html?no=HT-' + m[1];
-});
-</script>
-<script>
-// 需求⑱：合同详情页的状态提示同步弹「弹出框 tips」
-new MutationObserver(() => {
-  const el = document.getElementById('status');
-  if (el && el.textContent.trim()) window.DEMO_TIPS.show(el.textContent.trim());
-}).observe(document.getElementById('status'), { childList: true, characterData: true, subtree: true });
 </script>
 </body>
 </html>

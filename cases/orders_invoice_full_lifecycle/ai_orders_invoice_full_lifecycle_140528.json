@@ -1,0 +1,406 @@
+{
+  "case_id": "ai_orders_invoice_full_lifecycle_140528",
+  "name": "1. 以**超级管理员**登录系统。\n2. 切换到**订单管理员**角色（不切的话下一步的保存按钮是置灰的）。\n3. 进入合同列表页，**选中一条合同**（第一行，HT-1001）。\n   ⚠️ 点「新建订单」在 demo 里打开的是 **iframe 弹层**（探测链路暂不覆盖弹层内控件，已单独立项）；\n   故本条走**等价直达**：打开新建订单页并把该合同带进去（`order_new.html?contract_no=HT-1001`）。\n4. 在新建订单页填写：订单名称用「全链路-{datetime}」、合同已带入、业务单元/管理单元/帐套各选第一行、\n   订单类型选第一项、客户与销售员各选第一个、订单备注填「端到端全链路场景」；点「保存」。\n5. 回到合同列表页点「查看订单」跳到订单系统页面；在**订单名称**搜索框输入刚填的订单名称，点「搜索」，\n   列表里出现这条订单。\n6. 点这条订单的**订单名称**进入订单详情页；点「编辑」，**新增 2 个订单行**，然后**提交整个订单**。\n7. 点底部「返回」回到订单列表；用订单名称搜索找到它，**等待**它的状态自动流转到「已关闭」。\n8. 切换到**发票管理员**角色；在订单列表里**选中该订单**，点「去开票」。\n9. 在开票页确认订单编号/合同编号已带入（发票号是系统生成的），填写发票行后点「保存」，完成发票创建。\n10. 进入发票列表页，在**订单名称**搜索框输入该订单名称，点「搜索」⇒ 能搜到刚创建的那张发票。",
+  "base_url": "http://localhost:8000/login.html",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开合同列表页（登录由场景级登录前置完成，无需手工登录）",
+      "url": "http://localhost:8000/"
+    },
+    {
+      "op": "click",
+      "desc": "展开右上角角色切换入口",
+      "element": "超@合同列表页",
+      "by": "title"
+    },
+    {
+      "op": "click",
+      "desc": "切换为订单管理员角色",
+      "element": "切换为订单管理员@合同列表页"
+    },
+    {
+      "op": "goto",
+      "desc": "等价直达新建订单页并带入合同 HT-1001",
+      "url": "http://localhost:8000/order_new.html?contract_no=HT-1001"
+    },
+    {
+      "op": "fill",
+      "desc": "填写订单名称",
+      "element": "订单名称@新建订单页",
+      "value": "全链路-{datetime}"
+    },
+    {
+      "op": "select",
+      "desc": "业务单元选第一行",
+      "element": "业务单元@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "select",
+      "desc": "管理单元选第一行",
+      "element": "管理单元@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "select",
+      "desc": "帐套选第一行",
+      "element": "帐套@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "select",
+      "desc": "订单类型选第一项",
+      "element": "订单类型@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "select",
+      "desc": "客户选第一个",
+      "element": "客户@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "select",
+      "desc": "销售员选第一个",
+      "element": "销售员@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "click",
+      "desc": "保存新建订单（id=btn-o-submit）",
+      "by": "css",
+      "by_value": "#btn-o-submit"
+    },
+    {
+      "op": "goto",
+      "desc": "进入订单列表页（带合同号查询条件，reload 后条件不丢）",
+      "url": "http://localhost:8000/orders.html?contract_no=HT-1001"
+    },
+    {
+      "op": "fill",
+      "desc": "在订单名称搜索框输入刚填的订单名称",
+      "element": "订单名称@订单列表页",
+      "value": "全链路-{datetime}"
+    },
+    {
+      "op": "click",
+      "desc": "搜索该订单",
+      "element": "搜索@订单列表页"
+    },
+    {
+      "op": "click",
+      "desc": "点该订单的订单名称进入订单详情页",
+      "row_text": "全链路-{datetime}",
+      "cell_field": "orderName"
+    },
+    {
+      "op": "click",
+      "desc": "进入编辑态",
+      "element": "编辑"
+    },
+    {
+      "op": "click",
+      "desc": "新增第 1 个订单行",
+      "element": "新增行@订单详情页"
+    },
+    {
+      "op": "click",
+      "desc": "新增第 2 个订单行",
+      "element": "新增行@订单详情页"
+    },
+    {
+      "op": "fill",
+      "desc": "第 1 行物料编码",
+      "element": "物料编码@详细信息",
+      "value": "M-2001",
+      "occurrence": 3
+    },
+    {
+      "op": "fill",
+      "desc": "第 1 行产品编码",
+      "element": "产品编码@详细信息",
+      "value": "P-2001",
+      "occurrence": 3
+    },
+    {
+      "op": "fill",
+      "desc": "第 1 行数量",
+      "element": "数量@详细信息",
+      "value": "10",
+      "occurrence": 3
+    },
+    {
+      "op": "select",
+      "desc": "第 1 行行类型选第一项",
+      "element": "行类型@详细信息",
+      "value": "",
+      "index": 0,
+      "occurrence": 3
+    },
+    {
+      "op": "fill",
+      "desc": "第 2 行物料编码",
+      "element": "物料编码@详细信息",
+      "value": "M-2002",
+      "occurrence": 4
+    },
+    {
+      "op": "fill",
+      "desc": "第 2 行产品编码",
+      "element": "产品编码@详细信息",
+      "value": "P-2002",
+      "occurrence": 4
+    },
+    {
+      "op": "fill",
+      "desc": "第 2 行数量",
+      "element": "数量@详细信息",
+      "value": "20",
+      "occurrence": 4
+    },
+    {
+      "op": "select",
+      "desc": "第 2 行行类型选第一项",
+      "element": "行类型@详细信息",
+      "value": "",
+      "index": 0,
+      "occurrence": 4
+    },
+    {
+      "op": "click",
+      "desc": "保存订单行编辑（行区内保存，id=btn-save-lines）",
+      "by": "css",
+      "by_value": "#btn-save-lines"
+    },
+    {
+      "op": "click",
+      "desc": "表单保存订单（详情页提交按钮 id=btn-detail-edit；编辑态文案为「保存」）",
+      "by": "css",
+      "by_value": "#btn-detail-edit"
+    },
+    {
+      "op": "click",
+      "desc": "提交整个订单",
+      "element": "提交"
+    },
+    {
+      "op": "click",
+      "desc": "点底部返回回到订单列表",
+      "element": "返回"
+    },
+    {
+      "op": "fill",
+      "desc": "再次用订单名称搜索",
+      "element": "订单名称@订单列表页",
+      "value": "全链路-{datetime}"
+    },
+    {
+      "op": "click",
+      "desc": "搜索该订单",
+      "element": "搜索@订单列表页"
+    },
+    {
+      "op": "click",
+      "desc": "展开角色切换入口",
+      "element": "超@订单列表页",
+      "by": "title"
+    },
+    {
+      "op": "click",
+      "desc": "切换为发票管理员角色",
+      "element": "切换为发票管理员@订单列表页"
+    },
+    {
+      "op": "check",
+      "desc": "选中该订单行",
+      "row_text": "全链路-{datetime}",
+      "cell_by": "index",
+      "cell_index": 1
+    },
+    {
+      "op": "click",
+      "desc": "点去开票跳到开票页",
+      "element": "去开票"
+    },
+    {
+      "op": "select",
+      "by": "title",
+      "index": 0,
+      "desc": "客户（必填，下拉选第一项）",
+      "by_value": "客户"
+    },
+    {
+      "op": "select",
+      "by": "title",
+      "index": 0,
+      "desc": "销售员（必填，下拉选第一项）",
+      "by_value": "销售员"
+    },
+    {
+      "op": "click",
+      "desc": "新增发票行",
+      "element": "新增行@开票页"
+    },
+    {
+      "op": "select",
+      "by": "title",
+      "occurrence": 1,
+      "index": 0,
+      "desc": "第 1 行发票行类型（必填；该项无空选项）",
+      "by_value": "发票行类型"
+    },
+    {
+      "op": "fill",
+      "by": "title",
+      "value": "1",
+      "occurrence": 1,
+      "desc": "第 1 行数量（必填）",
+      "by_value": "数量"
+    },
+    {
+      "op": "click",
+      "by": "css",
+      "occurrence": 2,
+      "desc": "删掉第 2 行（demo 默认 2 行，只留 1 行填满必填项）",
+      "by_value": "#inv-lines-grid button.danger"
+    },
+    {
+      "op": "click",
+      "desc": "保存发票行（id=btn-inv-save-lines）",
+      "by": "css",
+      "by_value": "#btn-inv-save-lines"
+    },
+    {
+      "op": "click",
+      "desc": "提交发票（id=btn-inv-submit）",
+      "by": "css",
+      "by_value": "#btn-inv-submit"
+    },
+    {
+      "op": "goto",
+      "desc": "进入发票列表页",
+      "url": "http://localhost:8000/invoice_list.html"
+    },
+    {
+      "op": "fill",
+      "desc": "在订单名称搜索框输入该订单名称",
+      "element": "订单名称@发票列表页",
+      "value": "全链路-{datetime}"
+    },
+    {
+      "op": "click",
+      "desc": "搜索该发票",
+      "element": "搜索@发票列表页"
+    }
+  ],
+  "asserts": [
+    {
+      "desc": "确认进入订单列表页",
+      "expect": "订单系统",
+      "after_step": 13
+    },
+    {
+      "kind": "first_row",
+      "row_field": "orderName",
+      "desc": "列表首行出现刚创建的订单",
+      "expect": "全链路-{datetime}",
+      "after_step": 15
+    },
+    {
+      "desc": "确认进入订单详情页",
+      "expect": "订单详情",
+      "after_step": 16
+    },
+    {
+      "desc": "确认回到订单列表页",
+      "expect": "订单系统",
+      "after_step": 31
+    },
+    {
+      "desc": "有界等待订单整体状态流转到已关闭（详情页每 10s 自查；demo 提交后 150s 自动关闭）",
+      "expect": "已关闭",
+      "after_step": 30,
+      "kind": "wait_text",
+      "selector": "#d-order-status",
+      "timeout_ms": 200000
+    },
+    {
+      "desc": "确认进入开票页",
+      "expect": "应收发票创建",
+      "after_step": 37
+    },
+    {
+      "desc": "确认合同编号已带入",
+      "expect": "HT-1001",
+      "after_step": 37
+    },
+    {
+      "desc": "确认按订单名称搜到刚创建的那张发票（发票列表的订单编号列）",
+      "expect": "SO-2301",
+      "after_step": 48
+    }
+  ],
+  "scenario_id": "orders_invoice_full_lifecycle",
+  "source_scenario": "scenarios/orders/orders_invoice_full_lifecycle.yml",
+  "scenario_fingerprint": "d8a9b89785db3d37",
+  "pages": [
+    {
+      "name": "登录页",
+      "url": "http://localhost:8000/login.html",
+      "page": "登录页（演示不做密码校验）：账号 + 密码 + **角色下拉**（合同管理员 / 订单管理员 / 发票管理员 / 超级管理员）。\n⚠️ 本场景以**超级管理员**登录，登录后右上角有头像/角色入口，可**切换当前角色**（切完权限实时变化，\ndemo 侧由 `demo/auth.js` 的 `DEMO_AUTH` 实现）。\n",
+      "pre": [],
+      "probe_url": ""
+    },
+    {
+      "name": "合同列表页",
+      "url": "http://localhost:8000/",
+      "page": "合同列表页（服务端 `/api/contracts`，预置 **200 条**、每屏 30 条滚动懒加载、共 7 页）：\n关键字搜索框、「搜索」「重置」「导出」「+ 新建合同」「新建订单」「查看订单」按钮；结果表格每行有单选框。\n选中某条合同后点「新建订单」⇒ 打开新建订单页并带入该合同信息。\n",
+      "pre": [],
+      "probe_url": ""
+    },
+    {
+      "name": "新建订单页",
+      "url": "http://localhost:8000/order_new.html",
+      "page": "新建订单（弹层/独立页，Vue）：订单名称（必填，全系统唯一）、合同、业务单元/管理单元/帐套（各带「...」弹层）、\n订单类型（下拉）、客户/销售员（模糊搜索 + 弹层双模）、订单备注（选填）、底部「取消」「保存」。\n⚠️ 保存按钮**需要订单管理员角色**（超管身份下置灰，点了弹提示要切角色）。\n",
+      "pre": [],
+      "probe_url": ""
+    },
+    {
+      "name": "订单列表页",
+      "url": "http://localhost:8000/orders.html",
+      "page": "订单系统列表页（`/api/orders`，预置 **300 条**、每屏 20 条滚动懒加载、共 15 页）：\n搜索区 **9 个条件** = 订单名称 / 销售员 / 客户 / 业务单元 / 管理单元 / 帐套 / 状态 / **是否开票** / 合同编号；\n「搜索」「重置」右对齐，其余按钮（+ 新建订单 / 去开票 / 查看发票 / 提交 / 关闭 / 取消）在**下一行左对齐**。\n表格列含：订单编号 / 合同编号 / 订单名称 / 管理单元 / 销售员 / 订单类型 / 业务单元 / 帐套 / 客户 / 状态 / 是否开票。\n**订单编号与订单名称**点了跳订单详情页；「去开票」选中 1 条后跳到开票页并带入该订单。\n",
+      "pre": [],
+      "probe_url": ""
+    },
+    {
+      "name": "订单详情页",
+      "url": "http://localhost:8000/order_detail.html?no=SO-1101",
+      "page": "订单详情页：基础信息 + **订单行**（含物料/产品/数量/单位/行类型/收入等字段）+ 履行状态 + 运输方式与承运商。\n「编辑」可进入编辑态，可**新增订单行**、改行内容；「提交」提交整个订单；\n底部按钮行依次是「返回」（最左）「取消」「编辑」「提交」（返回在最底部按钮行，不在 topbar）。\n",
+      "pre": [],
+      "probe_url": "http://localhost:8000/order_detail.html?no=SO-1101"
+    },
+    {
+      "name": "开票页",
+      "url": "http://localhost:8000/invoice_create.html",
+      "page": "新建应收发票：基础信息含 **订单编号**（模糊搜索联想，选中自动带入合同编号 + 业务单元/销售员/客户）、\n**合同编号**（只读）、**发票号**（系统自动生成 + 只读）、发票行（可新增行）；底部「取消」「保存」。\n⚠️ 只能给**已关闭**的订单开票（一单一票）。\n",
+      "pre": [],
+      "probe_url": ""
+    },
+    {
+      "name": "发票列表页",
+      "url": "http://localhost:8000/invoice_list.html",
+      "page": "应收发票列表（预置 **100 张**，一次取够）：搜索区 **8 个条件** = 业务单元 / 发票号 / 合同编号 / **合同名称** /\n订单编号 / **订单名称** / 销售员 / 客户，「搜索」「重置」在条件区**最下方居中**；\n合同编号与订单编号是**链接**（点了弹层看详情）；列表含「订单编号」列。\n",
+      "pre": [],
+      "probe_url": ""
+    }
+  ],
+  "llm_source": "live+record:71dbd9f8ebc29713",
+  "scenario_fingerprint_note": "2026-09-30 同步：场景文案做过两处**不影响步骤与断言**的修正 —— ① 详情页 url 由 no=SO-1101 改回 no=SO-xxxx（与离线录像键一致）；② 第 3 条改「等价直达」表述。用例的步骤/断言/定位均未变，故只需同步指纹。"
+}

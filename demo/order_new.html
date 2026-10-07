@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>新建订单</title>
+<!--
+  新建订单 iframe 页（需求㛇 · 2026-09-29）：**合同列表页**点「新建订单」时弹出（单选选中某条合同后），
+  自动带入该合同的编号 / 客户 / 业务单元 / 管理单元 / 帐套 —— 所以从合同页下单不用再手填这些。
+
+  与订单列表页的「新建订单」弹层的关系：字段口径一致（基础信息 9 项 + 更多信息 4 项），
+  但省略了「订单行」（订单行在订单详情页维护）—— 因为这是从合同页下单的便捷入口。
+  表单样式与合同新建/编辑共用 vendor/contract-form.css（同一套控件尺寸与布局）。
+
+  契约（不许破）：
+    ① 就绪契约 body[data-hybrid-ready] 0 → 1
+    ② 埋点口径 C：只有顶层容器带 data-testid（form-order-new / status）；行/单元格/控件一律不带
+    ③ 分区 window.__HYBRID_W 优先，退回 ?w=
+    ④ 身份：引 auth.js；父页把 demo_role / token 带下来（否则 POST 401/403）
+    ⑤ 回传：postMessage —— 成功 {type:'order-created', no} · 取消 {type:'order-cancel'}
+    ⑥ 自动带入：读 ?contract_no= ⇒ GET /api/contract?no= ⇒ 预填（客户带的是**客户名称**，与订单口径一致）
+-->
+<script src="vendor/vue.global.prod.js"></script>
+<script src="auth.js"></script>
+<link rel="stylesheet" href="vendor/contract-form.css">
+</head>
+<body data-hybrid-ready="0">
+<div class="page" id="app">
+
+  <div class="title">新建订单</div>
+
+  <table class="form" id="form-order-new" data-testid="form-order-new" aria-label="新建订单">
+    <tbody>
+      <tr>
+        <td class="lbl"><span class="req">*</span>订单名称</td>
+        <td><input id="inp-o-name" type="text" title="订单名称" aria-label="订单名称" v-model.trim="form.name"
+                   placeholder="请输入订单名称" autocomplete="off"></td>
+      </tr>
+      <tr>
+        <td class="lbl">合同编号</td>
+        <td><input id="inp-o-contract" type="text" title="合同编号" aria-label="合同编号" :value="form.contract_no" readonly></td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>业务单元</td>
+        <td><select id="sel-o-bu" title="业务单元" aria-label="业务单元" v-model="form.bu">
+          <option value="">请选择</option><option v-for="v in dict.bu" :key="v" :value="v">{{ v }}</option>
+        </select></td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>管理单元</td>
+        <td><select id="sel-o-mu" title="管理单元" aria-label="管理单元" v-model="form.mu">
+          <option value="">请选择</option><option v-for="v in dict.mu" :key="v" :value="v">{{ v }}</option>
+        </select></td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>帐套</td>
+        <td><select id="sel-o-file" title="帐套" aria-label="帐套" v-model="form.file">
+          <option value="">请选择</option><option v-for="v in dict.file" :key="v" :value="v">{{ v }}</option>
+        </select></td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>订单类型</td>
+        <td><select id="sel-o-type" title="订单类型" aria-label="订单类型" v-model="form.order_type">
+          <option v-for="v in ORDER_TYPES" :key="v" :value="v">{{ v }}</option>
+        </select></td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>客户</td>
+        <td><select id="sel-o-cust" title="客户" aria-label="客户" v-model="form.cust">
+          <option value="">请选择</option>
+          <option v-for="c in customers" :key="c.id" :value="c.name">{{ c.name }}</option>
+        </select></td>
+      </tr>
+      <tr>
+        <td class="lbl"><span class="req">*</span>销售员</td>
+        <td><select id="sel-o-salesman" title="销售员" aria-label="销售员" v-model="form.salesman">
+          <option value="">请选择</option><option v-for="s in salesmen" :key="s.id" :value="s.name">{{ s.name }}</option>
+        </select></td>
+      </tr>
+      <tr>
+        <td class="lbl">订单备注</td>
+        <td><input id="inp-o-remark" type="text" title="订单备注" aria-label="订单备注" v-model.trim="form.remark"
+                   placeholder="订单备注（可不填）" autocomplete="off"></td>
+      </tr>
+      <!-- ===== 更多信息（与订单详情页「更多信息」同四项）===== -->
+      <tr>
+        <td class="lbl">运输方式</td>
+        <td><select id="sel-o-transport" title="运输方式" aria-label="运输方式" v-model="form.transport">
+          <option value="">请选择</option><option v-for="v in dict.transport" :key="v" :value="v">{{ v }}</option>
+        </select></td>
+      </tr>
+      <tr>
+        <td class="lbl">创建人</td>
+        <td><input id="inp-o-creator" type="text" title="创建人" aria-label="创建人" v-model.trim="form.creator"
+                   placeholder="创建人" autocomplete="off"></td>
+      </tr>
+      <tr>
+        <td class="lbl">承运商</td>
+        <td><select id="sel-o-carrier" title="承运商" aria-label="承运商" v-model="form.carrier">
+          <option value="">请选择</option><option v-for="v in dict.carrier" :key="v" :value="v">{{ v }}</option>
+        </select></td>
+      </tr>
+      <tr>
+        <td class="lbl">销售渠道</td>
+        <td><input id="inp-o-channel" type="text" title="销售渠道" aria-label="销售渠道" v-model.trim="form.channel"
+                   placeholder="销售渠道" autocomplete="off"></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="actions">
+    <button id="btn-o-cancel" class="btn" type="button" @click="cancel">取消</button>
+    <!-- 2026-09-29（需求）：保存（新建订单）需要订单管理员角色 -->
+    <button id="btn-o-submit" class="btn primary" type="button" data-perm="create_order"
+            data-perm-tip="「保存」需要订单管理员角色：当前不是订单管理员，不能新建订单（可用右上角头像切换角色）"
+            @click="submit">保存</button>
+  </div>
+
+  <div id="status" data-testid="status">{{ status }}</div>
+</div>
+
+<script>
+// 分区（F6）+ 就绪契约（F1）
+const W = (window.__HYBRID_W || '').toString().trim();
+function apiUrl(path){
+  const u = !W ? path : path + (path.indexOf('?') >= 0 ? '&' : '?') + 'w=' + encodeURIComponent(W);
+  return DEMO_AUTH.url(u);
+}
+function markReady(){ document.body.dataset.hybridReady = '1'; }
+const Q = new URLSearchParams(location.search);
+const CONTRACT_NO = Q.get('contract_no') || '';
+const ORDER_TYPES = ['标准销售订单', '退货订单', '服务订单', '电商订单'];
+
+const { createApp } = Vue;
+createApp({
+  data() {
+    return {
+      ORDER_TYPES, contractNo: CONTRACT_NO,
+      form: { name: '', contract_no: CONTRACT_NO, bu: '', mu: '', file: '',
+              order_type: ORDER_TYPES[0], cust: '', salesman: '', remark: '',
+              transport: '', creator: '', carrier: '', channel: '直销' },
+      customers: [], salesmen: [], dict: { bu: [], mu: [], file: [], transport: [], carrier: [] },
+      status: '', carried: [],          // carried = 从合同带入的字段（状态行里回显，便于核对）
+    };
+  },
+  async mounted() {
+    await this.loadDicts();
+    [this.customers, this.salesmen] = await Promise.all([
+      (await fetch(apiUrl('/api/customers'))).json(),
+      (await fetch(apiUrl('/api/salesmen'))).json(),
+    ]);
+    if (this.contractNo) await this.carryFromContract();
+    // 创建人默认当前登录用户（可改）——与订单列表页同口径
+    this.form.creator = DEMO_AUTH.user ? (DEMO_AUTH.user.name || DEMO_AUTH.user.user || '') : '';
+    if (!this.form.name) this.form.name = this.defaultName();
+    markReady();
+  },
+  methods: {
+    async loadDicts() {
+      for (const k of ['bu', 'mu', 'file', 'transport', 'carrier']) {
+        this.dict[k] = (await (await fetch(apiUrl('/api/dict?kind=' + k))).json()).values || [];
+      }
+    },
+    /* 需求㛇：自动带入合同信息 —— 编号 / 客户（名称口径）/ 业务单元 / 管理单元 / 帐套 */
+    async carryFromContract() {
+      const r = await fetch(apiUrl('/api/contract?no=' + encodeURIComponent(this.contractNo)));
+      if (!r.ok) { this.status = '未找到该合同 ' + this.contractNo; return; }
+      const c = await r.json();
+      this.form.contract_no = c.no;
+      if (c.custName) this.form.cust = c.custName;
+      if (c.bu) this.form.bu = c.bu;
+      if (c.mu) this.form.mu = c.mu;
+      if (c.file) this.form.file = c.file;
+      this.contractName = c.name || '';
+      this.carried = ['合同编号', '客户', '业务单元', '管理单元', '帐套'].filter(k => {
+        const map = { '合同编号': c.no, '客户': c.custName, '业务单元': c.bu, '管理单元': c.mu, '帐套': c.file };
+        return !!map[k];
+      });
+      this.status = '已从合同 ' + c.no + ' 带入：' + this.carried.join(' / ') + (c.name ? '（' + c.name + '）' : '');
+    },
+    defaultName() {
+      const short = (this.form.cust || '').slice(0, 4);
+      const m = new Date().getMonth() + 1;
+      return (short ? short : '新') + m + '月新建订单';
+    },
+    async submit() {
+      const need = [['name', '订单名称'], ['bu', '业务单元'], ['mu', '管理单元'], ['file', '帐套'],
+                    ['order_type', '订单类型'], ['cust', '客户'], ['salesman', '销售员']];
+      const missing = need.filter(([k]) => !String(this.form[k] || '').trim()).map(([, l]) => l);
+      if (missing.length) {
+        // 需求㛌：未填字段高亮（本页控件按 id 定位）
+        markMissing(need.filter(([k]) => !String(this.form[k] || '').trim()).map(([k]) => ({
+          name: '#inp-o-name', bu: '#sel-o-bu', mu: '#sel-o-mu', file: '#sel-o-file',
+          order_type: '#sel-o-type', cust: '#sel-o-cust', salesman: '#sel-o-salesman' }[k])));
+        this.status = '请填写全部必填字段：' + missing.join('、'); return;
+      }
+      const payload = {
+        name: this.form.name, contract_no: this.form.contract_no, bu: this.form.bu, mu: this.form.mu,
+        file: this.form.file, order_type: this.form.order_type, cust: this.form.cust,
+        salesman: this.form.salesman, remark: this.form.remark,
+        more: { transport: this.form.transport, creator: this.form.creator,
+                carrier: this.form.carrier, channel: this.form.channel },
+      };
+      const r = await fetch(apiUrl('/api/orders'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { this.status = d.error || ('保存失败（HTTP ' + r.status + '）'); return; }
+      this.status = '已新建订单 ' + d.no;
+      window.parent.postMessage({ type: 'order-created', no: d.no, contract_no: d.contract_no }, '*');
+    },
+    cancel() { window.parent.postMessage({ type: 'order-cancel' }, '*'); },
+  },
+}).mount('#app');
+// 2026-09-29（需求）：本页会被弹层 iframe 嵌入 ⇒ 必须自己 init
+// （父页的 gating 管不到 iframe 内），否则 data-perm 的置灰 + 点击拦截不生效。
+DEMO_AUTH.init();
+</script>
+<script>
+/* 需求㛌（2026-09-29）：表单提交时把**未填的必填项**高亮出来（红框），并滚动/聚焦到第一个未填项；
+   用户一旦输入或选择，该项的高亮自动清除。keys 用控件的 name（各页控件的 name = 字段 key）。 */
+function markMissing(keys, root) {
+  root = root || document;
+  root.querySelectorAll('.err').forEach(function (e) { e.classList.remove('err'); });
+  var els = [];
+  (keys || []).forEach(function (k) {
+    if (!k) return;
+    // 传 CSS 选择器（'#inp-name'）直接用；传字段名则先按 name 再按 id 找
+    var e = /^[#.\[]/.test(k) ? root.querySelector(k)
+                               : (root.querySelector('[name="' + k + '"]') || root.querySelector('#' + k));
+    if (e) els.push(e);
+  });
+  els.forEach(function (e) { e.classList.add('err'); });
+  if (els[0]) { try { els[0].scrollIntoView({ block: 'center' }); els[0].focus(); } catch (err) {} }
+  return els.length;
+}
+/* 行级（订单行 / 发票行）：idxList = 0 起的行号数组，keys = 行内字段名 */
+function markRowsMissing(idxList, keys, root) {
+  root = root || document;
+  (idxList || []).forEach(function (i) {
+    (keys || []).forEach(function (k) {
+      var els = root.querySelectorAll('[name="' + k + '"]');
+      var el = els[i];
+      if (el && !String(el.value || '').trim()) el.classList.add('err');
+    });
+  });
+}
+(function () {
+  ['input', 'change'].forEach(function (t) {
+    document.addEventListener(t, function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('err')) e.target.classList.remove('err');
+    }, true);
+  });
+})();
+</script>
+</body>
+</html>

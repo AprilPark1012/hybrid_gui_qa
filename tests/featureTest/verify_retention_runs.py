@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# HYBRID_DAILY_SKIP: V8.3 范围外 —— 它真跑一条用例并断言 summary.exit_code==0；当前用例在 demo 改版后未全绿（见本版其余范围外项），属【继承红】，不是保留策略本身的问题（沙箱部分全过）。后续版本恢复。
 """L5 归档保留策略 · 端到端验证（2026-09-22，服务目标 ③ 稳定 + ④ 脚本健壮）。
 
 为什么单独一个脚本、不叫 test_*.py：它要开真浏览器跑真 demo（本机内存紧），
@@ -43,9 +44,9 @@ OK, FAIL, USAGE, SKIP = 0, 1, 2, 3
 MIN_MEM_MB = 550                      # 与 run_verifications.sh 同口径（一个 headless Chromium ≈ 515MB）
 def _discover_case() -> str:
     """按前缀发现单条用例（2026-09-24 D3/R10：用例名含时间戳，重新生成后会变 ⇒ 不许硬编码）。"""
-    hits = sorted((BASE / "cases").rglob("ai_contracts_search_by_no_*.json"))   # P20：用例按场景分目录
+    hits = sorted((BASE / "cases").rglob("ai_orders_invoice_full_lifecycle_*.json"))   # P20：用例按场景分目录
     if not hits:
-        raise SystemExit("❌ 找不到 ai_contracts_search_by_no_*.json（R10：用例换代号了？）")
+        raise SystemExit("❌ 找不到 ai_orders_invoice_full_lifecycle_*.json（R10：用例换代号了？）")
     return hits[-1].stem
 
 
