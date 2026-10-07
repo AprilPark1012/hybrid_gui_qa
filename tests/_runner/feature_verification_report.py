@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 """「特性 × 验证结果」报告 —— 他 2026-10-07 定的口径（R7-g 第 5 步）。
 
-**为什么要它**：发内部口径邮件时必须**逐特性**标出验证结果（✅/❌/⏭️），
+**为什么要它**：发内部口径邮件时必须**逐特性**标出验证结果（[OK]/[NG]/[skip]），
 这样才能看出「哪个特性真的在被验证、哪个是空的」—— 而不是笼统说一句"测试都过了"。
 
 **特性从哪来**：`tests/特性N-<名>/` 的目录名（**唯一来源**，不另立清单 —— 另立必然漂移）。
 **一类**：跑一次 `pytest tests/ --junitxml=...`，按 `classname` 归到特性夹。
 **二类**：`verify_*.py` 按所在特性夹归类；结果来自 `--class2-log`（`run_verifications.py` 的日志）
         —— 二类要真浏览器 + 真 demo、约 11 分钟，所以**默认不现场跑**，而是读最近一次日志。
-**未验证标记**：特性夹里有 `UNVERIFIED.md` ⇒ 该特性标 ⏭️（有实现、无判据）。
+**未验证标记**：特性夹里有 `UNVERIFIED.md` -> 该特性标 [skip]（有实现、无判据）。
 
 用法：
   python tests/_runner/feature_verification_report.py                       # 只跑一类（快，~35s）
@@ -69,15 +69,15 @@ def class2_results(log_path: Path | None) -> dict[str, list[tuple[str, bool]]]:
         return out
     txt = log_path.read_text(encoding="utf-8", errors="replace")
     # runner 的日志是**分段式**：`———— [N/M] script.py ————` 后跟该脚本的输出，
-    # 段内出现 `✅ exit 0`（通过）/ `❌ exit N`（失败）；开头另有 `⏭️ script.py 不进日常：...`（跳过）。
-    # ⚠️ 别按单行 `N/M script exit N` 匹配 —— 实际格式不是那样（2026-10-07 踩过，二类列全空）。
-    skipped = set(re.findall(r"⏭️\s+(verify_\w+\.py)", txt))
+    # 段内出现 `[OK] exit 0`（通过）/ `[NG] exit N`（失败）；开头另有 `[skip] script.py 不进日常：...`（跳过）。
+    # [!] 别按单行 `N/M script exit N` 匹配 —— 实际格式不是那样（2026-10-07 踩过，二类列全空）。
+    skipped = set(re.findall(r"[skip]\s+(verify_\w+\.py)", txt))
     parts = re.split(r"—+\s*\[?\d+/\d+\]\s+(verify_\w+\.py)\s*—+", txt)
     for i in range(1, len(parts) - 1, 2):
         script, body = parts[i], parts[i + 1]
-        if re.search(r"✅\s*exit\s*0", body):
+        if re.search(r"[OK]\s*exit\s*0", body):
             good = True
-        elif re.search(r"❌\s*exit\s*[1-9]", body):
+        elif re.search(r"[NG]\s*exit\s*[1-9]", body):
             good = False
         else:
             continue
@@ -110,25 +110,25 @@ def main() -> int:
         total_f += f
         c2rows = c2.get(name, [])
         if p == 0 and f == 0:
-            c1s = "⏭️ **零判据**" if (d / "UNVERIFIED.md").is_file() else "⚠️ 无"
+            c1s = "[skip] **零判据**" if (d / "UNVERIFIED.md").is_file() else "[!] 无"
         else:
-            c1s = f"✅ {p}" if f == 0 else f"❌ {p} 过 / **{f} 红**"
+            c1s = f"[OK] {p}" if f == 0 else f"[NG] {p} 过 / **{f} 红**"
         if c2rows:
             okn = sum(1 for _, good in c2rows if good)
-            c2s = f"✅ {okn}/{len(c2rows)}" if okn == len(c2rows) else f"❌ {okn}/{len(c2rows)}"
+            c2s = f"[OK] {okn}/{len(c2rows)}" if okn == len(c2rows) else f"[NG] {okn}/{len(c2rows)}"
         else:
-            c2s = "—（未提供日志）" if not a.class2_log else "⏭️ 无"
+            c2s = "—（未提供日志）" if not a.class2_log else "[skip] 无"
         if (d / "UNVERIFIED.md").is_file():
-            status = "⏭️ **UNVERIFIED**（有实现、无判据）"
+            status = "[skip] **UNVERIFIED**（有实现、无判据）"
             unverified.append(name)
         elif f or (c2rows and not all(g for _, g in c2rows)):
-            status = "❌ 有红"
+            status = "[NG] 有红"
         elif p == 0:
-            status = "⚠️ 无判据、也无标记"
+            status = "[!] 无判据、也无标记"
         else:
-            status = "✅"
+            status = "[OK]"
         lines.append(f"| {name} | {c1s} | {c2s} | {status} |")
-        if status.startswith("❌"):
+        if status.startswith("[NG]"):
             any_red = True
 
     lines.append("")

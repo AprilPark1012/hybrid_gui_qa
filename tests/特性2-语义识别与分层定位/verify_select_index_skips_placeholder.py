@@ -3,13 +3,13 @@
 为什么（P22 批 5 · 真值 2026-09-30）：
   demo 的 `#sel-o-bu/#sel-o-mu/#sel-o-file/#sel-o-cust` 第一个 option 是 `value=""` 的
   「请选择」（`demo/order_new.html:45,51,57,69`），而场景里「各选第一项」的人话意思显然是
-  「选第一个**真**选项」⇒ `index=0` 必须落到 bu_a 之类。
-  踩过的坑：按字面 index 0 选到「请选择」⇒ 表单校验不过 ⇒ 订单建不出来 ⇒
+  「选第一个**真**选项」-> `index=0` 必须落到 bu_a 之类。
+  踩过的坑：按字面 index 0 选到「请选择」-> 表单校验不过 -> 订单建不出来 ->
   后续 first_row 断言报「表格没有第一行」（排查了两轮）。
 
 判据：
   1. 正向：`index=0` 之后该 select 的 value 非空、selectedIndex > 0；
-  2. 越界：`index` 超出真实选项数 ⇒ 明确报错（绝不静默选空）。
+  2. 越界：`index` 超出真实选项数 -> 明确报错（绝不静默选空）。
 """
 from __future__ import annotations
 
@@ -60,37 +60,37 @@ def main() -> int:
         sys.path.insert(0, "scripts/generated")
         import _harness as H                                        # noqa: E402
 
-        # ① 正向：index=0 ⇒ 第一个真选项（跳过「请选择」）
+        # (1) 正向：index=0 -> 第一个真选项（跳过「请选择」）
         H._act(page, "select", semantic="业务单元@新建订单页",
                primary=lambda p: p.get_by_role("combobox", name="业务单元"), index=0)
         val, idx = _only(page, "#sel-o-bu")
-        print(f"① index=0 ⇒ #sel-o-bu value={val!r} selectedIndex={idx}")
+        print(f"(1) index=0 -> #sel-o-bu value={val!r} selectedIndex={idx}")
         if not val.strip() or idx == 0:
             fails.append(f"index=0 选到了空占位（value={val!r} selectedIndex={idx}）")
 
-        # ② 反向自证：同一控件按字面选 0（不跳占位）会是空值 —— 证明①确实来自新逻辑
+        # (2) 反向自证：同一控件按字面选 0（不跳占位）会是空值 —— 证明(1)确实来自新逻辑
         page.select_option("#sel-o-bu", index=0)
         v0, i0 = _only(page, "#sel-o-bu")
-        print(f"② 字面 index=0（旧行为）⇒ value={v0!r} selectedIndex={i0}（应为空/0，作为对照）")
+        print(f"(2) 字面 index=0（旧行为）-> value={v0!r} selectedIndex={i0}（应为空/0，作为对照）")
 
-        # ③ 越界 ⇒ 明确报错
+        # (3) 越界 -> 明确报错
         try:
             H._act(page, "select", semantic="业务单元@新建订单页",
                    primary=lambda p: p.get_by_role("combobox", name="业务单元"), index=99)
             fails.append("越界 index=99 居然没报错（静默选中 = 假绿）")
         except AssertionError as e:
-            print(f"③ 越界 index=99 ⇒ 正确报错：{str(e)[:80]}")
+            print(f"(3) 越界 index=99 -> 正确报错：{str(e)[:80]}")
         except Exception as e:                                      # noqa: BLE001
-            print(f"③ 越界 index=99 ⇒ 报了别的异常 {type(e).__name__}: {str(e)[:80]}（可接受但非预期）")
+            print(f"(3) 越界 index=99 -> 报了别的异常 {type(e).__name__}: {str(e)[:80]}（可接受但非预期）")
 
         b.close()
 
     if fails:
-        print("\n❌ FAIL")
+        print("\n[NG] FAIL")
         for f in fails:
             print("   -", f)
         return 1
-    print("\n✅ PASS")
+    print("\n[OK] PASS")
     return 0
 
 

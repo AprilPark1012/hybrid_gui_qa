@@ -11,8 +11,8 @@ V8.0 已把仓库根 tools/ 改名成 build_tools/ —— 这里刻意保留旧�
 用户看到的因此是「框架坏了/依赖没装」，而不是「你该换个解释器跑」。
 
 本判据锁住修复后的两个语义（都用注入的假 probe，与真实环境解耦）：
-  ① **候选逐个探测**：第一个可用就用；不可用就继续试下一个 —— 最终选到能用的那个；
-  ② **显式指定不偷换**：`--python` / `HYBRID_PYTHON` 指了某个解释器，它缺依赖就必须停手报错，
+  (1) **候选逐个探测**：第一个可用就用；不可用就继续试下一个 —— 最终选到能用的那个；
+  (2) **显式指定不偷换**：`--python` / `HYBRID_PYTHON` 指了某个解释器，它缺依赖就必须停手报错，
      绝不静默换一个「能跑的」（否则用户以为在跑 A、实际跑的是 B）。
 外加：全候选都不可用时，诊断清单必须覆盖**每一个**候选（不能只说最后一个）。
 """
@@ -61,7 +61,7 @@ def test_candidates_without_venv(tmp_path):
     assert not any("仓库 venv" in s for s in srcs), srcs
 
 
-# ---------------- ① 逐个探测（本次修复的核心）----------------
+# ---------------- (1) 逐个探测（本次修复的核心）----------------
 
 def test_first_candidate_ok(tmp_path):
     vpy = tmp_path / ".venv" / "bin" / "python"
@@ -85,10 +85,10 @@ def test_falls_through_to_later_candidate(tmp_path):
     assert any(not good for _, _, good, _ in tried[:-1]), "失败过的候选要留在诊断清单里"
 
 
-# ---------------- ② 显式指定不偷换（负向）----------------
+# ---------------- (2) 显式指定不偷换（负向）----------------
 
 def test_explicit_unavailable_stops_immediately(tmp_path):
-    """★ 负向：显式指定的解释器缺依赖 ⇒ 立刻停，不许换别的（只探测 1 次）。"""
+    """★ 负向：显式指定的解释器缺依赖 -> 立刻停，不许换别的（只探测 1 次）。"""
     probe, calls = _probe_factory(["/usr/bin/python3"])          # 别的候选可用，但显式指定的不可用
     cmd, src, tried = chain.pick_python(tmp_path, explicit="/bad/python", probe=probe)
     assert cmd is None, f"显式指定不可用时必须返回 None，实际 {cmd}"

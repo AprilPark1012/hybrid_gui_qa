@@ -1,13 +1,13 @@
 """wait_text 的「限定范围」契约（P22 批 5；不需 demo/浏览器，秒级）。
 
 为什么（真值 2026-09-30）：
-  订单状态流转断言 `expect="已关闭"` 用全页 `get_by_text` ⇒ 命中**隐藏**的筛选下拉选项
-  `<option value="已关闭">`（demo/orders.html:531）⇒ 永远不可见 ⇒ 5s 超时失败。
+  订单状态流转断言 `expect="已关闭"` 用全页 `get_by_text` -> 命中**隐藏**的筛选下拉选项
+  `<option value="已关闭">`（demo/orders.html:531）-> 永远不可见 -> 5s 超时失败。
   正解是限定范围：在状态列 `td[data-field="orderStatus"]` 里等这段文本。
 
 判据：
-  1. 带 selector ⇒ 渲染出 selector 参数；
-  2. 不带 ⇒ 渲染出空 selector（向后兼容，行为不变）。
+  1. 带 selector -> 渲染出 selector 参数；
+  2. 不带 -> 渲染出空 selector（向后兼容，行为不变）。
 """
 from __future__ import annotations
 

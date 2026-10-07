@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # HYBRID_DAILY_SKIP: V8.3 范围外 —— 录像键 = sha256(场景文案 + 控件骨架)，本版两样都动过
-#   （场景文案重写 + demo 删冗余 testid）⇒ 现有录像必然不命中，需在能连外网、有 key 的机器上重录；
+#   （场景文案重写 + demo 删冗余 testid）-> 现有录像必然不命中，需在能连外网、有 key 的机器上重录；
 #   本版交付范围是「AI 订单→开票」这一条链路本身（其端到端执行已由该用例的真跑覆盖）。
 #   **后续版本重录录像后，删掉这一行即可恢复为日常二类验收**（在线版见 verify_e2e_scenario1_online.py）。
-"""E2E 场景1（离线回放端到端）—— 二类特性验证（R7 第 ④ 条 · 日常口径）。
+"""E2E 场景1（离线回放端到端）—— 二类特性验证（R7 第 (4) 条 · 日常口径）。
 
 **场景1 的完整链**：自然语言场景 → `explore --ai` 语义识别/编排 → 用例落 `cases/ai_*.json`
 → `generate` 生成脚本 + 数据分离 → `run` 执行。
@@ -17,16 +17,16 @@
 
 判据（每条都给命令级证据）：
   1. 前置·录像：`output/llm_cassettes/*.json` 有录像；没有则尝试从 `releases/*cassettes*.zip` 现取；
-     两条都无 ⇒ **SKIP exit 3**（不是失败，但**也不算通过**）
-  2. 前置·demo：被测应用可达（不可达 ⇒ FAIL，并提示 `python -m demo.app`）
-  3. 跑链：`offline_explore_chain.py --repo . --scenario <f> --run` ⇒ **exit 0**
+     两条都无 -> **SKIP exit 3**（不是失败，但**也不算通过**）
+  2. 前置·demo：被测应用可达（不可达 -> FAIL，并提示 `python -m demo.app`）
+  3. 跑链：`offline_explore_chain.py --repo . --scenario <f> --run` -> **exit 0**
   4. 产物：`cases/ai_*.json` **新增一条** —— 证明「自然语言 → 用例落盘 → 生成 → 执行」真的发生了，不是空跑
   5. 零残留：新增产物归档到 `output/archived_cases_<日期>/`，`cases/` 与 `scripts/datasets/` 回到跑前状态
-  6. **负向①**：录像目录指到空目录 ⇒ 链必须 **exit 2（前置不满足）且不产出任何用例**（没录像时不许假绿）
-  7. **负向②**：`--scenario` 指不存在的文件 ⇒ 必须非 0（不许静默跳过）
+  6. **负向(1)**：录像目录指到空目录 -> 链必须 **exit 2（前置不满足）且不产出任何用例**（没录像时不许假绿）
+  7. **负向(2)**：`--scenario` 指不存在的文件 -> 必须非 0（不许静默跳过）
 
 跑法（需 demo 在跑）：`python tests/特性7-离线回放/verify_e2e_scenario3_replay.py`
-退出码：0 通过 / 1 失败 / 2 用法 / 3 跳过（缺录像 ⇒ **不算通过**）
+退出码：0 通过 / 1 失败 / 2 用法 / 3 跳过（缺录像 -> **不算通过**）
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ CHAIN = REPO / "build_tools" / "offline_explore_chain.py"
 SCENARIO = REPO / "scenarios" / "orders" / "orders_invoice_full_lifecycle.yml"
 CASSETTE = REPO / "output" / "llm_cassettes"
 ARCHIVE = REPO / "output" / f"archived_cases_{time.strftime('%Y%m%d')}"
-BLACKHOLE = "http://127.0.0.1:9"          # LLM 端点指黑洞 ⇒ 「有没有偷偷联网」可证伪
+BLACKHOLE = "http://127.0.0.1:9"          # LLM 端点指黑洞 -> 「有没有偷偷联网」可证伪
 BASE = os.environ.get("HYBRID_BASE_URL") or "http://localhost:8000"
 OK, FAIL, USAGE, SKIP = 0, 1, 2, 3
 
@@ -66,11 +66,11 @@ def force_stdio() -> None:
 
 def ok(msg: str) -> None:
     _passed.append(msg)
-    print(f"  ✅ {msg}")
+    print(f"  [OK] {msg}")
 
 
 def bad(msg: str) -> None:
-    print(f"  ❌ {msg}")
+    print(f"  [NG] {msg}")
 
 
 def info(msg: str) -> None:
@@ -105,7 +105,7 @@ def ensure_cassettes() -> tuple[bool, str]:
                     n += 1
         if n:
             return True, f"从 {zips[-1].name} 取了 {n} 份录像到 {CASSETTE}"
-    return False, (f"没有可用录像（{CASSETTE} 为空，且 releases/ 里没有 *cassettes*.zip）⇒ "
+    return False, (f"没有可用录像（{CASSETTE} 为空，且 releases/ 里没有 *cassettes*.zip）-> "
                    f"无法验证场景1 离线链路（**不算通过**）")
 
 
@@ -124,7 +124,7 @@ def run_chain(*, cassette: str | None = None, scenario: Path | None = None,
                            stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                            errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
-        return 124, f"⏱️ 超时 {timeout}s ⇒ 已杀"
+        return 124, f"[time] 超时 {timeout}s -> 已杀"
     return p.returncode, (p.stdout or "")
 
 
@@ -136,11 +136,11 @@ def _tail(out: str, n: int = 10) -> str:
 def _regen() -> tuple[int, str]:
     """以当前 `cases/` 为准重新生成脚本与数据集。
 
-    ⚠️ 为什么必须做（2026-09-22 实测发现）：本判据内部的离线链会**跑一次 `generate`**，
+    [!] 为什么必须做（2026-09-22 实测发现）：本判据内部的离线链会**跑一次 `generate`**，
     于是重新生成出来的 `scripts/test_cases.py` 里**带着那条用例**；随后我们把它归档了，
     可产物还留着它的函数 —— 变成「孤儿测试」（用例已不在 `cases/`，脚本里却还有它）。
-    下一次一类自测的 `cases↔datasets 1:1` / 产物健康判据就会红，而且原因很难一眼看出。
-    ⇒ 口径：跑完链必须**把产物恢复到「以当前 cases/ 为准」的状态**（与负向验证段同一先例）。
+    下一次一类自测的 `cases<->datasets 1:1` / 产物健康判据就会红，而且原因很难一眼看出。
+    -> 口径：跑完链必须**把产物恢复到「以当前 cases/ 为准」的状态**（与负向验证段同一先例）。
     """
     env = dict(os.environ)
     env["PYTHONUTF8"] = "1"
@@ -150,19 +150,19 @@ def _regen() -> tuple[int, str]:
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                            encoding="utf-8", errors="replace", timeout=600)
     except subprocess.TimeoutExpired:
-        return 124, "⏱️ generate 超时"
+        return 124, "[time] generate 超时"
     return p.returncode, (p.stdout or "")
 
 
 def _snapshot() -> tuple[dict, dict]:
     """快照 `cases/ai_*.json` 与它们的数据集（内容级，不走 git）。
 
-    ⚠️ 为什么必须快照（2026-09-24 二分实验定位到本脚本）：
-    本脚本会**重新 explore 一遍场景**，而框架有一条正当规则「同一场景只保留一条当前 AI 用例」✗
-    ⇒ 回放时会**清掉该场景的旧用例**、再写入一条新的；可本脚本的"零残留"只归档**新增**的那条
-    ⇒ 结果：旧件被清 ✗ + 新件被归档 ✗ ⇒ 该场景**净剩 0 条** ✗✗
-    ⇒ 后面的 `verify_retention_runs` 就报"找不到样例用例"（0 秒红 ✓ 现场就是这么来的）
-    ⇒ 口径：**跑前快照、跑后被清掉的必须还原**（与"产物复原"同一性质：自己造的副作用自己收）。
+    [!] 为什么必须快照（2026-09-24 二分实验定位到本脚本）：
+    本脚本会**重新 explore 一遍场景**，而框架有一条正当规则「同一场景只保留一条当前 AI 用例」X
+    -> 回放时会**清掉该场景的旧用例**、再写入一条新的；可本脚本的"零残留"只归档**新增**的那条
+    -> 结果：旧件被清 X + 新件被归档 X -> 该场景**净剩 0 条** XX
+    -> 后面的 `verify_retention_runs` 就报"找不到样例用例"（0 秒红 v 现场就是这么来的）
+    -> 口径：**跑前快照、跑后被清掉的必须还原**（与"产物复原"同一性质：自己造的副作用自己收）。
     """
     cases = {p.name: p.read_bytes() for p in _CASES.rglob("ai_*.json")}
     ds: dict = {}
@@ -179,12 +179,12 @@ def _restore_missing(snap_cases: dict, snap_ds: dict) -> list[str]:
     """把"跑前有、跑后没了"的用例与数据集写回去；返回还原清单。"""
     restored: list[str] = []
     for name, blob in snap_cases.items():
-        if any(_CASES.rglob(name)):          # 已存在（任一层）⇒ 不用还原
+        if any(_CASES.rglob(name)):          # 已存在（任一层）-> 不用还原
             continue
-        # ⚠️ 2026-09-24 实测事故（本轮 2 条红就是它）：以前直接写回 `_CASES / name`（**平铺**）✗
-        #   而 P20 后用例在 `cases/<scenario_id>/` 下 ⇒ 还原写成平铺 ⇒ "看着还原了、位置错了"
-        #   ⇒ 之后任何按场景目录找用例的脚本都找不到 ⇒ 且平铺件还会被当成残留清掉 ✗
-        #   ⇒ 按用例自己的 scenario_id（快照内容里就有）还原到正确目录。
+        # [!] 2026-09-24 实测事故（本轮 2 条红就是它）：以前直接写回 `_CASES / name`（**平铺**）X
+        #   而 P20 后用例在 `cases/<scenario_id>/` 下 -> 还原写成平铺 -> "看着还原了、位置错了"
+        #   -> 之后任何按场景目录找用例的脚本都找不到 -> 且平铺件还会被当成残留清掉 X
+        #   -> 按用例自己的 scenario_id（快照内容里就有）还原到正确目录。
         try:
             sid = str(json.loads(blob).get("scenario_id") or "").strip()
         except (ValueError, AttributeError):
@@ -205,8 +205,8 @@ def _archive_new(new: set[str]) -> int:
     ARCHIVE.mkdir(parents=True, exist_ok=True)
     moved = 0
     for name in new:
-        # P20：用例落盘改成 cases/<scenario_id>/<case_id>.json ⇒ 不能再用 _CASES/name 直连，
-        #   否则 exists()=False ⇒ **静默不归档** ⇒ 留下残留把后续脚本全弄红（本次实测的真凶 ✗）
+        # P20：用例落盘改成 cases/<scenario_id>/<case_id>.json -> 不能再用 _CASES/name 直连，
+        #   否则 exists()=False -> **静默不归档** -> 留下残留把后续脚本全弄红（本次实测的真凶 X）
         _hit = next((p for p in _CASES.rglob(name)), None)
         src = _hit if _hit is not None else (_CASES / name)
         if src.exists():
@@ -224,14 +224,14 @@ def main() -> int:
     force_stdio()
     print("=" * 66)
     print(" E2E 场景1 · 离线回放端到端（自然语言 → explore --ai → cases → generate → run）")
-    print(" 口径：离线录像回放（LLM 端点指黑洞 127.0.0.1:9 ⇒ 不联网可证伪）")
+    print(" 口径：离线录像回放（LLM 端点指黑洞 127.0.0.1:9 -> 不联网可证伪）")
     print("=" * 66)
 
     if not CHAIN.exists():
-        print(f"  ❌ 找不到离线链脚本：{CHAIN}（用法错误）")
+        print(f"  [NG] 找不到离线链脚本：{CHAIN}（用法错误）")
         return USAGE
     if not SCENARIO.exists():
-        print(f"  ❌ 场景文件不存在：{SCENARIO}")
+        print(f"  [NG] 场景文件不存在：{SCENARIO}")
         return USAGE
 
     # 1) 前置：录像
@@ -239,15 +239,15 @@ def main() -> int:
     has_cass, why = ensure_cassettes()
     info(why)
     if not has_cass:
-        print(f"  ⏭️  SKIP：{why}")
+        print(f"  [skip]  SKIP：{why}")
         return SKIP
-    ok("前置①：录像可用")
+    ok("前置(1)：录像可用")
 
     # 2) 前置：demo
     if not demo_up():
-        bad(f"前置②：被测 demo 不可达（{BASE}）⇒ 先跑 `python -m demo.app`")
+        bad(f"前置(2)：被测 demo 不可达（{BASE}）-> 先跑 `python -m demo.app`")
         return FAIL
-    ok("前置②：demo 可达")
+    ok("前置(2)：demo 可达")
 
     # 3) 正向：跑通整条链
     print("\n—— 正向：跑通整条链 ——")
@@ -264,7 +264,7 @@ def main() -> int:
     after = ai_cases()
     new = after - before
     if not new:
-        bad(f"跑完全绿但**没有新增 `cases/ai_*.json`** ⇒ 这条链可能是空跑（假绿）")
+        bad(f"跑完全绿但**没有新增 `cases/ai_*.json`** -> 这条链可能是空跑（假绿）")
         return FAIL
     ok(f"产物：新增 {len(new)} 条 AI 用例 —— {sorted(new)[0]}")
 
@@ -276,18 +276,18 @@ def main() -> int:
         return FAIL
     ok(f"零残留：{moved} 条新增用例已归档到 {ARCHIVE.relative_to(REPO)}（新增部分已清）")
 
-    # ★还原因"同场景只留一条"被清掉的旧件（2026-09-24：不许把别的场景的用例带走 ✗）
+    # ★还原因"同场景只留一条"被清掉的旧件（2026-09-24：不许把别的场景的用例带走 X）
     restored = _restore_missing(snap_cases, snap_ds)
     if restored:
         ok(f"旧件还原：回放时被「同场景只留一条」清掉的 {len(restored)} 个文件已写回 —— "
            f"{sorted(restored)[:3]}{'…' if len(restored) > 3 else ''}")
     else:
-        ok("旧件还原：本次回放没有清掉任何已有用例 ✓")
+        ok("旧件还原：本次回放没有清掉任何已有用例 v")
 
     # 5-b) ★产物复原（2026-09-22 实测补）：归档用例后**必须重跑 generate**。
     # 事故：链里 generate 出来的 `scripts/test_cases.py` 带着那条 AI 用例；用例归档后产物**没刷新**
-    # ⇒ 留下**死引用**（引用的 dataset 不存在）⇒ 之后任何跑 test_cases.py 的脚本都红，
-    #     而且报 FileNotFoundError + pytest 退出码 2（= 执行环境问题）⇒ 看着像"环境/偶发"。
+    # -> 留下**死引用**（引用的 dataset 不存在）-> 之后任何跑 test_cases.py 的脚本都红，
+    #     而且报 FileNotFoundError + pytest 退出码 2（= 执行环境问题）-> 看着像"环境/偶发"。
     #     （本脚本自己 7 项全过、却把后面的 retention_runs / slow_target 弄红 —— 现场就是这么发生的。）
     _env = dict(os.environ)
     _env["PYTHONUTF8"] = "1"
@@ -296,13 +296,13 @@ def main() -> int:
                         capture_output=True, text=True, encoding="utf-8", errors="replace")
     rc, out = _p.returncode, (_p.stdout or "") + (_p.stderr or "")
     if rc != 0:
-        bad(f"归档后重跑 generate 失败（exit {rc}）⇒ 产物可能留着死引用")
+        bad(f"归档后重跑 generate 失败（exit {rc}）-> 产物可能留着死引用")
         print("\n".join(out.splitlines()[-8:]))
         return FAIL
-    ok("产物复原：归档后重跑 generate ⇒ 用例库与产物重新自洽（不留死引用）")
+    ok("产物复原：归档后重跑 generate -> 用例库与产物重新自洽（不留死引用）")
 
-    # 6) 负向①：录像缺失 ⇒ 必须 exit 2 且不产出
-    print("\n—— 负向①：把录像指到空目录，必须前置不满足且不产出 ——")
+    # 6) 负向(1)：录像缺失 -> 必须 exit 2 且不产出
+    print("\n—— 负向(1)：把录像指到空目录，必须前置不满足且不产出 ——")
     empty = REPO / "output" / "_neg_empty_cassette"
     empty.mkdir(parents=True, exist_ok=True)
     before_neg = ai_cases()
@@ -312,21 +312,21 @@ def main() -> int:
         bad(f"录像缺失时的退出码应是 2（前置不满足），实际 {rc_n} —— 闸门口径不一致")
         return FAIL
     if ai_cases() != before_neg:
-        bad("录像缺失竟然也产出了用例 ⇒ 假绿风险（没录像必须一条都不产）")
+        bad("录像缺失竟然也产出了用例 -> 假绿风险（没录像必须一条都不产）")
         return FAIL
-    ok("负向①：exit 2（前置不满足）且**零产出** —— 没录像不会假绿")
+    ok("负向(1)：exit 2（前置不满足）且**零产出** —— 没录像不会假绿")
 
-    # 7) 负向②：场景文件不存在 ⇒ 必须非 0
-    print("\n—— 负向②：场景文件不存在，必须非 0 ——")
+    # 7) 负向(2)：场景文件不存在 -> 必须非 0
+    print("\n—— 负向(2)：场景文件不存在，必须非 0 ——")
     rc_b, out_b = run_chain(scenario=REPO / "scenarios" / "__no_such_scenario__.yml", timeout=180)
     print(_tail(out_b, 6))
     if rc_b == 0:
-        bad("场景文件不存在却 exit 0 ⇒ 静默跳过（不可接受）")
+        bad("场景文件不存在却 exit 0 -> 静默跳过（不可接受）")
         return FAIL
-    ok(f"负向②：场景不存在 ⇒ exit {rc_b}（非 0，且提示明确）")
+    ok(f"负向(2)：场景不存在 -> exit {rc_b}（非 0，且提示明确）")
 
     print("\n" + "=" * 66)
-    print(f" ✅ 全部通过（{len(_passed)} 项判据：含 2 条负向证伪 + 零残留归档）")
+    print(f" [OK] 全部通过（{len(_passed)} 项判据：含 2 条负向证伪 + 零残留归档）")
     print("=" * 66)
     return OK
 

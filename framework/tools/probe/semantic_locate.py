@@ -2,27 +2,27 @@
 
 **为什么需要它**：口径 C 定下后，demo 里只剩**顶层容器**有埋点（`tbl-*` / `modal-*` / `pager` /
 `status`…），所有子元素（行、单元格、行内链接、**弹层里的字段与按钮**）**没有任何埋点**
-⇒ 人写脚本不能再 `get_by_test_id("o-name")` 这种写法（生产里根本不存在）。
+-> 人写脚本不能再 `get_by_test_id("o-name")` 这种写法（生产里根本不存在）。
 
 **定位顺序**（与框架 `locator_bridge` 的口径一致，只是这里是"按语义名直接来"的短路径）：
-  ① 现场探测拿到该语义名的元素（含 `anchor` + `path` 结构化信号）
-  ② 有「锚点 + 相对路径」⇒ 走 `scope_locate` 下钻（**生产真路径**）
-  ③ 没锚点（页面级唯一控件）⇒ 用 `test_id` → `role+name` → `placeholder` 兜底
-  ④ 都拿不到 ⇒ **如实抛错**（带现有语义名清单，方便改脚本；绝不猜）
+  (1) 现场探测拿到该语义名的元素（含 `anchor` + `path` 结构化信号）
+  (2) 有「锚点 + 相对路径」-> 走 `scope_locate` 下钻（**生产真路径**）
+  (3) 没锚点（页面级唯一控件）-> 用 `test_id` → `role+name` → `placeholder` 兜底
+  (4) 都拿不到 -> **如实抛错**（带现有语义名清单，方便改脚本；绝不猜）
 
-⚠️ 缓存与刷新：探测一次有成本（订单页 ~140 控件）。默认缓存；**弹层开/关之后 DOM 变了**，
+[!] 缓存与刷新：探测一次有成本（订单页 ~140 控件）。默认缓存；**弹层开/关之后 DOM 变了**，
    必须 `refresh=True` 或调 `invalidate(page)` —— 否则拿着旧清单定位，会得到"看起来对、其实指错元素"。
 """
 from __future__ import annotations
 
 from pathlib import Path
-from framework.tools.common.textutil import collapse_ws  # 事故②：accessible name 口径归一化
+from framework.tools.common.textutil import collapse_ws  # 事故(2)：accessible name 口径归一化
 
 _CACHE: dict[int, dict[str, dict]] = {}
 
 
 def probe_names(page, *, refresh: bool = False) -> dict[str, dict]:
-    """现场探测一次 ⇒ `{语义名: 元素}`（缓存；refresh=True 强制重探）。"""
+    """现场探测一次 -> `{语义名: 元素}`（缓存；refresh=True 强制重探）。"""
     key = id(page)
     if refresh or key not in _CACHE:
         from framework.tools.probe.probe import probe_page
@@ -37,7 +37,7 @@ def invalidate(page) -> None:
 
 
 def locate(page, name: str, *, refresh: bool = False):
-    """按语义名定位 ⇒ Locator。定位不唯一/找不到就抛错并说明原因（绝不猜）。"""
+    """按语义名定位 -> Locator。定位不唯一/找不到就抛错并说明原因（绝不猜）。"""
     from framework.tools.probe.scope_locate import scope_locate
 
     names = probe_names(page, refresh=refresh)
@@ -56,7 +56,7 @@ def locate(page, name: str, *, refresh: bool = False):
             return loc
         raise RuntimeError(f"{name!r} 用 test_id 命中 {loc.count()} 个（要求唯一）")
     if it.get("role") and it.get("name"):
-        loc = page.get_by_role(it["role"], name=collapse_ws(it["name"]))  # 事故②：accessible name 口径
+        loc = page.get_by_role(it["role"], name=collapse_ws(it["name"]))  # 事故(2)：accessible name 口径
         if loc.count() == 1:
             return loc
         if loc.count() == 0:
@@ -66,7 +66,7 @@ def locate(page, name: str, *, refresh: bool = False):
 
 
 def find(page, name: str, *, refresh: bool = False):
-    """定位 ⇒ Locator；**找不到时返回 None**（用于"不该存在"的负向断言，别用 locate 硬抛）。"""
+    """定位 -> Locator；**找不到时返回 None**（用于"不该存在"的负向断言，别用 locate 硬抛）。"""
     try:
         return locate(page, name, refresh=refresh)
     except RuntimeError:

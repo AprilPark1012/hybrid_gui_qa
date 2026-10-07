@@ -128,7 +128,7 @@ def test_version_single_source_is_one_path_for_all_readers():
     背景（2026-09-19 把 build_html.py 挪进 tools/）：读版本的地方有 **3 处**
     （framework/cli.py / framework/tools/explore/llm_cassette.py / build_tools/pack_release.py）——
     漏改任何一处，`--version` 或打包版本号就会**静默变成 unknown**（对外交付最怕这种静默退化）。
-    判据：① 路径文件存在且含 VERSION；② 三个读者读到同一个非 unknown 版本。
+    判据：(1) 路径文件存在且含 VERSION；(2) 三个读者读到同一个非 unknown 版本。
     """
     import importlib.util
     from pathlib import Path as _P

@@ -31,7 +31,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-BLACKHOLE = "http://127.0.0.1:9/v1"          # 指向必然连不上的地址 ⇒ 真联网就会失败
+BLACKHOLE = "http://127.0.0.1:9/v1"          # 指向必然连不上的地址 -> 真联网就会失败
 DEFAULT_BASE = "http://localhost:8000"
 
 
@@ -118,15 +118,15 @@ def python_candidates(repo, explicit=""):
 
 
 def probe_deps(cmd, repo):
-    """探测某个解释器依赖是否齐全 ⇒ (是否齐全, 最后一行的报错或结论)。"""
+    """探测某个解释器依赖是否齐全 -> (是否齐全, 最后一行的报错或结论)。"""
     rc, out = run(list(cmd) + ["-c", "import dotenv, playwright, pytest; print('deps-ok')"], repo)
     return (rc == 0 and "deps-ok" in out), ((out.strip().splitlines() or [""])[-1][:200])
 
 
 def pick_python(repo, explicit="", probe=None):
-    """挑解释器 ⇒ (选中的命令行 or None, 来源说明, 探测清单)。
+    """挑解释器 -> (选中的命令行 or None, 来源说明, 探测清单)。
 
-    ⚠️ 刻意语义：**显式指定了就不偷换** —— 指定的解释器缺依赖时必须报错退出，
+    [!] 刻意语义：**显式指定了就不偷换** —— 指定的解释器缺依赖时必须报错退出，
     而不是静默换一个「能跑的」：否则用户以为在用 A、实际跑的是 B（沉默的错比报错贵得多）。
     """
     probe = probe or (lambda cmd: probe_deps(cmd, repo))
@@ -137,7 +137,7 @@ def pick_python(repo, explicit="", probe=None):
         if good:
             return cmd, src, tried
         if src.startswith("--python"):
-            return None, "", tried          # 显式指定不可用 ⇒ 停，不往下试
+            return None, "", tried          # 显式指定不可用 -> 停，不往下试
     return None, "", tried
 
 
@@ -179,7 +179,7 @@ def main():
         exp_py.read_text(encoding="utf-8", errors="replace")
     if "--llm-cassette" not in blob or "llm_cassette" not in blob:
         bad("这套代码**不含录像回放功能**（CLI 里没有 --llm-cassette）")
-        info("录像包只能配「带 cassette 的版本」用 ⇒ 先拿到含该功能的代码（V7.7 起）再来跑")
+        info("录像包只能配「带 cassette 的版本」用 -> 先拿到含该功能的代码（V7.7 起）再来跑")
         return 2
     ok("代码含录像回放（--llm-cassette）")
 
@@ -192,12 +192,12 @@ def main():
         else:
             bad("没找到依赖齐全的解释器（共探测 %d 个候选）" % len(tried))
         for src, cmd, good, why in tried:
-            info("  %-40s %s" % (src, "✓ 可用" if good else "✗ " + why))
+            info("  %-40s %s" % (src, "v 可用" if good else "X " + why))
         info("修法（任选一条）：")
-        info("  ① 给某个候选装依赖：<解释器> -m pip install -r requirements.txt "
+        info("  (1) 给某个候选装依赖：<解释器> -m pip install -r requirements.txt "
              "&& <解释器> -m playwright install chromium")
-        info("  ② 显式指定能用的那个：--python \"<解释器路径>\"（或设环境变量 HYBRID_PYTHON）")
-        info("  ③ Windows 上若仓库有 venv，直接拿它跑本脚本：<repo>\\.venv\\Scripts\\python.exe …")
+        info("  (2) 显式指定能用的那个：--python \"<解释器路径>\"（或设环境变量 HYBRID_PYTHON）")
+        info("  (3) Windows 上若仓库有 venv，直接拿它跑本脚本：<repo>\\.venv\\Scripts\\python.exe …")
         return 2
     print("解释器: %s（来源：%s）" % (" ".join(py), py_src))
     if len(tried) > 1:
@@ -221,12 +221,12 @@ def main():
 
     if args.check_deps:
         print("\n结论：前置检查全部通过（解释器 / 代码版本 / 录像 / demo）"
-              " ⇒ 去掉 --check-deps 即可正式跑链路")
+              " -> 去掉 --check-deps 即可正式跑链路")
         return 0
 
     if not scenarios and not args.scenario_dir:
         scenarios = sorted(str(p.relative_to(repo)) for p in repo.glob("scenarios/*/*.yml"))
-        info("没指定场景 ⇒ 默认回放 scenarios/ 下全部 %d 个场景" % len(scenarios))
+        info("没指定场景 -> 默认回放 scenarios/ 下全部 %d 个场景" % len(scenarios))
 
     # ---------- 二、explore：AI 语义识别（录像回放，不联网）----------
     head("二、explore 语义识别（离线回放；端点已指黑洞 %s）" % BLACKHOLE)
@@ -242,7 +242,7 @@ def main():
     if rc != 0:
         bad("explore 失败（退出码 %s）" % rc)
         info("若报「没有这一份」= 录像与当前 prompt 不匹配：录像键含【场景文案 + 页面 url + 控件骨架】")
-        info("⇒ 核对 demo 与框架版本是否与录制时一致；或去有网机器重录：")
+        info("-> 核对 demo 与框架版本是否与录制时一致；或去有网机器重录：")
         info("   python -m framework.cli explore --ai --scenario-file <场景.yml> --llm-record --no-cases --no-verify")
         return 1
     if "命中录像" not in out and "回放" not in out:

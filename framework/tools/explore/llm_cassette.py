@@ -2,15 +2,15 @@
 
 问题
 ----
-`explore --ai` 必须连 LLM（DeepSeek）。受管网络里的机器（典型：工作电脑）连不出去 ⇒
+`explore --ai` 必须连 LLM（DeepSeek）。受管网络里的机器（典型：工作电脑）连不出去 ->
 AI 语义链路在那台机器上根本跑不了，只能人工把产物拷来拷去；换个场景就得回到有网的机器。
 
 做法
 ----
 把「发给 LLM 的 prompt → LLM 的回答」录成一个 json（一次调用一个文件）：
-有外网的机器录一次（`--llm-record`），把整个目录拷到离线机器 ⇒ 后者能跑**完整** explore
+有外网的机器录一次（`--llm-record`），把整个目录拷到离线机器 -> 后者能跑**完整** explore
 （含默认的 `--verify` 试跑），连 key 都不用配。
-附带收益：回放是**逐字节可复现**的 ⇒ 顺带消掉 DeepSeek function calling 的间歇性 JSON 抖动
+附带收益：回放是**逐字节可复现**的 -> 顺带消掉 DeepSeek function calling 的间歇性 JSON 抖动
 （同一 prompt 连调两次结果不同，是上游的老毛病）。
 
 三种模式（**只由 CLI 参数决定，运行中绝不自动切换**）
@@ -60,9 +60,9 @@ class CassetteError(RuntimeError):
 def default_dir() -> Path:
     """默认录像目录 `output/llm_cassettes/`。
 
-    为什么放 output/：① 它已在 `.gitignore` 里 ⇒ 录像**不会**被提交、更不会进公开仓
+    为什么放 output/：(1) 它已在 `.gitignore` 里 -> 录像**不会**被提交、更不会进公开仓
     （录像含 prompt 全文 = 场景文案 + 控件语义名 + 页面背景，属内部信息）；
-    ② 语义上它就是「运行时证据」，与 element_maps / traces 同类。
+    (2) 语义上它就是「运行时证据」，与 element_maps / traces 同类。
     """
     return config.OUTPUT_DIR / DEFAULT_DIRNAME
 
@@ -88,9 +88,9 @@ def struct_key(scenario: str, items: list[dict] | None, pages: list[dict] | None
     为什么要有第二个键（2026-09-18 实测逼出来的）：
     prompt 里含 `nearby_text` 这类**业务数据值**（列表行的整行文本 = 管理单元/帐套/类型/客户/业务单元），
     而 demo 的预置数据是**随机生成**的、且 `/api/reset`（pytest 每条用例前都会调）会重新随机
-    ⇒ 同一个场景在「另一台机器」或「跑过测试的机器」上，prompt 逐字必然不同
+    -> 同一个场景在「另一台机器」或「跑过测试的机器」上，prompt 逐字必然不同
     （实测：同场景两次录制，40 行差异全是 nearby_text 的数据值）。
-    只用严格键 ⇒ 跨机器回放永远不命中 ⇒ 这个功能等于没做。
+    只用严格键 -> 跨机器回放永远不命中 -> 这个功能等于没做。
 
     结构键把这些值换成稳定的骨架（控件语义名 + role + name/label/placeholder/test_id + 所在页），
     于是「同一场景、同一页面结构、不同数据」可以复用同一份录像 —— **代价是命中时必须在日志里
@@ -113,20 +113,20 @@ def struct_key(scenario: str, items: list[dict] | None, pages: list[dict] | None
 def normalize_values(text: str) -> str:
     """把「业务数据值 / 参数化占位符」折成同一个骨架 `<VAL>`（2026-09-22 现场反馈驱动）。
 
-    ⚠️ 为什么必须做：场景文件在 V7.8「数据参数化真展开」后把字面值写成占位符 ——
+    [!] 为什么必须做：场景文件在 V7.8「数据参数化真展开」后把字面值写成占位符 ——
         录像时：「…搜索框输入 '1005'…」   现在：「…搜索框输入 '{关键词}'…」
-    结构键原先**逐字**取场景文案 ⇒ 只因「换了一组数据 / 把它参数化」就整份不命中 ⇒
+    结构键原先**逐字**取场景文案 -> 只因「换了一组数据 / 把它参数化」就整份不命中 ->
     用户被迫每次重录；而这恰恰是结构键本来要排除的东西（它排除的就是业务数据值）。
 
     口径（只动这两类，语义文字一个不碰）：
-      ① 花括号占位符 `{关键词}` / `{期望编号}`（含被引号包着的情形 `'{关键词}'`）
-      ② 成对引号里的值 `'1005'` / `"1005"` / “1005” / ‘1005’
-    ⇒ 换数据、参数化都不再打死录像；真改了页面 / 控件骨架 / 场景语义则照旧不命中
+      (1) 花括号占位符 `{关键词}` / `{期望编号}`（含被引号包着的情形 `'{关键词}'`）
+      (2) 成对引号里的值 `'1005'` / `"1005"` / “1005” / ‘1005’
+    -> 换数据、参数化都不再打死录像；真改了页面 / 控件骨架 / 场景语义则照旧不命中
     （宁可报错，也不拿旧结论套新场景 —— 这条红线不变）。
     """
     import re
     t = re.sub(r"\{[^{}\n]{0,40}\}", VAL_TOKEN, text or "")
-    # 四对引号**各自闭合** —— ⚠️ 不能写「字符类 + 反向引用」：中文/西文引号的开闭是**不同字符**
+    # 四对引号**各自闭合** —— [!] 不能写「字符类 + 反向引用」：中文/西文引号的开闭是**不同字符**
     #（`“1005”` 的开引号是 `“`、闭引号是 `”`），反向引用写法对它永远不匹配（实测踩过）。
     return re.sub(r"""('[^'\n]{0,60}'|"[^"\n]{0,60}"|“[^”\n]{0,60}”|‘[^’\n]{0,60}’)""",
                   VAL_TOKEN, t)
@@ -196,7 +196,7 @@ def render_miss_help(prompt: str, system: str, root: Path) -> str:
     lines: list[str] = []
     files = sorted(root.glob("*.json")) if root.is_dir() else []
     if not files:
-        lines.append(f"  · 目录 {root} 里**一份录像都没有** ⇒ 需要先在**有外网**的机器上录：")
+        lines.append(f"  · 目录 {root} 里**一份录像都没有** -> 需要先在**有外网**的机器上录：")
         lines.append("      python -m framework.cli explore --ai --scenario-file <场景.yml> --llm-record")
         lines.append("    然后把整个目录拷到这台机器，再带 --llm-cassette 跑。")
         return "\n".join(lines)
@@ -210,8 +210,8 @@ def render_miss_help(prompt: str, system: str, root: Path) -> str:
             continue
         old = rec.get("prompt") or ""
         n, x, y, nd = _first_diff_line(old, prompt)
-        if n == 0:                                     # prompt 相同却没命中 ⇒ 文件坏了，另行提示
-            lines.append(f"  · ⚠️ {f.name} 的 prompt 与现在**完全一致**却没命中 ⇒ 该文件可能损坏，删掉重录")
+        if n == 0:                                     # prompt 相同却没命中 -> 文件坏了，另行提示
+            lines.append(f"  · [!] {f.name} 的 prompt 与现在**完全一致**却没命中 -> 该文件可能损坏，删掉重录")
             continue
         if best is None or nd < best[0]:               # 按**差异行数**选最像的（不是首个差异行号）
             best = (nd, n, f.name, x, y)
@@ -222,9 +222,9 @@ def render_miss_help(prompt: str, system: str, root: Path) -> str:
         lines.append(f"      现在：{y[:140]}")
     lines.append("  · 说明：控件清单 / DOM 上下文 / 场景文案变一点就不会命中 —— 这是**刻意的**"
                  "（宁可报错，也不拿旧结论套新页面）。")
-    lines.append("  · 下一步二选一：① 在用**同一个场景**的机器上加 `--llm-record` 重录一份"
+    lines.append("  · 下一步二选一：(1) 在用**同一个场景**的机器上加 `--llm-record` 重录一份"
                  "（命令形如 `explore --ai --scenario-file <场景.yml> --llm-record`）；"
-                 "② 核对两台机器的 demo 页面与框架版本是否一致。")
+                 "(2) 核对两台机器的 demo 页面与框架版本是否一致。")
     return "\n".join(lines)
 
 
@@ -243,7 +243,7 @@ class Cassette:
         if mode == MODE_REPLAY and not self.root.is_dir():
             raise CassetteError(
                 f"离线回放目录不存在：{self.root}\n"
-                f"  ⇒ 先在**有外网**的机器上跑 `explore --ai --llm-record` 录一份，再把整个目录拷过来；\n"
+                f"  -> 先在**有外网**的机器上跑 `explore --ai --llm-record` 录一份，再把整个目录拷过来；\n"
                 f"     或者用 `--llm-cassette <目录>` 指定你拷贝到的位置。"
             )
         if mode == MODE_RECORD:
@@ -286,11 +286,11 @@ class Cassette:
                strict_only: bool = False) -> dict | None:
         """回放：返回录好的记录（命中方式写在返回值的 `_match` 里）；没有返回 None。
 
-        查找顺序：① **严格键**（prompt 逐字相同）→ 命中即用；② 给了 struct_key_value 且未禁用
+        查找顺序：(1) **严格键**（prompt 逐字相同）→ 命中即用；(2) 给了 struct_key_value 且未禁用
         → 扫目录找**结构键**相同的录像（数据值不同但页面结构相同）。
         `struct_key_value` 可以是**多把键**（2026-09-22 起：新算法 + 旧算法都传进来，
         保证升级不会让旧录像集体失效）。
-        文件存在但读不动 / 里面没有可用回答 ⇒ 抛 CassetteError（**不能**把坏文件当成「未命中」：
+        文件存在但读不动 / 里面没有可用回答 -> 抛 CassetteError（**不能**把坏文件当成「未命中」：
         那会把一次数据损坏伪装成「只是没录过」）。
         """
         key = cassette_key(prompt, system)
@@ -310,7 +310,7 @@ class Cassette:
 
         if strict_only or not struct_key_value:
             return None
-        # ⚠️ 支持**多把结构键**（2026-09-22）：新算法（值归一化）与旧算法（兼容旧录像）都试
+        # [!] 支持**多把结构键**（2026-09-22）：新算法（值归一化）与旧算法（兼容旧录像）都试
         _keys = [struct_key_value] if isinstance(struct_key_value, str) else list(struct_key_value)
         for f in sorted(self.root.glob("*.json")):      # 扫描时跳过坏文件：一个坏文件不该毁掉整次回放
             try:

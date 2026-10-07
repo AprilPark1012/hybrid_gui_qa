@@ -37,7 +37,7 @@ CLI = ROOT / "framework" / "cli.py"
 APP = ROOT / "demo" / "app.py"
 CONTRACTS_HTML = ROOT / "demo" / "contracts.html"
 DETAIL_HTML = ROOT / "demo" / "contract_detail.html"
-# 2026-09-28：demo 重构后页面变多 ⇒ 就绪契约的守门覆盖面同步扩到**全部页面**（此前只守 2 页，
+# 2026-09-28：demo 重构后页面变多 -> 就绪契约的守门覆盖面同步扩到**全部页面**（此前只守 2 页，
 # 新页漏了也无声无息 —— 实测就是这么发现「重写页只读 ?w=、没读框架注入的 window.__HYBRID_W」的）
 DEMO_PAGES = [ROOT / "demo" / n for n in (
     "contracts.html", "contract_detail.html", "orders.html",
@@ -51,7 +51,7 @@ _NOT_CASE_MODULE = ("conftest.py", "_harness.py")
 def _generated_case_modules() -> list[Path]:
     """列出**全部**生成出来的用例模块（P20：scripts/generated/<场景>/<case_id>.py）。
 
-    一个都没有 ⇒ 抛带动作诊断（同 `artifacts.read_artifact` 的口径：产物缺失是**环境问题**，
+    一个都没有 -> 抛带动作诊断（同 `artifacts.read_artifact` 的口径：产物缺失是**环境问题**，
     第一句就要说清 + 给出下一步命令，而不是让 6 条判据各报一句"生成物缺 _wait_ready"）。
     """
     mods = (sorted(p for p in GEN_DIR.rglob("*.py") if p.name not in _NOT_CASE_MODULE)
@@ -59,9 +59,9 @@ def _generated_case_modules() -> list[Path]:
     if not mods:
         raise AssertionError(
             f"生成物 scripts/generated/ 下没有任何用例模块（{GEN_DIR}）\n"
-            f"  ⇒ 生成物还没产出。先确认被测目标起着（另开一个窗口 `python -m demo.app`），"
+            f"  -> 生成物还没产出。先确认被测目标起着（另开一个窗口 `python -m demo.app`），"
             f"再跑 `python -m framework.cli generate`（或 `cli all` 一条龙）。\n"
-            f"  ⇒ 若这是从交付包解压出来的目录：说明解压不完整，重新完整解压一次。"
+            f"  -> 若这是从交付包解压出来的目录：说明解压不完整，重新完整解压一次。"
         )
     return mods
 
@@ -74,11 +74,11 @@ def _read_generated_cases() -> str:
 def _read(p: Path) -> str:
     """读来源文件：**生成物**走带动作诊断的入口，框架源码照常读。
 
-    ⚠️ 2026-09-22（AprilPark1012 本地 Windows 验收 19 红驱动）：生成物为 0 字节时，6 条契约判据各自
+    [!] 2026-09-22（AprilPark1012 本地 Windows 验收 19 红驱动）：生成物为 0 字节时，6 条契约判据各自
     报「生成物 缺少 _wait_ready / 缺 _goto」这类细节 —— 读的人看不出真因是「产物是空的」。
     产物缺失/为空属**环境问题**，第一句就要说清 + 给出下一步命令（见 tests/_helpers/artifacts.py）。
     """
-    if ROOT / "scripts" in p.parents:            # scripts/generated/… ⇒ 生成物
+    if ROOT / "scripts" in p.parents:            # scripts/generated/… -> 生成物
         return artifacts.read_artifact(p, role=f"生成物 {p.relative_to(ROOT)}")
     return p.read_text(encoding="utf-8")
 
@@ -112,7 +112,7 @@ def test_conftest_has_ready_wait_and_base_override():
 def _strip_comments(src: str) -> str:
     """剥掉 HTML 注释与 JS 行注释后再做契约断言。
 
-    为什么：直接 `"token" in src` 会被**注释里提到的 token**满足 ⇒ 判据恒真、静默失效
+    为什么：直接 `"token" in src` 会被**注释里提到的 token**满足 -> 判据恒真、静默失效
     （2026-09-28 实测：把页面里的 `window.__HYBRID_W` 读取删掉、只在注释里留了词，判据照样绿）。
     """
     src = re.sub(r"<!--.*?-->", "", src, flags=re.S)
@@ -124,7 +124,7 @@ def test_pages_declare_ready_contract():
     for p in DEMO_PAGES:
         raw = _read(p)
         assert 'data-hybrid-ready="0"' in raw, f"{p.name} 没有静态声明就绪契约"
-        src = _strip_comments(raw)          # ⚠️ 断言走「去掉注释后的代码」，注释里提一句不算数
+        src = _strip_comments(raw)          # [!] 断言走「去掉注释后的代码」，注释里提一句不算数
         assert re.search(r"\bmarkReady\s*\(\s*\)", src), \
             f"{p.name} 没有在数据就绪后置位（缺 markReady() 调用）"
         assert "apiUrl(" in src, f"{p.name} 的 /api 调用没走 apiUrl（分区带不上）"
@@ -163,8 +163,8 @@ def test_demo_partition_and_health():
     src = _read(APP)
     assert "/api/health" in src and '"partitioned"' in src, "demo 没有能力探针"
     assert "def _part_of(" in src and "def _store(" in src, "demo 没有分区数据层"
-    # 2026-09-30：原用字面串 `"reset_data(part)"` 匹配 ⇒ 实参形如
-    # `reset_data(part, purge=_purge)` 时匹配不到（后面跟逗号）⇒ 假红。
+    # 2026-09-30：原用字面串 `"reset_data(part)"` 匹配 -> 实参形如
+    # `reset_data(part, purge=_purge)` 时匹配不到（后面跟逗号）-> 假红。
     # 改成正则：调用**必须把分区作为第一个实参**。
     assert "def reset_data(part" in src, "复位函数没有分区参数"
     assert re.search(r"reset_data\(\s*part\b", src), \
@@ -207,7 +207,7 @@ def _run_cli(args: list[str], env_extra: dict) -> str:
 def test_cli_downgrade_or_explicit_declaration(extra, expect):
     """并发能力探针：未声明 → 降级到 1 并说明原因；显式声明 → 放行。
 
-    用 --case 选一个不存在的用例名 ⇒ pytest 只收集、**不起浏览器**（秒级、低内存）。
+    用 --case 选一个不存在的用例名 -> pytest 只收集、**不起浏览器**（秒级、低内存）。
     用 --force-workers 固定「请求 2 并发」这个前提，**不依赖本机当时的内存**
     （否则 MemAvailable 一波动，期望就从"保持 2"变成"降为 1"，测试会莫名其妙红）。
     """

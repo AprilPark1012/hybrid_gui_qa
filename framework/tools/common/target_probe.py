@@ -36,26 +36,26 @@ def _base_url(explicit: str | None = None) -> str:
 def unreachable_hint(base: str, reason: object = None) -> str:
     """「连不上」的**统一文案** —— 先给动作（起 demo），再给真实原因。
 
-    ⚠️ 为什么不再按「字符串里含 refused」分流（2026-09-22 修，AprilPark1012 本地 Windows 实测）：
+    [!] 为什么不再按「字符串里含 refused」分流（2026-09-22 修，AprilPark1012 本地 Windows 实测）：
     同一个「端口没人听」在 Linux 抛 `ConnectionRefusedError`，在 **Windows 抛 `TimeoutError`**
-    ⇒ 老写法只覆盖了 Linux，在 Windows 上恰好把「另开一个窗口跑 `python -m demo.app`」这句
-    **唯一的下一步指引**丢掉了 ⇒ 用户看到的仍是「看着像框架坏了」——正是 G2 要治的现象，
+    -> 老写法只覆盖了 Linux，在 Windows 上恰好把「另开一个窗口跑 `python -m demo.app`」这句
+    **唯一的下一步指引**丢掉了 -> 用户看到的仍是「看着像框架坏了」——正是 G2 要治的现象，
     却在 Windows 上没治住。
-    ⇒ 口径改成：**任何**连不上（拒连 / 超时 / DNS / 泛 OSError）都给同一句；
+    -> 口径改成：**任何**连不上（拒连 / 超时 / DNS / 泛 OSError）都给同一句；
     原因只作括注细节（`TimeoutError: timed out` 这类信息仍保留，便于排查）。
     """
     if reason is None:
         detail = "原因未明"
     else:
         detail = f"{type(reason).__name__}: {reason}" if str(reason) else type(reason).__name__
-    return (f"连不上 {base}（{detail}）⇒ 被测目标没起："
+    return (f"连不上 {base}（{detail}）-> 被测目标没起："
             f"另开一个窗口跑 `python -m demo.app`（默认 8000）；"
             f"目标在别的地址就设 HYBRID_BASE_URL")
 
 
 def probe_failed_hint(base: str, err: object) -> str:
     """兜底文案：原因不明时**也给动作**，但把「目标没起」写成条件（不硬下结论）。"""
-    return (f"探测 {base} 失败（{type(err).__name__}: {err}）⇒ 若确认目标没起，"
+    return (f"探测 {base} 失败（{type(err).__name__}: {err}）-> 若确认目标没起，"
             f"先跑 `python -m demo.app`（默认 8000）再试")
 
 
@@ -65,10 +65,10 @@ def reachability(url: str | None = None, timeout: float = 1.5) -> tuple[bool, st
     为什么单独一个函数（2026-09-15，F3 同源）：probe/generate 以前直接 `page.goto(TARGET_URL)`，
     目标没起时甩出一屏 Playwright traceback（`net::ERR_CONNECTION_REFUSED`）+ exit 1 ——
     既吵又误导（看着像框架坏了，其实是「demo 没启动」）。而且旧的 `probe_partitioned`
-    把「连不上」和「有响应但没声明分区」混成同一句『未声明可并发隔离』⇒ 归因错位。
+    把「连不上」和「有响应但没声明分区」混成同一句『未声明可并发隔离』-> 归因错位。
     这里统一口径：**先回答「活没活」，再谈能力**。
 
-    ⚠️ 2026-09-22：连不上时的文案统一走 `unreachable_hint()`（跨平台，任何连不上都给动作）。
+    [!] 2026-09-22：连不上时的文案统一走 `unreachable_hint()`（跨平台，任何连不上都给动作）。
     """
     base = (url or _base_url()).rstrip("/")
     target = base + "/api/health"
@@ -76,7 +76,7 @@ def reachability(url: str | None = None, timeout: float = 1.5) -> tuple[bool, st
         with urllib.request.urlopen(target, timeout=timeout) as r:
             return True, f"{base} 可达（/api/health → HTTP {r.status}）"
     except urllib.error.HTTPError as e:
-        # 有响应 ⇒ 目标活着，只是没有 /api/health（老目标 / 非本项目目标）
+        # 有响应 -> 目标活着，只是没有 /api/health（老目标 / 非本项目目标）
         return True, f"{base} 可达（/api/health → HTTP {e.code}，无该接口）"
     except urllib.error.URLError as e:
         return False, unreachable_hint(base, getattr(e, "reason", e))
@@ -93,7 +93,7 @@ def probe_partitioned(base: str | None = None, timeout: float = 1.5) -> tuple[bo
     返回 (True/False/None, 人类可读理由)：
       True  = 支持（可放心并发）
       False = 明确声明不支持（必须串行）
-      None  = 没有这个探针接口 ⇒ 未声明（保守按不支持处理）
+      None  = 没有这个探针接口 -> 未声明（保守按不支持处理）
     """
     url = _base_url(base) + "/api/health"
     try:
@@ -103,10 +103,10 @@ def probe_partitioned(base: str | None = None, timeout: float = 1.5) -> tuple[bo
         # 先分清「目标没起」和「目标起了但没这个接口」——两者对使用者的下一步完全不同
         ok, why = reachability(_base_url(base))
         if not ok:
-            return None, f"目标不可达（{why}）⇒ 视为『未声明可并发隔离』"
-        return None, f"探测 {url} 失败（{type(e).__name__}）⇒ 视为『未声明可并发隔离』"
+            return None, f"目标不可达（{why}）-> 视为『未声明可并发隔离』"
+        return None, f"探测 {url} 失败（{type(e).__name__}）-> 视为『未声明可并发隔离』"
     if not isinstance(body, dict) or "partitioned" not in body:
-        return None, f"{url} 响应里没有 partitioned 字段 ⇒ 视为『未声明可并发隔离』"
+        return None, f"{url} 响应里没有 partitioned 字段 -> 视为『未声明可并发隔离』"
     if body.get("partitioned"):
         return True, f"{url} 声明 partitioned=true（presets={body.get('presets')}）"
     return False, f"{url} 明确声明 partitioned=false"

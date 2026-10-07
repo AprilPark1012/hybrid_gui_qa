@@ -26,11 +26,11 @@ _spec.loader.exec_module(pack_release)
 
 
 # ---------------- 录像包打包闸门（2026-09-22）----------------
-# 背景（实测）：录像包曾经「发出去之后才发现 5 个场景只有 1 个有可用录像」⇒ 无网机器上那 4 个场景
+# 背景（实测）：录像包曾经「发出去之后才发现 5 个场景只有 1 个有可用录像」-> 无网机器上那 4 个场景
 # 必失败，而打包环节**没有任何检查**会告诉你这件事。下面三条把闸门钉住：
-#   ① 接线必须在（源码级锁，防「改着改着把闸门绕过去了」）；
-#   ② 覆盖不全 **必须拦**（不许产包）；
-#   ③ 显式逃生口必须有效（否则现场需要临时绕过时只能改代码 —— 那更糟）。
+#   (1) 接线必须在（源码级锁，防「改着改着把闸门绕过去了」）；
+#   (2) 覆盖不全 **必须拦**（不许产包）；
+#   (3) 显式逃生口必须有效（否则现场需要临时绕过时只能改代码 —— 那更糟）。
 
 def _make_cassette_json(name: str, scenario_line: str) -> dict:
     return {
@@ -45,13 +45,13 @@ def _make_cassette_json(name: str, scenario_line: str) -> dict:
 def test_cassette_pack_gate_is_wired():
     """源码级接线锁：打包录像包前必须过体检，且复用同一份口径 + 留了显式逃生口。"""
     src = (REPO / "build_tools" / "pack_release.py").read_text(encoding="utf-8")
-    assert "cassette_coverage_problems" in src, "录像包打包没接体检 ⇒ 坏包照样出厂"
+    assert "cassette_coverage_problems" in src, "录像包打包没接体检 -> 坏包照样出厂"
     assert "check_cassettes.py" in src, "体检必须复用同一份口径（build_tools/check_cassettes.py）"
-    assert "--allow-missing-cassettes" in src, "缺逃生口 ⇒ 需要临时绕过时只能改代码"
+    assert "--allow-missing-cassettes" in src, "缺逃生口 -> 需要临时绕过时只能改代码"
 
 
 def test_cassette_pack_blocked_when_coverage_incomplete(tmp_path):
-    """★ 行为判据：录像目录**有文件**、但 scenarios/ 里的场景没有对应录像 ⇒ **不许产包**。
+    """★ 行为判据：录像目录**有文件**、但 scenarios/ 里的场景没有对应录像 -> **不许产包**。
 
     （这是最容易被漏掉的形态：「有录像」不等于「场景被覆盖」——包看着有内容，实际是坏的。）
     """
@@ -67,7 +67,7 @@ def test_cassette_pack_blocked_when_coverage_incomplete(tmp_path):
 
     got = pack_release.pack_cassettes(out, "9.9", scenario_dir=scen, cassette_src=cass)
 
-    assert got is None, "覆盖不全却打出了录像包 ⇒ 闸门没生效（无网机器上那些场景会直接跑不了）"
+    assert got is None, "覆盖不全却打出了录像包 -> 闸门没生效（无网机器上那些场景会直接跑不了）"
     assert not list(out.glob("*.zip")), f"闸门拦下后不该留下包：{list(out.glob('*.zip'))}"
 
 
@@ -86,7 +86,7 @@ def test_cassette_pack_escape_hatch_still_produces_package(tmp_path):
     got = pack_release.pack_cassettes(out, "9.9", scenario_dir=scen, cassette_src=cass,
                                       allow_missing=True)
 
-    assert got is not None and got.exists(), "给了逃生口却没产包 ⇒ 逃生口失效"
+    assert got is not None and got.exists(), "给了逃生口却没产包 -> 逃生口失效"
     assert got.parent == out
 
 GOOD_TESTS = '''"""生成物（正例）。"""
@@ -128,7 +128,7 @@ def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
         "pkg/framework/cli.py": "\n",
         "pkg/framework/tools/common/text_io.py": "\n",
         # P20：产物 = scripts/generated/<场景>/<用例>.py（一个用例一个文件）
-        #   ⇒ "坏产物"注入点仍在"用例脚本"这一层（产物检查拼读全部生成模块）
+        #   -> "坏产物"注入点仍在"用例脚本"这一层（产物检查拼读全部生成模块）
         "pkg/scripts/generated/demo/x.py": tests_src + unmapped_extra,
         "pkg/scripts/generated/_harness.py": GOOD_CONFTEST,
         "pkg/scripts/generated/conftest.py": "from _harness import *\n",
@@ -160,7 +160,7 @@ def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
 
 
 def test_broken_artifact_is_caught(tmp_path):
-    """★ 核心判据：包内是「元素未映射」存根 ⇒ 必须报出来（这就是 V7.5 交付事故本体）。"""
+    """★ 核心判据：包内是「元素未映射」存根 -> 必须报出来（这就是 V7.5 交付事故本体）。"""
     zp = _make_zip(tmp_path, BAD_TESTS)
     problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9")
     assert any("元素未映射" in p for p in problems), f"坏产物没被抓住：{problems}"
@@ -173,7 +173,7 @@ def test_good_package_passes(tmp_path):
 
 
 def test_missing_release_notes_for_current_version_is_caught(tmp_path):
-    """版本号改了但发版说明没写 ⇒ 报出来（交付物完整性）。"""
+    """版本号改了但发版说明没写 -> 报出来（交付物完整性）。"""
     zp = _make_zip(tmp_path, GOOD_TESTS, notes=False)
     problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9")
     assert any("RELEASE_NOTES" in p for p in problems), problems
@@ -195,7 +195,7 @@ def test_legacy_layout_audited_without_false_alarm(tmp_path):
 
 
 def test_really_missing_required_is_still_caught(tmp_path):
-    """★ 负向：两个位置都没有（真缺项）⇒ 必须照样报 —— 别名不许放过真问题。"""
+    """★ 负向：两个位置都没有（真缺项）-> 必须照样报 —— 别名不许放过真问题。"""
     zp = _make_zip(tmp_path, GOOD_TESTS, legacy_layout=True, drop=("pkg/build_html.py",))
     problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9")
     assert any("build_tools/build_html.py" in p for p in problems), problems
@@ -220,7 +220,7 @@ def test_missing_history_release_notes_is_caught(tmp_path):
 
 
 def test_case_count_mismatch_is_caught(tmp_path):
-    """包内 cases 数量与仓库不一致 ⇒ 报出来（打包漏文件/多余文件）。"""
+    """包内 cases 数量与仓库不一致 -> 报出来（打包漏文件/多余文件）。"""
     zp = _make_zip(tmp_path, GOOD_TESTS, skip_case=True)
     problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9")
     assert any("cases/**/*.json 数量" in p or "没有任何 cases" in p for p in problems), problems
@@ -230,7 +230,7 @@ def test_cassette_pack_contains_recordings_readme_and_helper(tmp_path, monkeypat
     """★ 交付「两件套」的第二件：录像包必须含 录像 + 用法说明 + 一键脚本。
 
     背景（2026-09-19）：此前录像包由一个**仓库外的独立脚本**打（~/deliver_scripts/pack_cassettes.py），
-    没有任何判据、路径还漂了（里面残留 build_html.py 的老路径）⇒ 收进打包器并钉住内容。
+    没有任何判据、路径还漂了（里面残留 build_html.py 的老路径）-> 收进打包器并钉住内容。
     """
     src = tmp_path / "llm_cassettes"
     src.mkdir()
@@ -244,7 +244,7 @@ def test_cassette_pack_contains_recordings_readme_and_helper(tmp_path, monkeypat
     out = tmp_path / "out"
     out.mkdir()
 
-    # 本条只测「包内形态」（readme / 一键脚本 / 录像份数）⇒ 用逃生口跳过**覆盖体检**：
+    # 本条只测「包内形态」（readme / 一键脚本 / 录像份数）-> 用逃生口跳过**覆盖体检**：
     # tmp 里的假录像本就不对应任何真实场景，走闸门必然被拦。覆盖闸门由
     # test_cassette_pack_gate_is_wired / test_cassette_pack_blocked_when_coverage_incomplete 管。
     zp = pack_release.pack_cassettes(out, "9.9", allow_missing=True)

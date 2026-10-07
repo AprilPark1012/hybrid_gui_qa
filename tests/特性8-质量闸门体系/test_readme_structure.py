@@ -11,17 +11,17 @@
 环境变量表与关键技术细节**下沉培训页**。本判据负责**守住新结构**，防止几个月后漂回原样。
 
 判据清单（含负向自证 —— R7 硬要求：只跑正向不算验证过）：
-  ① README 存在且文件名为 `README.md`（打包 `pack_release.REQUIRED` 依赖它，不能改名）
-  ② 必需章节按约定顺序出现（只认「关键锚点词」，不绑死整条标题文字 ⇒ 允许润色）
-  ③ README 里不得再有「变更要点」章（`## 2026-…`）—— 历史归发行说明
-  ④ 目录（TOC）与正文 H2 标题**双向一致**（少一项 / 多一项 / 顺序不同都要报）
-  ⑤ 不得写死「当前 N 条」这类状态性数字（会随用例增删漂移）
-  ⑥ 头部版本号 == 版本单一来源（`framework/tools/common/config.py::read_version`）
-  ⑦ README 必须**指路**发行说明，且 `releases/` 下必须有**当前版本**的说明
-  ⑧ **体量预算**：README ≤ 250 行（简洁是硬要求；细节下沉培训页 / 发行说明）
-  ⑨ README 里引用到的**仓库内路径必须真实存在**（防「文档指了个不存在的东西」）
+  (1) README 存在且文件名为 `README.md`（打包 `pack_release.REQUIRED` 依赖它，不能改名）
+  (2) 必需章节按约定顺序出现（只认「关键锚点词」，不绑死整条标题文字 -> 允许润色）
+  (3) README 里不得再有「变更要点」章（`## 2026-…`）—— 历史归发行说明
+  (4) 目录（TOC）与正文 H2 标题**双向一致**（少一项 / 多一项 / 顺序不同都要报）
+  (5) 不得写死「当前 N 条」这类状态性数字（会随用例增删漂移）
+  (6) 头部版本号 == 版本单一来源（`framework/tools/common/config.py::read_version`）
+  (7) README 必须**指路**发行说明，且 `releases/` 下必须有**当前版本**的说明
+  (8) **体量预算**：README ≤ 250 行（简洁是硬要求；细节下沉培训页 / 发行说明）
+  (9) README 里引用到的**仓库内路径必须真实存在**（防「文档指了个不存在的东西」）
 
-**取舍说明**：⑤ 只抓「当前 N 条/个」这种**状态性**数字；`11 种断言 kind`、`3 个库` 这类**契约性**
+**取舍说明**：(5) 只抓「当前 N 条/个」这种**状态性**数字；`11 种断言 kind`、`3 个库` 这类**契约性**
 数字不在禁令内（契约变了本来就要改文档，不算漂移源）。
 
 跑法（秒级，不需要 demo / key / git）：
@@ -38,9 +38,9 @@ REPO = Path(__file__).resolve().parents[2]
 README = REPO / "README.md"
 RELEASE_NOTES_DIR = REPO / "releases"
 
-# ② 约定章节顺序（关键锚点词；README 里必须按这个先后出现）
+# (2) 约定章节顺序（关键锚点词；README 里必须按这个先后出现）
 REQUIRED_SECTIONS = (
-    "目录",                 # TOC（正文第一屏；不参与 ④ 的比对）
+    "目录",                 # TOC（正文第一屏；不参与 (4) 的比对）
     "它解决什么问题",
     "快速上手",
     "项目结构与链路",
@@ -49,15 +49,15 @@ REQUIRED_SECTIONS = (
     "许可",
 )
 TOC_HEADING = "目录"
-MAX_LINES = 250             # ⑧ 体量预算（他的口径：简洁是硬要求）
+MAX_LINES = 250             # (8) 体量预算（他的口径：简洁是硬要求）
 
 _FENCE = re.compile(r"^\s*(```|~~~)")
 _H2 = re.compile(r"^##\s+(?!#)(.+?)\s*$")
-# ⑤ 状态性数字：`当前 16 条` / `当前 4 个`
+# (5) 状态性数字：`当前 16 条` / `当前 4 个`
 _HARDCODED_COUNT = re.compile(r"当前\s*\d+\s*[条个]")
-# ③ 「变更要点」章（旧结构形态：`## 2026-09-23（第二次）变更要点 —— …`）
+# (3) 「变更要点」章（旧结构形态：`## 2026-09-23（第二次）变更要点 —— …`）
 _CHANGELOG_SECTION = re.compile(r"^##\s+20\d\d-\d\d")
-# ⑥ 版本号：头部第一个 `V8.2.3` 形态
+# (6) 版本号：头部第一个 `V8.2.3` 形态
 _VERSION = re.compile(r"\bV(\d+\.\d+(?:\.\d+)?)\b")
 
 
@@ -85,18 +85,18 @@ _SLUG_DROP = re.compile(r"[^\w\s\u4e00-\u9fff-]", re.UNICODE)
 def slug(title: str) -> str:
     """GitHub 风格锚点：去 markdown 修饰 → 去标点 → 空白转 `-` → 小写。
 
-    ⚠️ 与 GitHub 渲染规则对齐（标点删除、空白转连字符）；本项目标题刻意少用标点，
-    锚点只应产出 `[a-z0-9\\u4e00-\\u9fff-]`（⑧ 判据守着这点，避免歧义锚点）。
+    [!] 与 GitHub 渲染规则对齐（标点删除、空白转连字符）；本项目标题刻意少用标点，
+    锚点只应产出 `[a-z0-9\\u4e00-\\u9fff-]`（(8) 判据守着这点，避免歧义锚点）。
     """
     t = re.sub(r"[`*]", "", title)
     t = _SLUG_DROP.sub("", t)
-    # GitHub 口径：**逐个空格**替换为 `-`（连续空格不合并 ⇒ `a  b` → `a--b`）
+    # GitHub 口径：**逐个空格**替换为 `-`（连续空格不合并 -> `a  b` → `a--b`）
     t = t.strip().lower().replace(" ", "-")
     return t
 
 
 def toc_entries(text: str) -> list[str]:
-    """取「目录」节里的锚点（按出现顺序）。没有目录 ⇒ 空列表。"""
+    """取「目录」节里的锚点（按出现顺序）。没有目录 -> 空列表。"""
     heads = h2_headings(text)
     start = end = None
     for idx, (ln, h) in enumerate(heads):
@@ -112,7 +112,7 @@ def toc_entries(text: str) -> list[str]:
 
 
 def section_lines(text: str) -> dict[str, int]:
-    """锚点词 ⇒ 该 H2 所在行号（找不到 = -1）。"""
+    """锚点词 -> 该 H2 所在行号（找不到 = -1）。"""
     heads = h2_headings(text)
     out: dict[str, int] = {}
     for key in REQUIRED_SECTIONS:
@@ -175,7 +175,7 @@ def _readme() -> str:
     return README.read_text(encoding="utf-8")
 
 
-# ---------------- ① 文件与命名 ----------------
+# ---------------- (1) 文件与命名 ----------------
 
 def test_readme_exists_and_named():
     """打包 `pack_release.REQUIRED` 依赖 `README.md` 这个名字 —— 不能改名。"""
@@ -183,7 +183,7 @@ def test_readme_exists_and_named():
     assert README.name == "README.md"
 
 
-# ---------------- ② 章节顺序 ----------------
+# ---------------- (2) 章节顺序 ----------------
 
 def test_required_sections_present_and_in_order():
     text = _readme()
@@ -192,7 +192,7 @@ def test_required_sections_present_and_in_order():
     assert not bad, "README 结构不合约定：\n  - " + "\n  - ".join(bad)
 
 
-# ---------------- ③ 变更史必须已搬走 ----------------
+# ---------------- (3) 变更史必须已搬走 ----------------
 
 def test_no_changelog_sections_left_in_readme():
     left = changelog_sections(_readme())
@@ -201,7 +201,7 @@ def test_no_changelog_sections_left_in_readme():
         + "\n  - ".join(left[:5]) + (f"\n  … 共 {len(left)} 章" if len(left) > 5 else ""))
 
 
-# ---------------- ④ 目录与标题双向一致 ----------------
+# ---------------- (4) 目录与标题双向一致 ----------------
 
 def test_toc_matches_h2_headings():
     text = _readme()
@@ -220,7 +220,7 @@ def test_toc_anchors_characters_are_safe():
     assert not bad, f"锚点字符不安全（含标点/大写）：{bad}"
 
 
-# ---------------- ⑤ 写死数字 ----------------
+# ---------------- (5) 写死数字 ----------------
 
 def test_no_hardcoded_state_counts():
     found = find_hardcoded_counts(_readme())
@@ -229,7 +229,7 @@ def test_no_hardcoded_state_counts():
         "契约性数字（11 种断言 kind）不在禁令内")
 
 
-# ---------------- ⑥ 版本号与单一来源一致 ----------------
+# ---------------- (6) 版本号与单一来源一致 ----------------
 
 def test_version_matches_single_source():
     text = _readme()
@@ -239,7 +239,7 @@ def test_version_matches_single_source():
     assert m.group(1) == want, f"README 版本 {m.group(1)} != 版本单一来源 {want}"
 
 
-# ---------------- ⑦ 变更日志归发行说明 ----------------
+# ---------------- (7) 变更日志归发行说明 ----------------
 
 def test_readme_points_to_release_notes():
     """README 只**指路** `releases/RELEASE_NOTES_V*.md`（变更日志的家），且当前版本必须有说明。"""
@@ -251,7 +251,7 @@ def test_readme_points_to_release_notes():
     assert cur.is_file(), f"当前版本缺发行说明：{cur.name}（发版必带）"
 
 
-# ---------------- ⑧ 体量预算 ----------------
+# ---------------- (8) 体量预算 ----------------
 
 def test_readme_stays_concise():
     """**简洁是硬要求**：README 是门面 + 快速上手，不是手册（细节归培训页与发行说明）。"""
@@ -260,13 +260,13 @@ def test_readme_stays_concise():
         f"README {len(lines)} 行 > 预算 {MAX_LINES} 行 —— 新增内容前先问：该放培训页还是发行说明？")
 
 
-# ---------------- ⑨ 引用的仓库路径必须存在 ----------------
+# ---------------- (9) 引用的仓库路径必须存在 ----------------
 
 # 只查「源码 / 文档类」目录：运行期目录（output/ · log/）在交付包解压目录里可能不存在
-# ⇒ 一并检查会制造跨环境假红（一类判据必须与「在不在包里」无关）。
+# -> 一并检查会制造跨环境假红（一类判据必须与「在不在包里」无关）。
 _CHECKED_PREFIXES = ("framework/", "tests/_helpers/", "tests/_runner/", "docs/", "build_tools/", "cases/",
                      "scenarios/", "demo/", "releases/", "scripts/")
-# 必须含 `/` ⇒ 裸文件名（cli.py / report.html 这类上下文里的简称）不参与，避免误报
+# 必须含 `/` -> 裸文件名（cli.py / report.html 这类上下文里的简称）不参与，避免误报
 _PATH_LIKE = re.compile(r"(?<![\w/.-])((?:[\w.-]+/)+[\w.-]+\.(?:md|py|json|html|yml|yaml))")
 
 
@@ -300,7 +300,7 @@ def test_negative_hardcoded_counts_are_detected():
 
 
 def test_negative_section_order_is_detected():
-    """顺序颠倒 / 缺章必须报出来（否则 ② 判据等于没写）。"""
+    """顺序颠倒 / 缺章必须报出来（否则 (2) 判据等于没写）。"""
     lines: dict[str, int] = dict.fromkeys(REQUIRED_SECTIONS, 100)
     lines["快速上手"] = 10
     lines["这个框架解决什么问题"] = 40        # 顺序故意颠倒
@@ -321,14 +321,14 @@ def test_negative_toc_diff_is_detected():
 
 
 def test_negative_changelog_sections_are_detected():
-    """"变更要点"章残留必须被抓（③ 判据的有效性自证）。"""
+    """"变更要点"章残留必须被抓（(3) 判据的有效性自证）。"""
     sample = "# x\n\n## 2026-09-23 变更要点 —— 一条命令搞定环境（V8.2.3）\n\n正文\n"
     assert len(changelog_sections(sample)) == 1
     assert changelog_sections("## 快速上手\n\n## 版本与更新\n") == []
 
 
 def test_slug_rule_is_pinned():
-    """钉住锚点规则（否则 ④ 判据的期望值会随实现漂）。"""
+    """钉住锚点规则（否则 (4) 判据的期望值会随实现漂）。"""
     assert slug("## 快速上手") == "快速上手"
     assert slug("快速上手（Windows / Linux）") == "快速上手windows--linux"
     assert slug("目录结构 & 谁负责什么") == "目录结构--谁负责什么"
@@ -340,4 +340,4 @@ def test_negative_missing_path_is_detected():
     assert missing_paths("见 `tests/_helpers/definitely_missing_xyz.py` 与 `docs/oops.md`") == \
         ["docs/oops.md", "tests/_helpers/definitely_missing_xyz.py"]
     assert missing_paths("见 `README.md` 与 `cli.py`（裸文件名不参与比对）") == []
-    assert missing_paths("见 `tests/_runner/run_acceptance.py`（真实存在 ⇒ 不许误伤）") == []
+    assert missing_paths("见 `tests/_runner/run_acceptance.py`（真实存在 -> 不许误伤）") == []

@@ -3,7 +3,7 @@
 为什么这些断言值钱：cassette 是「让连不上外网的机器也能跑 AI 链路」的唯一手段。它一旦
 静默降级（未命中时偷偷改走实时调用、或拿 mock 顶），产出的用例就会挂着 AI 的名却没人问过
 AI —— 正是本项目反复修掉的那类假绿。所以这里把两条钉死：
-  ① 未命中必须报错（绝不悄悄改走 live）；② 回放路径**绝不触碰网络 / LLM 对象**。
+  (1) 未命中必须报错（绝不悄悄改走 live）；(2) 回放路径**绝不触碰网络 / LLM 对象**。
 """
 from __future__ import annotations
 
@@ -70,10 +70,10 @@ def _no_llm(monkeypatch):
 
 def test_key_stable_and_sensitive():
     a = cassette_key("P", "S")
-    assert a == cassette_key("P", "S")              # 同 prompt+system ⇒ 同键（可复现的基础）
+    assert a == cassette_key("P", "S")              # 同 prompt+system -> 同键（可复现的基础）
     assert len(a) == 16 and a.isalnum()
-    assert a != cassette_key("P2", "S")             # 场景/清单差一个字 ⇒ 不命中（刻意的严格）
-    assert a != cassette_key("P", "S2")             # system 变了（提示词改版）⇒ 不命中
+    assert a != cassette_key("P2", "S")             # 场景/清单差一个字 -> 不命中（刻意的严格）
+    assert a != cassette_key("P", "S2")             # system 变了（提示词改版）-> 不命中
 
 
 def test_struct_key_normalizes_data_values_and_placeholders():
@@ -82,8 +82,8 @@ def test_struct_key_normalizes_data_values_and_placeholders():
     现场形态：场景文件在 V7.8「数据参数化真展开」后写成占位符 ——
         录像时的 prompt：「…搜索框输入 '1005'…」
         现在的 prompt：  「…搜索框输入 '{关键词}'…」
-    结构键原先**逐字**取场景文案 ⇒ 只因「换了一组数据 / 把它参数化」就整份不命中，
-    而这恰恰是结构键本来要排除的东西（它排除的就是业务数据值）⇒ 用户被迫每次重录。
+    结构键原先**逐字**取场景文案 -> 只因「换了一组数据 / 把它参数化」就整份不命中，
+    而这恰恰是结构键本来要排除的东西（它排除的就是业务数据值）-> 用户被迫每次重录。
 
     归一口径：引号内的值（'1005' / "1005" / ‘1005’）与花括号占位符（{关键词}）都视作「值」，
     统一折成 `<VAL>`；**只动这两类**，语义文字一个不碰（下一节有负向自证）。
@@ -91,9 +91,9 @@ def test_struct_key_normalizes_data_values_and_placeholders():
     pages = [{"name": "合同列表页", "url": URL}]
     base = struct_key("在搜索框输入 '1005' 点搜索按钮", ITEMS, pages)
     assert base == struct_key("在搜索框输入 '2008' 点搜索按钮", ITEMS, pages), \
-        "换一个数据值就不命中 ⇒ 换数据即需重录（这不是结构键的本意）"
+        "换一个数据值就不命中 -> 换数据即需重录（这不是结构键的本意）"
     assert base == struct_key("在搜索框输入 '{关键词}' 点搜索按钮", ITEMS, pages), \
-        "占位符与具体值不等价 ⇒ 参数化即需重录（本次现场问题的根因）"
+        "占位符与具体值不等价 -> 参数化即需重录（本次现场问题的根因）"
     assert base == struct_key("在搜索框输入 “1005” 点搜索按钮", ITEMS, pages), \
         "中文引号包的值没被归一（跨机器/文档里很容易写成中文引号）"
 
@@ -103,9 +103,9 @@ def test_struct_key_still_sensitive_to_semantics():
     pages = [{"name": "合同列表页", "url": URL}]
     base = struct_key("在搜索框输入 '1005' 点搜索按钮", ITEMS, pages)
     assert base != struct_key("在搜索框输入 '1005' 点导出按钮", ITEMS, pages), \
-        "动作语义变了（搜索→导出）却不命中变化 ⇒ 会拿旧结论套新场景"
+        "动作语义变了（搜索→导出）却不命中变化 -> 会拿旧结论套新场景"
     assert base != struct_key("在搜索框输入 '1005' 点搜索按钮", ITEMS[:1], pages), \
-        "控件骨架少一个却同键 ⇒ 元素清单变了不该复用旧判断"
+        "控件骨架少一个却同键 -> 元素清单变了不该复用旧判断"
     assert base != struct_key("在搜索框输入 '1005' 点搜索按钮", ITEMS,
                               [{"name": "合同列表页", "url": URL + "?x=1"}]), \
         "页面 url 变了却同键"
@@ -121,10 +121,10 @@ def test_lookup_accepts_multiple_struct_keys(tmp_path):
     c = Cassette(MODE_RECORD, tmp_path)
     c.store("PROMPT-OLD", "m", "S", [{"kind": "text", "completion": "x"}], key_struct=legacy)
     # 单把（新算法）不命中是预期的；把两把都递进去必须命中旧那份
-    # ⚠️ 必须换一个 prompt 才能走到结构键那条路（同 prompt ⇒ 严格键直接命中，兼容逻辑根本没被测到）
+    # [!] 必须换一个 prompt 才能走到结构键那条路（同 prompt -> 严格键直接命中，兼容逻辑根本没被测到）
     got = Cassette(MODE_REPLAY, tmp_path).lookup(
         "PROMPT-NEW", "S", struct_key_value=["0000000000000000", legacy])
-    assert got is not None, "多把结构键查询没命中旧算法的 key_struct ⇒ 旧录像会集体失效"
+    assert got is not None, "多把结构键查询没命中旧算法的 key_struct -> 旧录像会集体失效"
     assert got.get("_match") == "struct"
 
 
@@ -141,7 +141,7 @@ def test_store_lookup_roundtrip(tmp_path):
     c2 = Cassette(MODE_REPLAY, tmp_path)
     got = c2.lookup("PROMPT", "SYS")
     assert got and got["key"] == rec["key"]
-    assert c2.lookup("别的 prompt", "SYS") is None        # 没录过 ⇒ None（由调用方报错）
+    assert c2.lookup("别的 prompt", "SYS") is None        # 没录过 -> None（由调用方报错）
 
 
 def test_store_merges_both_kinds(tmp_path):
@@ -224,7 +224,7 @@ def test_replay_miss_raises_with_diagnosis(tmp_path, monkeypatch):
 
 
 def test_replay_bad_recording_fails_loud(tmp_path, monkeypatch):
-    """录像在、但解析不出步骤（录制方版本不兼容）⇒ 报错，不能静默产出空用例。"""
+    """录像在、但解析不出步骤（录制方版本不兼容）-> 报错，不能静默产出空用例。"""
     Cassette(MODE_RECORD, tmp_path).store(
         _prompt_for(SCENARIO), "m", explorer._PLANNER_SYSTEM,
         [{"kind": "structured", "completion": {"steps": "这不是列表"}}])
@@ -237,7 +237,7 @@ def test_replay_bad_recording_fails_loud(tmp_path, monkeypatch):
 # ---------------------------------------------------------------- 录 → 放 闭环
 
 def test_record_then_replay_same_steps(tmp_path, monkeypatch):
-    """录一次 → 用录像回放 ⇒ 结果与录制那次一致（这是「离线可跑」的硬证据）。"""
+    """录一次 → 用录像回放 -> 结果与录制那次一致（这是「离线可跑」的硬证据）。"""
     fake = _FakeLLM()
     monkeypatch.setattr("framework.tools.common.config.llm_from_env", lambda: fake)
     rec_cass = Cassette(MODE_RECORD, tmp_path)
@@ -325,7 +325,7 @@ def test_cli_rejects_conflicting_and_wrong_command():
     r = _cli("explore", "--ai", "--llm-record", "--llm-cassette")
     assert r.returncode == 2 and "互斥" in (r.stdout + r.stderr)
 
-    r = _cli("run", "--llm-cassette", "x")           # 用错子命令 ⇒ 必须报错，不许静默忽略
+    r = _cli("run", "--llm-cassette", "x")           # 用错子命令 -> 必须报错，不许静默忽略
     assert r.returncode == 2 and "只用于" in (r.stdout + r.stderr)
 
 
@@ -344,7 +344,7 @@ def test_ai_explore_accepts_cassette(tmp_path, monkeypatch):
     """ai_explore 把 cassette 透传到异步阶段（同步探测用替身，不启浏览器）。"""
     # 签名/返回口径与实现对齐（2026-09-30：`_collect_page_context` 现为
     # `(items, url, pages=None, auth=None)` → `(items, dom_ctx, err)`；
-    # 此前 mock 多出两个返回值、且缺 auth ⇒ ai_explore 传 auth= 时 TypeError）
+    # 此前 mock 多出两个返回值、且缺 auth -> ai_explore 传 auth= 时 TypeError）
     monkeypatch.setattr(explorer, "_collect_page_context",
                         lambda items, url, pages=None, auth=None:
                         (ITEMS, "", "", [], []))   # 实现返回 5 元组：(items, dom_ctx, err, ?, row_fields)
@@ -377,7 +377,7 @@ def _items_with_other_data():
     """同一页面结构、但**业务数据的值**不同 —— 模拟「另一台机器」或「跑过测试的机器」。
 
     这是实测踩到的真问题：prompt 里的 nearby_text 是列表行整行文本（管理单元/帐套/客户/业务单元），
-    而 demo 的预置数据是随机的、/api/reset（pytest 每条用例前都调）会重新随机 ⇒ 严格键跨机器必不命中。
+    而 demo 的预置数据是随机的、/api/reset（pytest 每条用例前都调）会重新随机 -> 严格键跨机器必不命中。
     """
     return [
         {**ITEMS[0], "nearby_text": "合同1 0451 001 预po 北京华信科技有限公司 bu_b"},
@@ -387,11 +387,11 @@ def _items_with_other_data():
 
 def test_struct_key_ignores_data_values():
     a = _sk(SCENARIO)
-    assert a == _sk(SCENARIO, _items_with_other_data())      # 数据值不同 ⇒ 结构键相同（跨机器可复用）
+    assert a == _sk(SCENARIO, _items_with_other_data())      # 数据值不同 -> 结构键相同（跨机器可复用）
     changed = [dict(ITEMS[0], semantic_name="搜索按钮2"), ITEMS[1]]
-    assert _sk(SCENARIO, changed) != a                       # 控件结构变了 ⇒ 键必须变（不许套旧结论）
-    assert _sk(SCENARIO + "换个说法") != a                   # 场景变了 ⇒ 键必须变
-    assert a != struct_key(SCENARIO, ITEMS, None, "别的 system")   # system（提示词）变了 ⇒ 键必须变
+    assert _sk(SCENARIO, changed) != a                       # 控件结构变了 -> 键必须变（不许套旧结论）
+    assert _sk(SCENARIO + "换个说法") != a                   # 场景变了 -> 键必须变
+    assert a != struct_key(SCENARIO, ITEMS, None, "别的 system")   # system（提示词）变了 -> 键必须变
 
 
 def test_lookup_struct_fallback_and_strict_switch(tmp_path):
@@ -416,7 +416,7 @@ def test_struct_key_survives_probe_order_change(tmp_path):
 
 
 def test_replay_uses_struct_key_when_data_changes(tmp_path, monkeypatch):
-    """换一批数据（同结构）⇒ 仍能回放成功（这条就是「工作电脑能不能用」的核心断言）。"""
+    """换一批数据（同结构）-> 仍能回放成功（这条就是「工作电脑能不能用」的核心断言）。"""
     monkeypatch.setattr("framework.tools.common.config.llm_from_env", lambda: _FakeLLM())
     _run_explore(Cassette(MODE_RECORD, tmp_path))                       # 录：数据 A
     _no_llm(monkeypatch)                                                # 放：不碰 LLM

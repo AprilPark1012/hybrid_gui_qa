@@ -1,16 +1,16 @@
-"""框架能力（P22 批 5 / 方案①）：**不锚容器**的全页 nth —— 处理「同名按钮分布在不同区域」。
+"""框架能力（P22 批 5 / 方案(1)）：**不锚容器**的全页 nth —— 处理「同名按钮分布在不同区域」。
 
 真值背景（2026-09-30）：订单详情页有 **2 个** 叫「保存」的按钮：
   · `#btn-save-lines`  在 `section[aria-label="详细信息"]` 里（行保存）
   · `#btn-detail-edit` 在顶部（编辑态下文案变「保存」= 表单保存；非编辑态叫「编辑」）
-用例要表达「全页第 2 个『保存』」，但现有渲染把「保存」锚到「详细信息」区 ⇒ 那里只有 1 个
-⇒ `nth(1)` 永远落空。新增显式步骤字段 `scope="page"`：**该步不锚任何容器**，
+用例要表达「全页第 2 个『保存』」，但现有渲染把「保存」锚到「详细信息」区 -> 那里只有 1 个
+-> `nth(1)` 永远落空。新增显式步骤字段 `scope="page"`：**该步不锚任何容器**，
 直接在全页范围按元素自身 role/name 取第 N 个。
 
 判据（一类）：
-  J1 `scope="page"` ⇒ primary 为 `p.get_by_role(...).nth(N-1)`，**不含** `locator('section`
-  J2 不给 scope（向后兼容）⇒ 仍走容器锚分支
-  J3 `scope` 值非法 ⇒ 当场失败（禁止静默退回容器锚 —— 那会变成"点了别的按钮"，属假通过）
+  J1 `scope="page"` -> primary 为 `p.get_by_role(...).nth(N-1)`，**不含** `locator('section`
+  J2 不给 scope（向后兼容）-> 仍走容器锚分支
+  J3 `scope` 值非法 -> 当场失败（禁止静默退回容器锚 —— 那会变成"点了别的按钮"，属假通过）
   J4 `scope="page"` 时 occurrence 仍生效（1 基 → nth(N-1)）
 """
 from __future__ import annotations
@@ -39,7 +39,7 @@ ELEM = {
 
 
 def _render(steps):
-    """用**真实用例文件**当骨架 ⇒ 渲染走的是与生产同一条路径（含 pages/case_id）。"""
+    """用**真实用例文件**当骨架 -> 渲染走的是与生产同一条路径（含 pages/case_id）。"""
     src = sorted(glob.glob("cases/orders_invoice_full_lifecycle/*.json"))[-1]
     case = json.load(open(src, encoding="utf-8"))
     case["steps"] = steps

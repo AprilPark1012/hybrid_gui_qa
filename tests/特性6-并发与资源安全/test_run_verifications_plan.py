@@ -34,7 +34,7 @@ def test_并发数到上限就不再起():
 
 
 def test_浏览器脚本必须过内存闸_差一点也硬闯():
-    # 550MB 一个浏览器实例：可用 500MB 时**不许起**（硬闯的下场是浏览器起不来 ⇒ 整套被 SKIP）
+    # 550MB 一个浏览器实例：可用 500MB 时**不许起**（硬闯的下场是浏览器起不来 -> 整套被 SKIP）
     ok, why = rv.may_start(is_browser=True, running=0, running_browsers=0, jobs=2, mem_mb=500)
     assert not ok and "内存闸未过" in why
     ok2, _ = rv.may_start(is_browser=True, running=0, running_browsers=0, jobs=2, mem_mb=550)
@@ -48,7 +48,7 @@ def test_非浏览器脚本不吃内存闸():
 
 
 def test_浏览器脚本数越多_内存要求越高():
-    # 已有 1 个浏览器在跑 ⇒ 起第二个需要 550×2=1100MB
+    # 已有 1 个浏览器在跑 -> 起第二个需要 550×2=1100MB
     ok, why = rv.may_start(is_browser=True, running=1, running_browsers=1, jobs=3, mem_mb=1000)
     assert not ok and "1100MB" in why
 
@@ -89,10 +89,10 @@ def test_读不到文件按独占处理():
 
 def test_独占是屏障_两个方向都拦住():
     base = dict(is_browser=False, running_browsers=0, jobs=2, mem_mb=99999)
-    # 方向①：已有独占在跑 ⇒ 谁也别起
+    # 方向(1)：已有独占在跑 -> 谁也别起
     ok, why = rv.may_start(running=0, exclusive=False, running_exclusive=True, **base)
     assert ok is False and "独占" in why
-    # 方向②：自己要独占、别人在跑 ⇒ 自己等
+    # 方向(2)：自己要独占、别人在跑 -> 自己等
     ok, why = rv.may_start(running=1, exclusive=True, running_exclusive=False, **base)
     assert ok is False and "独占" in why
     # 不能死锁：独占脚本在**没人跑**时一定能起
@@ -107,10 +107,10 @@ def test_串行模式下独占不破坏原行为():
 
 # ---------- 脚本间产物质检（悬空引用必须被抓到）----------
 def test_artifacts_check_catches_dangling_case_id(tmp_path, monkeypatch):
-    """★负向：产物嵌了一个没有数据集的 case_id ⇒ 必须报出来（这是 L15 事故的核心判据）。"""
+    """★负向：产物嵌了一个没有数据集的 case_id -> 必须报出来（这是 L15 事故的核心判据）。"""
     import run_verifications as rv
     (tmp_path / "scripts" / "datasets").mkdir(parents=True)
-    # P20：产物是一个用例一个文件 ⇒ case_id 的权威来源是 scripts/generated/index.json
+    # P20：产物是一个用例一个文件 -> case_id 的权威来源是 scripts/generated/index.json
     (tmp_path / "scripts" / "generated").mkdir(parents=True)
     (tmp_path / "scripts" / "generated" / "index.json").write_text(
         '{"ghost_case_999999": {"script_path": "scripts/generated/manual/ghost_case_999999.py"}}',
@@ -120,7 +120,7 @@ def test_artifacts_check_catches_dangling_case_id(tmp_path, monkeypatch):
 
 
 def test_artifacts_check_passes_when_dataset_exists(tmp_path, monkeypatch):
-    """正向：case_id 有对应数据集 ⇒ 干净（不许误报）。"""
+    """正向：case_id 有对应数据集 -> 干净（不许误报）。"""
     import run_verifications as rv
     d = tmp_path / "scripts" / "datasets"
     d.mkdir(parents=True)
@@ -134,7 +134,7 @@ def test_artifacts_check_passes_when_dataset_exists(tmp_path, monkeypatch):
 
 
 def test_artifacts_check_tolerates_missing_files(tmp_path, monkeypatch):
-    """健壮性：产物还没生成（文件不在）⇒ 不崩、不误报。"""
+    """健壮性：产物还没生成（文件不在）-> 不崩、不误报。"""
     import run_verifications as rv
     monkeypatch.setattr(rv, "REPO", tmp_path)
     assert rv.artifacts_are_consistent() == []

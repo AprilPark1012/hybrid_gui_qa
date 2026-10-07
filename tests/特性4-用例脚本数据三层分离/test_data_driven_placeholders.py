@@ -3,13 +3,13 @@
 2026-09-24 事故：场景 `contracts_search_by_no.yml` 写着
     在搜索框输入 '{关键词}'，点击搜索按钮，确认出现编号为 {期望编号} 的记录
     data: [3 组]
-但 AI 生成的用例把占位符**解析成了第 1 组的值**（`value: "1005"` / `expect: "HT-1005"`）⇒
-`generate` 判定「用例没用占位符」⇒ **不做参数化**（sets = []）⇒ 3 组数据只跑 1 条，
-而这一路**只告警不报错** ⇒ 数据驱动特性静默失效（二类 `verify_data_expand` 才拦到）。
+但 AI 生成的用例把占位符**解析成了第 1 组的值**（`value: "1005"` / `expect: "HT-1005"`）->
+`generate` 判定「用例没用占位符」-> **不做参数化**（sets = []）-> 3 组数据只跑 1 条，
+而这一路**只告警不报错** -> 数据驱动特性静默失效（二类 `verify_data_expand` 才拦到）。
 
 本判据守两件事：
-  ① 凡"场景有 data: 的 AI 用例"⇒ 文案里**必须**出现 `{占位符}`（否则直接红）；
-  ② `restore_data_placeholders()` 的确定性还原语义（长值优先 / 不动 id / 幂等 / 无组不动作）。
+  (1) 凡"场景有 data: 的 AI 用例"-> 文案里**必须**出现 `{占位符}`（否则直接红）；
+  (2) `restore_data_placeholders()` 的确定性还原语义（长值优先 / 不动 id / 幂等 / 无组不动作）。
 """
 from __future__ import annotations
 
@@ -45,10 +45,10 @@ def test_ai_cases_with_scenario_data_use_placeholders():
     sd = _scenarios_with_data()
     if not sd:
         # 2026-09-30：三目录清空重建后，现存唯一场景 `orders_invoice_full_lifecycle` 不含 `data:` 段
-        # ⇒ 本判据失去保护对象。**如实跳过并说明**，不伪装通过（R7 口径：SKIP ≠ 通过）。
+        # -> 本判据失去保护对象。**如实跳过并说明**，不伪装通过（R7 口径：SKIP ≠ 通过）。
         # 一旦新增带 data: 的场景，本判据自动恢复生效。
         import pytest
-        pytest.skip("当前仓库没有带 `data:` 段的场景 ⇒ 数据驱动占位符判据不适用"
+        pytest.skip("当前仓库没有带 `data:` 段的场景 -> 数据驱动占位符判据不适用"
                     "（新增数据驱动场景后自动恢复）")
     bad: list[str] = []
     for f in sorted(CASES.rglob("ai_*.json")):
@@ -58,7 +58,7 @@ def test_ai_cases_with_scenario_data_use_placeholders():
             continue
         if not any("{" in t and "}" in t for t in _texts(case)):
             bad.append(f"{f.name}（场景 {sid} 有 {len(sd[sid])} 组 data，但文案里零占位符）")
-    assert not bad, "✗ 数据驱动的 AI 用例没用占位符 ⇒ 多组数据会静默退化成只跑一组：\n  " + "\n  ".join(bad)
+    assert not bad, "X 数据驱动的 AI 用例没用占位符 -> 多组数据会静默退化成只跑一组：\n  " + "\n  ".join(bad)
 
 
 def test_restore_is_longest_first_and_does_not_touch_id():
@@ -82,7 +82,7 @@ def test_restore_is_idempotent():
 
 
 def test_restore_without_sets_is_noop():
-    """场景没有 data: ⇒ 一个字符都不许动。"""
+    """场景没有 data: -> 一个字符都不许动。"""
     case = {"case_id": "x", "steps": [{"op": "fill", "value": "1005"}], "asserts": []}
     assert restore_data_placeholders(case, []) == []
     assert case["steps"][0]["value"] == "1005"

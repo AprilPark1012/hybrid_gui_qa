@@ -2,16 +2,16 @@
 
 跑法（需要 demo 在 8000 上：python -m demo.app）：
     cd ~/hybrid_gui_qa && source .venv/bin/activate
-    python tests/特性2-语义识别与分层定位/verify_cross_page.py        # 末行：全部符合预期 ✅
+    python tests/特性2-语义识别与分层定位/verify_cross_page.py        # 末行：全部符合预期 [OK]
 
 为什么单独一个脚本（不叫 test_*.py）：
   它会**临时**往 cases/ 写一批故意做错的跨页用例（prefix=neg_cross_）、跑完清理并重新 generate，
   不适合跟主用例套件混跑。
 
 判据（防假绿铁律）：跨页的每条**错误**都必须**失败**——
-  ① 详情页断言值写错；② 换页证据放在换页之前（页面根本没变）；
-  ③ 跨页用例用了跨页重名的原始名（会静默落到另一页）；④ 跨页用例没有 url 断言（质量闸必须告警）；
-  ⑤ **新建 → 详情页**：详情页必须读到同一条真实记录（客户 = 弹层里选的那个），
+  (1) 详情页断言值写错；(2) 换页证据放在换页之前（页面根本没变）；
+  (3) 跨页用例用了跨页重名的原始名（会静默落到另一页）；(4) 跨页用例没有 url 断言（质量闸必须告警）；
+  (5) **新建 → 详情页**：详情页必须读到同一条真实记录（客户 = 弹层里选的那个），
      且对**不存在的编号**如实报「未找到」而不是编一份出来（2026-09-14 数据搬到服务端后新增的判据）。
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ import subprocess
 import sys
 from pathlib import Path as _P
 
-# 2026-10-07：`_gen_layout` 是公共模块，住 tests/_helpers/ ⇒ 必须在 import 之前补好路径
+# 2026-10-07：`_gen_layout` 是公共模块，住 tests/_helpers/ -> 必须在 import 之前补好路径
 #（独立脚本不经过 conftest，也不能依赖 runner 主进程的 sys.path —— 子进程不继承）。
 _ROOT = _P(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "tests" / "_helpers"))
@@ -45,7 +45,7 @@ force_stdio()
 def _pick(page, modal, row_text):
     """在弹层里点「含 row_text 的那一行」的按钮（P16 批 5）。
 
-    行内埋点（`pick-*`）已按「真实系统只有顶层容器有埋点」的口径撤除 ⇒ 判据走**顶层锚点 + 容器内下钻**。
+    行内埋点（`pick-*`）已按「真实系统只有顶层容器有埋点」的口径撤除 -> 判据走**顶层锚点 + 容器内下钻**。
     行锚歧义如实失败，不猜。
     """
     r = scope_locate(page, {"kind": "dialog", "by": "test_id", "value": modal},
@@ -59,12 +59,12 @@ CASES = BASE / "cases"
 DATASETS = BASE / "scripts" / "datasets"
 DEMO = "http://localhost:8000"
 PREFIX = "neg_cross_"
-# 需求⑮（2026-09-28）起所有业务页都有**登录墙** ⇒ 自动化入口一律带 ?demo_role=
-# （不带会被重定向到 login.html，那里的说明文字含「新建合同」⇒ 负向断言会**假绿**，实测坐实）
+# 需求(15)（2026-09-28）起所有业务页都有**登录墙** -> 自动化入口一律带 ?demo_role=
+# （不带会被重定向到 login.html，那里的说明文字含「新建合同」-> 负向断言会**假绿**，实测坐实）
 ROLE = "?demo_role=contract_admin"
-# ⚠️ 2026-09-30：原来 LIST 指向根路径（首页），而本脚本要操作的是**合同列表页**的
-# 「新建合同」按钮（#btn-new 在 contracts.html）⇒ 首页上没有它（实测 click 30s 超时）。
-# 且需求⑮ 起业务页有登录墙 ⇒ 必须带 ?demo_role=，否则停在被重定向的登录页。
+# [!] 2026-09-30：原来 LIST 指向根路径（首页），而本脚本要操作的是**合同列表页**的
+# 「新建合同」按钮（#btn-new 在 contracts.html）-> 首页上没有它（实测 click 30s 超时）。
+# 且需求(15) 起业务页有登录墙 -> 必须带 ?demo_role=，否则停在被重定向的登录页。
 LIST = "http://localhost:8000/contracts.html" + ROLE
 DETAIL = "http://localhost:8000/contract_detail.html?no=HT-1005&demo_role=contract_admin"
 PAGES = [{"name": "列表页", "url": LIST}, {"name": "详情页", "url": DETAIL}]
@@ -87,31 +87,31 @@ def _demo_up() -> bool:
 
 # ---- 负向：每条都必须 FAILED（结构性问题在生成阶段就 pytest.fail）----
 NEGATIVE = {
-    # ① 详情页断言值写错（真换页了，但期望值与实际不符）
+    # (1) 详情页断言值写错（真换页了，但期望值与实际不符）
     "wrong_detail_value": dict(
         steps=[GOTO_LIST, FILL, SEARCH, CLICK_NO],
         asserts=[{"kind": "url", "expect": "contract_detail", "after_step": 4},
                  {"kind": "text", "expect": "合同9999", "desc": "详情页名称写错", "after_step": 4}],
     ),
-    # ② 换页证据放在换页之前：此时还在列表页，url 不含 contract_detail
+    # (2) 换页证据放在换页之前：此时还在列表页，url 不含 contract_detail
     "url_assert_before_nav": dict(
         steps=[GOTO_LIST, FILL, SEARCH, CLICK_NO],
         asserts=[{"kind": "url", "expect": "contract_detail",
                   "desc": "换页前就断言已在详情页（实际还在列表页）", "after_step": 3}],
     ),
-    # ③ 跨页用例用了跨页重名的原始名「搜索」→ 会静默落到另一页 → 必须显式失败
+    # (3) 跨页用例用了跨页重名的原始名「搜索」→ 会静默落到另一页 → 必须显式失败
     "raw_duplicate_name": dict(
         steps=[GOTO_LIST, FILL,
                {"op": "click", "desc": "用原始名点搜索（跨页重名）", "element": "搜索"}],
         asserts=[{"kind": "text", "expect": "HT-1005"}],
     ),
-    # ④ 详情页元素名写错
+    # (4) 详情页元素名写错
     "detail_element_typo": dict(
         steps=[GOTO_LIST, FILL, SEARCH,
                {"op": "click", "desc": "点一个不存在的元素", "element": "根本不存在的按钮"}],
         asserts=[{"kind": "text", "expect": "HT-1005"}],
     ),
-    # ⑤ 「回到列表页」的独有文案证据，在**没回到列表页**（还在详情页）时必须 FAILED
+    # (5) 「回到列表页」的独有文案证据，在**没回到列表页**（还在详情页）时必须 FAILED
     #    —— 2026-09-17：原来那条证据是 expect_url=localhost（换页前后都通过 = 没有牙），
     #    换成「列表页独有文案」后，这条负向证明它真的有牙。
     "weak_evidence_no_teeth": dict(
@@ -148,11 +148,11 @@ def _cleanup(written):
 def _gen():
     """生成（含负向用例）。
 
-    ⚠️ 必须带 `--allow-unmapped`：负向用例 ④ 故意用一个**不存在的元素名**（就是为了证明
-    「元素名写错 ⇒ 该用例 FAILED，不许静默跳过」）。而 V7.5.1 的映射质量闸会因此把**整个** generate
+    [!] 必须带 `--allow-unmapped`：负向用例 (4) 故意用一个**不存在的元素名**（就是为了证明
+    「元素名写错 -> 该用例 FAILED，不许静默跳过」）。而 V7.5.1 的映射质量闸会因此把**整个** generate
     拦成 exit 2（闸门本身是对的：有未映射就不许出产物）—— 实测该负向段**从 V7.5.1 起就再没跑起来过**
     （2026-09-17 复跑时当场暴露）。
-    这里显式走调试逃生口：④ 会生成成 `pytest.fail` 存根 → 运行时 FAILED（正是负向段要验的结果）。
+    这里显式走调试逃生口：(4) 会生成成 `pytest.fail` 存根 → 运行时 FAILED（正是负向段要验的结果）。
     这些产物只服务于负向验证；跑完 `_cleanup()` 会**不带逃生口**重新生成干净产物。
     """
     r = subprocess.run([sys.executable, "-m", "framework.cli", "generate", "--allow-unmapped"],
@@ -178,17 +178,17 @@ def _reset_demo():
         with urllib.request.urlopen(req, timeout=5) as r:
             return json.loads(r.read().decode("utf-8")).get("count")
     except Exception as e:
-        print(f"  ⚠️ 数据复位失败：{type(e).__name__}: {e}")
+        print(f"  [!] 数据复位失败：{type(e).__name__}: {e}")
         return None
 
 
 def _check_new_then_detail():
-    """② 的直接效果：UI 新建（客户选 c1）→ 详情页读到的必须是**同一条真实记录**。
+    """(2) 的直接效果：UI 新建（客户选 c1）→ 详情页读到的必须是**同一条真实记录**。
 
     两个判据：
-      ① 正向：详情页的客户 = 弹层里选的那个（改造前详情页是「按编号序号推导」，
+      (1) 正向：详情页的客户 = 弹层里选的那个（改造前详情页是「按编号序号推导」，
          新建的合同在详情页会显示成别的客户 —— 那种"看着像对的"假数据最坑）；
-      ② 负向：**不存在的编号**必须如实报「未找到」、单元格保持「—」，绝不编一份出来。
+      (2) 负向：**不存在的编号**必须如实报「未找到」、单元格保持「—」，绝不编一份出来。
     """
     import time as _t
     from playwright.sync_api import sync_playwright
@@ -245,7 +245,7 @@ def _check_new_then_detail():
 
 
 def _new_is_iframe() -> bool:
-    """「新建合同」是不是 iframe 弹层（V8.3 起是 ⇒ 相关段属范围外，见 main 里注释）。"""
+    """「新建合同」是不是 iframe 弹层（V8.3 起是 -> 相关段属范围外，见 main 里注释）。"""
     try:
         src = (Path(__file__).resolve().parents[2] / "demo" / "contracts.html").read_text(encoding="utf-8")
     except OSError:
@@ -255,16 +255,16 @@ def _new_is_iframe() -> bool:
 
 def main() -> int:
     if not _demo_up():
-        print(f"❌ 被测 demo 不可达（{DEMO}）——先跑：python -m demo.app")
+        print(f"[NG] 被测 demo 不可达（{DEMO}）——先跑：python -m demo.app")
         return 2
 
     print("===== 一、正向：跨页手写用例必须 PASSED（含换页 url 断言）=====")
     # V8.3 范围外：本版只交付「AI 订单→开票」一条链路，`cases/` 下没有手写的跨页用例
-    # （`cross_page_detail` 已随清理删除）⇒ 本段无输入，如实标注并**跳过**（不是通过，也不该记红）。
+    # （`cross_page_detail` 已随清理删除）-> 本段无输入，如实标注并**跳过**（不是通过，也不该记红）。
     # 后续版本新增手写用例时，删掉这段判定即自动恢复。
-    # ⚠️ 本文件的价值在二、三节（质量闸红线 + 5 条负向防假绿）—— 那两节不依赖手写用例，必须继续跑。
+    # [!] 本文件的价值在二、三节（质量闸红线 + 5 条负向防假绿）—— 那两节不依赖手写用例，必须继续跑。
     if not (CASES / "cross_page_detail.json").exists():
-        print("  ⏭️  test_cross_page_detail —— **V8.3 不适用**：本版无手写跨页用例（已按口径清理）")
+        print("  [skip]  test_cross_page_detail —— **V8.3 不适用**：本版无手写跨页用例（已按口径清理）")
         pos_ok = True
     else:
         e = dict(os.environ, HYBRID_RUN_ID="verify_cross_page")
@@ -273,7 +273,7 @@ def main() -> int:
                            cwd=BASE, capture_output=True, text=True, encoding="utf-8", errors="replace",
                            env={**e, **UTF8_ENV})
         pos_ok = r.returncode == 0
-        print(f"  {('✅' if pos_ok else '❌')} test_cross_page_detail  "
+        print(f"  {('[OK]' if pos_ok else '[NG]')} test_cross_page_detail  "
               f"{((r.stdout or '').strip().splitlines() or [''])[-1][:90]}")
 
     print("\n===== 二、质量闸：跨页用例缺 url 断言必须告警；弱换页证据必须红线 =====\n")
@@ -285,17 +285,17 @@ def main() -> int:
         "asserts": [{"kind": "text", "expect": "HT-1005"}],
     })
     gate_ok = any("URL 断言" in w for w in warn)
-    print(f"  {('✅' if gate_ok else '❌')} 告警命中: {[w for w in warn if 'URL 断言' in w] or warn}")
-    # 弱换页证据（expect=localhost：换页前后都通过）⇒ 红线必须拦
+    print(f"  {('[OK]' if gate_ok else '[NG]')} 告警命中: {[w for w in warn if 'URL 断言' in w] or warn}")
+    # 弱换页证据（expect=localhost：换页前后都通过）-> 红线必须拦
     red = case_errors({"pages": PAGES, "steps": [GOTO_LIST, FILL, SEARCH, CLICK_NO],
                        "asserts": [{"kind": "url", "expect": "localhost", "after_step": 4}]})
     redline_ok = bool(red) and "假绿" in red[0]
-    print(f"  {('✅' if redline_ok else '❌')} 弱换页证据被红线拦下: {red[:1] or '（没拦住 —— 假绿会进产物！）'}")
+    print(f"  {('[OK]' if redline_ok else '[NG]')} 弱换页证据被红线拦下: {red[:1] or '（没拦住 —— 假绿会进产物！）'}")
     # 反向：真证据（只出现在详情页的片段）不许被拦 —— 假拦会把人逼向绕过闸门
     no_false_block = case_errors({"pages": PAGES, "steps": [GOTO_LIST, FILL, SEARCH, CLICK_NO],
                                   "asserts": [{"kind": "url", "expect": "contract_detail",
                                                "after_step": 4}]}) == []
-    print(f"  {('✅' if no_false_block else '❌')} 真换页证据（contract_detail）未被误拦")
+    print(f"  {('[OK]' if no_false_block else '[NG]')} 真换页证据（contract_detail）未被误拦")
 
     print("\n===== 三、负向：每条都必须 FAILED（防假绿）=====")
     written = _write_neg_cases()
@@ -303,25 +303,25 @@ def main() -> int:
     try:
         rc, out = _gen()
         if rc != 0:
-            print("  ❌ generate 失败：", out[-400:])
+            print("  [NG] generate 失败：", out[-400:])
             return 2
         for name in NEGATIVE:
             code, line = _run_node(f"{PREFIX}{name}")
             ok = code != 0
             if not ok:
                 bad.append(name)
-            print(f"  {('✅' if ok else '❌ 假绿！')} {name:<22} pytest exit={code}  {line}")
+            print(f"  {('[OK]' if ok else '[NG] 假绿！')} {name:<22} pytest exit={code}  {line}")
     finally:
         _cleanup(written)
 
     print("\n===== 四、新建 → 详情页：详情页必须读同一条真实记录（客户 = 弹层里选的那个）=====")
-    # ⚠️ V8.3 范围外：demo 09-29 起「新建合同」是 **iframe 弹层**
+    # [!] V8.3 范围外：demo 09-29 起「新建合同」是 **iframe 弹层**
     #   （#btn-new → openNew() → iframe#frame-contract-new → contract_new.html），
-    #   表单控件（#inp-name 等）在**跨文档**里 ⇒ 本段需要「iframe 内定位」能力，
+    #   表单控件（#inp-name 等）在**跨文档**里 -> 本段需要「iframe 内定位」能力，
     #   而该能力在项目里是**单独立项**（未随本版交付）。
     #   检出这个结构就如实标范围外（不是通过）；待立项补齐后本段自动恢复。
     if _new_is_iframe():
-        print("  ⏭️  新建 → 详情页一致性 —— **V8.3 范围外**："
+        print("  [skip]  新建 → 详情页一致性 —— **V8.3 范围外**："
               "「新建合同」为 iframe 弹层（#frame-contract-new → contract_new.html），"
               "需 iframe 内定位能力（已单独立项）")
         cross_ok = True
@@ -329,15 +329,15 @@ def main() -> int:
         cross = _check_new_then_detail()
         cross_ok = all(ok for ok, _, _ in cross)
         for ok, desc, detail in cross:
-            print(f"  {('✅' if ok else '❌')} {desc}  {detail}")
+            print(f"  {('[OK]' if ok else '[NG]')} {desc}  {detail}")
 
     print("\n===== 结论 =====")
     all_ok = pos_ok and gate_ok and redline_ok and no_false_block and cross_ok and not bad
     if all_ok:
-        print("全部符合预期 ✅（正向跨页 PASSED；质量闸：缺 url 断言告警 / 弱证据被红线拦 / 真证据未误拦；"
+        print("全部符合预期 [OK]（正向跨页 PASSED；质量闸：缺 url 断言告警 / 弱证据被红线拦 / 真证据未误拦；"
               "新建→详情页客户一致；负向全部 FAILED，无假绿）")
         return 0
-    print(f"不符合预期 ❌  正向={'OK' if pos_ok else 'FAIL'}，质量闸={'OK' if gate_ok else 'FAIL'}，"
+    print(f"不符合预期 [NG]  正向={'OK' if pos_ok else 'FAIL'}，质量闸={'OK' if gate_ok else 'FAIL'}，"
           f"弱证据红线={'OK' if redline_ok else 'FAIL'}，真证据未误拦={'OK' if no_false_block else 'FAIL'}，"
           f"新建→详情页={'OK' if cross_ok else 'FAIL'}，假绿项={bad or '无'}")
     return 1

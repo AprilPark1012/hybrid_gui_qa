@@ -12,7 +12,7 @@
 """
 from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
-                      # ⚠️ 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
+                      # [!] 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
                       _ds_params, _ds_ids,
                       _assert_text, _assert_url,
                       _assert_visible, _assert_hidden, _assert_count,
@@ -20,7 +20,7 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       _assert_checked, _assert_unchecked,
                       _assert_enabled, _assert_disabled,
                       # 2026-09-17 跨 tab / 行内定位 / 首行断言用的辅助
-                      # ⚠️ 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
+                      # [!] 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
                       _Tabs, _click_row_cell, _assert_first_row,
                       # P22 批 4/5：等待式断言（wait_text；批 5 起支持 selector 限定范围）
                       _assert_wait_text)
@@ -33,7 +33,7 @@ def test_ai_orders_invoice_full_lifecycle_140528(page, ctx):
     """1. 以**超级管理员**登录系统。
 2. 切换到**订单管理员**角色（不切的话下一步的保存按钮是置灰的）。
 3. 进入合同列表页，**选中一条合同**（第一行，HT-1001）。
-   ⚠️ 点「新建订单」在 demo 里打开的是 **iframe 弹层**（探测链路暂不覆盖弹层内控件，已单独立项）；
+   [!] 点「新建订单」在 demo 里打开的是 **iframe 弹层**（探测链路暂不覆盖弹层内控件，已单独立项）；
    故本条走**等价直达**：打开新建订单页并把该合同带进去（`order_new.html?contract_no=HT-1001`）。
 4. 在新建订单页填写：订单名称用「全链路-{datetime}」、合同已带入、业务单元/管理单元/帐套各选第一行、
    订单类型选第一项、客户与销售员各选第一个、订单备注填「端到端全链路场景」；点「保存」。
@@ -43,7 +43,7 @@ def test_ai_orders_invoice_full_lifecycle_140528(page, ctx):
 7. 点底部「返回」回到订单列表；用订单名称搜索找到它，**等待**它的状态自动流转到「已关闭」。
 8. 切换到**发票管理员**角色；在订单列表里**选中该订单**，点「去开票」。
 9. 在开票页确认订单编号/合同编号已带入（发票号是系统生成的），填写发票行后点「保存」，完成发票创建。
-10. 进入发票列表页，在**订单名称**搜索框输入该订单名称，点「搜索」⇒ 能搜到刚创建的那张发票。"""
+10. 进入发票列表页，在**订单名称**搜索框输入该订单名称，点「搜索」-> 能搜到刚创建的那张发票。"""
     _CURRENT_LOG["case_id"] = "ai_orders_invoice_full_lifecycle_140528"
     _goto(page, 'http://localhost:8000/login.html')
     _log(page, "场景开始", f"case=ai_orders_invoice_full_lifecycle_140528")

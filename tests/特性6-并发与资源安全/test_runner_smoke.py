@@ -2,16 +2,16 @@
 
 **为什么要有它**（真实事故）：迁移 `tests/` → `tests/_helpers/` + `tests/_runner/` 时，
 `run_verifications.py` 里给子导入用的 `sys.path` 只插了 `tests/_runner/`，
-而共享辅助（`demo_freshness.py` 等）住在 `tests/_helpers/` ⇒
+而共享辅助（`demo_freshness.py` 等）住在 `tests/_helpers/` ->
 `import demo_freshness` 抛 `ModuleNotFoundError`，**整个二类 exit 1 起不来**。
-一类当时**没抓住**它（一类判据自己把两个目录都插进了 sys.path ⇒ 环境比 runner 宽松），
-属于典型「判据比现实宽松 ⇒ 假绿」。本判据用**子进程 + 干净环境**跑 runner 自己的 `--list`，
-环境与真实调用一致 ⇒ 这类病当场红。
+一类当时**没抓住**它（一类判据自己把两个目录都插进了 sys.path -> 环境比 runner 宽松），
+属于典型「判据比现实宽松 -> 假绿」。本判据用**子进程 + 干净环境**跑 runner 自己的 `--list`，
+环境与真实调用一致 -> 这类病当场红。
 
 判据：
-  ① `python tests/_runner/run_verifications.py --list` 必须 **exit 0**（能起来、能列出脚本）
-  ② 列出的脚本数 == `tests/_runner/verify_*.py` 的实际数量（收录口径没漏）
-  ③ 负向自证：把一个必然 import 失败的模块名喂进去 ⇒ 检查逻辑必须能报错（防「查什么都说好」）
+  (1) `python tests/_runner/run_verifications.py --list` 必须 **exit 0**（能起来、能列出脚本）
+  (2) 列出的脚本数 == `tests/_runner/verify_*.py` 的实际数量（收录口径没漏）
+  (3) 负向自证：把一个必然 import 失败的模块名喂进去 -> 检查逻辑必须能报错（防「查什么都说好」）
 """
 from __future__ import annotations
 
@@ -48,14 +48,14 @@ FAST_OFFLINE = "verify_html_sync"      # 最快的纯离线脚本（秒级），
 
 
 def test_runner_runs_a_real_script(capsys=None):
-    """★核心：runner 用干净子进程**真跑一次**（走 _ensure_demo_fresh 这条真实路径）⇒ 必须 exit 0。
+    """★核心：runner 用干净子进程**真跑一次**（走 _ensure_demo_fresh 这条真实路径）-> 必须 exit 0。
 
-    ⚠️ 用 `--list` 测不出来：那条分支在 demo 检查**之前**就返回了（2026-09-23 实测踩到 ——
+    [!] 用 `--list` 测不出来：那条分支在 demo 检查**之前**就返回了（2026-09-23 实测踩到 ——
     第一版判据就是这么写成假绿的）。所以这里用 `--only <最快脚本>` 真跑一遍。
 
-    ⚠️ `--min-mem 0`（L19 · 2026-09-28 修）：**必须显式关掉二类的内存闸门**。本机长期多会话共存
-    （MemAvailable 常年 280~470MB < 默认 550MB）⇒ 不关的话 runner 恒 `SKIP exit 3`，一类里这条**恒定假红**；
-    而这里跑的 `verify_html_sync` 是纯文件比对（零浏览器 / 零内存开销）⇒ 闸门拦住的不是本用例要防的东西
+    [!] `--min-mem 0`（L19 · 2026-09-28 修）：**必须显式关掉二类的内存闸门**。本机长期多会话共存
+    （MemAvailable 常年 280~470MB < 默认 550MB）-> 不关的话 runner 恒 `SKIP exit 3`，一类里这条**恒定假红**；
+    而这里跑的 `verify_html_sync` 是纯文件比对（零浏览器 / 零内存开销）-> 闸门拦住的不是本用例要防的东西
     （本用例要防的是「runner 起不来 / sys.path 漏目录」）。守这条的判据：
     `test_class1_no_mem_gate_coupling.py`（含负向自证 + 「关闸门后真跑 exit 0」的行为判据）。
     """
@@ -92,4 +92,4 @@ def test_runner_declares_both_helper_paths():
     assert re.search(r"sys\.path\.insert\([^)]*_helpers", text), (
         "runner 里没有 `sys.path.insert(...tests/_helpers...)` —— 共享辅助（demo_freshness 等）住在 "
         "tests/_helpers/，不插进 sys.path 就会 ModuleNotFoundError（2026-09-23 实测踩到）。"
-        "⚠️ 只断言'文本里出现过 _helpers 字样'是不够的：docstring 里就有，会假绿。")
+        "[!] 只断言'文本里出现过 _helpers 字样'是不够的：docstring 里就有，会假绿。")

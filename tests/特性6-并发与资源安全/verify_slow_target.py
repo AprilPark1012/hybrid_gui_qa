@@ -2,8 +2,8 @@
 
 为什么需要这个闸门（2026-09-14 团队演示事故）：
     团队 Windows（16 核 / 16 worker）上 `run all` 红 4 条、`--debug` 全绿。根因是
-    ① 页面异步取数而没有"就绪契约"② 有状态被测服务 + 每用例全局复位；
-    而本机 `safe_workers()` 恒为 1、目标又快 ⇒ **本地永远复现不出来**。
+    (1) 页面异步取数而没有"就绪契约"(2) 有状态被测服务 + 每用例全局复位；
+    而本机 `safe_workers()` 恒为 1、目标又快 -> **本地永远复现不出来**。
     这个闸门用"每请求 +delay 的反向代理"把那个环境搬进 CI：同一批用例指向代理，
     必须全绿；修复前它是 5 failed/1 passed（本机 30 秒复现）。
 
@@ -36,7 +36,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 # 统一 UTF-8：本脚本会把子进程（pytest）输出打回控制台 —— 不拉齐口径时，中文 Windows
-# （cp936 控制台）上那些 UTF-8 字节会显示成 `Ԫ��δӳ��` 这类乱码（2026-09-15 实测）。
+# （cp936 控制台）上那些 UTF-8 字节会显示成 `\u052a\ufffd\u04f3\ufffd` 这类乱码（2026-09-15 实测）。
 from framework.tools.common.text_io import force_stdio                     # noqa: E402
 
 force_stdio()
@@ -55,10 +55,10 @@ def _case_exists(cid: str) -> bool:
     return any((ROOT / "cases").rglob(f"{cid}.json"))
 
 
-# ⚠️ V8.3：下面这些用例已按用户口径清理（本版只留「AI 订单→开票」那一条）⇒ 用前先过滤，
+# [!] V8.3：下面这些用例已按用户口径清理（本版只留「AI 订单→开票」那一条）-> 用前先过滤，
 #    全不存在时**跑全部现存用例**（能力不变：仍验「慢目标下必须全绿」，只是用例集换了）。
 # 2026-10-07 审视结论：原 KEY_CASES 里 5 条**全部已被清理**（V8.3 只留「AI 订单→开票」那一条），
-# 清单是死的 ⇒ 清空它，让下面的兜底逻辑直接**跑全部现存用例**（能力不变：仍验「慢目标下必须全绿」）。
+# 清单是死的 -> 清空它，让下面的兜底逻辑直接**跑全部现存用例**（能力不变：仍验「慢目标下必须全绿」）。
 KEY_CASES: list[str] = []
 
 
@@ -152,16 +152,16 @@ def main() -> int:
     print(f"[gate] 慢目标闸门：代理延迟 {DELAY_MS}ms/请求 · demo:{DEMO_PORT} · 代理:{PROXY_PORT}")
     print(f"[gate] 内存检查：MemAvailable={avail}MB（需要 ≥{MIN_MEM_MB}MB 才能起 1 个 Chromium）")
     if avail < MIN_MEM_MB:
-        print(f"[gate] ⛔ SKIP：内存不足，跑起来必 OOM（本机 1.87G 无 swap）。"
+        print(f"[gate] [stop] SKIP：内存不足，跑起来必 OOM（本机 1.87G 无 swap）。"
               f"这不是通过 —— 等内存释放后重跑。")
         return 3
 
     _present = [c for c in KEY_CASES if _case_exists(c)]
     _gone = [c for c in KEY_CASES if c not in _present]
     if _gone:
-        print(f"[gate] ℹ️  {len(_gone)} 条关键用例已按口径清理、不参与：{', '.join(_gone)}")
+        print(f"[gate] [info]  {len(_gone)} 条关键用例已按口径清理、不参与：{', '.join(_gone)}")
     if not _present:
-        print("[gate] ℹ️  关键用例清单已全数清理 ⇒ 改为对**现存全部用例**跑慢目标闸门")
+        print("[gate] [info]  关键用例清单已全数清理 -> 改为对**现存全部用例**跑慢目标闸门")
     selection = [] if (full or not _present) else ["-k", " or ".join(f"test_{c}" for c in _present)]
     demo = None
     proxy = None
@@ -174,7 +174,7 @@ def main() -> int:
         demo = subprocess.Popen([PY, "-m", "demo.app"], cwd=ROOT, env=env,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         if not _wait_port(DEMO_PORT):
-            print("[gate] ❌ demo 没起来（端口未监听）")
+            print("[gate] [NG] demo 没起来（端口未监听）")
             return 1
         print(f"[gate] demo 已起：http://127.0.0.1:{DEMO_PORT}")
 
@@ -187,9 +187,9 @@ def main() -> int:
         run_env = dict(os.environ)
         # 慢目标下要把「有界等待的预算」一起放大，否则红的是**等待不够**、不是能力有问题：
         # 实测（2026-09-30）每请求 +300ms 时，"新增第 2 个订单行"后等行内输入框
-        # 5s 仍是 0 个 ⇒ 退语义兜底 ⇒ 用例在详情页就挂了。
+        # 5s 仍是 0 个 -> 退语义兜底 -> 用例在详情页就挂了。
         # 注意口径：放大的是**上限**（仍是轮询到就继续，不是固定 sleep），符合「不引入固定 sleep」原则。
-        _scale = max(1, DELAY_MS // 100)                     # 300ms/请求 ⇒ 3 倍
+        _scale = max(1, DELAY_MS // 100)                     # 300ms/请求 -> 3 倍
         run_env.update({
             "HYBRID_BASE_URL": f"http://127.0.0.1:{PROXY_PORT}",
             "HYBRID_RESET_URL": f"http://127.0.0.1:{PROXY_PORT}/api/reset",
@@ -220,16 +220,16 @@ def main() -> int:
             print("[gate] 失败用例：" + ", ".join(sorted(set(res["failed_names"]))))
         expect = 0 if full else len(KEY_CASES)
         if total == 0:
-            print("[gate] ❌ 一条都没跑（选择器写错了？）—— 不算通过")
+            print("[gate] [NG] 一条都没跑（选择器写错了？）—— 不算通过")
             rc = 1
         elif res.get("Failed", 0) == 0 and (full or total >= expect):
-            print(f"[gate] ✅ 慢目标下全绿（{total} 条）—— F1 就绪契约 + F2 有界等待 生效")
+            print(f"[gate] [OK] 慢目标下全绿（{total} 条）—— F1 就绪契约 + F2 有界等待 生效")
             rc = 0
         else:
-            print("[gate] ❌ 慢目标下有用例失败 —— 回归了")
+            print("[gate] [NG] 慢目标下有用例失败 —— 回归了")
             rc = 1
     except subprocess.TimeoutExpired:
-        print("[gate] ❌ 超时（1800s）—— 可能是页面/代理卡住")
+        print("[gate] [NG] 超时（1800s）—— 可能是页面/代理卡住")
         rc = 1
     finally:
         if proxy:

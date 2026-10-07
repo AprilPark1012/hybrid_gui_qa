@@ -2,14 +2,14 @@
 
 为什么要有这个文件（测试的测试）：
 批次 1 实测事故 —— 合同页搜索区按钮与新建弹窗按钮**同名**。探测时后者不可见（弹窗没开），
-于是搜索区按钮在那一轮里「唯一」、独占裸名；用例引用裸名 ⇒ 生成物指向被弹窗遮挡的那一枚
-⇒ `Locator.click` 30s 超时 ⇒ 3 条用例红。症状被 demo 侧改名掩盖了，**框架侧当时没修**。
+于是搜索区按钮在那一轮里「唯一」、独占裸名；用例引用裸名 -> 生成物指向被弹窗遮挡的那一枚
+-> `Locator.click` 30s 超时 -> 3 条用例红。症状被 demo 侧改名掩盖了，**框架侧当时没修**。
 
 本文件钉住修好后的四条行为（都不需要浏览器，纯函数级）：
-① 合并多轮探测后**统一重命名** ⇒ 谁也不可能独占裸名；
-② 命名**留痕**（`base_name` / `name_source` / `base_conflict`）⇒ 下游能判歧义；
-③ 同一元素被两轮都探到**不算**同名冲突（不许制造假冲突）；
-④ 因歧义而缺失时，报错**带候选**（不是干巴巴一句「未映射」）。
+(1) 合并多轮探测后**统一重命名** -> 谁也不可能独占裸名；
+(2) 命名**留痕**（`base_name` / `name_source` / `base_conflict`）-> 下游能判歧义；
+(3) 同一元素被两轮都探到**不算**同名冲突（不许制造假冲突）；
+(4) 因歧义而缺失时，报错**带候选**（不是干巴巴一句「未映射」）。
 """
 import ast
 import inspect
@@ -36,12 +36,12 @@ def _item(name, ctx="", tid=None, base=None, **kw):
     }
 
 
-# ---------- ① 命名规则与留痕 ----------
+# ---------- (1) 命名规则与留痕 ----------
 
 def test_unique_control_keeps_bare_name_and_marks_source():
     items = [_item("搜索")]
     assign_semantic_names(items)
-    assert items[0]["semantic_name"] == "搜索"          # 唯一 ⇒ 保持裸名（老用例零影响）
+    assert items[0]["semantic_name"] == "搜索"          # 唯一 -> 保持裸名（老用例零影响）
     assert items[0]["name_source"] == "exact"
     assert items[0]["base_conflict"] == 1
 
@@ -65,7 +65,7 @@ def test_naming_is_idempotent():
     assert [i["semantic_name"] for i in items] == first
 
 
-# ---------- ② S1 核心：合并多轮探测后统一重命名 ----------
+# ---------- (2) S1 核心：合并多轮探测后统一重命名 ----------
 
 def test_merge_renames_across_probe_rounds():
     """复现批次 1 的形态：**每一轮各自命名时都有控件独占裸名**，合并后必须全部消歧。"""
@@ -85,7 +85,7 @@ def test_merge_renames_across_probe_rounds():
 
 
 def test_same_element_seen_in_both_rounds_is_not_a_false_conflict():
-    """同一个元素被两轮都探到（test_id 相同）⇒ 只留一份，且**不许**被当成同名冲突。"""
+    """同一个元素被两轮都探到（test_id 相同）-> 只留一份，且**不许**被当成同名冲突。"""
     merged = _merge_items([_item("搜索", tid="btn-search")],
                           [_item("搜索", tid="btn-search")])
     assert len(merged) == 1
@@ -101,7 +101,7 @@ def test_merge_items_renames_after_merging_structurally():
     assert "assign_semantic_names" in called
 
 
-# ---------- ③ 与跨页唯一化共存 ----------
+# ---------- (3) 与跨页唯一化共存 ----------
 
 def test_cross_page_name_is_left_alone_but_others_still_disambiguated():
     """跨页唯一化写下的名字（name_source=page）是最终名，不许被改写；同 base 的其它控件仍要消歧。"""
@@ -113,7 +113,7 @@ def test_cross_page_name_is_left_alone_but_others_still_disambiguated():
     assert other["semantic_name"] != "搜索"
 
 
-# ---------- ④ 报错带候选 ----------
+# ---------- (4) 报错带候选 ----------
 
 def test_unmapped_error_keeps_only_conflicting_missing_names():
     e = UnmappedElementsError(
@@ -136,13 +136,13 @@ def test_record_conflict_bases_only_records_real_groups():
         assert len(g._CONFLICT_BASES["选择客户"]) == 2
 
         g._CONFLICT_BASES.clear()
-        _record_conflict_bases([_item("搜索")])          # 唯一名 ⇒ 不记
+        _record_conflict_bases([_item("搜索")])          # 唯一名 -> 不记
         assert g._CONFLICT_BASES == {}
     finally:
         g._CONFLICT_BASES.clear()
 
 
-# ---------- ⑤ S3：运行期模糊兜底（测的是**生成物**那份代码，不是它的副本）----------
+# ---------- (5) S3：运行期模糊兜底（测的是**生成物**那份代码，不是它的副本）----------
 # 口径（与 F1/F2/F6 契约锁一致）：改的是模板，运行的是生成物 —— 所以这里把模板渲染出来、
 # 落到临时文件里 exec，直接调它的 `_item_for()`。这样既不依赖 demo/浏览器，也不依赖
 # 仓库里那份生成物的当前内容（但另有互锁判据保证生成物与模板同步，见本文件最后一条）。
@@ -218,10 +218,10 @@ def test_generated_item_for_strict_mode_refuses_even_a_single_near_hit(tmp_path,
 def test_s3_wiring_is_locked_between_template_and_artifact():
     """互锁判据：模板与仓库里的生成物**必须同时**具备 S3 接线，且旧的一行式静默挑法绝迹。
 
-    P20（2026-09-24）产物布局变更后，「模板 ↔ 生成物」的对账口径：
+    P20（2026-09-24）产物布局变更后，「模板 <-> 生成物」的对账口径：
       模板 = `generator._render_harness()`（`_CONFTEST_TEMPLATE` 换掉 chromium 参数格式后的成品）
       生成物 = `scripts/generated/_harness.py`
-    ⇒ 两者**逐字节**必须一致：模板改了而生成物没重生成 ⇒ 当场红（原来只查关键字，漏得掉这种情况）。
+    -> 两者**逐字节**必须一致：模板改了而生成物没重生成 -> 当场红（原来只查关键字，漏得掉这种情况）。
     """
     import sys
     from pathlib import Path
@@ -236,7 +236,7 @@ def test_s3_wiring_is_locked_between_template_and_artifact():
     artifact_src = artifacts.read_artifact(root / "scripts" / "generated" / "_harness.py",
                                            role="生成物 scripts/generated/_harness.py")
     assert artifact_src == template_src, (
-        "生成物 scripts/generated/_harness.py 与模板渲染结果不一致（逐字节）⇒ "
+        "生成物 scripts/generated/_harness.py 与模板渲染结果不一致（逐字节）-> "
         "模板改了但生成物没同步重新生成。跑 `python -m framework.cli generate` 重生成产物。"
     )
     old_silent = "if k and (hint in k or k in hint):"

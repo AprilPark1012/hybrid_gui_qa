@@ -2,16 +2,16 @@
 
 现场起因：总览（`python -m framework.cli --help`）只列了子命令**名字**，
 V8.2.x 之后加的参数（`--llm-cassette` / `--only` / `--forced` 系列 / `--keep-runs` /
-`--force-browser` …）在总览里**一个都看不到** ⇒ 新人只能翻代码才知道能带什么。
+`--force-browser` …）在总览里**一个都看不到** -> 新人只能翻代码才知道能带什么。
 旧判据（`test_help_overview_lists_all_commands`）只断言「命令名出现在输出里」，
 所以这类漂移**永远不会被抓到** —— 这就是它漂了这么久的原因。
 
 判据口径（四条）：
-  ① 总览必须**逐条**列出每个子命令 + 它**全部**可用参数（与 `CMD_FLAGS` 同源，不许手写第二份）；
-  ② 参数清单由代码生成 ⇒ 新增命令/参数**不改文案**就会出现在总览里（机制自证）；
-  ③ 反向：模块 docstring 里的示例**不许出现** `FLAG_SPECS` 里不存在的参数
+  (1) 总览必须**逐条**列出每个子命令 + 它**全部**可用参数（与 `CMD_FLAGS` 同源，不许手写第二份）；
+  (2) 参数清单由代码生成 -> 新增命令/参数**不改文案**就会出现在总览里（机制自证）；
+  (3) 反向：模块 docstring 里的示例**不许出现** `FLAG_SPECS` 里不存在的参数
      （防「文档写了不存在的参数」这种反向漂移）；
-  ④ 判据自身先做负向证明 —— 漏一个 flag 的文本必须被判据判定为缺口（否则等于没写）。
+  (4) 判据自身先做负向证明 —— 漏一个 flag 的文本必须被判据判定为缺口（否则等于没写）。
 
 跑法：
     python -m pytest tests/特性9-CLI帮助契约/test_cli_help_coverage.py -q
@@ -28,7 +28,7 @@ import pytest
 from framework.cli import CMD_FLAGS, FLAG_SPECS, REMOVED_FLAGS, _CMD_FUNCS, _print_help
 from framework.tools.common.text_io import utf8_env
 
-# `--help` / `--version` 由 main() 在校验之前拦截，不在 FLAG_SPECS 里 ⇒ 单独放行
+# `--help` / `--version` 由 main() 在校验之前拦截，不在 FLAG_SPECS 里 -> 单独放行
 _UNIVERSAL_FLAGS = {"--help", "--version"}
 
 
@@ -47,7 +47,7 @@ _ARGS_LINE = re.compile(r"^\s+参数[：:]\s*(.*)$")
 def _parse_overview(text: str) -> dict[str, set[str]]:
     """把总览文本解析成 {子命令: {参数}}。
 
-    只认「两空格缩进的行 + 紧邻的『参数：』行」这一种形态 ⇒ 文案变了判据就红
+    只认「两空格缩进的行 + 紧邻的『参数：』行」这一种形态 -> 文案变了判据就红
     （这正是我们要守的：参数清单必须在总览里**结构化**地出现，而不是散落在说明文字里）。
     """
     parsed: dict[str, set[str]] = {}
@@ -68,7 +68,7 @@ def _parse_overview(text: str) -> dict[str, set[str]]:
 
 
 def _gaps(parsed: dict[str, set[str]]) -> list[str]:
-    """把「注册表 ⇄ 总览」的差异报成人话（判据与负向证明共用同一口径）。"""
+    """把「注册表 <-> 总览」的差异报成人话（判据与负向证明共用同一口径）。"""
     out: list[str] = []
     for cmd, flags in CMD_FLAGS.items():
         got = parsed.get(cmd)
@@ -83,7 +83,7 @@ def _gaps(parsed: dict[str, set[str]]) -> list[str]:
     return out
 
 
-# ---------- ① 总览逐条列出「子命令 + 全部参数」----------
+# ---------- (1) 总览逐条列出「子命令 + 全部参数」----------
 @pytest.mark.parametrize("cmd", sorted(CMD_FLAGS))
 def test_overview_lists_command_with_all_its_flags(cmd):
     r = _cli("--help")
@@ -108,9 +108,9 @@ def test_overview_covers_every_registered_flag():
     assert not gaps, "总览与参数注册表不一致：\n  - " + "\n  - ".join(gaps)
 
 
-# ---------- ② 机制自证：注册即显示（不用改文案）----------
+# ---------- (2) 机制自证：注册即显示（不用改文案）----------
 def test_new_command_and_flag_show_up_without_editing_help_text(monkeypatch, capsys):
-    """造一个假子命令 + 假参数 ⇒ 总览必须**自动**带上它。
+    """造一个假子命令 + 假参数 -> 总览必须**自动**带上它。
 
     这条是「新增命令必须刷新 --help」的机制保证：help 由注册表生成，
     所以**漂移在结构上不可能发生**；人只需要写函数 docstring（一句话说明）。
@@ -132,7 +132,7 @@ def test_new_command_and_flag_show_up_without_editing_help_text(monkeypatch, cap
         _CMD_FUNCS.pop("frobnicate2", None)
 
 
-# ---------- ③ 反向：docstring 里不许写不存在的参数 ----------
+# ---------- (3) 反向：docstring 里不许写不存在的参数 ----------
 def test_docstring_examples_only_use_real_flags():
     import framework.cli as cli_mod
     doc = cli_mod.__doc__ or ""
@@ -142,7 +142,7 @@ def test_docstring_examples_only_use_real_flags():
                          f"真实参数见 FLAG_SPECS（防『示例教坏新人』）")
 
 
-# ---------- ④ 子命令级 help（守住既有能力，别改坏）----------
+# ---------- (4) 子命令级 help（守住既有能力，别改坏）----------
 @pytest.mark.parametrize("cmd", sorted(CMD_FLAGS))
 def test_subcommand_help_lists_all_its_flags(cmd):
     r = _cli(cmd, "--help")
@@ -153,7 +153,7 @@ def test_subcommand_help_lists_all_its_flags(cmd):
 
 # ---------- 判据自身的负向证明 ----------
 def test_negative_parser_flags_a_missing_flag():
-    """喂一段「少一个参数」的总览文本 ⇒ 判定必须报出缺口（防判据写成恒真）。"""
+    """喂一段「少一个参数」的总览文本 -> 判定必须报出缺口（防判据写成恒真）。"""
     good = "子命令：\n  generate  读用例生成脚本。\n            参数：--changed --force --only\n"
     gaps = [g for g in _gaps(_parse_overview(good)) if g.startswith("generate:")]
     assert gaps == ["generate: 总览漏了参数 %s" % sorted(
@@ -161,7 +161,7 @@ def test_negative_parser_flags_a_missing_flag():
 
 
 def test_negative_parser_flags_a_stale_flag():
-    """喂一段「多一个假参数」的文本 ⇒ 也必须被抓（防只查漏、不查多）。"""
+    """喂一段「多一个假参数」的文本 -> 也必须被抓（防只查漏、不查多）。"""
     bad = "子命令：\n  generate  说明。\n            参数：--changed --force --only --ghost\n"
     gaps = [g for g in _gaps(_parse_overview(bad)) if g.startswith("generate:")]
     assert any("--ghost" in g for g in gaps), f"假参数没被抓：{gaps}"

@@ -5,7 +5,7 @@
 
 **本批判据覆盖的契约**（纯函数，可在无浏览器环境下验）：
   · `ElementRef.anchor` / `ElementRef.path` 两个新字段的**序列化往返 + 向后兼容**（老 JSON 没有这两字段）；
-  · `anchor.container_from_ancestors()`：从祖先链里挑**最近的可锚定容器**，都锚不住 ⇒ **None（不编造）**；
+  · `anchor.container_from_ancestors()`：从祖先链里挑**最近的可锚定容器**，都锚不住 -> **None（不编造）**；
   · `anchor.path_for_table_row()`：行锚（文本 / 显式行序）+ 列（data-field / 表头文本 / 列序）+ 目标语义；
   · `anchor.header_index()`：无 data-field 时按表头文本取列序（他 2026-09-22 拍的 C 降级路径）。
 
@@ -29,7 +29,7 @@ def _anchor_mod():
     return importlib.import_module("framework.tools.probe.anchor")
 
 
-# ---------------- ① 契约字段：往返 + 向后兼容 ----------------
+# ---------------- (1) 契约字段：往返 + 向后兼容 ----------------
 
 def test_element_ref_has_anchor_and_path_defaults_none():
     el = ElementRef(semantic_name="contract_no_link")
@@ -47,7 +47,7 @@ def test_element_ref_roundtrip_keeps_anchor_and_path():
 
 
 def test_element_ref_from_old_json_without_new_fields():
-    """★ 向后兼容：老生成物 / 老录像里的 ElementRef JSON **没有** anchor/path ⇒ 必须能读、值为 None。"""
+    """★ 向后兼容：老生成物 / 老录像里的 ElementRef JSON **没有** anchor/path -> 必须能读、值为 None。"""
     old = {"semantic_name": "search_btn", "role": "button", "name": "搜索", "test_id": "btn-search"}
     el = ElementRef.from_dict(old)
     assert el.semantic_name == "search_btn" and el.test_id == "btn-search"
@@ -60,7 +60,7 @@ def test_element_ref_to_dict_distinguishes_absent_vs_empty():
     assert d["anchor"] is None and d["path"] is None, d
 
 
-# ---------------- ② 锚点：从祖先链挑最近可锚容器 ----------------
+# ---------------- (2) 锚点：从祖先链挑最近可锚容器 ----------------
 
 def _anc(tag, **kw):
     return {"tag": tag, **kw}
@@ -74,7 +74,7 @@ def test_container_picks_table_with_test_id():
 
 
 def test_container_picks_nearest_when_nested():
-    """表格在弹层里 ⇒ 最近的锚点容器是**表格**（不是外层弹层）——下钻范围越小越稳。"""
+    """表格在弹层里 -> 最近的锚点容器是**表格**（不是外层弹层）——下钻范围越小越稳。"""
     m = _anchor_mod()
     anc = [_anc("td"), _anc("table", test_id="tbl-pick-cust"), _anc("div", class_="modal", test_id="modal-new-order")]
     assert m.container_from_ancestors(anc)["value"] == "tbl-pick-cust"
@@ -95,21 +95,21 @@ def test_container_supports_region_by_heading():
 
 
 def test_container_returns_none_when_nothing_anchorable():
-    """★ 负向：祖先里没有任何可锚信息 ⇒ **None**（宁可不定位，也不编造一个假锚点）。"""
+    """★ 负向：祖先里没有任何可锚信息 -> **None**（宁可不定位，也不编造一个假锚点）。"""
     m = _anchor_mod()
     anc = [_anc("div"), _anc("div"), _anc("body")]
     assert m.container_from_ancestors(anc) is None
 
 
 def test_container_prefers_test_id_over_weaker_signals():
-    """同一容器上多个信号 ⇒ 按 test_id > aria_label > role > heading 取最强的那个。"""
+    """同一容器上多个信号 -> 按 test_id > aria_label > role > heading 取最强的那个。"""
     m = _anchor_mod()
     anc = [_anc("table", test_id="tbl-x", aria_label="采购单列表", heading="采购单")]
     a = m.container_from_ancestors(anc)
     assert a["by"] == "test_id" and a["value"] == "tbl-x", a
 
 
-# ---------------- ③ 相对路径：行 / 列 / 目标 ----------------
+# ---------------- (3) 相对路径：行 / 列 / 目标 ----------------
 
 def test_path_row_by_text_then_col_field_then_role():
     m = _anchor_mod()
@@ -120,7 +120,7 @@ def test_path_row_by_text_then_col_field_then_role():
 
 
 def test_path_col_falls_back_to_header_then_index():
-    """无 data-field ⇒ 表头文本；连表头都拿不到 ⇒ 显式列序（1-based）。"""
+    """无 data-field -> 表头文本；连表头都拿不到 -> 显式列序（1-based）。"""
     m = _anchor_mod()
     assert m.path_for_table_row(row_text="PO-1001", col_header="链接", target_role="link")[1] == \
         {"axis": "col", "by": "header", "value": "链接"}
@@ -136,7 +136,7 @@ def test_path_row_index_is_explicit_when_no_text():
 
 
 def test_path_omits_row_step_when_no_anchor_given():
-    """★ 负向：既没行文本也没显式行序 ⇒ **不许**生成行步（生成 = 偷偷按第一行猜，正是假通过源头）。"""
+    """★ 负向：既没行文本也没显式行序 -> **不许**生成行步（生成 = 偷偷按第一行猜，正是假通过源头）。"""
     m = _anchor_mod()
     p = m.path_for_table_row(col_header="备注", target_role="textbox")
     assert all(s["axis"] != "row" for s in p), p
@@ -147,7 +147,7 @@ def test_path_empty_when_nothing_known():
     assert m.path_for_table_row() == []
 
 
-# ---------------- ④ 表头列序（无 data-field 的降级）----------------
+# ---------------- (4) 表头列序（无 data-field 的降级）----------------
 
 def test_header_index_finds_column_1_based():
     m = _anchor_mod()
@@ -159,5 +159,5 @@ def test_header_index_finds_column_1_based():
 def test_header_index_strips_whitespace_and_returns_none_when_missing():
     m = _anchor_mod()
     assert m.header_index([" 金额 ", "操作"], "操作") == 2
-    assert m.header_index(["单号"], "不存在") is None, "找不到列 ⇒ None（不许退化成第 1 列）"
+    assert m.header_index(["单号"], "不存在") is None, "找不到列 -> None（不许退化成第 1 列）"
     assert m.header_index([], "单号") is None

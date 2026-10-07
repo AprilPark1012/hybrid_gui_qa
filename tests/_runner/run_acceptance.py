@@ -1,22 +1,22 @@
 """R7 验收统一入口 —— 把「四条原则」变成一条命令（跨平台 Python 实现）。
 
 AprilPark1012 2026-09-22 刷新的 R7 四条：
-  ① 框架自测通过 · ② 特性自测通过 · ③ demo 新鲜度闸门通过 · ④ E2E（场景1/2/3）通过
+  (1) 框架自测通过 · (2) 特性自测通过 · (3) demo 新鲜度闸门通过 · (4) E2E（场景1/2/3）通过
 
 执行顺序（**拍板口径：便宜先跑 + fail fast；编号 ≠ 执行顺序**）：
 
   [0] gate_selfcheck      闸门自检 `tests/特性8-质量闸门体系/verify_demo_freshness.py`（~1s；**红则停手**）
-                          —— 先验「闸门自己」：它若坏了，③ 的「新鲜」结论毫无意义，后面全建在沙子上
-  [1] demo_freshness      ③ `tests/_helpers/demo_freshness.py --ensure --start-if-missing`
-  [2] framework_selftest  ① `pytest tests/ -q`（~30s，**不依赖 demo** —— 一类自测刻意与 demo 解耦）
-  [3] e2e                 ④ 三个场景（见下）
-  [4] feature_selftest    ② `tests/_runner/run_verifications.py`（最慢：单个脚本可达 7 分钟 ⇒ 放最后）
+                          —— 先验「闸门自己」：它若坏了，(3) 的「新鲜」结论毫无意义，后面全建在沙子上
+  [1] demo_freshness      (3) `tests/_helpers/demo_freshness.py --ensure --start-if-missing`
+  [2] framework_selftest  (1) `pytest tests/ -q`（~30s，**不依赖 demo** —— 一类自测刻意与 demo 解耦）
+  [3] e2e                 (4) 三个场景（见下）
+  [4] feature_selftest    (2) `tests/_runner/run_verifications.py`（最慢：单个脚本可达 7 分钟 -> 放最后）
 
-④ E2E 的三个场景：
-  · **场景3 = 录制回放验证**（`verify_e2e_scenario3_cassette.py`，零成本 ⇒ 放最前）：
+(4) E2E 的三个场景：
+  · **场景3 = 录制回放验证**（`verify_e2e_scenario3_cassette.py`，零成本 -> 放最前）：
     录像可用性体检 + 体检有效性负向 + 不匹配必须 fail loud（+ `--with-record` 时跑录制闭环，要 key/外网）
-  · **场景2 = 手写用例驱动** —— ⚠️ **本版本（V8.3）不适用**：本版只交付「AI 订单→开票」那一条
-    场景 + 对应的 AI 用例脚本，`cases/` 下**没有手搓用例** ⇒ 本场景**无输入**，无从验收。
+  · **场景2 = 手写用例驱动** —— [!] **本版本（V8.3）不适用**：本版只交付「AI 订单→开票」那一条
+    场景 + 对应的 AI 用例脚本，`cases/` 下**没有手搓用例** -> 本场景**无输入**，无从验收。
     **后续版本新增手搓用例时，再补回这项二类验收**（不是废弃，是本版范围外）。
   · **场景1 = 自然语言 → AI 链路**（`verify_e2e_scenario3_replay.py`：explore 回放 → cases → generate → run）
 
@@ -47,6 +47,12 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# [!] 2026-10-07：入口必须自拉平 stdio —— 否则在「stdout 被捕获成管道 + 中文 Windows(cp936)」时，
+#    任何非 GBK 字符（emoji/箭头之类）都会让 print 直接 UnicodeEncodeError 崩掉整个入口。
+#    （V8.3.1 内网 Windows 实测：`--list --skip-ai` 就是这么崩的。）
+from framework.tools.common.text_io import force_stdio      # noqa: E402
+force_stdio()
+
 import run_verifications as rv          # 复用：解释器定位 / 内存探测 / 北京时间（同目录工具）
 
 # 步骤 id 与 `test_acceptance_entry.py` 的 ORDER 一一对应（判据锁着顺序）
@@ -54,19 +60,19 @@ STEP_IDS = ["gate_selfcheck", "demo_freshness", "framework_selftest", "e2e", "fe
 
 HELP_TEXT = {
     "gate_selfcheck": "闸门自检：verify_demo_freshness.py（~1s；红则停手）",
-    "demo_freshness": "③ demo 新鲜度闸门：demo_freshness.py --ensure --start-if-missing",
-    "framework_selftest": "① 框架自测：pytest tests/ -q（不依赖 demo）",
-    "e2e": "④ E2E：场景3 录制回放 · 场景2 手搓用例 · 场景1 真 AI（无 key 可跳过）",
-    "feature_selftest": "② 特性自测：run_verifications.py（最慢，放最后）",
+    "demo_freshness": "(3) demo 新鲜度闸门：demo_freshness.py --ensure --start-if-missing",
+    "framework_selftest": "(1) 框架自测：pytest tests/ -q（不依赖 demo）",
+    "e2e": "(4) E2E：场景3 录制回放 · 场景2 手搓用例 · 场景1 真 AI（无 key 可跳过）",
+    "feature_selftest": "(2) 特性自测：run_verifications.py（最慢，放最后）",
 }
 
 
 def summarize(results: list[tuple[str, str]]) -> tuple[int, int, int, int]:
-    """汇总 ⇒ (通过, 跳过, 失败, 退出码)。
+    """汇总 -> (通过, 跳过, 失败, 退出码)。
 
     口径（与二类入口一致，**SKIP 不是绿灯**）：
-      有失败 ⇒ 1（且**失败优先于跳过** —— 不许拿「有跳过」把失败盖过去）；
-      无失败但有跳过 ⇒ 3（不算通过）；全绿 ⇒ 0。
+      有失败 -> 1（且**失败优先于跳过** —— 不许拿「有跳过」把失败盖过去）；
+      无失败但有跳过 -> 3（不算通过）；全绿 -> 0。
     例外（D1 · 2026-09-24 项目负责人定）：**场景1「真 AI」的跳过是被允许的**（`ok_skipped`）——
       它计入通过、不影响退出码，但仍会在汇总里**单独如实列出**。
     """
@@ -88,37 +94,37 @@ def format_summary(ok: int, skip: int, fail: int, code: int,
     lines = [f" R7 验收汇总（通过 {ok} · 跳过 {skip} · 失败 {fail}）"]
     allowed = [sid for sid, st in results if st == "ok_skipped"]
     _cn = {"scenario1": "场景1（真 AI）", "scenario2": "场景2（手搓用例·本版不适用）",
-           "scenario3": "场景3（录制回放）", "framework_selftest": "① 框架自测",
-           "feature_selftest": "② 特性自测", "e2e": "④ E2E 三场景", "demo": "③ demo 新鲜度"}
+           "scenario3": "场景3（录制回放）", "framework_selftest": "(1) 框架自测",
+           "feature_selftest": "(2) 特性自测", "e2e": "(4) E2E 三场景", "demo": "(3) demo 新鲜度"}
     for sid, st in results:
-        mark = {"ok": "✅", "ok_skipped": "✅⏭️", "skip": "⏭️", "fail": "❌"}.get(st, "?")
+        mark = {"ok": "[OK]", "ok_skipped": "[OK][skip]", "skip": "[skip]", "fail": "[NG]"}.get(st, "?")
         lines.append(f"   {mark} {_cn.get(sid, sid):<20} {st}")
     if allowed:
-        lines.append(f"   ℹ️ 「允许的跳过」（D1）：{', '.join(_cn.get(a, a) for a in allowed)} ——"
+        lines.append(f"   [info] 「允许的跳过」（D1）：{', '.join(_cn.get(a, a) for a in allowed)} ——"
                      " 无 key / 断网时不算失败（真 AI 链路已由场景3 录像覆盖）")
     return "\n".join(lines)
 
 
 def _run(py: str, args: list[str], *, timeout: float | None = None) -> tuple[int, str]:
-    """跑一步子命令 ⇒ (退出码, 输出尾部)。显式 UTF-8（跨平台文本口径）。"""
+    """跑一步子命令 -> (退出码, 输出尾部)。显式 UTF-8（跨平台文本口径）。"""
     try:
         p = subprocess.run([py, *args], cwd=str(REPO), stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                            errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
-        return 124, f"⏱️ 超时（{timeout}s）⇒ 已杀，不计通过"
+        return 124, f"[time] 超时（{timeout}s）-> 已杀，不计通过"
     tail = "\n".join([ln for ln in (p.stdout or "").splitlines() if ln.strip()][-12:])
     return p.returncode, tail
 
 
 def _verdict(rc: int, allow_skip: bool = False) -> str:
-    """退出码 ⇒ 判定。
+    """退出码 -> 判定。
 
     `allow_skip=True` 表示**这一步的跳过是被允许的**（D1 · 2026-09-24 项目负责人定：
     只有场景1「真 AI」如此 —— 场景3 的录像已经覆盖同一条链，没 key / 连不上外网的机器
     不该被发版门卡死）。此时 rc=3 记作 `ok_skipped`：**不算失败、退出码不受影响**，
     但在报告里仍然**如实列出**（不许被吞成"通过"了事）。
-    ⚠️ 其余任何一步跳过仍然是 skip（R7 硬口径：SKIP ≠ 通过）。
+    [!] 其余任何一步跳过仍然是 skip（R7 硬口径：SKIP ≠ 通过）。
     """
     if rc == 0:
         return "ok"
@@ -134,21 +140,21 @@ def step_gate_selfcheck(py: str) -> tuple[str, int, str]:
 
 
 def step_demo_freshness(py: str) -> tuple[str, int, str]:
-    """[1] ③ demo 新鲜度闸门（不新鲜就自动重启并等到就绪）。"""
+    """[1] (3) demo 新鲜度闸门（不新鲜就自动重启并等到就绪）。"""
     rc, tail = _run(py, ["tests/_helpers/demo_freshness.py", "--ensure", "--start-if-missing"], timeout=120)
     return _verdict(rc), rc, tail
 
 
 def step_framework_selftest(py: str) -> tuple[str, int, str]:
-    """[2] ① 框架自测（一类；与 demo 无关）。"""
-    # 2026-10-07：一类已按 9 特性分文件夹 ⇒ 跑 `tests/`（原来写死 tests/_helpers/ 会只跑公共模块，
+    """[2] (1) 框架自测（一类；与 demo 无关）。"""
+    # 2026-10-07：一类已按 9 特性分文件夹 -> 跑 `tests/`（原来写死 tests/_helpers/ 会只跑公共模块，
     # 一条判据都收不到）。_helpers/ 现在只放公共模块，不再是判据的家。
     rc, tail = _run(py, ["-m", "pytest", "tests/", "-q"], timeout=900)
     return _verdict(rc), rc, tail
 
 
 def step_e2e(py: str, *, skip_ai: bool, with_record: bool = False) -> tuple[str, int, str, list[tuple[str, int]]]:
-    """[3] ④ E2E 三个场景：**场景3（体检，零成本）→ 场景2（cli run）→ 场景1（离线回放）**。
+    """[3] (4) E2E 三个场景：**场景3（体检，零成本）→ 场景2（cli run）→ 场景1（离线回放）**。
 
     顺序理由：场景3 的体检是零成本前置 —— 它能立刻告诉你「录像齐不齐」，而场景1 恰恰依赖录像；
     把最便宜、又能决定后面有没有意义的放前面（与四步整体口径一致）。
@@ -159,7 +165,7 @@ def step_e2e(py: str, *, skip_ai: bool, with_record: bool = False) -> tuple[str,
 
     args3 = ["tests/特性7-离线回放/verify_e2e_scenario3_cassette.py"] + (["--with-record"] if with_record else [])
     # ★发版门 = 严格级（2026-09-24 定稿）：要发出去的东西，录像必须**逐字**对得上，
-    #   不接受"结构像、数据不同"的结构键兜底（日常二类则相反：容忍 + 告警 ✓）。
+    #   不接受"结构像、数据不同"的结构键兜底（日常二类则相反：容忍 + 告警 v）。
     os.environ["HYBRID_CASSETTE_STRICT"] = "1"
     rc3, tail3 = _run(py, args3, timeout=1800)
     subs.append(("scenario3", rc3))
@@ -167,7 +173,7 @@ def step_e2e(py: str, *, skip_ai: bool, with_record: bool = False) -> tuple[str,
                 % ("，含录制闭环" if with_record else "", rc3, tail3))
 
     # 场景2（手搓用例驱动）—— V8.3 范围外：本版只交付「AI 订单→开票」一条场景 + 其 AI 用例脚本，
-    # cases/ 下没有手搓用例 ⇒ 本场景无输入，无从验收（脚本已随之删除）。
+    # cases/ 下没有手搓用例 -> 本场景无输入，无从验收（脚本已随之删除）。
     # 后续版本新增手搓用例时再补回。按本文件既有口径如实登记为 skip（跳过必须可见，不许悄悄消失）。
     subs.append(("scenario2", "ok_skipped"))
     logs.append("· 场景2（手搓用例 → generate → 全量执行）：**V8.3 不适用** —— 本版 `cases/` 下"
@@ -179,7 +185,7 @@ def step_e2e(py: str, *, skip_ai: bool, with_record: bool = False) -> tuple[str,
         logs.append("· 场景1（真 AI）：跳过（--skip-ai）—— 按 D1 这是**被允许的跳过**")
     else:
         rc1, tail1 = _run(py, ["tests/特性1-混合链路/verify_e2e_scenario1_online.py"], timeout=2400)
-        subs.append(("scenario1", _verdict(rc1, allow_skip=True)))   # D1：无 key ⇒ 允许跳过
+        subs.append(("scenario1", _verdict(rc1, allow_skip=True)))   # D1：无 key -> 允许跳过
         logs.append("· 场景1（真 AI：scenario → 语义识别 → cases → generate）：exit %d\n%s"
                     % (rc1, tail1))
 
@@ -189,7 +195,7 @@ def step_e2e(py: str, *, skip_ai: bool, with_record: bool = False) -> tuple[str,
 
 
 def step_feature_selftest(py: str, min_mem: int) -> tuple[str, int, str]:
-    """[4] ② 特性自测（二类；最慢）。"""
+    """[4] (2) 特性自测（二类；最慢）。"""
     rc, tail = _run(py, ["tests/_runner/run_verifications.py", "--min-mem", str(min_mem)], timeout=None)
     return _verdict(rc), rc, tail
 
@@ -207,13 +213,13 @@ def _print_plan(skip_ai: bool, with_record: bool) -> None:
             print(f"        ├ scenario2  手搓用例驱动 —— V8.3 不适用（本版无手搓用例）")
             print(f"        └ scenario1  verify_e2e_scenario3_replay.py{mark}")
     if skip_ai:
-        print("      ⚠️ 跳过场景1 ⇒ 本次验收**不算通过**（SKIP ≠ 通过）")
+        print("      [!] 跳过场景1 -> 本次验收**不算通过**（SKIP ≠ 通过）")
 
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         prog="run_acceptance.py",
-        description="R7 验收统一入口：闸门自检 → ③ demo 新鲜度 → ① 框架自测 → ④ E2E（场景1/2/3）→ ② 特性自测。",
+        description="R7 验收统一入口：闸门自检 → (3) demo 新鲜度 → (1) 框架自测 → (4) E2E（场景1/2/3）→ (2) 特性自测。",
     )
     ap.add_argument("--list", action="store_true", help="只列出会跑哪些步骤（不执行）")
     ap.add_argument("--skip-ai", action="store_true", help="跳过场景1 那一步（会如实标「跳过」，且不算通过）")
@@ -238,7 +244,7 @@ def main(argv: list[str]) -> int:
     print(f" R7 验收 · {rv._now_cst()}")
     print(f" 仓库: {REPO}")
     print(f" 解释器: {py}")
-    print(f" 内存: " + (f"MemAvailable {mb}MB" if mb is not None else "⚠️ 未测（平台拿不到数字）⇒ 不据此跳过"))
+    print(f" 内存: " + (f"MemAvailable {mb}MB" if mb is not None else "[!] 未测（平台拿不到数字）-> 不据此跳过"))
     print("=" * 70)
 
     todo = [s for s in STEP_IDS if not args.only or s == args.only]
@@ -261,7 +267,7 @@ def main(argv: list[str]) -> int:
         print(f"  → {st}（exit {rc}，{time.time() - t0:.0f}s）")
         results.append((sid, st))
         if st == "fail" and not args.keep_going:
-            print(f"\n⛔ [{sid}] 失败 ⇒ 按 fail-fast 停手（后面的步骤建在它之上，跑了也没意义）")
+            print(f"\n[stop] [{sid}] 失败 -> 按 fail-fast 停手（后面的步骤建在它之上，跑了也没意义）")
             break
 
     ok, skip, fail, code = summarize(results)
@@ -270,11 +276,11 @@ def main(argv: list[str]) -> int:
           + f"\n       （用时 {time.time() - t_all:.0f}s）")
     print("=" * 70)
     if code == 0:
-        print("✅ R7 四项全部通过")
+        print("[OK] R7 四项全部通过")
     elif code == 1:
-        print("❌ 有失败 ⇒ 先修再提交")
+        print("[NG] 有失败 -> 先修再提交")
     else:
-        print("⚠️ 有跳过项（**不算通过**）⇒ 补跑后重验")
+        print("[!] 有跳过项（**不算通过**）-> 补跑后重验")
     return code
 
 

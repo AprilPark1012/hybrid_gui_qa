@@ -4,14 +4,14 @@
 ------------------
 本机实测（2026-09-11，多轮重复）：
   - 1 个 headless Chromium 实例（playwright driver + chromium 全树）**≈ 515 MB / 7 进程**
-    （单次最低读到 383MB，最高 516MB ⇒ RSS 含可共享的 file-backed 映射，波动大）
+    （单次最低读到 383MB，最高 516MB -> RSS 含可共享的 file-backed 映射，波动大）
   - 机器 MemTotal 1.87 GB、**Swap = 0**、MemAvailable 仅 ~700 MB，Hermes 自身占 ~828 MB
-  ⇒ 并发 2 个实例（~1030 MB）必然触发内核 **global OOM**，渲染进程被杀
+  -> 并发 2 个实例（~1030 MB）必然触发内核 **global OOM**，渲染进程被杀
     （Playwright 报 `Target crashed`），并**连带杀掉 hermes-gateway-<profile>**。
 
 在此之前 8 处裸 `launch()` 各写各的、且全无参数。现统一收敛到本模块。
 
-⚠️ 诚实声明：实测表明本组参数**并不降低 RSS**（裸参与全参数版本同为 513~516MB，
+[!] 诚实声明：实测表明本组参数**并不降低 RSS**（裸参与全参数版本同为 513~516MB，
 在测量噪声内）。它们解决的是**稳定性与一致性**（禁扩展下载、无 GPU 路径、shm 落盘、
 子进程数受限）。**真正的保命机制是 `limits.safe_workers()` 的并发降级**，别把本文件
 当成省内存手段。
@@ -48,9 +48,9 @@ CHROMIUM_ARGS: list[str] = [
 def launch_opts(headless: bool = True) -> dict:
     """返回 `p.chromium.launch(**launch_opts(headless=...))` 的参数字典。
 
-    headless=False ⇒ 有头（显示浏览器）—— 由 `cli run --debug`（调试开关，默认关）在"有图形显示"时使用；
+    headless=False -> 有头（显示浏览器）—— 由 `cli run --debug`（调试开关，默认关）在"有图形显示"时使用；
     没有图形显示时调试开关改为录制模式（视频 + 逐步截图），仍是 headless=True。
-    HYBRID_SLOWMO=<毫秒> ⇒ 每个动作后停一下，方便肉眼看用例一步步走（cli run --slowmo N）。
+    HYBRID_SLOWMO=<毫秒> -> 每个动作后停一下，方便肉眼看用例一步步走（cli run --slowmo N）。
     """
     args = list(CHROMIUM_ARGS)
     heap = os.environ.get("HYBRID_JS_HEAP_MB")
@@ -68,10 +68,10 @@ def launch_opts(headless: bool = True) -> dict:
 # Playwright 的浏览器**没装**（或装了另一个版本的），三条命令各炸一次，每次都抛原始异常栈：
 #     BrowserType.launch: Executable doesn't exist at
 #       C:\Users\<user>\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
-# 新人看不懂、也搜不到该跑哪条命令 ⇒ 违反「开箱即用 / 提示说人话」的口径。
+# 新人看不懂、也搜不到该跑哪条命令 -> 违反「开箱即用 / 提示说人话」的口径。
 # 现在：**开跑前先探一次**，缺了就当场给「一行修复命令」，exit 2。
 #
-# 版本对应的 revision 会变：playwright 1.62.0 ⇒ revision 1234；新版 ⇒ 1243 …
+# 版本对应的 revision 会变：playwright 1.62.0 -> revision 1234；新版 -> 1243 …
 # 所以**不能**把路径写死，靠真实 launch 探（探到的异常里带实际期望路径，直接转述给人）。
 def ensure_browser_installed() -> None:
     """跑任何需要浏览器的命令前调用：确认 chromium 能起来，否则抛人话异常。
@@ -84,7 +84,7 @@ def ensure_browser_installed() -> None:
         from playwright.sync_api import sync_playwright
     except ImportError as e:  # 连 playwright 都没装
         raise BrowserNotInstalledError(
-            "❌ 没装 playwright —— 框架需要它才能探测页面 / 跑用例。\n"
+            "[NG] 没装 playwright —— 框架需要它才能探测页面 / 跑用例。\n"
             "   一行修好：\n"
             "       pip install -r requirements.txt\n"
             f"   （原始报错：{e}）"
@@ -101,7 +101,7 @@ def ensure_browser_installed() -> None:
 
 
 class BrowserNotInstalledError(RuntimeError):
-    """Playwright 浏览器缺失 / 版本对不上 ⇒ 拒绝硬跑（给一行修复命令后 exit 2）。"""
+    """Playwright 浏览器缺失 / 版本对不上 -> 拒绝硬跑（给一行修复命令后 exit 2）。"""
 
 
 def _browser_missing_message(raw: str) -> str:
@@ -117,7 +117,7 @@ def _browser_missing_message(raw: str) -> str:
         ver = md.version("playwright")
     except Exception:  # noqa: BLE001
         pass
-    lines = ["❌ 没找到 Playwright 的浏览器（chromium / chromium-headless-shell），框架需要它才能探测页面、跑用例。"]
+    lines = ["[NG] 没找到 Playwright 的浏览器（chromium / chromium-headless-shell），框架需要它才能探测页面、跑用例。"]
     if path:
         lines.append(f"   期望位置：{path}")
     if ver:

@@ -15,7 +15,7 @@
      该步骤的目标业务结果校验；若业务断言不过 → 判定【真 bug】，不应用
      heal，如实报错。自愈只修 locator 漂移，不掩盖功能回归。
 
-✔ Level-A 不含 LLM；Level-B 仅当检测到 LLM key 才启用。
+v Level-A 不含 LLM；Level-B 仅当检测到 LLM key 才启用。
 """
 from __future__ import annotations
 import json

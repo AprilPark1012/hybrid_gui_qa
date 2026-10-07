@@ -6,8 +6,8 @@
   `scripts/test_cases.py` —— 打包时**没人检查过包内产物**，于是它被交付出去，
   直到AprilPark1012在 Windows 上跑慢目标闸门才炸成 50 条失败（真因已无处可查）。
   更糟的是当时那次「检查」还是**假绿**：本机没装 `unzip`，`unzip -p … | grep -c` 收到空输入
-  ⇒ 数到 0 命中 ⇒ 被当成「包是干净的」。
-  ⇒ 铁律：**自检只用标准库（zipfile / hashlib），绝不依赖外部解压命令**；判据不过就非 0 退出、不留半成品包。
+  -> 数到 0 命中 -> 被当成「包是干净的」。
+  -> 铁律：**自检只用标准库（zipfile / hashlib），绝不依赖外部解压命令**；判据不过就非 0 退出、不留半成品包。
 
 用法：
   python build_tools/pack_release.py                     # 打包（自检不过不出包）
@@ -36,7 +36,7 @@ from framework.tools.common.text_io import force_stdio, run_capture      # noqa:
 # 不进包的东西（与 .gitignore 口径一致 + 交付无关产物）
 EXCLUDE_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache", "log", "output",
                 "dist", "build", ".idea", ".vscode", "node_modules"}
-# ⚠️ releases/ **不能**整体排除（2026-09-18 口径）：升级日志 RELEASE_NOTES_*.md 落在 releases/ 下，
+# [!] releases/ **不能**整体排除（2026-09-18 口径）：升级日志 RELEASE_NOTES_*.md 落在 releases/ 下，
 #    而它们是交付物的一部分，**必须进包**（AprilPark1012 明确要求「打压缩包时要带上这些升级日志文件」）。
 #    这里只放行升级日志；同目录下的交付包本体（zip/tar.gz）、records/ 内部记录、SHA256SUMS.txt
 #    一律不进包 —— 见 _is_release_note()。
@@ -57,7 +57,7 @@ REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "fra
 #                    → build_tools/build_html.py （V8.0 结构重构：开发期工具统一进 build_tools/）
 #   framework/<模块>.py → framework/tools/<层>/<模块>.py （V8.0 业务流程分层重构）
 #   training.html → docs/training.html    （2026-09-19 归位 docs/）
-# ⚠️ 只影响**必需项审计**：新包一定按当前仓库布局打包 ⇒「两个位置都没有」时照样报缺项，
+# [!] 只影响**必需项审计**：新包一定按当前仓库布局打包 ->「两个位置都没有」时照样报缺项，
 #    别名绝不会放过真缺项（负向判据见 tests/特性8-质量闸门体系/test_pack_release.py）。
 LEGACY_ALIASES = {
     # 键 = 当前 REQUIRED 路径；值 = 历史形态候选（结构变更前的包里可能是这些）
@@ -68,7 +68,7 @@ LEGACY_ALIASES = {
     "tests/_helpers": ("tests",),
     "tests/_runner": ("tests",),
     #   scripts/generated/** → scripts/test_cases.py + scripts/conftest.py
-    #   （2026-09-24 P20：产物从"单个 test_cases.py"改成"按 id 分文件"⇒ 审计旧包按旧形态认 ✓）
+    #   （2026-09-24 P20：产物从"单个 test_cases.py"改成"按 id 分文件"-> 审计旧包按旧形态认 v）
     "scripts/generated": ("scripts/test_cases.py", "scripts/conftest.py"),
     "scripts/generated/index.json": ("scripts/test_cases.py",),
     "scripts/generated/_harness.py": ("scripts/conftest.py",),
@@ -101,7 +101,7 @@ def collect_files(exclude_test_artifacts: bool = False) -> list[Path]:
     """收集要进包的文件：优先 git（**已跟踪 + 未跟踪但不被忽略**，否则新写的 RELEASE_NOTES 会漏掉），
     退化到遍历。"""
     files: list[Path] = []
-    try:                       # ⚠️ git 不在 PATH 时要能退化，不能抛（Windows/受限环境实测踩到）
+    try:                       # [!] git 不在 PATH 时要能退化，不能抛（Windows/受限环境实测踩到）
         r = run_capture(["git", "ls-files", "--cached", "--others", "--exclude-standard"],
                         cwd=str(REPO))
     except Exception:
@@ -135,7 +135,7 @@ def _is_release_note(rel: Path) -> bool:
     """是不是「升级日志」（releases/RELEASE_NOTES_*.md）—— 唯一允许进包的 releases/ 内容。
 
     判据用**文件名前缀**而不是完整路径：交付包内一律放在 `<tag>/releases/…`，
-    而历史包（≤V7.6）的升级日志在包根 ⇒ 两种形态都得知得出来。
+    而历史包（≤V7.6）的升级日志在包根 -> 两种形态都得知得出来。
     """
     return (len(rel.parts) == 2 and rel.parts[0] == RELEASES_DIRNAME
             and rel.name.startswith("RELEASE_NOTES"))
@@ -172,7 +172,7 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
             n = rel.get(key)
             return z.read(n).decode("utf-8", "replace") if n else ""
 
-        # P20：产物是"一个用例一个文件"⇒ 把所有生成模块拼起来做同样的检查
+        # P20：产物是"一个用例一个文件"-> 把所有生成模块拼起来做同样的检查
         #（语义不变：不许有 pytest.fail 存根 / 必须走就绪契约 _goto / 不许裸 page.goto）
         _mods = sorted(k for k in rel
                        if k.startswith("scripts/generated/") and k.endswith(".py")
@@ -195,7 +195,7 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
             if miss:
                 problems.append(f"scripts/generated/_harness.py 缺接线：{miss}")
         else:
-            problems.append("包里没有 scripts/generated/_harness.py（共享运行时缺失 ⇒ 跑不起来）")
+            problems.append("包里没有 scripts/generated/_harness.py（共享运行时缺失 -> 跑不起来）")
 
         n_cases = sum(1 for k in rel if k.startswith("cases/") and k.endswith(".json"))
         if expect_cases is not None and n_cases != expect_cases:
@@ -208,7 +208,7 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
         if bad:
             problems.append(f"包内含不该发的内容：{bad[:5]}{' …' if len(bad) > 5 else ''}")
 
-        # 升级日志：按**文件名**判断（2026-09-18 起它们落在 releases/ 下；历史包在包根 ⇒ 两种都认）
+        # 升级日志：按**文件名**判断（2026-09-18 起它们落在 releases/ 下；历史包在包根 -> 两种都认）
         notes = {k.rsplit("/", 1)[-1] for k in rel
                  if k.rsplit("/", 1)[-1].startswith("RELEASE_NOTES")}
         if not notes:
@@ -236,7 +236,7 @@ CASSETTE_CHECK = REPO / "build_tools" / "check_cassettes.py"
 
 def cassette_coverage_problems(scenario_dir: Path | None = None,
                                cassette_dir: Path | None = None) -> list[str]:
-    """录像包**出厂前体检**：`scenarios/` 下每个场景都要有可用录像 ⇒ 返回问题清单（空 = 通过）。
+    """录像包**出厂前体检**：`scenarios/` 下每个场景都要有可用录像 -> 返回问题清单（空 = 通过）。
 
     ★ 为什么必须拦（2026-09-22 实测）：录像包曾经「发出去之后才发现 5 个场景里只有 1 个有可用录像」
     —— 包看着有内容（6 份录像），实际对另外 4 个场景毫无用处；无网机器上那些场景**直接跑不了**。
@@ -246,7 +246,7 @@ def cassette_coverage_problems(scenario_dir: Path | None = None,
     中文路径 / 中文 Windows 下都不依赖 locale）。
     """
     if not CASSETTE_CHECK.exists():
-        return [f"体检脚本不在（{CASSETTE_CHECK}）⇒ 先解决它再打包，不许「没体检就出厂」"]
+        return [f"体检脚本不在（{CASSETTE_CHECK}）-> 先解决它再打包，不许「没体检就出厂」"]
     cmd = [sys.executable, str(CASSETTE_CHECK)]
     if scenario_dir is not None:
         cmd += ["--scenario-dir", str(scenario_dir)]
@@ -259,10 +259,10 @@ def cassette_coverage_problems(scenario_dir: Path | None = None,
     out = (p.stdout or "") + "\n" + (p.stderr or "")
     if p.returncode == 1:                       # 1 = 有场景缺可用录像（体检的正式判定）
         lines = [ln.strip() for ln in out.splitlines()
-                 if ln.strip().startswith("❌") or "缺录像" in ln]
+                 if ln.strip().startswith("[NG]") or "缺录像" in ln]
         return lines or ["体检报「有场景缺录像」，但没解析出逐条明细（见上面的体检输出）"]
     hint = {2: "用法问题（体检脚本的参数被改坏了？）",
-            3: "环境问题（没有录像目录 / 没有场景文件 ⇒ 根本没法判定覆盖）"}.get(
+            3: "环境问题（没有录像目录 / 没有场景文件 -> 根本没法判定覆盖）"}.get(
                 p.returncode, f"体检自身退出码 {p.returncode}")
     return [f"体检没跑成：{hint}"]
 
@@ -288,10 +288,10 @@ CASSETTE_README = """# hybrid_gui_qa · LLM 录像包（在**连不上外网**�
    ```
    python build_tools/offline_explore_chain.py --repo . --run
    ```
-   它依次做：① 前置体检（代码是否含回放 / 录像份数 / demo 是否可达 / 依赖是否齐）
-   ② `explore --ai --llm-cassette` 回放识别控件 ③ `generate`（要求未映射 0）
-   ④ （`--run`）实测跑一遍刚生成的用例。**全程把 LLM 端点指到黑洞 127.0.0.1:9**
-   ⇒「有没有偷偷联网」这件事是可证伪的。
+   它依次做：(1) 前置体检（代码是否含回放 / 录像份数 / demo 是否可达 / 依赖是否齐）
+   (2) `explore --ai --llm-cassette` 回放识别控件 (3) `generate`（要求未映射 0）
+   (4) （`--run`）实测跑一遍刚生成的用例。**全程把 LLM 端点指到黑洞 127.0.0.1:9**
+   ->「有没有偷偷联网」这件事是可证伪的。
    只跑指定场景：`--scenario scenarios/contracts/contracts_search_by_no.yml`
 
 ## 手动跑（不想用脚本时）
@@ -306,7 +306,7 @@ python -m framework.cli run --workers 1
    录像包单独放进去没用，它只是「LLM 的回答」，**功能在代码里**。
 2. **demo 与场景文件必须与录制时同版本**。回放键包含：场景文案 · 页面清单（页名 + url，含端口）·
    每个控件的骨架（semantic_name / role / name / label / placeholder / test_id / opens_new_tab / page）。
-   ⇒ 改过 demo 页面、场景文案、端口，或升级了改动**命名逻辑**的框架版本，都会不命中。
+   -> 改过 demo 页面、场景文案、端口，或升级了改动**命名逻辑**的框架版本，都会不命中。
 3. **数据值不同没关系，结构必须一致**。回放先试严格键、再用结构键兜底；命中结构键时**大声告警**
    （步骤是录制当时针对那批数据做的判断，请核对再用）。只认逐字一致时加 `--llm-cassette-strict`。
 
@@ -335,7 +335,7 @@ def pack_cassettes(out_dir: Path, ver: str, *, allow_missing: bool = False,
     """打**独立**录像包（代码包保持干净、不夹带运行时数据）→ 路径；无录像 / 体检不过则 None。
 
     ★ 出厂闸门（2026-09-22）：打包**前**强制体检「scenarios/ 里每个场景都有可用录像」，
-    不通过就**不产包**（返回 None ⇒ main 里 return 2）。实测教训：录像包曾「发出去之后才发现
+    不通过就**不产包**（返回 None -> main 里 return 2）。实测教训：录像包曾「发出去之后才发现
     5 个场景只有 1 个有可用录像」，那种包在无网机器上等于废包。
     `allow_missing` = 显式调试逃生口（问题照样打出来，只降噪不掩盖）。
     `scenario_dir` / `cassette_src` 只为判据可注入（默认走仓库真实路径）。
@@ -343,14 +343,14 @@ def pack_cassettes(out_dir: Path, ver: str, *, allow_missing: bool = False,
     src = Path(cassette_src) if cassette_src else CASSETTE_SRC
     files = sorted(src.glob("*.json"))
     if not files:
-        print(f"[pack] ❌ --with-cassettes：录像目录为空（{src}）"
-              f" ⇒ 先在**有外网**的机器上 `--llm-record` 录一份")
+        print(f"[pack] [NG] --with-cassettes：录像目录为空（{src}）"
+              f" -> 先在**有外网**的机器上 `--llm-record` 录一份")
         return None
 
     problems = cassette_coverage_problems(scenario_dir, src)
     if problems:
         if not allow_missing:
-            print(f"[pack] ❌ 录像包体检不过（{len(problems)} 项）⇒ **不产包**"
+            print(f"[pack] [NG] 录像包体检不过（{len(problems)} 项）-> **不产包**"
                   f"（无网机器上这些场景会直接跑不了）：")
             for x in problems[:10]:
                 print(f"       - {x}")
@@ -358,7 +358,7 @@ def pack_cassettes(out_dir: Path, ver: str, *, allow_missing: bool = False,
                   "（需 key + 外网；录完再跑 build_tools/check_cassettes.py 复检）")
             print("[pack]    调试逃生口（**交付永不用**）：--allow-missing-cassettes")
             return None
-        print("[pack] ⚠️⚠️ --allow-missing-cassettes 生效：体检问题只警告不拦（**永不允许用于交付**）")
+        print("[pack] [!][!] --allow-missing-cassettes 生效：体检问题只警告不拦（**永不允许用于交付**）")
         for x in problems[:10]:
             print(f"       - {x}")
 
@@ -389,9 +389,9 @@ def pack_cassettes(out_dir: Path, ver: str, *, allow_missing: bool = False,
         n_json = sum(1 for n in z.namelist() if n.endswith(".json"))
     if broken or n_json != len(files):
         zp.unlink(missing_ok=True)
-        print(f"[pack] ❌ 录像包自检失败 ⇒ 已删除，不交付（坏条目={broken} · 录像数 {n_json}≠{len(files)}）")
+        print(f"[pack] [NG] 录像包自检失败 -> 已删除，不交付（坏条目={broken} · 录像数 {n_json}≠{len(files)}）")
         return None
-    print(f"[pack] ✅ 录像包：{zp.name}（录像 {len(files)} 份 · 原始 {total} B · "
+    print(f"[pack] [OK] 录像包：{zp.name}（录像 {len(files)} 份 · 原始 {total} B · "
           f"zip {zp.stat().st_size} B · 含一键脚本 {CASSETTE_HELPER.exists()}）")
     print(f"[pack]    sha256 {hashlib.sha256(zp.read_bytes()).hexdigest()}")
     return zp
@@ -446,13 +446,13 @@ def main() -> int:
         problems = check_zip(zp, expect_cases=repo_cases, require_notes_for=_version()[0],
                              legacy_notes=legacy)
         for n in legacy:
-            print(f"[pack] ◐ {n}")
+            print(f"[pack] [half] {n}")
         if problems:
-            print(f"[pack] ❌ 发现 {len(problems)} 个问题：")
+            print(f"[pack] [NG] 发现 {len(problems)} 个问题：")
             for p in problems:
                 print(f"       - {p}")
             return 2
-        print("[pack] ✅ 包内产物自检通过")
+        print("[pack] [OK] 包内产物自检通过")
         return 0
 
     ver, vdate = _version()
@@ -470,17 +470,17 @@ def main() -> int:
     legacy: list[str] = []
     problems = check_zip(out_zip, expect_cases=repo_cases, require_notes_for=ver,
                          expect_notes=len(repo_notes) or None, legacy_notes=legacy)
-    for n in legacy:          # 新包不该出现（出现=打包收集漏了当前布局）⇒ 大声打出来
-        print(f"[pack] ⚠️ {n}")
+    for n in legacy:          # 新包不该出现（出现=打包收集漏了当前布局）-> 大声打出来
+        print(f"[pack] [!] {n}")
     if a.allow_broken_artifacts:
         # 逃生口只降噪，不掩盖：问题照样打出来
-        print("[pack] ⚠️⚠️ --allow-broken-artifacts 生效：问题只警告不拦（**永不允许用于交付**）")
+        print("[pack] [!][!] --allow-broken-artifacts 生效：问题只警告不拦（**永不允许用于交付**）")
         for p in problems:
             print(f"       - {p}")
         problems = [p for p in problems if "元素未映射" not in p]
     if problems:
         out_zip.unlink(missing_ok=True)          # 不留半成品包
-        print(f"[pack] ❌ 包内自检不过（{len(problems)} 项）→ 已删除该 zip，不产出交付物：")
+        print(f"[pack] [NG] 包内自检不过（{len(problems)} 项）→ 已删除该 zip，不产出交付物：")
         for p in problems:
             print(f"       - {p}")
         print("[pack]    多半是「目标没起就 generate」：先起 `python -m demo.app` 再 "
@@ -488,13 +488,13 @@ def main() -> int:
         return 2
 
     sha = hashlib.sha256(out_zip.read_bytes()).hexdigest()
-    print(f"[pack] ✅ 包内自检通过（cases={repo_cases} · 升级日志 {len(repo_notes)} 份 · "
+    print(f"[pack] [OK] 包内自检通过（cases={repo_cases} · 升级日志 {len(repo_notes)} 份 · "
           f"未映射=0 · _goto 接线在 · 无 output/log/.env）")
     print(f"[pack] sha256 {sha}")
 
     if a.with_cassettes:
         if pack_cassettes(out_dir, ver, allow_missing=a.allow_missing_cassettes) is None:
-            return 2                       # 显式要了却打不出来 / 体检不过 ⇒ 别当成功
+            return 2                       # 显式要了却打不出来 / 体检不过 -> 别当成功
     refresh_sums(out_dir)
     return 0
 

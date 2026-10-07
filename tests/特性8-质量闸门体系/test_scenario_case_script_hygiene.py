@@ -1,18 +1,18 @@
 """`scenarios/` · `cases/` · `scripts/` 三目录新陈代谢判据（R7-f · 2026-09-23 他定）。
 
 **为什么要有它**（他的原话：无效文件要及时清理）：三个目录层层依赖，任何一层留孤儿，
-最终都会变成「打包里有跑不通的东西」。已有判据只守住 `cases ⇄ datasets ⇄ test_cases.py`
-（L15 那套），**场景层没人守** ⇒ 场景改名/删除后，AI 用例会变成**指向不存在场景的孤儿**。
+最终都会变成「打包里有跑不通的东西」。已有判据只守住 `cases <-> datasets <-> test_cases.py`
+（L15 那套），**场景层没人守** -> 场景改名/删除后，AI 用例会变成**指向不存在场景的孤儿**。
 
 口径（他 2026-09-23 选 1：**孤儿直接红**，不告警放行）：
-  ① `cases/ai_*.json` 的 `scenario_id` **必须指向真实存在的场景文件** —— 孤儿 ⇒ **红**；
-  ② `scenarios/` 下的场景**要么有 AI 用例、要么有手搓用例**覆盖 —— 未覆盖只**告警**
+  (1) `cases/ai_*.json` 的 `scenario_id` **必须指向真实存在的场景文件** —— 孤儿 -> **红**；
+  (2) `scenarios/` 下的场景**要么有 AI 用例、要么有手搓用例**覆盖 —— 未覆盖只**告警**
      （场景可以先写、用例后补；这不是"无效文件"，不该拦住开发）；
-  ③ 反向：`scripts/datasets/` 不许有孤儿数据集（= L15 判据，这里只做交叉引用，不重复实现）；
-  ④ 负向自证：判据自己能抓坏输入（造孤儿 ⇒ 必须报）。
+  (3) 反向：`scripts/datasets/` 不许有孤儿数据集（= L15 判据，这里只做交叉引用，不重复实现）；
+  (4) 负向自证：判据自己能抓坏输入（造孤儿 -> 必须报）。
 
-⚠️ 录像 ⇄ 场景 的对账**不在这里**：录像住运行期目录（`output/llm_cassettes/`），
-一类判据必须与 demo/运行期无关 ⇒ 那条归 `tests/_runner/verify_e2e_scenario3_cassette*.py`。
+[!] 录像 <-> 场景 的对账**不在这里**：录像住运行期目录（`output/llm_cassettes/`），
+一类判据必须与 demo/运行期无关 -> 那条归 `tests/_runner/verify_e2e_scenario3_cassette*.py`。
 """
 from __future__ import annotations
 
@@ -73,36 +73,36 @@ def uncovered_scenarios(scen_dir: Path = SCENARIOS, cases_dir: Path = CASES) -> 
     return sorted(ids - covered)
 
 
-# ---------------- ① 孤儿 AI 用例（直接红）----------------
+# ---------------- (1) 孤儿 AI 用例（直接红）----------------
 
 def test_no_orphan_ai_cases():
-    """★R7-f 核心：AI 用例的 `scenario_id` 必须指向真实场景（场景删了 ⇒ 用例要跟着清）。"""
+    """★R7-f 核心：AI 用例的 `scenario_id` 必须指向真实场景（场景删了 -> 用例要跟着清）。"""
     orphans = orphan_ai_cases()
     assert not orphans, (
         "这些 AI 用例指向了不存在的场景（孤儿，R7-f 要求直接红并当批清理）：\n  - "
         + "\n  - ".join(orphans))
 
 
-# ---------------- ② 场景覆盖（告警，不拦）----------------
+# ---------------- (2) 场景覆盖（告警，不拦）----------------
 
 def test_scenarios_are_covered_by_some_case():
     """场景未覆盖只告警（场景可以先写、用例后补）—— 但要让它**看得见**。"""
     miss = uncovered_scenarios()
     if miss:
-        print(f"\n⚠️ 告警（不拦）：这些场景目前没有 AI 用例也没有手搓用例覆盖：{miss}"
-              "\n    ⇒ 要么补用例，要么确认它只是备用的场景模板。")
+        print(f"\n[!] 告警（不拦）：这些场景目前没有 AI 用例也没有手搓用例覆盖：{miss}"
+              "\n    -> 要么补用例，要么确认它只是备用的场景模板。")
 
 
 def test_scenario_and_case_dirs_are_nonempty():
-    """空目录也算「新陈代谢」失灵（场景/用例都没了 ⇒ 后面的对账全变空转）。"""
-    assert scenario_ids(), "scenarios/ 下一个场景都没有 ⇒ 判据会空转"
-    assert list(CASES.rglob("*.json")), "cases/ 下一条用例都没有 ⇒ 判据会空转"
+    """空目录也算「新陈代谢」失灵（场景/用例都没了 -> 后面的对账全变空转）。"""
+    assert scenario_ids(), "scenarios/ 下一个场景都没有 -> 判据会空转"
+    assert list(CASES.rglob("*.json")), "cases/ 下一条用例都没有 -> 判据会空转"
 
 
 # ---------------- 负向自证 ----------------
 
 def test_negative_orphan_detected(tmp_path):
-    """造一个孤儿 ⇒ 必须被抓住（否则 ① 判据等于没写）。"""
+    """造一个孤儿 -> 必须被抓住（否则 (1) 判据等于没写）。"""
     scen = tmp_path / "scenarios"
     scen.mkdir()
     (scen / "real_one.yml").write_text("scenario: x\n", encoding="utf-8")

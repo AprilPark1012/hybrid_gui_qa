@@ -49,7 +49,7 @@ def prune_snapshots(
     removed: list[Path] = []
 
     for pat in _PATTERNS:
-        files = sorted(d.glob(pat))          # 文件名含 YYYYMMDD_HHMMSS ⇒ 名字序=时间序
+        files = sorted(d.glob(pat))          # 文件名含 YYYYMMDD_HHMMSS -> 名字序=时间序
         victims = files[: max(0, len(files) - keep)]
         for f in victims:
             try:
@@ -57,7 +57,7 @@ def prune_snapshots(
                     f.unlink()
                 removed.append(f)
             except OSError as e:
-                print(f"  [prune] ⚠️ 删除失败 {f.name}: {e}")
+                print(f"  [prune] [!] 删除失败 {f.name}: {e}")
         if victims or not quiet_if_none:
             tag = "（dry-run，未删）" if dry_run else ""
             act = f"清理 {len(victims)} 个" if victims else "无需清理"
@@ -71,10 +71,10 @@ def prune_snapshots(
 #   `log/<run_id>/` 是真跑产物（每用例 .log + assets + **traces/*.zip 录像**），只增不减 ——
 #   实测 281 个目录 / 212 MB，其中 103 MB 是 trace 录像。矛盾是**证据价值 vs 空间**，
 #   所以策略分两级，而不是"删旧的"：
-#     ① **瘦身**：超龄的 run 只删大体积录像（traces/*.zip），保留 .log + report.html + summary.json
-#        ⇒ 证据摘要永久在，大头回收；
-#     ② **整删**：**只对能证明是成功的 run** 执行（有 summary.json 且 exit_code==0 且 failed_cases==0）。
-#   历史 run 没有 summary.json ⇒ **一律只瘦身**（宁可不回收，也不赌它成功）。
+#     (1) **瘦身**：超龄的 run 只删大体积录像（traces/*.zip），保留 .log + report.html + summary.json
+#        -> 证据摘要永久在，大头回收；
+#     (2) **整删**：**只对能证明是成功的 run** 执行（有 summary.json 且 exit_code==0 且 failed_cases==0）。
+#   历史 run 没有 summary.json -> **一律只瘦身**（宁可不回收，也不赌它成功）。
 #
 #     cli:  python -m framework.cli prune --all [--dry-run]
 #     env:  HYBRID_KEEP_RUNS=30 · HYBRID_KEEP_RUN_DAYS=7 · HYBRID_MAX_DELETE_PER_PRUNE=20
@@ -94,7 +94,7 @@ _SLIM_GLOBS = ("traces/*.zip", "traces/*.webm")
 
 
 def _parse_run_time(name: str) -> datetime | None:
-    """从目录名解时间戳（取名字里最后一个 YYYYMMDD_HHMMSS）；解不出 ⇒ None（调用方必须跳过）。"""
+    """从目录名解时间戳（取名字里最后一个 YYYYMMDD_HHMMSS）；解不出 -> None（调用方必须跳过）。"""
     m = None
     for m in _TS_RE.finditer(name):
         pass
@@ -107,7 +107,7 @@ def _parse_run_time(name: str) -> datetime | None:
 
 
 def read_protected_runs(log_dir: Path) -> dict[str, str]:
-    """读 `log/.protected_runs`（每行 `run_id  # 理由`）⇒ {run_id: 理由}。
+    """读 `log/.protected_runs`（每行 `run_id  # 理由`）-> {run_id: 理由}。
 
     为什么清单在**仓库内**：框架不许依赖 skill / 门禁路径（R1）。台账、发行说明或交付邮件
     引用过某个 run 时，由 skill 侧规程往这里登记一行 —— 这样"被引用即受保护"落成机制，不靠记性。
@@ -128,7 +128,7 @@ def read_protected_runs(log_dir: Path) -> dict[str, str]:
 
 
 def read_run_summary(run_dir: Path) -> dict | None:
-    """读 run 目录的 summary.json（runner 收尾写）；缺失或损坏 ⇒ None（= 不可证明成功）。"""
+    """读 run 目录的 summary.json（runner 收尾写）；缺失或损坏 -> None（= 不可证明成功）。"""
     f = Path(run_dir) / "summary.json"
     if not f.is_file():
         return None
@@ -170,7 +170,7 @@ def auto_prune_runs(quiet_if_none: bool = True) -> dict | None:
     """run/generate 结束时的**自动**清理入口；`HYBRID_NO_AUTO_PRUNE=1` 时什么都不做。
 
     单独一个入口而不是让调用方自己判环境变量：开关只有一处，别在两处各写一遍（会漂移）。
-    正在排查时设 `HYBRID_NO_AUTO_PRUNE=1` ⇒ 证据一份不动。
+    正在排查时设 `HYBRID_NO_AUTO_PRUNE=1` -> 证据一份不动。
     """
     if os.environ.get("HYBRID_NO_AUTO_PRUNE") == "1":
         return None
@@ -191,7 +191,7 @@ def prune_runs(
     """run / verify 归档保留策略；返回一份可核对的结果（**不静默**）。
 
     判定口径（安全交集）：run 目录**同时**满足「不在最近 keep 个之内」**且**「超龄 keep_days 天」
-    才进入处理范围 ⇒ 保留集 = 最近 keep 个 ∪ 最近 keep_days 天。**两个旋钮取并集保护**。
+    才进入处理范围 -> 保留集 = 最近 keep 个 ∪ 最近 keep_days 天。**两个旋钮取并集保护**。
 
     单次上限（max_delete 个目录 / max_free_bytes 字节）到顶即停，余量留到下次
     —— 防"策略写错、一夜清空"。任何异常**中止并如实报**（fail-safe，不 fail-open）。
@@ -220,7 +220,7 @@ def prune_runs(
         if not d.is_dir():
             continue
         if not _RUN_DIR_RE.match(d.name):
-            res["unknown_skipped"] += 1          # 不认识的命名（用户手工产物）⇒ 一律不动
+            res["unknown_skipped"] += 1          # 不认识的命名（用户手工产物）-> 一律不动
             continue
         runs.append(d)
     runs.sort(key=lambda d: _parse_run_time(d.name) or datetime.min, reverse=True)   # 新 → 旧
@@ -246,17 +246,17 @@ def prune_runs(
         if d.name in keep_recent:
             continue
         ts = _parse_run_time(d.name)
-        if ts is None or ts >= cutoff:           # 未超龄 ⇒ 不动（安全交集）
+        if ts is None or ts >= cutoff:           # 未超龄 -> 不动（安全交集）
             continue
         try:
-            if d.name in protected:              # 显式登记过（被文档/邮件引用）⇒ 完全不碰
+            if d.name in protected:              # 显式登记过（被文档/邮件引用）-> 完全不碰
                 res["protected_skipped"].append(d.name)
                 continue
             if not _room(res["freed_bytes"], len(res["removed_dirs"])):
                 res["capped"] = True
                 break
             if d.name in hard_protect or not run_is_proven_success(d):
-                # ① 瘦身：删大体积录像，留 .log + report.html + summary.json
+                # (1) 瘦身：删大体积录像，留 .log + report.html + summary.json
                 files = _evidence_files(d)
                 freed = sum(_path_bytes(f) for f in files)
                 if not dry_run:
@@ -267,14 +267,14 @@ def prune_runs(
                 res["slim_files"].extend(str(f) for f in files)
                 res["removed_files"].extend(str(f) for f in files)
             else:
-                # ② 整删：只有能证明成功的 run 才走这条路
+                # (2) 整删：只有能证明成功的 run 才走这条路
                 freed = _path_bytes(d)
                 if not dry_run:
                     shutil.rmtree(d)
                 res["removed_dirs"].append(d.name)
                 res["freed_bytes"] += freed
         except OSError as e:                     # 单项失败：如实报，继续处理别的
-            print(f"  [prune] ⚠️ 处理失败 {d.name}: {e}")
+            print(f"  [prune] [!] 处理失败 {d.name}: {e}")
 
     # ---------- 第二步：output/verify/ 日志 ----------
     v_logs = []
@@ -282,10 +282,10 @@ def prune_runs(
         v_logs = sorted((p for p in vd.glob("*.log") if p.is_file()),
                         key=lambda p: _parse_run_time(p.stem) or datetime.min)
     for i, p in enumerate(v_logs):
-        if i >= len(v_logs) - keep:              # 最近 keep 个 ⇒ 保留
+        if i >= len(v_logs) - keep:              # 最近 keep 个 -> 保留
             continue
         ts = _parse_run_time(p.stem)
-        if ts is None or ts >= cutoff:           # 未超龄或名字里没时间戳 ⇒ 保留（保守）
+        if ts is None or ts >= cutoff:           # 未超龄或名字里没时间戳 -> 保留（保守）
             continue
         if not _room(res["freed_bytes"], len(res["removed_dirs"])):
             res["capped"] = True
@@ -298,7 +298,7 @@ def prune_runs(
             res["removed_files"].append(str(p))
             res["freed_bytes"] += freed
         except OSError as e:
-            print(f"  [prune] ⚠️ 处理失败 {p.name}: {e}")
+            print(f"  [prune] [!] 处理失败 {p.name}: {e}")
 
     # ---------- 汇报（删了什么必须看得见） ----------
     mb = res["freed_bytes"] / 1024 / 1024

@@ -11,7 +11,7 @@
 import sys
 from pathlib import Path
 
-# 用显式常量命名（`_TESTS_DIR` 含 "TESTS_DIR" 字样 ⇒ test_path_join_contract 能识别左侧已带容器层）
+# 用显式常量命名（`_TESTS_DIR` 含 "TESTS_DIR" 字样 -> test_path_join_contract 能识别左侧已带容器层）
 _TESTS_DIR = Path(__file__).resolve().parent        # = tests/
 _HELPERS = _TESTS_DIR / "_helpers"
 if str(_HELPERS) not in sys.path:

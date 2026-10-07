@@ -3,9 +3,9 @@
 """录像体检 —— 「哪些场景没有可用录像 / 录像过期」（**零成本**：不联网、不要 key、不起浏览器）。
 
 现场问题（2026-09-22 使用者反馈 + 本机复现）：录像的键包含**场景文案**，而场景文件在
-V7.8「数据参数化真展开」后把字面值写成占位符（`'1005'` → `'{关键词}'`）⇒ 结构键逐字比对就整份不命中
-⇒ 无外网机器上跑场景1 直接报「没有这一份」，而**这个包已经被发出去了**（打包时没人验过回放能否命中）。
-⇒ 本工具就是那道缺失的闸门：**不跑链路、不花钱，先告诉你哪个场景的录像对不上**。
+V7.8「数据参数化真展开」后把字面值写成占位符（`'1005'` → `'{关键词}'`）-> 结构键逐字比对就整份不命中
+-> 无外网机器上跑场景1 直接报「没有这一份」，而**这个包已经被发出去了**（打包时没人验过回放能否命中）。
+-> 本工具就是那道缺失的闸门：**不跑链路、不花钱，先告诉你哪个场景的录像对不上**。
 
 用法：
     python build_tools/check_cassettes.py                 # 体检（默认录像目录 output/llm_cassettes）
@@ -15,13 +15,13 @@ V7.8「数据参数化真展开」后把字面值写成占位符（`'1005'` → 
 
 退出码：**0** 全覆盖 · **1** 有场景缺录像（= 那些场景回放必失败）· **2** 用法/环境错 · **3** 跳过（没有场景文件或没有录像）
 
-⚠️ 口径与边界（如实说明，别当成万能的）：
+[!] 口径与边界（如实说明，别当成万能的）：
   · 本工具是**轻口径**：比对「场景文案（值归一化 + 去空白后）」是否与某份录像 prompt 里的场景段落一致 ——
     它精准回答「换数据 / 参数化 / 改场景文字之后，录像还认不认」；
   · 它**不**校验「控件骨架 / 页面结构」是否变过（那类变化只能靠真跑发现，由场景1 的离线链抽验覆盖，
     见 `tests/特性7-离线回放/verify_e2e_scenario3_replay.py`）；
   · 值归一化口径来自 `llm_cassette.normalize_values()` —— 与真实回放**同一份实现**，不另写一套。
-  · ⚠️ 两个实测坑（都踩过，写在这里防复发）：场景文案是**多行**嵌进 prompt 的（逐行抠只能拿到第一行片段，
+  · [!] 两个实测坑（都踩过，写在这里防复发）：场景文案是**多行**嵌进 prompt 的（逐行抠只能拿到第一行片段，
     会误报「所有场景都缺录像」）；中文引号开闭是不同字符，比对/归一化不能用「字符类 + 反向引用」的写法。
 """
 from __future__ import annotations
@@ -38,9 +38,9 @@ sys.path.insert(0, str(REPO))
 from framework.tools.explore.llm_cassette import default_dir, normalize_values   # noqa: E402
 
 OK, FAIL, USAGE, SKIP = 0, 1, 2, 3
-# ⚠️ 2026-09-22 实测修的坑：原来是非贪婪 `([\s\S]*?)[」』”"]` ⇒ 场景文案里**自带内层引号**
+# [!] 2026-09-22 实测修的坑：原来是非贪婪 `([\s\S]*?)[」』”"]` -> 场景文案里**自带内层引号**
 # （「返回列表」「查看订单」「新建订单」…）时，抠取会在**第一个内层闭引号**处截断
-# ⇒ 长场景永远匹配不上，体检误报「没有录像」（实测：录制明明成功、prompt 里那句完整存在）。
+# -> 长场景永远匹配不上，体检误报「没有录像」（实测：录制明明成功、prompt 里那句完整存在）。
 # 现在改成**取到段落边界**（下一个已知小节标题或空行），引号只做首尾剥离，不再当终止符。
 _SCEN_HEAD = re.compile(r"自然语言测试场景[:：]?\s*")
 _SCEN_END = re.compile(r"\n\s*\n|\n\s*(?:页面已探测出|跨页规则|可交互控件|可用控件|注意事项)")
@@ -60,14 +60,14 @@ def _force_stdio() -> None:
 def _flatten(text: str) -> str:
     """去掉所有空白（含换行）。
 
-    ⚠️ 必须做：录像里的场景文案是**多行嵌进 prompt** 的，场景文件侧也是多行字符串 ⇒
+    [!] 必须做：录像里的场景文案是**多行嵌进 prompt** 的，场景文件侧也是多行字符串 ->
     不压平就会「两边看着一样、字符串却不相等」，体检直接误报全缺（2026-09-22 实测）。
     """
     return re.sub(r"\s+", "", text or "")
 
 
 def scenario_text_of(yml: Path) -> str | None:
-    """取场景文件里的 `scenario:` 正文（缺字段 / 读不动 ⇒ None）。"""
+    """取场景文件里的 `scenario:` 正文（缺字段 / 读不动 -> None）。"""
     try:
         import yaml
         data = yaml.safe_load(yml.read_text(encoding="utf-8")) or {}
@@ -80,7 +80,7 @@ def scenario_text_of(yml: Path) -> str | None:
 def scenario_block_in_prompt(prompt: str) -> str:
     """从录像 prompt 里抠出「自然语言测试场景: 「…」」的**完整段落**（跨行）。"""
     text = prompt or ""
-    # ① 首选：抠到段落边界（长场景/含内层引号都稳）
+    # (1) 首选：抠到段落边界（长场景/含内层引号都稳）
     i = _SCEN_HEAD.search(text)
     if i:
         rest = text[i.end():]
@@ -94,13 +94,13 @@ def scenario_block_in_prompt(prompt: str) -> str:
                 block = block[:-1].rstrip()
         if block:
             return block
-    # ② 兜底：老正则（结构异常时至少别返回空）
+    # (2) 兜底：老正则（结构异常时至少别返回空）
     m = _SCEN_BLOCK_RE.search(text)
     return m.group(1).strip() if m else ""
 
 
 def load_cassettes(cassette_dir: Path) -> list[dict]:
-    """读录像目录 ⇒ [{file, scenario, normalized, framework_version, created_at}]。"""
+    """读录像目录 -> [{file, scenario, normalized, framework_version, created_at}]。"""
     out: list[dict] = []
     for f in sorted(cassette_dir.glob("*.json")):
         try:
@@ -123,7 +123,7 @@ def check(scenario_files: list[Path], cassettes: list[dict]) -> tuple[list[dict]
     missing: list[dict] = []
     for yml in scenario_files:
         text = scenario_text_of(yml)
-        # ⚠️ 别对仓库外路径硬做 relative_to（实测：调用方传 /tmp 下的临时场景 ⇒ ValueError 崩，
+        # [!] 别对仓库外路径硬做 relative_to（实测：调用方传 /tmp 下的临时场景 -> ValueError 崩，
         # 而"体检"这种工具**不该被一个路径崩掉**）——能相对就相对，不能就如实用绝对路径。
         try:
             rel = str(yml.relative_to(REPO))
@@ -180,10 +180,10 @@ def main(argv: list[str]) -> int:
         return OK
 
     if not cassette_dir.is_dir():
-        print(f"⏭️  SKIP：录像目录不存在（{cassette_dir}）⇒ 先录或用 --dir 指定；**不算通过**")
+        print(f"[skip]  SKIP：录像目录不存在（{cassette_dir}）-> 先录或用 --dir 指定；**不算通过**")
         return SKIP
     if not scenario_files:
-        print(f"⏭️  SKIP：{args.scenario_dir}/ 下没有场景文件；**不算通过**")
+        print(f"[skip]  SKIP：{args.scenario_dir}/ 下没有场景文件；**不算通过**")
         return SKIP
 
     covered, missing = check(scenario_files, cassettes)
@@ -200,23 +200,23 @@ def main(argv: list[str]) -> int:
         print(f" 场景目录: {args.scenario_dir}/（{len(scenario_files)} 个场景）")
         print("=" * 66)
         for row in covered:
-            print(f"  ✅ {row['scenario']}")
+            print(f"  [OK] {row['scenario']}")
             print(f"       录像 {row['file']}（框架 v{row['framework_version']}，{row['created_at']}）")
         for row in missing:
-            print(f"  ❌ {row['scenario']}  —— {row.get('why','')}")
+            print(f"  [NG] {row['scenario']}  —— {row.get('why','')}")
             if row.get("nearest"):
                 print(f"       最像的是 {row['nearest']}（字符重合 {row.get('nearest_ratio')}）")
-            print(f"       ⇒ 重录：python build_tools/record_cassettes.py "
+            print(f"       -> 重录：python build_tools/record_cassettes.py "
                   f"--only {Path(str(row['scenario'])).stem}")
         for c in broken:
-            print(f"  ⚠️ 坏录像文件 {c['file']}：{c['broken']} ⇒ 删掉重录")
+            print(f"  [!] 坏录像文件 {c['file']}：{c['broken']} -> 删掉重录")
         print("-" * 66)
         print(f" 汇总：覆盖 {len(covered)} / 缺 {len(missing)} / 坏文件 {len(broken)}")
 
     if missing or broken:
-        print("❌ 有场景的录像对不上 ⇒ 那些场景在离线机器上回放必失败（发版前必须重录）")
+        print("[NG] 有场景的录像对不上 -> 那些场景在离线机器上回放必失败（发版前必须重录）")
         return FAIL
-    print("✅ 所有场景都有可用录像（轻口径：值归一化 + 压平后的场景文案均能对上）")
+    print("[OK] 所有场景都有可用录像（轻口径：值归一化 + 压平后的场景文案均能对上）")
     return OK
 
 

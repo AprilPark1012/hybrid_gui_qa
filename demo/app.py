@@ -1,26 +1,26 @@
 """被测 demo 应用：静态页面 + 内存数据 API。
 
-2026-09-14 改造（AprilPark1012拍板需求②）：合同数据从「列表页 JS 每次刷新临时生成」搬到**服务端**，
+2026-09-14 改造（AprilPark1012拍板需求(2)）：合同数据从「列表页 JS 每次刷新临时生成」搬到**服务端**，
 让详情页读到的是**同一条真实记录** —— 新建的合同在详情页也能看到正确的客户；
 页面刷新不再丢数据（更接近真实系统）。
 
 接口（数据口径的**唯一来源**就是这个文件）：
   GET  /api/customers             该分区客户主数据（预置 6 个；可被「弹层内临时新建」追加）
-  POST /api/customers             需求③：临时新建客户 {name, addr?} → 201；名称空 → 400；同名 → 409
+  POST /api/customers             需求(3)：临时新建客户 {name, addr?} → 201；名称空 → 400；同名 → 409
   GET  /api/salesmen              该分区销售员主数据（预置 6 个；同上可临时新建）
-  POST /api/salesmen              需求③：临时新建销售员 {name} → 201；名称空 → 400；同名 → 409
+  POST /api/salesmen              需求(3)：临时新建销售员 {name} → 201；名称空 → 400；同名 → 409
   GET  /api/contracts             全部合同（含客户名称 custName）
   GET  /api/contract?no=HT-1005   单条；查不到 → 404 {"error": "未找到该合同: ..."}
   POST /api/contracts             新建 {name,mu,file,type,cust,bu} 全必填 → 201 + 新记录
   POST /api/contract_update       保存合同 {no, name,mu,file,type,cust,bu}（编号只读）→ 200 + 更新后记录
   POST /api/reset                 数据复位成预置 20 条（**测试用例间隔离**用）
 
-⚠️ 数据现在会**留在服务端**（改造前刷新页面就没了），所以测试侧必须做用例间复位：
+[!] 数据现在会**留在服务端**（改造前刷新页面就没了），所以测试侧必须做用例间复位：
    framework 生成的 conftest 会自动 POST /api/reset（见 generator.py 的 _reset_target_data，
    可用 HYBRID_RESET_URL=off 关掉）。不复位的话「列表恢复 20 行」这类断言会被上一条
    用例残留的新建数据打乱，而且失败原因会指向错误的地方。
   GET  /api/health                能力探针 {"partitioned": true, "presets": 20}（CLI 据此决定能否并发）
-  ⚠️ 分区：所有 /api/* 都接受 `?w=<分区名>`（缺省 default）。同一个分区内数据共享；不同分区互相隔离。
+  [!] 分区：所有 /api/* 都接受 `?w=<分区名>`（缺省 default）。同一个分区内数据共享；不同分区互相隔离。
      pytest-xdist 下 conftest 会给每个 worker 注入自己的分区号，因此**并发跑不再互相踩**。
 
 运行: python -m demo.app   (在 hybrid_gui_qa/ 下；端口用 TARGET_PORT 覆盖)
@@ -40,9 +40,9 @@ import urllib.parse
 
 PORT = int(os.environ.get("TARGET_PORT", "8000"))
 # ========== 版本标记（2026-09-28 起）==========
-# 为什么要有它：demo 改到第几版很难一眼分辨（他就撞过一次「跑的是旧进程/旧包」）⇒
+# 为什么要有它：demo 改到第几版很难一眼分辨（他就撞过一次「跑的是旧进程/旧包」）->
 #   · 启动横幅会打印它   · /api/health 里也有 `build` 字段（浏览器直接开…/api/health 就能看）
-#   · 打包时把这个值一并写进包里的「怎么跑」说明 ⇒ 三处对得上就是同一版
+#   · 打包时把这个值一并写进包里的「怎么跑」说明 -> 三处对得上就是同一版
 DEMO_BUILD = "P21-preview-20260929-1855"
 # 默认被测页面：合同管理系统（也可用 TODO_PAGE=todo.html 切回旧 demo）
 DEFAULT_PAGE = os.environ.get("DEFAULT_PAGE", "contracts.html")
@@ -77,11 +77,11 @@ SALESMEN = [
     {"id": "s6", "name": "刘洋"},
 ]
 ORDERS_PER_PAGE = 20          # 每页 20 条
-ORDER_PAGE_COUNT = 15         # 2026-09-29 改：3 → 15 页（每屏 20 ⇒ 订单预置 300 条）
+ORDER_PAGE_COUNT = 15         # 2026-09-29 改：3 → 15 页（每屏 20 -> 订单预置 300 条）
 ORDER_PRESETS = ORDERS_PER_PAGE * ORDER_PAGE_COUNT      # 300 = 15 页 × 20 条
-# 需求㛁（2026-09-29）：订单名称**别再叫「订单N」** —— 口径 = 客户简称 + 月份 + 业务内容 + 订单
-#（例：北京华信2月设备升级订单）。2026-09-29 改：订单 60 → 300 条 ⇒
-#  每客户 50 条 = 10 个内容词 × 6 个月份 = 60 种组合（容量 360）⇒ 300 条互不重名。
+# 需求(9-29批)（2026-09-29）：订单名称**别再叫「订单N」** —— 口径 = 客户简称 + 月份 + 业务内容 + 订单
+#（例：北京华信2月设备升级订单）。2026-09-29 改：订单 60 → 300 条 ->
+#  每客户 50 条 = 10 个内容词 × 6 个月份 = 60 种组合（容量 360）-> 300 条互不重名。
 ORDER_NAME_PROFILE = {
     "c1": ("北京华信", ["设备升级", "备件采购", "系统扩容", "年度维保", "培训服务",
                         "数据中心改造", "网络优化", "软件续订", "运维外包", "安全加固"]),
@@ -96,75 +96,75 @@ ORDER_NAME_PROFILE = {
     "c6": ("成都天府", ["软件许可", "定制开发", "系统升级", "技术支持", "测试外包",
                         "驻场开发", "版本维护", "性能调优", "接口联调", "上线部署"]),
 }
-ORDER_NAME_MONTHS = (2, 4, 6, 8, 10, 12)   # 2026-09-29：2 → 6 个月份（与 10 词组合 = 60/客户 ⇒ 300 条唯一）
+ORDER_NAME_MONTHS = (2, 4, 6, 8, 10, 12)   # 2026-09-29：2 → 6 个月份（与 10 词组合 = 60/客户 -> 300 条唯一）
 REQUIRED_ORDER = ("name", "contract_no", "bu", "mu", "file", "order_type", "cust", "salesman")
-# 需求⑫（2026-09-28 晚）：订单详情页「编辑 → 保存」允许改的字段。
-# 其余（订单编号 no / 合同编号 contract_no / 销售员 salesman / 客户 cust）在页面上是 locked 只读 ⇒ 传了也忽略。
+# 需求(12)（2026-09-28 晚）：订单详情页「编辑 → 保存」允许改的字段。
+# 其余（订单编号 no / 合同编号 contract_no / 销售员 salesman / 客户 cust）在页面上是 locked 只读 -> 传了也忽略。
 EDITABLE_ORDER = ("name", "order_type", "bu", "mu", "file")
-# 需求㉒：新建订单弹层的「更多信息」四项（与订单详情页表单2 同一套）
+# 需求22：新建订单弹层的「更多信息」四项（与订单详情页表单2 同一套）
 MORE_ORDER_FIELDS = ("transport", "creator", "carrier", "channel")
 # 表单2「更多信息」四项（单独落 extra 子对象，不动订单主字段）
 ORDER_MORE_FIELDS = ("transport", "creator", "carrier", "channel")
 # ↑ 必填：订单名称 / 合同 / 业务单元 / 管理单元 / 帐套 / 订单类型 / 客户 / 销售员
 #   订单备注（remark）**选填**（唯一非必填项）
 
-# ========== 订单详情节（P21.4 · 2026-09-28 需求⑥）==========
+# ========== 订单详情节（P21.4 · 2026-09-28 需求(6)）==========
 TRANSPORT_MODES = ["BY EXPRESS EMS", "BY AIR TRAIN 空客联运", "BY AIR 空运", "BY SEA 海运", "BY TRAIN 客运"]
-# 需求㙁（2026-09-29）：承运商主数据 —— 原来「承运商」是纯手输文本框，现在支持关键字模糊搜索 + 「...」弹层选择
+# 需求(9-29批)（2026-09-29）：承运商主数据 —— 原来「承运商」是纯手输文本框，现在支持关键字模糊搜索 + 「...」弹层选择
 CARRIERS = ["顺丰速运", "德邦物流", "中远海运", "中外运", "京东物流", "跨越速运", "EMS 邮政", "DHL 敦豪"]
 LINE_TYPES = ["产品订单行", "许可证订单行", "软件订单行"]
 CANCEL_REASONS = ["信息输入错误", "客户退货", "合同错误", "重复下单", "客户取消"]
-# ---- 状态口径（2026-09-28 晚 · 需求⑧：行状态新增「已关闭」；订单状态由行汇总）----
+# ---- 状态口径（2026-09-28 晚 · 需求(8)：行状态新增「已关闭」；订单状态由行汇总）----
 LINE_STATES = ["已新建", "已挑选", "已出库", "已发货", "已签收", "已关闭"]   # 行的完整流转（需求第 8 条）
 AUTO_STATES = ["已挑选", "已出库", "已发货", "已签收"]                      # 提交后**按时钟**自动推进的档位
 CLOSED_STATE = "已关闭"                                                     # 手工「关闭」动作产生
-CANCELED_STATE = "已取消"                                                   # 需求㛃（2026-09-29）：取消订单 = **软删除**
+CANCELED_STATE = "已取消"                                                   # 需求(16)（2026-09-29）：取消订单 = **软删除**
                                             # （数据保留、状态=「已取消」、列表默认不再出现；加 ?include_canceled=1 可查）
 ACCEPTED_STATE = AUTO_STATES[-1]                                            # 「已签收」= 自动推进的最后一档
-# 需求㉙（2026-09-29）：流转到「已签收」后**持续 2 分钟** ⇒ 自动流转到「已关闭」
+# 需求29（2026-09-29）：流转到「已签收」后**持续 2 分钟** -> 自动流转到「已关闭」
 #（订单整体状态同步变「已关闭」；这 2 分钟内订单管理员仍可**手动**提前关闭）
 AUTO_CLOSE_AFTER_ACCEPT_SECONDS = 120
 FULFILL_STATES = list(AUTO_STATES)      # 兼容旧名（health.fulfill_states = 自动推进的四档）
 ORDER_STATES = ["已新建", "履行中", "已关闭"]                               # 订单整体状态（三档汇总，他 09-28 晚拍定）
-FULFILL_STEP_SECONDS = 10       # 需求㉙：改成**每 10 秒推进一档**（原 30 秒）。
-                                # ⚠️ 前端刷新间隔必须与它同源（本页从 fulfill 接口的 step_seconds 取），
+FULFILL_STEP_SECONDS = 10       # 需求29：改成**每 10 秒推进一档**（原 30 秒）。
+                                # [!] 前端刷新间隔必须与它同源（本页从 fulfill 接口的 step_seconds 取），
                                 # 否则轮询比推进慢会让某一档被整段跳过（历史踩过：0s 已挑选 → 30s 已出库 → 60s 已签收）。
                                 # health 里声明该口径，用例据此推算期望档位。
 ACCEPT_AT_SECONDS = (len(AUTO_STATES) - 1) * FULFILL_STEP_SECONDS   # **进入**「已签收」的时刻（第 4 档开始 = 30s）
-                                # ⇒ 已签收会**停留满 2 分钟**（30s→150s），再自动关闭
+                                # -> 已签收会**停留满 2 分钟**（30s→150s），再自动关闭
 AUTO_CLOSE_AT_SECONDS = ACCEPT_AT_SECONDS + AUTO_CLOSE_AFTER_ACCEPT_SECONDS   # 自动关闭时刻（=150s）
 MAX_ORDER_LINES = 100           # 一个订单最多 100 行
 LINE_UNITS = ["个", "件", "套", "千克"]
 REQUIRED_LINE = ("material", "product", "qty", "line_type")   # 物料编码/产品编码/数量/行类型 必填
 
-# ========== 应收发票（P21.5 · 需求⑦ + 晚 需求⑩「去开票」带入）==========
+# ========== 应收发票（P21.5 · 需求(7) + 晚 需求(10)「去开票」带入）==========
 INVOICE_TYPES = ["增值税专用发票", "增值税普通发票", "电子普通发票"]
 CURRENCIES = ["CNY", "USD", "EUR", "HKD"]
 INVOICE_LINE_TYPES = ["物料行", "服务行", "费用行"]         # 取值由他 2026-09-28 拍定
 PERIODS = [str(i) for i in range(1, 13)]                   # 期次号下拉：从 1 开始（1~12）
 INVOICE_PRESETS = 100   # 2026-09-29 改：30 → 100 张（订单侧「已关闭/已开票」随 INVOICED_PRESET_ORDER_NOS 自动对齐）
 # 2026-09-29（需求）：预置发票的「来源订单」集合 —— 这些订单在数据上**必须是已关闭**
-#（业务上只有已关闭订单才能开票）⇒ 它们的行播种为 closed=True，order_status() 汇总即「已关闭」，
-#  与「是否开票 = 已开票」自洽。口径：INV-1001…INV-1030 ↔ SO-1001…SO-1030（同一来源，不会漂）。
+#（业务上只有已关闭订单才能开票）-> 它们的行播种为 closed=True，order_status() 汇总即「已关闭」，
+#  与「是否开票 = 已开票」自洽。口径：INV-1001…INV-1030 <-> SO-1001…SO-1030（同一来源，不会漂）。
 INVOICED_PRESET_ORDER_NOS = {f"SO-{1000 + i}" for i in range(1, INVOICE_PRESETS + 1)}
 REQUIRED_INVOICE = ("bu", "invoice_type", "invoice_date", "salesman", "currency", "cust")
-# ↑ 发票号（no）**不列入必填**：留空 ⇒ 服务端自动分配（需求⑩「去开票」自动带入就是走这条路）
+# ↑ 发票号（no）**不列入必填**：留空 -> 服务端自动分配（需求(10)「去开票」自动带入就是走这条路）
 REQUIRED_INVOICE_LINE = ("period", "line_type", "qty")     # 期次号 / 发票行类型 / 数量
 
-# ⚠️ 必须是 RLock（可重入）：`_store()` 自己加锁，而调用方（do_GET/do_POST）通常已持有该锁，
+# [!] 必须是 RLock（可重入）：`_store()` 自己加锁，而调用方（do_GET/do_POST）通常已持有该锁，
 #    普通 Lock 会在第一次请求就**自死锁**（实测踩过：demo 整个卡住、curl 全部挂死）。
 _lock = threading.RLock()         # ThreadingTCPServer：数据要被多线程访问
-# ⚠️ 2026-09-14（F6）：数据按**分区**存放 —— 一个分区 = 一份独立的 20 条预置数据。
+# [!] 2026-09-14（F6）：数据按**分区**存放 —— 一个分区 = 一份独立的 20 条预置数据。
 #    pytest-xdist 下每个 worker 用自己的分区（`?w=gw0` / cookie），**并发时互不踩**；
 #    不带分区参数时用 "default"，行为与改造前完全一致（老用例/手工调试零影响）。
 _STORES: dict[str, list[dict]] = {}
-# 客户 / 销售员主数据也**按分区**（2026-09-18）：它们现在可被「弹层内临时新建」修改 ⇒ 必须与合同同口径隔离，
+# 客户 / 销售员主数据也**按分区**（2026-09-18）：它们现在可被「弹层内临时新建」修改 -> 必须与合同同口径隔离，
 # 否则 A worker 新建的客户 B worker 也能看到、reset 也复位不掉（并发下用例互相污染）。
 _CUST_STORES: dict[str, list[dict]] = {}
 _SALE_STORES: dict[str, list[dict]] = {}
-PRESETS = 200                                            # 需求㉗，2026-09-29 改：合同预置 100 → 200 条
-CONTRACTS_PER_PAGE = 30                                  # 需求㉗：列表每屏（每批）加载 30 条（懒加载）
-CONTRACT_YEARS = (2022, 2023, 2024, 2025, 2026)           # 年份维度 3 → 5 年（与 8 词组合 = 40/客户 ⇒ 200 条仍互不重名）
+PRESETS = 200                                            # 需求27，2026-09-29 改：合同预置 100 → 200 条
+CONTRACTS_PER_PAGE = 30                                  # 需求27：列表每屏（每批）加载 30 条（懒加载）
+CONTRACT_YEARS = (2022, 2023, 2024, 2025, 2026)           # 年份维度 3 → 5 年（与 8 词组合 = 40/客户 -> 200 条仍互不重名）
 PARTITIONS_ENABLED = os.environ.get("HYBRID_TARGET_PARTITIONED", "1") != "0"
 
 
@@ -176,7 +176,7 @@ def _part_of(query: str) -> str:
     return ((q.get("w") or [""])[0] or "").strip() or "default"
 
 
-# ========== 数据持久化（需求⑯ · 2026-09-28 晚） ==========
+# ========== 数据持久化（需求(16) · 2026-09-28 晚） ==========
 # 口径：**新增/修改的数据要留住**（重启进程也不丢），除非用户主动删除或显式 /api/reset。
 # 做法：每个分区一份 JSON（demo/.data/state_<分区>.json），**写操作成功后落盘**（Hook 在 _send_json），
 #      分区第一次被访问时惰性加载（有文件读文件、没文件才播种预置）。
@@ -209,11 +209,11 @@ def dump_state(part: str = "default") -> None:
             json.dump(snapshot, f, ensure_ascii=False)
         os.replace(tmp, _state_path(part))          # 原子替换：中途崩了也不会留半份
     except Exception as e:                          # noqa: BLE001
-        print(f"[demo app] ⚠️ 落盘失败（不影响接口）: {e}")
+        print(f"[demo app] [!] 落盘失败（不影响接口）: {e}")
 
 
 def _load_state(part: str = "default") -> bool:
-    """尝试从盘上加载该分区；成功 ⇒ True。"""
+    """尝试从盘上加载该分区；成功 -> True。"""
     path = _state_path(part)
     if not os.path.exists(path):
         return False
@@ -230,12 +230,12 @@ def _load_state(part: str = "default") -> bool:
         _INV_LINE_STORES[part] = d.get("invoice_lines") or {}
         return True
     except Exception as e:                          # noqa: BLE001
-        print(f"[demo app] ⚠️ 读取 {path} 失败（改用预置数据）: {e}")
+        print(f"[demo app] [!] 读取 {path} 失败（改用预置数据）: {e}")
         return False
 
 
 def _ensure_loaded(part: str = "default") -> None:
-    """惰性加载：某分区第一次被访问时读盘（需求⑯：重启不丢数据）。必须在 _lock 内调用。"""
+    """惰性加载：某分区第一次被访问时读盘（需求(16)：重启不丢数据）。必须在 _lock 内调用。"""
     if part in _LOADED:
         return
     _LOADED.add(part)
@@ -256,7 +256,7 @@ def _store(part: str = "default") -> list[dict]:
 def _cust_store(part: str = "default") -> list[dict]:
     """取（必要时创建）某分区的**客户主数据**（2026-09-18：客户开始按分区存）。
 
-    为什么：需求③允许在弹层里**临时新建**客户 ⇒ 主数据变成可变的；若仍是模块级常量，
+    为什么：需求(3)允许在弹层里**临时新建**客户 -> 主数据变成可变的；若仍是模块级常量，
     分区隔离就破了（见 _CUST_STORES 的注释）。
     """
     with _lock:
@@ -279,13 +279,13 @@ def _sale_store(part: str = "default") -> list[dict]:
         return lst
 
 
-# ========== 合同 mock 的「真实感」口径（需求㉕ · 2026-09-29）==========
+# ========== 合同 mock 的「真实感」口径（需求25 · 2026-09-29）==========
 # 起因：合同名原来是「合同1…合同20」，看着太假；要求「带上客户简称 + 合同大致内容」（例：XX客户集采合同）。
-# 口径：① 简称取客户名前两字（华信/远东/南方/前海/中科/天府）；
-#      ② 内容词按客户行业各一组（每客户 6 个）；名称 = 简称 + 年份 + 内容词 + 合同（如「北京华信2024年软件开发合同」）；
-#      ③ 名称**确定性生成、不随机**：每客户 8 词 × 5 年 = 40 种组合 ≥ 单客户条数（200 条时每客户 34 条）
-#         ⇒ PRESETS=200 条仍互不重名；
-#      ④ 合同编号 HT-1001…顺序递增（按编号检索的用例不受影响）。
+# 口径：(1) 简称取客户名前两字（华信/远东/南方/前海/中科/天府）；
+#      (2) 内容词按客户行业各一组（每客户 6 个）；名称 = 简称 + 年份 + 内容词 + 合同（如「北京华信2024年软件开发合同」）；
+#      (3) 名称**确定性生成、不随机**：每客户 8 词 × 5 年 = 40 种组合 ≥ 单客户条数（200 条时每客户 34 条）
+#         -> PRESETS=200 条仍互不重名；
+#      (4) 合同编号 HT-1001…顺序递增（按编号检索的用例不受影响）。
 CUSTOMER_PROFILE = {
     "c1": ("北京华信", ["软件开发", "系统集成", "技术服务", "云平台采购", "运维外包", "数据治理", "信息化建设", "安全加固"]),
     "c2": ("上海远东", ["集采", "年度供货", "出口代理", "备品备件采购", "仓储物流", "渠道分销", "进口代理", "展会合作"]),
@@ -301,7 +301,7 @@ def seed() -> list[dict]:
 
     客户**按序号确定**（不随机）：HT-1001→c1、HT-1002→c2… —— 「客户右模糊」的命中条数是确定的，
     用例才敢断言条数（随机数据只能断言“有结果”）。
-    合同名称（需求㉕/㉗）：`客户简称 + 年份 + 行业内容词 + 合同`，同样按序号确定 ⇒
+    合同名称（需求25/27）：`客户简称 + 年份 + 行业内容词 + 合同`，同样按序号确定 ->
     200 条互不重名（每客户 8 词 × 5 年 = 40 种组合 ≥ 单客户 34 条），且与客户列表对得上。
     其余字段仍随机（与改造前一样；用例不依赖它们）。
     """
@@ -322,7 +322,7 @@ def seed() -> list[dict]:
             "type": random.choice(TYPES),
             "cust": cust["id"],
             "bu": random.choice(BUS),
-            "created_by": "",                  # 需求㉑：系统播种的预置数据 ⇒ 创建人 = 系统管理员（不是某个登录账号）
+            "created_by": "",                  # 需求21：系统播种的预置数据 -> 创建人 = 系统管理员（不是某个登录账号）
         })
     return rows
 
@@ -330,7 +330,7 @@ def seed() -> list[dict]:
 def with_cust_name(row: dict, part: str = "default") -> dict:
     """给记录补上 custName（客户名称）—— 页面/接口都直接拿它渲染，不必各自再查一遍。
 
-    ⚠️ 走**该分区**的客户表（临时新建的客户也在里面），不能用模块级常量。
+    [!] 走**该分区**的客户表（临时新建的客户也在里面），不能用模块级常量。
     """
     d = dict(row)
     d["custName"] = next((c["name"] for c in _cust_store(part) if c["id"] == d.get("cust")),
@@ -341,7 +341,7 @@ def with_cust_name(row: dict, part: str = "default") -> dict:
 def _backup_user_data(part: str = "default") -> str:
     """purge 复位前把当前状态另存一份（`demo/.data/state_<分区>.backup_<时间戳>.json`，只留最近 5 份）。
 
-    起因（2026-09-28）：手工造的演示数据被一次判据复位抹掉过 ⇒ 既然逃不掉"测试要干净基线"，
+    起因（2026-09-28）：手工造的演示数据被一次判据复位抹掉过 -> 既然逃不掉"测试要干净基线"，
     那就在清之前先留个可捞的备份，别让用户的数据真没了。
     """
     try:
@@ -361,9 +361,9 @@ def _backup_user_data(part: str = "default") -> str:
 def reset_data(part: str = "default", purge: bool = False) -> int:
     """把**该分区**复位成预置数据（合同 20 条 + 订单 60 条），返回合同条数。
 
-    ⚠️ 2026-09-28 改口径（用户手工数据被复位抹掉过）：
-      · 默认 `purge=False` ⇒ **只复原预置部分，用户手工新建的合同/订单/发票/客户/销售员原样保留**；
-      · `POST /api/reset?purge=1` ⇒ 完全复原成预置（**用例间隔离**用；清之前会先备份一份）。
+    [!] 2026-09-28 改口径（用户手工数据被复位抹掉过）：
+      · 默认 `purge=False` -> **只复原预置部分，用户手工新建的合同/订单/发票/客户/销售员原样保留**；
+      · `POST /api/reset?purge=1` -> 完全复原成预置（**用例间隔离**用；清之前会先备份一份）。
     只清自己那份 —— 这是并发安全的关键：A worker 的复位不再抹掉 B worker 正在依赖的数据。
     """
     c_nos = {f"HT-{1000 + i}" for i in range(1, PRESETS + 1)}
@@ -391,7 +391,7 @@ def reset_data(part: str = "default", purge: bool = False) -> int:
         _CUST_STORES[part] = [dict(c) for c in CUSTOMERS] + user_cust
         _SALE_STORES[part] = [dict(s) for s in SALESMEN] + user_sale
         # 行/履行/发票行：预置的重建，用户那份原样保留（含"已关闭"的行状态与履行进度）
-        # ⚠️ 2026-09-29 修：**purge 时预置订单的行也必须重播种** —— 原来这里无条件复用 old_lines，
+        # [!] 2026-09-29 修：**purge 时预置订单的行也必须重播种** —— 原来这里无条件复用 old_lines，
         # 于是 `?purge=1` 之后预置订单的行状态仍残留（实测：SO-1001 的行还停在「已关闭」，
         # 订单整体状态跟着显示「已关闭」，用复位做用例隔离时就会出现"复位了但状态没复位"）。
         _LINE_STORES[part] = {r["no"]: (None if purge else old_lines.get(r["no"])) or seed_lines(r["no"])
@@ -417,9 +417,9 @@ def create_contract(payload: dict, part: str = "default") -> tuple[dict, int]:
             seq += 1
             no = f"HT-{seq}"
         row = {"no": no, **{k: str(payload[k]).strip() for k in REQUIRED}}
-        row["created_by"] = str((payload.get("_actor") or {}).get("user") or "")   # 需求⑰
+        row["created_by"] = str((payload.get("_actor") or {}).get("user") or "")   # 需求(17)
         # ← 新合同插到**最前**（列表第一条就是刚建的）：与订单(insert(0)) / 发票(insert(0)) 同口径。
-        # 此前这里是 append ⇒ 新建合同落到列表末尾，与订单/发票行为不一致、也不合真实系统习惯（2026-09-29 修）
+        # 此前这里是 append -> 新建合同落到列表末尾，与订单/发票行为不一致、也不合真实系统习惯（2026-09-29 修）
         lst.insert(0, row)
         return with_cust_name(row, part), 201
 
@@ -428,11 +428,11 @@ CONTRACT_EDITABLE = ("name", "mu", "file", "type", "cust", "bu")
 
 
 def update_contract(payload: dict, part: str = "default", actor=None) -> tuple[dict, int]:
-    """**保存合同字段**（需求㉜ · 2026-09-29：合同列表页 → 弹层 iframe 打开详情 → 「编辑」→ 保存）。
+    """**保存合同字段**（需求32 · 2026-09-29：合同列表页 → 弹层 iframe 打开详情 → 「编辑」→ 保存）。
 
     口径：
       · 只有 `CONTRACT_EDITABLE` 六个字段可改 —— 合同编号是主键，页面里只读，传上来也**忽略**；
-      · 合并后仍必须满足 `REQUIRED`（必填不许被清空）⇒ 否则 400「请填写全部必填字段」且**不落库**；
+      · 合并后仍必须满足 `REQUIRED`（必填不许被清空）-> 否则 400「请填写全部必填字段」且**不落库**；
       · 权限走**记录级** `may_edit()`（创建人 或 合同管理员），与订单/发票的编辑同口径。
     """
     no = str(payload.get("no") or "").strip()
@@ -468,8 +468,8 @@ def seed_orders() -> list[dict]:
     **所有字段都按序号确定（不随机）**：这样「某销售员命中 10 条」「业务单元 bu_a 命中 20 条」
     这类断言才有确定的数（合同的 mu/file/bu 是随机的，订单这里刻意收严，便于断言条数与分页）。
     口径：订单编号 SO-1001…SO-1300 · 订单名称 = 客户简称 + 月份 + 业务内容 + 订单
-    （需求㛁，例「北京华信2月设备升级订单」；2026-09-29 起每客户 50 条 = 10 词 × 6 月份 = 60 组合 ⇒ 互不重名）·
-    合同编号 = 预置合同 HT-1001…HT-1020 循环（⇒ 点过去一定能看到**真实存在的**合同详情）；
+    （需求(9-29批)，例「北京华信2月设备升级订单」；2026-09-29 起每客户 50 条 = 10 词 × 6 月份 = 60 组合 -> 互不重名）·
+    合同编号 = 预置合同 HT-1001…HT-1020 循环（-> 点过去一定能看到**真实存在的**合同详情）；
     客户/销售员/订单类型/业务单元/管理单元/帐套 都按 (序号-1) % 选项数 取值。
     """
     rows: list[dict] = []
@@ -481,18 +481,18 @@ def seed_orders() -> list[dict]:
             "no": f"SO-{1000 + i}",
             "contract_no": f"HT-{1000 + ((i - 1) % PRESETS) + 1}",
             "name": f"{short}{ORDER_NAME_MONTHS[k // len(words)]}月{words[k % len(words)]}订单",
-            # 需求㉘（2026-09-29）：mu / bu / file 三个字段**互相独立** ——
-            # 此前三者都是 `(i-1) % 3`（同余）⇒ bu_a 永远配 0021+001、bu_b 永远配 0451+002…
-            # ⇒ 任意两字段组合筛选几乎恒为 0 条（实测踩到）。改法：三个**不同的分段周期**，
+            # 需求28（2026-09-29）：mu / bu / file 三个字段**互相独立** ——
+            # 此前三者都是 `(i-1) % 3`（同余）-> bu_a 永远配 0021+001、bu_b 永远配 0451+002…
+            # -> 任意两字段组合筛选几乎恒为 0 条（实测踩到）。改法：三个**不同的分段周期**，
             # 既保持确定性，又让**每个单值仍恰好命中 20 条**（「bu_a 命中 20 条」这类既有断言不变），
             # 且两两联合分布覆盖全部 9 种组合（mu×bu 实测 4~8 条/格）。
             "mu": MUS[(i - 1) % len(MUS)],                    # 每 1 条变（原口径）
             "salesman": SALESMEN[(i - 1) % len(SALESMEN)]["id"],
             "order_type": ORDER_TYPES[(i - 1) % len(ORDER_TYPES)],
-            "bu": BUS[((i - 1) // 5) % len(BUS)],             # 每 5 条变（需求㉘ 换口径）
-            "file": FILES[((i - 1) // 20) % len(FILES)],      # 每 20 条变（需求㉘ 换口径）
+            "bu": BUS[((i - 1) // 5) % len(BUS)],             # 每 5 条变（需求28 换口径）
+            "file": FILES[((i - 1) // 20) % len(FILES)],      # 每 20 条变（需求28 换口径）
             "cust": cust["id"],
-            "created_by": "",                  # 需求㉑：系统播种的预置数据 ⇒ 创建人 = 系统管理员（不是某个登录账号）
+            "created_by": "",                  # 需求21：系统播种的预置数据 -> 创建人 = 系统管理员（不是某个登录账号）
             "remark": "",
         })
     return rows
@@ -515,17 +515,17 @@ def with_order_names(row: dict, part: str = "default") -> dict:
                              d.get("salesman", ""))
     d["custName"] = next((c["name"] for c in _cust_store(part) if c["id"] == d.get("cust")),
                          d.get("cust", ""))
-    d["created_by_label"] = creator_label(d.get("created_by"))   # 需求㉑：页面别自己猜创建人
+    d["created_by_label"] = creator_label(d.get("created_by"))   # 需求21：页面别自己猜创建人
     return d
 
 
-# ========== 角色与登录（需求⑮ · 2026-09-28 晚） ==========
+# ========== 角色与登录（需求(15) · 2026-09-28 晚） ==========
 # 四个角色 + 四个账号（**账号密码各不相同**；登录页把 demo 账号写在提示里，方便演示）
 CONTRACT_ADMIN, ORDER_ADMIN, INVOICE_ADMIN, SUPER_ADMIN = (
     "contract_admin", "order_admin", "invoice_admin", "super_admin")
 ROLE_LABELS = {CONTRACT_ADMIN: "合同管理员", ORDER_ADMIN: "订单管理员",
                INVOICE_ADMIN: "发票管理员", SUPER_ADMIN: "超级管理员"}
-# 角色 → 演示账号名（需求㉑：自动化入口也用演示账号当身份，
+# 角色 → 演示账号名（需求21：自动化入口也用演示账号当身份，
 # 否则 created_by 会落成 "__test__"、抬头显示「创建人：__test__」）
 ROLE_ACCOUNTS = {CONTRACT_ADMIN: "contract", ORDER_ADMIN: "order",
                  INVOICE_ADMIN: "invoice", SUPER_ADMIN: "super"}
@@ -536,10 +536,10 @@ ACCOUNTS = {
     "invoice": {"pwd": "invoice@123", "role": INVOICE_ADMIN},
     "super": {"pwd": "super@123", "role": SUPER_ADMIN},
 }
-# 权限矩阵（需求⑮ 口径）：
+# 权限矩阵（需求(15) 口径）：
 #   · 查看合同/订单/发票 —— **四个角色都有**（读取类接口不设闸，匿名也能读，见 do_POST 收口点说明）
-#   · 新建合同 / 新建订单 / 创建发票 —— 只给**对应角色的管理员**（超管要先用头像切到该角色，需求⑮-3）
-#   · 新建客户 —— **四个角色都有**（需求⑮-4）
+#   · 新建合同 / 新建订单 / 创建发票 —— 只给**对应角色的管理员**（超管要先用头像切到该角色，需求(15)-3）
+#   · 新建客户 —— **四个角色都有**（需求(15)-4）
 PERMISSIONS = {
     "view_contract": ROLES, "view_order": ROLES, "view_invoice": ROLES,
     "create_contract": (CONTRACT_ADMIN,), "create_order": (ORDER_ADMIN,),
@@ -556,22 +556,22 @@ POST_ACTIONS = {
     "/api/salesmen": "create_customer",          # 弹层内新建销售员与客户同权限
 }
 # **记录级**动作（改/删某一条）：只要求「已登录」，能不能改**这一条**由 `may_edit()` 判 ——
-# 需求⑰：创建人 或 对应管理员（超管切到该角色也算）。⇒ 不能再在这里按角色一刀切，
+# 需求(17)：创建人 或 对应管理员（超管切到该角色也算）。-> 不能再在这里按角色一刀切，
 # 否则「切到别的角色后改自己建的那条」永远走不到创建人规则（会被角色闸先拦成 403）。
 POST_RECORD_ACTIONS = {
-    "/api/contract_update": "create_contract",        # 需求㉜：合同编辑保存（记录级：创建人 / 合同管理员）
-    "/api/orders/submit": "create_order",            # 需求㛃：列表页批量提交订单
-    "/api/orders/cancel": "create_order",            # 需求㛃：列表页批量取消订单（软删除）
+    "/api/contract_update": "create_contract",        # 需求32：合同编辑保存（记录级：创建人 / 合同管理员）
+    "/api/orders/submit": "create_order",            # 需求(16)：列表页批量提交订单
+    "/api/orders/cancel": "create_order",            # 需求(16)：列表页批量取消订单（软删除）
     "/api/order/update": "create_order", "/api/order/lines": "create_order",
     "/api/order/submit": "create_order", "/api/order/lines/close": "create_order",
     "/api/order/cancel": "create_order", "/api/invoice/delete": "create_invoice",
-    "/api/invoice/update": "create_invoice",     # 需求⑲：发票详情「编辑→保存」（登录即可，逐条判创建人/发票管理员）
+    "/api/invoice/update": "create_invoice",     # 需求(19)：发票详情「编辑→保存」（登录即可，逐条判创建人/发票管理员）
 }
 _SESSIONS: dict = {}                             # token -> {"user","role","super","source"}
 
 
 def may_edit(actor, row: dict, admin_role: str, admin_label: str):
-    """需求⑰：**谁建的谁能改自己那条** —— 创建人 或 对应管理员（超管切到该角色也算）。
+    """需求(17)：**谁建的谁能改自己那条** —— 创建人 或 对应管理员（超管切到该角色也算）。
 
     返回 None = 放行；否则返回 (body, code) 给调用方直接返回。
     """
@@ -594,7 +594,7 @@ CREATOR_LABELS = {"contract": "合同管理员", "order": "订单管理员",
 
 
 def _with_creator_labels(body):
-    """需求㉑：凡是回传里带 `created_by` 的对象，自动补上 `created_by_label`。
+    """需求21：凡是回传里带 `created_by` 的对象，自动补上 `created_by_label`。
 
     放在 `_send_json` 这个**唯一出口**做兜底 —— 合同/订单/发票各条返回路径一次覆盖，
     页面只管渲染 label，不必各自猜（只补不覆盖：订单/发票的 with_* 出口已带的保持原样）。
@@ -613,10 +613,10 @@ def _with_creator_labels(body):
 
 
 def creator_label(value) -> str:
-    """把创建人的**账号**翻成**看得懂的名字**（需求㉑）。
+    """把创建人的**账号**翻成**看得懂的名字**（需求21）。
 
-    · 空 ⇒ 「系统管理员」（系统播种的预置数据，不是某个登录账号建的）；
-    · 已知演示账号 ⇒ 对应角色名；其它 ⇒ 原样返回（不吞信息）。
+    · 空 -> 「系统管理员」（系统播种的预置数据，不是某个登录账号建的）；
+    · 已知演示账号 -> 对应角色名；其它 -> 原样返回（不吞信息）。
     """
     v = str(value or "").strip()
     if not v or v in ("system", "system_admin"):
@@ -635,13 +635,13 @@ def me_payload(sess: dict) -> dict:
         "viewing_as": (sess or {}).get("viewing_as") or "",
         "can": {a: any(x in allowed for x in ((sess or {}).get("roles") or [role]))
                 for a, allowed in PERMISSIONS.items()},
-        # 需求⑮-3：只有超管看得到「可切换的角色」清单
+        # 需求(15)-3：只有超管看得到「可切换的角色」清单
         "switchable": [r for r in ROLES if r != SUPER_ADMIN] if (sess or {}).get("super") else [],
     }
 
 
 def login(payload: dict) -> tuple[dict, int]:
-    """登录：账号密码对 ⇒ 发 token（内存会话；重启 demo 即失效，demo 够用）。"""
+    """登录：账号密码对 -> 发 token（内存会话；重启 demo 即失效，demo 够用）。"""
     u = str(payload.get("username") or "").strip()
     p = str(payload.get("password") or "")
     acc = ACCOUNTS.get(u)
@@ -659,10 +659,10 @@ def logout(tok: str) -> tuple[dict, int]:
 
 
 def switch_role(tok: str, sess, payload: dict) -> tuple[dict, int]:
-    """需求⑮-3：**只有超级管理员**能把当前会话切到 合同/订单/发票管理员，去干那些活。"""
+    """需求(15)-3：**只有超级管理员**能把当前会话切到 合同/订单/发票管理员，去干那些活。"""
     if sess is None:
         return {"error": "未登录：请先登录", "login": "/login.html"}, 401
-    # ⚠️ 判据是 **is_super（超管身份）**，不是「当前扮演的角色」——
+    # [!] 判据是 **is_super（超管身份）**，不是「当前扮演的角色」——
     #    否则超管一旦切到订单管理员，就再也切不回来/切不到别的角色（切角色当场把自己锁死）。
     if not sess.get("super"):
         return {"error": f"只有{ROLE_LABELS[SUPER_ADMIN]}可以切换角色"
@@ -683,7 +683,7 @@ _INV_LINE_STORES: dict[str, dict[str, list[dict]]] = {}
 
 
 def seed_invoices() -> list[dict]:
-    """预置 30 张应收发票。**全部字段按序号确定（不随机）** ⇒ 「某业务单元命中 10 张」这类断言有确定的数。
+    """预置 30 张应收发票。**全部字段按序号确定（不随机）** -> 「某业务单元命中 10 张」这类断言有确定的数。
 
     口径：发票号 INV-1001…INV-1030 · 合同编号 = 预置合同 HT-1001…HT-1020 循环 ·
     业务单元/发票类型/销售员/币种/客户 都按 (序号-1) % 选项数 取值；发票日期 = 2026-09-01~09-28 循环。
@@ -701,7 +701,7 @@ def seed_invoices() -> list[dict]:
             "cust": CUSTOMERS[(i - 1) % len(CUSTOMERS)]["id"],
             # 2026-09-29：给预置发票补「来源订单」—— 订单页「查看发票」按订单编号筛才有数据。
             # 口径：INV-1001…INV-1030 一一对应 SO-1001…SO-1030（确定性，便于断言）。
-            # ⚠️ 连带：order_invoiced() 是**现算**的 ⇒ 这 30 个订单从此显示「已开票」（更真实，且不许重复开票）。
+            # [!] 连带：order_invoiced() 是**现算**的 -> 这 30 个订单从此显示「已开票」（更真实，且不许重复开票）。
             "from_order": f"SO-{1000 + i}",
         })
     return rows
@@ -735,7 +735,7 @@ def with_invoice_names(row: dict, part: str = "default") -> dict:
     d["custName"] = next((c["name"] for c in _cust_store(part) if c["id"] == d.get("cust")),
                          d.get("cust", ""))
     d["line_count"] = len(_inv_lines_of(part, d["no"]))
-    d["created_by_label"] = creator_label(d.get("created_by"))   # 需求㉑：页面别自己猜创建人
+    d["created_by_label"] = creator_label(d.get("created_by"))   # 需求21：页面别自己猜创建人
     return d
 
 
@@ -771,7 +771,7 @@ def filter_invoices(rows: list[dict], q: dict, part: str = "default") -> list[di
     cust = (q.get("cust") or "").strip().lower()
     cname = (q.get("contract_name") or "").strip().lower()
     oname = (q.get("order_name") or "").strip().lower()
-    # 名称不在发票记录上 ⇒ 按编号从主数据取（各建一次索引，别在循环里线性扫）
+    # 名称不在发票记录上 -> 按编号从主数据取（各建一次索引，别在循环里线性扫）
     cname_by_no = {c["no"]: (c.get("name") or "") for c in _store(part)}
     oname_by_no = {o["no"]: (o.get("name") or "") for o in _order_store(part)}
     out: list[dict] = []
@@ -799,10 +799,10 @@ def filter_invoices(rows: list[dict], q: dict, part: str = "default") -> list[di
 
 
 def create_invoice(payload: dict, part: str = "default") -> tuple[dict, int]:
-    """新建应收发票：**校验来源订单已关闭（需求⑪）** + 校验必填（发票号可留空 ⇒ 服务端分配）
-    + 校验发票行 ⇒ **插到最前** → 落库。"""
-    # 需求⑪（2026-09-28 晚）：**只有「已关闭」的订单才能开票**。
-    # 客户端那道闸（订单页按钮 / 开票页直链）都可被绕开（直接 POST）⇒ 服务端按同一口径复核，且这是权威判定。
+    """新建应收发票：**校验来源订单已关闭（需求(11)）** + 校验必填（发票号可留空 -> 服务端分配）
+    + 校验发票行 -> **插到最前** → 落库。"""
+    # 需求(11)（2026-09-28 晚）：**只有「已关闭」的订单才能开票**。
+    # 客户端那道闸（订单页按钮 / 开票页直链）都可被绕开（直接 POST）-> 服务端按同一口径复核，且这是权威判定。
     src = str(payload.get("from_order") or "").strip()
     if src:
         if not _order_exists(part, src):
@@ -811,7 +811,7 @@ def create_invoice(payload: dict, part: str = "default") -> tuple[dict, int]:
         if st != CLOSED_STATE:
             return {"error": f"订单 {src} 当前状态为「{st}」，只有「{CLOSED_STATE}」的订单才能开票",
                     "order_status": st}, 400
-        # 需求⑳：**已开票的订单不允许再次开票**（发票删除后自动解锁，见 order_invoiced）
+        # 需求(20)：**已开票的订单不允许再次开票**（发票删除后自动解锁，见 order_invoiced）
         _inv_no = order_invoiced(part, src)
         if _inv_no:
             return {"error": f"订单 {src} 已开票（发票号 {_inv_no}），不允许再次开票",
@@ -849,20 +849,20 @@ def create_invoice(payload: dict, part: str = "default") -> tuple[dict, int]:
         row["contract_no"] = str(payload.get("contract_no") or "").strip()
         # 「去开票」带上来的来源订单号（可追溯；选填）
         row["from_order"] = str(payload.get("from_order") or "").strip()
-        row["created_by"] = str((payload.get("_actor") or {}).get("user") or "")   # 需求⑰
+        row["created_by"] = str((payload.get("_actor") or {}).get("user") or "")   # 需求(17)
         lst.insert(0, row)                                   # ← 新发票在最前（列表第一条就是它）
         _INV_LINE_STORES.setdefault(part, {})[no] = clean
         return {**with_invoice_names(row, part), "lines": clean}, 201
 
 
 def update_invoice(payload: dict, part: str = "default", actor=None) -> tuple[dict, int]:
-    """**保存发票**（需求⑲：发票详情页「编辑 → 保存」）—— 基础信息 + 发票行一起落库。
+    """**保存发票**（需求(19)：发票详情页「编辑 → 保存」）—— 基础信息 + 发票行一起落库。
 
     口径：
       · 基础信息只认 REQUIRED_INVOICE 那六项（发票号 no 是主键、不支持改；合同编号 contract_no 可跟着改）；
       · 行：整组替换（与发票创建同口径），每行必填 期次号/发票行类型/数量，期次号必须在 1~12；
       · 合并后仍要满足必填，否则 400 且**不落库**；
-      · 权限（需求⑰/⑲）：创建人 或 发票管理员（超管切到该角色也算）。
+      · 权限（需求(17)/(19)）：创建人 或 发票管理员（超管切到该角色也算）。
     """
     no = str(payload.get("no") or "").strip()
     fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else {}
@@ -872,7 +872,7 @@ def update_invoice(payload: dict, part: str = "default", actor=None) -> tuple[di
         row = next((r for r in lst if r["no"] == no), None)
         if row is None:
             return {"error": f"未找到该发票: {no}"}, 404
-        _denied = may_edit(actor, row, INVOICE_ADMIN, ROLE_LABELS[INVOICE_ADMIN])   # 需求⑰/⑲
+        _denied = may_edit(actor, row, INVOICE_ADMIN, ROLE_LABELS[INVOICE_ADMIN])   # 需求(17)/(19)
         if _denied:
             return _denied
         merged = {k: (str(fields[k]).strip() if k in fields else str(row.get(k) or ""))
@@ -924,7 +924,7 @@ def dict_values(kind: str) -> list[str]:
     """字典候选值：业务单元/管理单元/帐套（「...」弹层）+ 订单行类型/运输方式/订单类型（P21.4 联想下拉）。"""
     return {"bu": list(BUS), "mu": list(MUS), "file": list(FILES),
             "line_type": list(LINE_TYPES), "transport": list(TRANSPORT_MODES),
-            "carrier": list(CARRIERS),                      # 需求㙁：承运商（联想 + 弹层共用同一份主数据）
+            "carrier": list(CARRIERS),                      # 需求(9-29批)：承运商（联想 + 弹层共用同一份主数据）
             "order_type": list(ORDER_TYPES),
             # P21.5 发票字典：发票行类型 / 发票类型 / 币种 / 期次号
             "invoice_line_type": list(INVOICE_LINE_TYPES),
@@ -938,7 +938,7 @@ def seed_lines(no: str) -> list[dict]:
     """预置订单的示例行（2 行）—— 让详情页首次打开就有行可断言。
 
     2026-09-29（需求）：**已开票的预置订单**（SO-1001…SO-1030，即 INV-1001…INV-1030 的来源订单）
-    的行直接播种为 `closed=True` ⇒ order_status() 汇总为「已关闭」，与「已开票」不再冲突
+    的行直接播种为 `closed=True` -> order_status() 汇总为「已关闭」，与「已开票」不再冲突
     （业务上开票前必须是已关闭；这样 mock 数据本身自洽）。
     """
     closed = no in INVOICED_PRESET_ORDER_NOS
@@ -961,7 +961,7 @@ def _order_exists(part: str, no: str) -> bool:
 
 
 def _line_status(part: str, no: str, ln: dict) -> str:
-    """**行状态**（需求⑧完整流转 + 需求㉙ 自动关闭）：
+    """**行状态**（需求(8)完整流转 + 需求29 自动关闭）：
 
       已关闭（手工）> 已新建（未提交）> 已挑选/已出库/已发货/已签收（每 FULFILL_STEP_SECONDS 升一档）
       > **「已签收」保持 AUTO_CLOSE_AFTER_ACCEPT_SECONDS(120s) 后自动变「已关闭」**。
@@ -974,15 +974,15 @@ def _line_status(part: str, no: str, ln: dict) -> str:
     elapsed = max(0.0, time.time() - ts)
     idx = min(len(AUTO_STATES) - 1, int(elapsed // FULFILL_STEP_SECONDS))
     if idx == len(AUTO_STATES) - 1 and elapsed >= AUTO_CLOSE_AT_SECONDS:
-        return CLOSED_STATE                    # 需求㉙：已签收持续满 2 分钟 ⇒ 自动关闭（与手工关闭同一状态）
+        return CLOSED_STATE                    # 需求29：已签收持续满 2 分钟 -> 自动关闭（与手工关闭同一状态）
     return AUTO_STATES[idx]
 
 
 def order_invoiced(part: str = "default", order_no: str = "") -> str:
-    """该订单**是否已开票**（需求⑳）—— 返回发票号；未开票返回 ""。
+    """该订单**是否已开票**（需求(20)）—— 返回发票号；未开票返回 ""。
 
     关联口径：发票上记的 `from_order`（「去开票」带过来的来源订单号）即关联关系。
-    发票被删除后，这里自然回到「未开票」（每次现算，不另存状态位）⇒ 不会出现"删了发票还锁着"的脏状态。
+    发票被删除后，这里自然回到「未开票」（每次现算，不另存状态位）-> 不会出现"删了发票还锁着"的脏状态。
     """
     if not order_no:
         return ""
@@ -1005,15 +1005,15 @@ def _lines_with_status(part: str, no: str) -> list[dict]:
 def order_status(part: str, no: str) -> str:
     """**订单整体状态**（三档汇总，他 2026-09-28 晚拍定）：
 
-      · 已取消（软删除）⇒ 已取消        ← 优先判定（需求㛃 2026-09-29 新增）
-      · 所有行都已关闭  ⇒ 已关闭
-      · 已提交且未全关  ⇒ 履行中
-      · 其余（未提交）  ⇒ 已新建
+      · 已取消（软删除）-> 已取消        ← 优先判定（需求(16) 2026-09-29 新增）
+      · 所有行都已关闭  -> 已关闭
+      · 已提交且未全关  -> 履行中
+      · 其余（未提交）  -> 已新建
     """
     row = next((r for r in _order_store(part) if r["no"] == no), None)
     if row is not None and row.get("canceled"):
         return CANCELED_STATE
-    lines = _lines_with_status(part, no)           # 需求㉙：按**行状态**判定（含自动关闭），不再只看手工 closed 位
+    lines = _lines_with_status(part, no)           # 需求29：按**行状态**判定（含自动关闭），不再只看手工 closed 位
     if lines and all(ln["status"] == CLOSED_STATE for ln in lines):
         return "已关闭"
     if _FULFILL_STORES.get(part, {}).get(no):
@@ -1022,15 +1022,15 @@ def order_status(part: str, no: str) -> str:
 
 
 def close_order_lines(part: str, no: str, line_nos=None, actor=None) -> tuple[dict, int]:
-    """**关闭订单行**（需求⑧：手工动作，不是时钟推进；line_nos 空/缺省 ⇒ 全部关闭）。
+    """**关闭订单行**（需求(8)：手工动作，不是时钟推进；line_nos 空/缺省 -> 全部关闭）。
 
-    关掉的行状态固定为「已关闭」，不再随提交后的时钟变化；全部行关闭 ⇒ 订单状态变「已关闭」。
+    关掉的行状态固定为「已关闭」，不再随提交后的时钟变化；全部行关闭 -> 订单状态变「已关闭」。
     """
     with _lock:
         row = next((r for r in _order_store(part) if r["no"] == no), None)
         if row is None:
             return {"error": f"未找到该订单: {no}"}, 404
-        _denied = may_edit(actor, row, ORDER_ADMIN, ROLE_LABELS[ORDER_ADMIN])   # 需求⑰
+        _denied = may_edit(actor, row, ORDER_ADMIN, ROLE_LABELS[ORDER_ADMIN])   # 需求(17)
         if _denied:
             return _denied
         lines = _lines_of(part, no)
@@ -1063,7 +1063,7 @@ def save_order_lines(part: str, no: str, lines, actor=None) -> tuple[dict, int]:
         row = next((r for r in _order_store(part) if r["no"] == no), None)
         if row is None:
             return {"error": f"未找到该订单: {no}"}, 404
-        _denied = may_edit(actor, row, ORDER_ADMIN, ROLE_LABELS[ORDER_ADMIN])   # 需求⑰
+        _denied = may_edit(actor, row, ORDER_ADMIN, ROLE_LABELS[ORDER_ADMIN])   # 需求(17)
         if _denied:
             return _denied
         out: list[dict] = []
@@ -1092,7 +1092,7 @@ def submit_fulfill(part: str, no: str, actor=None) -> tuple[dict, int]:
         row = next((r for r in _order_store(part) if r["no"] == no), None)
         if row is None:
             return {"error": f"未找到该订单: {no}"}, 404
-        _denied = may_edit(actor, row, ORDER_ADMIN, ROLE_LABELS[ORDER_ADMIN])   # 需求⑰
+        _denied = may_edit(actor, row, ORDER_ADMIN, ROLE_LABELS[ORDER_ADMIN])   # 需求(17)
         if _denied:
             return _denied
         ts = time.time()
@@ -1102,7 +1102,7 @@ def submit_fulfill(part: str, no: str, actor=None) -> tuple[dict, int]:
 
 
 def fulfill_of(part: str, no: str) -> dict:
-    """订单履行状态（行「状态」列用它）：未提交 ⇒ status 空；已提交 ⇒ 每 FULFILL_STEP_SECONDS 秒推进一档。"""
+    """订单履行状态（行「状态」列用它）：未提交 -> status 空；已提交 -> 每 FULFILL_STEP_SECONDS 秒推进一档。"""
     with _lock:
         ts = _FULFILL_STORES.get(part, {}).get(no)
         lines = _lines_with_status(part, no)
@@ -1110,7 +1110,7 @@ def fulfill_of(part: str, no: str) -> dict:
                 "lines": lines, "max": MAX_ORDER_LINES, "line_types": list(LINE_TYPES),
                 "line_states": list(LINE_STATES), "order_status": order_status(part, no),
                 "closed_lines": [ln["line_no"] for ln in lines if ln.get("closed")],
-                # 需求㉙：自动关闭口径（前端据此显示「还有多久自动关闭」；用例据此推算期望状态）
+                # 需求29：自动关闭口径（前端据此显示「还有多久自动关闭」；用例据此推算期望状态）
                 "accepted_state": ACCEPTED_STATE,
                 "accept_at_seconds": ACCEPT_AT_SECONDS,
                 "auto_close_after_accept_seconds": AUTO_CLOSE_AFTER_ACCEPT_SECONDS,
@@ -1121,19 +1121,19 @@ def fulfill_of(part: str, no: str) -> dict:
         idx = min(len(AUTO_STATES) - 1, int(elapsed // FULFILL_STEP_SECONDS))
         state = AUTO_STATES[idx]
         if idx == len(AUTO_STATES) - 1 and elapsed >= AUTO_CLOSE_AT_SECONDS:
-            state = CLOSED_STATE               # 需求㉙：已签收满 2 分钟 ⇒ 订单档位也是「已关闭」（与行状态同口径）
+            state = CLOSED_STATE               # 需求29：已签收满 2 分钟 -> 订单档位也是「已关闭」（与行状态同口径）
         return {**base, "submitted": True, "elapsed": round(elapsed, 1),
                 "state": state}
         # 注：行「状态」列按同一时钟逐行计算（见 _lines_with_status）；已关闭的行不跟随时钟
 
 
 def cancel_order(part: str, no: str, reason, actor=None) -> tuple[dict, int]:
-    """取消订单（= **软删除**，需求㛃 · 2026-09-29）：必须先填「取消原因」，原因空 ⇒ 400。
+    """取消订单（= **软删除**，需求(16) · 2026-09-29）：必须先填「取消原因」，原因空 -> 400。
 
-    ⚠️ 口径变化：**不再把记录从 store 里物理移除**（老实现是 `lst.remove(row)`），改成
+    [!] 口径变化：**不再把记录从 store 里物理移除**（老实现是 `lst.remove(row)`），改成
     `row["canceled"] = True` —— 数据仍保留（可追溯 / 可恢复），而
       · 列表接口默认**不再返回**它（等同"删掉了"的观感）
-      · 直接按编号打开详情 ⇒ 也按"不存在"处理（404）
+      · 直接按编号打开详情 -> 也按"不存在"处理（404）
       · 但状态字段是「已取消」，且 `?include_canceled=1` 能查到原记录
     """
     reason = str(reason or "").strip()
@@ -1143,12 +1143,12 @@ def cancel_order(part: str, no: str, reason, actor=None) -> tuple[dict, int]:
 
 
 def cancel_orders(part: str, nos, reason, actor=None, require_reason: bool = False) -> tuple[dict, int]:
-    """**批量取消订单**（软删除，需求㛃）。列表页「取消订单」按钮走这里（不强制原因）。
+    """**批量取消订单**（软删除，需求(16)）。列表页「取消订单」按钮走这里（不强制原因）。
 
     逐条判定，能取消的取消、不能取消的进 `skipped` 并带上原因（不整批失败）：
-      · 找不到该单          ⇒ skipped
-      · 已经是「已取消」     ⇒ skipped
-      · 订单已关闭（已结束） ⇒ skipped（业务上关闭就是终结，不能再取消）
+      · 找不到该单          -> skipped
+      · 已经是「已取消」     -> skipped
+      · 订单已关闭（已结束） -> skipped（业务上关闭就是终结，不能再取消）
       · 权限：记录级 may_edit（创建人 或 订单管理员）
     """
     reason = str(reason or "").strip()
@@ -1167,7 +1167,7 @@ def cancel_orders(part: str, nos, reason, actor=None, require_reason: bool = Fal
             if row is None:
                 skipped.append({"no": no, "why": "未找到该订单"})
                 continue
-            _denied = may_edit(actor, row, ORDER_ADMIN, ROLE_LABELS[ORDER_ADMIN])   # 需求⑰
+            _denied = may_edit(actor, row, ORDER_ADMIN, ROLE_LABELS[ORDER_ADMIN])   # 需求(17)
             if _denied:
                 return _denied
             if row.get("canceled"):
@@ -1186,7 +1186,7 @@ def cancel_orders(part: str, nos, reason, actor=None, require_reason: bool = Fal
 
 
 def submit_orders(part: str, nos, actor=None) -> tuple[dict, int]:
-    """**批量提交订单**（需求㛃）：把未提交的订单启动履行时钟 ——
+    """**批量提交订单**（需求(16)）：把未提交的订单启动履行时钟 ——
     之后 0s 已挑选 → 10s 已出库 → 20s 已发货 → 30s 已签收 →（停留 120s）→ **150s 自动关闭**，
     与单条 `submit_fulfill` 完全同一口径（复用它的时间戳机制，不另造一套）。
     已提交 / 已关闭 / 已取消的一律进 `skipped`，不重复提交。
@@ -1210,7 +1210,7 @@ def submit_orders(part: str, nos, actor=None) -> tuple[dict, int]:
             continue
         body, code = submit_fulfill(part, no, actor)      # 复用单条提交（它自己持锁，这里不要重复持锁）
         if code >= 400:
-            return body, code                             # 权限/找不到等 ⇒ 整批失败（与关闭订单同风格）
+            return body, code                             # 权限/找不到等 -> 整批失败（与关闭订单同风格）
         submitted.append(no)
     return {"ok": True, "submitted": submitted, "skipped": skipped,
             "step_seconds": FULFILL_STEP_SECONDS, "accept_at_seconds": ACCEPT_AT_SECONDS,
@@ -1225,31 +1225,31 @@ def filter_orders(rows: list[dict], q: dict, part: str = "default") -> list[dict
       · 客户      **全模糊**（包含：客户名称 或 客户编号）
       · 业务单元 / 管理单元 / 帐套  **精确**（值来自「...」弹层选择）
       · 状态      **精确**（已新建 / 履行中 / 已关闭 / 已取消；其中履行中/已关闭为实时计算，见 order_status）
-      · 合同编号  **全模糊**（包含）—— 需求㛈：合同列表页「查看订单」跳过来时会自动带上它
+      · 合同编号  **全模糊**（包含）—— 需求(9-29批)：合同列表页「查看订单」跳过来时会自动带上它
       · 订单编号  **全模糊**（包含）—— 2026-09-29：开票页「订单编号」联想就是用它搜
       · 是否开票  **精确**（已开票 / 未开票）—— 2026-09-29：订单列表「是否开票」下拉；判定与
                  列表那一列同源（都走 order_invoiced 现算，不会两处口径不一致）
     """
     name = (q.get("name") or "").strip().lower()
     ono = (q.get("no") or "").strip().lower()
-    cno = (q.get("contract_no") or "").strip()      # 需求㛈（2026-09-29）：按**合同编号**搜订单（全模糊）
+    cno = (q.get("contract_no") or "").strip()      # 需求(9-29批)（2026-09-29）：按**合同编号**搜订单（全模糊）
     salesman = (q.get("salesman") or "").strip().lower()
     cust = (q.get("cust") or "").strip().lower()
-    status = (q.get("status") or "").strip()     # 需求㛄（2026-09-29）：按订单状态筛选
+    status = (q.get("status") or "").strip()     # 需求(9-29批)（2026-09-29）：按订单状态筛选
     inv_flag = (q.get("invoiced") or "").strip()   # 2026-09-29（需求）：是否开票 —— 已开票 / 未开票
     out: list[dict] = []
     for r in rows:
         canceled = bool(r.get("canceled"))
         if status == CANCELED_STATE:
-            # 显式筛「已取消」⇒ **只看**软删除的那些（顺带给软删除的数据一个查看入口）
+            # 显式筛「已取消」-> **只看**软删除的那些（顺带给软删除的数据一个查看入口）
             if not canceled:
                 continue
         else:
             if canceled and not q.get("include_canceled"):
-                continue        # 需求㛃：取消 = 软删除 ⇒ 列表默认不出现（?include_canceled=1 可查）
+                continue        # 需求(16)：取消 = 软删除 -> 列表默认不出现（?include_canceled=1 可查）
             if status and order_status(part, r["no"]) != status:
-                continue        # ⚠️ 状态必须用 order_status() 的**实时计算值**筛 ——「履行中 / 已关闭」是按提交
-                                #    时间推进出来的，不是存储字段；筛选与服务端分页同源 ⇒ total/pages 随之变化
+                continue        # [!] 状态必须用 order_status() 的**实时计算值**筛 ——「履行中 / 已关闭」是按提交
+                                #    时间推进出来的，不是存储字段；筛选与服务端分页同源 -> total/pages 随之变化
         rr = with_order_names(r, part)
         if ono and ono not in (r.get("no") or "").lower():
             continue                             # 2026-09-29：订单编号全模糊（开票页联想）
@@ -1269,8 +1269,8 @@ def filter_orders(rows: list[dict], q: dict, part: str = "default") -> list[dict
             continue
         if q.get("file") and r.get("file") != q["file"]:
             continue
-        rr["status"] = order_status(part, r["no"])     # 需求⑨：订单列表新增「状态」列
-        rr["invoiced"] = bool(order_invoiced(part, r["no"]))       # 需求⑳：是否开票（列表新增一列）
+        rr["status"] = order_status(part, r["no"])     # 需求(9)：订单列表新增「状态」列
+        rr["invoiced"] = bool(order_invoiced(part, r["no"]))       # 需求(20)：是否开票（列表新增一列）
         rr["invoice_no"] = order_invoiced(part, r["no"])
         if inv_flag:                       # 2026-09-29（需求）：是否开票筛选（空 = 全部）
             want = inv_flag in ("已开票", "yes", "y", "1", "true")
@@ -1281,7 +1281,7 @@ def filter_orders(rows: list[dict], q: dict, part: str = "default") -> list[dict
 
 
 def filter_contracts(rows: list[dict], q: dict) -> list[dict]:
-    """合同列表的**服务端筛选**（需求㉗：列表改成懒加载后，筛选必须与分页同源）。
+    """合同列表的**服务端筛选**（需求27：列表改成懒加载后，筛选必须与分页同源）。
 
     口径与旧前端 filterRows 一致：kw 匹配 编号/名称/管理单元/帐套/合同类型（不含 bu）；
     cust = 右模糊（客户名称前缀 或 客户编号前缀）；mu/file/type/bu 精确匹配。
@@ -1326,7 +1326,7 @@ def page_of(rows: list[dict], page: int, size: int) -> dict:
 def order_name_taken(part: str, name: str, exclude_no: str = "") -> str:
     """订单名称唯一性（2026-09-29 需求）：同一分区内**所有保留的订单**名称不许重复。
 
-    ⚠️ 口径：**已取消（软删除）的订单也算占用名称** —— 它的数据仍保留（`?include_canceled=1` 能查、
+    [!] 口径：**已取消（软删除）的订单也算占用名称** —— 它的数据仍保留（`?include_canceled=1` 能查、
     状态列也能筛出来）；若排除它，就会出现「列表里看不到重名，而库里有两个同名」的怪状态。
     想让「取消后名称可复用」，改这一处的判定即可。
     返回被占用的名字（空串 = 可用），调用方据此拼报文。
@@ -1343,10 +1343,10 @@ def order_name_taken(part: str, name: str, exclude_no: str = "") -> str:
 
 
 def create_order(payload: dict, part: str = "default") -> tuple[dict, int]:
-    """新建销售订单：校验必填 → 分配订单编号 → **插到最前** → 落库（可选带「更多信息」+ 订单行，需求㉒）。
+    """新建销售订单：校验必填 → 分配订单编号 → **插到最前** → 落库（可选带「更多信息」+ 订单行，需求22）。
 
-    ⚠️ 插到最前是需求要求：「点击提交，生成销售订单，回到订单系统页面，列表第一个就是我们新建的订单」
-      （列表顺序 = 存储顺序；分页按存储顺序切 ⇒ 第一页第一行就是它）。
+    [!] 插到最前是需求要求：「点击提交，生成销售订单，回到订单系统页面，列表第一个就是我们新建的订单」
+      （列表顺序 = 存储顺序；分页按存储顺序切 -> 第一页第一行就是它）。
     """
     missing = [k for k in REQUIRED_ORDER if not str(payload.get(k) or "").strip()]
     if missing:
@@ -1365,14 +1365,14 @@ def create_order(payload: dict, part: str = "default") -> tuple[dict, int]:
             seq += 1
             no = f"SO-{seq}"
         row = {"no": no, **{k: str(payload[k]).strip() for k in REQUIRED_ORDER}}
-        row["created_by"] = str((payload.get("_actor") or {}).get("user") or "")   # 需求⑰
+        row["created_by"] = str((payload.get("_actor") or {}).get("user") or "")   # 需求(17)
         row["remark"] = str(payload.get("remark") or "").strip()      # 唯一选填项
         more = payload.get("more") if isinstance(payload.get("more"), dict) else None
-        if more:                                                      # 需求㉒：更多信息四项落 extra
+        if more:                                                      # 需求22：更多信息四项落 extra
             row["extra"] = {k: str(more.get(k) or "").strip() for k in MORE_ORDER_FIELDS}
         lst.insert(0, row)                                            # ← 新订单在最前
-    # 需求㉒：新建时就能录订单行 —— 在锁外调 save_order_lines（它自己会加锁）；
-    #         行不合法 ⇒ **整单回滚**，绝不留「订单建了但行没落」的半成品
+    # 需求22：新建时就能录订单行 —— 在锁外调 save_order_lines（它自己会加锁）；
+    #         行不合法 -> **整单回滚**，绝不留「订单建了但行没落」的半成品
     lines = payload.get("lines")
     if isinstance(lines, list) and lines:
         body, code = save_order_lines(part, no, lines, payload.get("_actor"))
@@ -1388,13 +1388,13 @@ def create_order(payload: dict, part: str = "default") -> tuple[dict, int]:
 
 
 def update_order(payload: dict, part: str = "default", actor=None) -> tuple[dict, int]:
-    """**保存订单字段**（需求⑫：订单详情页「编辑 → 保存」= 表单1 + 表单2 + 表单3）。
+    """**保存订单字段**（需求(12)：订单详情页「编辑 → 保存」= 表单1 + 表单2 + 表单3）。
 
     口径（与页面按钮一一对应）：
       · 表单1 只允许改 `EDITABLE_ORDER` —— 订单编号/合同编号/销售员/客户在页面是 locked 只读，
         传上来了也**忽略**（不报错，静默按只读处理）；
       · 表单2 四项（运输方式/创建人/承运商/销售渠道）落 `extra` 子对象；
-      · 合并后**仍必须满足 REQUIRED_ORDER**（必填不许被清空）⇒ 否则 400「请填写全部必填字段」且**不落库**；
+      · 合并后**仍必须满足 REQUIRED_ORDER**（必填不许被清空）-> 否则 400「请填写全部必填字段」且**不落库**；
       · 表单3 的订单行不走这里，仍走 POST /api/order/lines（页面「保存」会两次调用，同一个 no）。
     """
     no = str(payload.get("no") or "").strip()
@@ -1404,7 +1404,7 @@ def update_order(payload: dict, part: str = "default", actor=None) -> tuple[dict
         row = next((r for r in _order_store(part) if r["no"] == no), None)
         if row is None:
             return {"error": f"未找到该订单: {no}"}, 404
-        _denied = may_edit(actor, row, ORDER_ADMIN, ROLE_LABELS[ORDER_ADMIN])   # 需求⑰
+        _denied = may_edit(actor, row, ORDER_ADMIN, ROLE_LABELS[ORDER_ADMIN])   # 需求(17)
         if _denied:
             return _denied
         # 先合并且**校验必填**，通过了才动数据（保证「报错就不落库」）
@@ -1428,12 +1428,12 @@ def update_order(payload: dict, part: str = "default", actor=None) -> tuple[dict
         if extra:
             row["extra"] = extra
         snapshot_row = dict(row)
-    # ⚠️ 出锁再拼名字（with_order_names 会碰主数据仓；与 create_order 同一写法）
+    # [!] 出锁再拼名字（with_order_names 会碰主数据仓；与 create_order 同一写法）
     return {**with_order_names(snapshot_row, part), "order_status": order_status(part, no)}, 200
 
 
 def create_customer(payload: dict, part: str = "default") -> tuple[dict, int]:
-    """需求③：弹层内**临时新建客户** → 落该分区主数据（后续搜索能搜到、订单能引用）。
+    """需求(3)：弹层内**临时新建客户** → 落该分区主数据（后续搜索能搜到、订单能引用）。
 
     口径：客户名称必填；**同名拒绝**（409）—— 「搜不到才新建」的场景下同名说明已存在，
     允许重名只会让人分不清选的是哪一条；地址选填。id 由服务端分配（c7、c8…）。
@@ -1451,13 +1451,13 @@ def create_customer(payload: dict, part: str = "default") -> tuple[dict, int]:
             seq += 1
             cid = f"c{seq}"
         rec = {"id": cid, "name": name, "addr": str(payload.get("addr") or "").strip(),
-               "created_by": str((payload.get("_actor") or {}).get("user") or "")}   # 需求⑰
+               "created_by": str((payload.get("_actor") or {}).get("user") or "")}   # 需求(17)
         lst.append(rec)
         return dict(rec), 201
 
 
 def create_salesman(payload: dict, part: str = "default") -> tuple[dict, int]:
-    """需求③：弹层内**临时新建销售员** → 落该分区主数据。姓名必填，同名拒绝（409）。"""
+    """需求(3)：弹层内**临时新建销售员** → 落该分区主数据。姓名必填，同名拒绝（409）。"""
     name = str(payload.get("name") or "").strip()
     if not name:
         return {"error": "销售员姓名不能为空", "missing": ["name"]}, 400
@@ -1477,11 +1477,11 @@ def create_salesman(payload: dict, part: str = "default") -> tuple[dict, int]:
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
-        """需求㉓（2026-09-28）：**静态页面也禁缓存**。
+        """需求23（2026-09-28）：**静态页面也禁缓存**。
 
         起因：用户反馈「点订单编号 / 订单名称，有些订单进去还是老的订单详情页」——
         静态页走 SimpleHTTPRequestHandler 默认带缓存（浏览器可能拿旧版 order_detail.html），
-        同一个 URL 却在缓存里是旧实现 ⇒ 看起来就像「部分订单用了老页面」。
+        同一个 URL 却在缓存里是旧实现 -> 看起来就像「部分订单用了老页面」。
         加这三个头 + 让静态资源也不缓存，F5 / 重新点链接一定拿到当前文件。
         """
         if self._path_only().endswith((".html", ".js", ".css")):
@@ -1495,10 +1495,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     # ---- 小工具 ----
     def _send_json(self, obj, code=200):
-        # 需求⑯：**写操作成功就落盘**（唯一 Hook，含 /api/reset 之后的状态）⇒ 重启不丢数据
+        # 需求(16)：**写操作成功就落盘**（唯一 Hook，含 /api/reset 之后的状态）-> 重启不丢数据
         if code < 400 and self.command == "POST" and self._path_only() != "/api/login":
             dump_state(self._part())
-        obj = _with_creator_labels(obj)     # 需求㉑：创建人显示口径统一在出口兜底
+        obj = _with_creator_labels(obj)     # 需求21：创建人显示口径统一在出口兜底
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -1518,10 +1518,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             return {}, {"error": f"请求体不是合法 JSON: {e}"}
         payload = payload if isinstance(payload, dict) else {}
-        payload["_actor"] = self._auth()      # 需求⑰：把当前身份挂进来，供创建人/编辑权限判定
+        payload["_actor"] = self._auth()      # 需求(17)：把当前身份挂进来，供创建人/编辑权限判定
         return payload, None
 
-    # ---- 角色与登录（需求⑮）----
+    # ---- 角色与登录（需求(15)）----
     def _token(self) -> str:
         t = (self.headers.get("X-Demo-Token") or "").strip()
         if t:
@@ -1529,9 +1529,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return (urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("token") or [""])[0].strip()
 
     def _auth(self):
-        """身份解析：① 页面登录的 session token（header 或 ?token=）
+        """身份解析：(1) 页面登录的 session token（header 或 ?token=）
 
-        ② （**测试专用**）`X-Demo-Role` 头 / `?demo_role=` —— 给自动化直连用（框架 / 用例 / 二类脚本
+        (2) （**测试专用**）`X-Demo-Role` 头 / `?demo_role=` —— 给自动化直连用（框架 / 用例 / 二类脚本
            不必走登录页）。页面上**没有**任何入口能下发这个头；它的存在是为了不把自动化链路全锁在登录页后面。
         """
         tok = self._token()
@@ -1547,7 +1547,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return None
 
     def _require(self, action: str):
-        """写接口权限闸：放行 ⇒ None；否则返回 (body, code)，调用方直接 `_send_json(*x)`。"""
+        """写接口权限闸：放行 -> None；否则返回 (body, code)，调用方直接 `_send_json(*x)`。"""
         sess = self._auth()
         if sess is None:
             return {"error": f"未登录：「{ACTION_LABELS.get(action, action)}」需要先登录（对应角色的管理员）",
@@ -1565,29 +1565,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         path = self._path_only()
         part = self._part()
-        _ensure_loaded(part)          # 需求⑯：该分区第一次被访问 ⇒ 从盘上加载（没有盘文件才播种）
+        _ensure_loaded(part)          # 需求(16)：该分区第一次被访问 -> 从盘上加载（没有盘文件才播种）
         if path == "/api/health":
             # 供测试框架/CI 探测「目标是否支持按 worker 分区」—— 支持则并发安全，不支持则该降级为串行
             with _lock:
                 return self._send_json({"ok": True, "partitioned": PARTITIONS_ENABLED,
                                         "presets": PRESETS, "partitions": sorted(_STORES.keys()),
-                                        # 需求㉗：合同列表懒加载能力声明
+                                        # 需求27：合同列表懒加载能力声明
                                         "contracts_per_page": CONTRACTS_PER_PAGE, "contract_lazy": True,
-                                         # 需求㉜（2026-09-29）：合同详情 = 列表页弹层 iframe（Vue 实现）；
-                                         # 详情里「编辑」⇒ 同弹层换成编辑页（Vue），与新建页共用 vendor/contract-form.css
+                                         # 需求32（2026-09-29）：合同详情 = 列表页弹层 iframe（Vue 实现）；
+                                         # 详情里「编辑」-> 同弹层换成编辑页（Vue），与新建页共用 vendor/contract-form.css
                                          "contract_detail_dialog": True, "contract_edit": True,
                                          "contract_form_shared_css": "vendor/contract-form.css",
                                         "order_presets": ORDER_PRESETS,
                                         "order_name_unique": True,   # 2026-09-29：新建/编辑提交时校验订单名称唯一
                                         "orders_per_page": ORDERS_PER_PAGE,
                                         "order_pages": ORDER_PAGE_COUNT,
-                                        # 能力声明：弹层内可临时新建客户/销售员（2026-09-18 需求③）
+                                        # 能力声明：弹层内可临时新建客户/销售员（2026-09-18 需求(3)）
                                         "cust_create": True, "salesman_create": True,
                                         # P21.4 订单详情能力声明（框架/用例可据此判断目标形态）
                                         "order_lines": True, "max_order_lines": MAX_ORDER_LINES,
                                         "fulfill_states": list(FULFILL_STATES),
                                         "fulfill_step_seconds": FULFILL_STEP_SECONDS,
-                                        # 需求㉙：已签收后 120 秒自动关闭（订单 + 行）；期间可手动关闭
+                                        # 需求29：已签收后 120 秒自动关闭（订单 + 行）；期间可手动关闭
                                         "accepted_state": ACCEPTED_STATE,
                                         "accept_at_seconds": ACCEPT_AT_SECONDS,
                                         "auto_close_after_accept_seconds": AUTO_CLOSE_AFTER_ACCEPT_SECONDS,
@@ -1595,24 +1595,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                         "line_types": list(LINE_TYPES),
                                         "line_units": list(LINE_UNITS),
                                         "transport_modes": list(TRANSPORT_MODES),
-                                        "carrier": True,                 # 需求㙁：承运商主数据可用（/api/dict?kind=carrier）
-                                        "transport_suggest": True,        # 需求㙁：运输方式支持联想 + 弹层选择
+                                        "carrier": True,                 # 需求(9-29批)：承运商主数据可用（/api/dict?kind=carrier）
+                                        "transport_suggest": True,        # 需求(9-29批)：运输方式支持联想 + 弹层选择
                                         "cancel_reasons": list(CANCEL_REASONS),
-                                        # 2026-09-28 晚 需求⑧⑨⑩：状态口径 + 发票能力声明
+                                        # 2026-09-28 晚 需求(8)(9)(10)：状态口径 + 发票能力声明
                                         "line_states": list(LINE_STATES),
                                         "order_states": list(ORDER_STATES),
                                         "closed_state": CLOSED_STATE,
                                         "order_status_column": True,     # 订单列表有「状态」列
-                                        "order_update": True,            # 需求⑫：订单详情「编辑→保存」有落库接口
+                                        "order_update": True,            # 需求(12)：订单详情「编辑→保存」有落库接口
                                         "order_to_invoice": True,        # 订单页有「去开票」
-                                        "order_bulk_close": True,        # 需求㚀：订单列表可勾多条批量关闭
-                                         "order_bulk_submit": True,      # 需求㛃：列表页批量提交（150s 后自动关闭）
-                                         "order_bulk_cancel": True,      # 需求㛃：列表页批量取消 = **软删除**
+                                        "order_bulk_close": True,        # 需求(9-29批)：订单列表可勾多条批量关闭
+                                         "order_bulk_submit": True,      # 需求(16)：列表页批量提交（150s 后自动关闭）
+                                         "order_bulk_cancel": True,      # 需求(16)：列表页批量取消 = **软删除**
                                          "order_soft_delete": True, "canceled_state": CANCELED_STATE,
                                          "order_status_filter": ["已新建", "履行中", "已关闭", CANCELED_STATE],
-                                         "order_contract_no_filter": True,   # 需求㛈：可按合同编号搜订单
-                                        "order_new_cust_suggest": True,  # 需求㚀：新建订单的客户/销售员支持模糊搜索
-                                        "order_name_style": "客户简称+月份+业务内容+订单",   # 需求㛁
+                                         "order_contract_no_filter": True,   # 需求(9-29批)：可按合同编号搜订单
+                                        "order_new_cust_suggest": True,  # 需求(9-29批)：新建订单的客户/销售员支持模糊搜索
+                                        "order_name_style": "客户简称+月份+业务内容+订单",   # 需求(9-29批)
                                         "invoice": True, "invoice_presets": INVOICE_PRESETS,
                                         "invoice_from_order_filter": True,   # 2026-09-29：发票列表支持按「来源订单」筛（订单页「查看发票」用）
                                         "invoice_types": list(INVOICE_TYPES),
@@ -1620,19 +1620,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                         "invoice_line_types": list(INVOICE_LINE_TYPES),
                                         "periods": list(PERIODS),
                                         "invoice_required": list(REQUIRED_INVOICE),
-                                        "invoice_update": True,          # 需求⑲：发票详情可编辑保存
-                                        "order_invoiced_column": True,   # 需求⑳：订单列表有「是否开票」列
+                                        "invoice_update": True,          # 需求(19)：发票详情可编辑保存
+                                        "order_invoiced_column": True,   # 需求(20)：订单列表有「是否开票」列
                                         "reset_keeps_user_data": True,     # 复位默认不抹用户手工数据（?purge=1 才清）
-                                        "new_order_three_sections": True,  # 需求㉒：新建订单 = 3 区域 + 保存/取消
-                                        "order_create_with_lines": True,   # 需求㉒：新建时可带订单行（一条请求落库）
-                                        "one_invoice_per_order": True,   # 需求⑳：已开票的订单不允许再次开票
-                                        # 需求⑪：开票前置条件 —— 只有「已关闭」(closed_state) 的订单能开票
+                                        "new_order_three_sections": True,  # 需求22：新建订单 = 3 区域 + 保存/取消
+                                        "order_create_with_lines": True,   # 需求22：新建时可带订单行（一条请求落库）
+                                        "one_invoice_per_order": True,   # 需求(20)：已开票的订单不允许再次开票
+                                        # 需求(11)：开票前置条件 —— 只有「已关闭」(closed_state) 的订单能开票
                                         "invoice_requires_closed": True,
-                                        # 需求⑮：登录与角色系统（矩阵给框架/用例判断用，不含密码）
+                                        # 需求(15)：登录与角色系统（矩阵给框架/用例判断用，不含密码）
                                         "auth": True, "roles": list(ROLES), "role_labels": ROLE_LABELS,
                                         "permissions": {k: list(v) for k, v in PERMISSIONS.items()},
                                         "write_actions": POST_ACTIONS,
-                                        "record_actions": POST_RECORD_ACTIONS,   # 需求⑰：登录即可，逐条判创建人
+                                        "record_actions": POST_RECORD_ACTIONS,   # 需求(17)：登录即可，逐条判创建人
                                         "anonymous_write": False,   # 写接口匿名一律 401
                                         "invoice_line_required": list(REQUIRED_INVOICE_LINE),
                                         # 版本标记（识别「跑的是哪一版 demo」，见 DEMO_BUILD 注释）
@@ -1651,15 +1651,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             with _lock:
                 return self._send_json([dict(c) for c in _cust_store(part)])
         if path == "/api/contracts":
-            # ⚠️ 必须先把 parse_qs 的 list 展平成 {k: 首个值}（与 /api/orders、/api/invoices 同款）——
-            # 传 list 进 page_of 会让 int(['30']) 抛 TypeError 被静默吞掉 ⇒ size/page 永远回落默认值（2026-09-29 实测踩到）
+            # [!] 必须先把 parse_qs 的 list 展平成 {k: 首个值}（与 /api/orders、/api/invoices 同款）——
+            # 传 list 进 page_of 会让 int(['30']) 抛 TypeError 被静默吞掉 -> size/page 永远回落默认值（2026-09-29 实测踩到）
             q = {k: (v[0] if v else "") for k, v in
                  urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
             with _lock:
                 rows = [with_cust_name(r, part) for r in _store(part)]
-            # 需求㉗ 契约（2026-09-29）：**只有带 page/size 才返回分页对象**；否则一律返回**数组**。
-            # ⚠️ 别把「任一筛选项」也算作分页触发条件 —— 前端 apiUrl() 会给所有请求自动带上
-            #    `demo_role=`（身份）与 `w=`（分区）⇒ 那样会永远走分页分支、返回对象，
+            # 需求27 契约（2026-09-29）：**只有带 page/size 才返回分页对象**；否则一律返回**数组**。
+            # [!] 别把「任一筛选项」也算作分页触发条件 —— 前端 apiUrl() 会给所有请求自动带上
+            #    `demo_role=`（身份）与 `w=`（分区）-> 那样会永远走分页分支、返回对象，
             #    把「订单页选合同弹层 / loadDicts() 按数组用 contracts」全打坏（实测踩到：合同联想返回空）。
             if q.get("page") or q.get("size"):
                 rows = filter_contracts(rows, q)
@@ -1689,11 +1689,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             with _lock:
                 row = next((r for r in _order_store(part) if r["no"] == no), None)
             if row is None or (row.get("canceled") and not inc):
-                # 需求㛃：取消 = 软删除 ⇒ 直链也当"不存在"（要查看原记录得加 ?include_canceled=1）
+                # 需求(16)：取消 = 软删除 -> 直链也当"不存在"（要查看原记录得加 ?include_canceled=1）
                 return self._send_json({"error": f"未找到该订单: {no}"}, 404)
             d = with_order_names(row, part)
-            d["status"] = order_status(part, no)          # 需求⑧/⑨：订单整体状态（详情页也展示）
-            d["invoiced"] = bool(order_invoiced(part, no))             # 需求⑳：开票页直链要判它
+            d["status"] = order_status(part, no)          # 需求(8)/(9)：订单整体状态（详情页也展示）
+            d["invoiced"] = bool(order_invoiced(part, no))             # 需求(20)：开票页直链要判它
             d["invoice_no"] = order_invoiced(part, no)
             return self._send_json(d)
         if path == "/api/salesmen":
@@ -1748,8 +1748,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             kind = (urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("kind") or [""])[0]
             return self._send_json({"kind": kind, "values": dict_values(kind)})
         if path == "/favicon.ico":
-            # 浏览器自动请求的图标：给 204 空响应 ⇒ 免掉控制台「Failed to load resource: 404」噪音。
-            # ⚠️ 必须放在 `super().do_GET()`（SimpleHTTP 静态服务）**之前** —— 它一旦处理就没法回头。
+            # 浏览器自动请求的图标：给 204 空响应 -> 免掉控制台「Failed to load resource: 404」噪音。
+            # [!] 必须放在 `super().do_GET()`（SimpleHTTP 静态服务）**之前** —— 它一旦处理就没法回头。
             # 纯静态兜底，不改任何 /api/* 语义。
             self.send_response(204)
             self.send_header("Content-Length", "0")
@@ -1766,7 +1766,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         path = self._path_only()
         part = self._part()
-        _ensure_loaded(part)          # 需求⑯：同上
+        _ensure_loaded(part)          # 需求(16)：同上
         if path == "/api/reset":
             # 默认只复原预置（保留用户手工数据）；测试要干净基线就 ?purge=1
             _purge = str((urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -1774,7 +1774,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._send_json({"ok": True, "count": reset_data(part, purge=_purge),
                                     "partition": part, "purge": _purge,
                                     "note": "默认保留手工新建的数据；?purge=1 才完全复原"})
-        # ---- 需求⑮：登录 / 登出 / 超管切换角色 ----
+        # ---- 需求(15)：登录 / 登出 / 超管切换角色 ----
         if path == "/api/login":
             payload, err = self._body()
             if err:
@@ -1792,16 +1792,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._send_json(err, 400)
             return self._send_json(*switch_role(self._token(), self._auth(),
                                                 payload if isinstance(payload, dict) else {}))
-        # ---- 需求⑮：写接口统一过权限闸（唯一收口点）----
-        #   · 匿名 ⇒ 401（读接口不设闸 ⇒ 「任何管理员都能查看」；自动化直连读取不受影响）
-        #   · 角色不符 ⇒ 403（带 role/action，页面据此提示；超管会多一句「切角色」指引）
+        # ---- 需求(15)：写接口统一过权限闸（唯一收口点）----
+        #   · 匿名 -> 401（读接口不设闸 -> 「任何管理员都能查看」；自动化直连读取不受影响）
+        #   · 角色不符 -> 403（带 role/action，页面据此提示；超管会多一句「切角色」指引）
         #   · 自动化如需扮演某角色：带测试头 X-Demo-Role（或 ?demo_role=），见 Handler._auth
         _action = POST_ACTIONS.get(path)
         if _action:
             _denied = self._require(_action)
             if _denied:
                 return self._send_json(*_denied)
-        # 记录级动作：只查登录态；「这一条能不能改」留给各业务函数里的 may_edit()（需求⑰）
+        # 记录级动作：只查登录态；「这一条能不能改」留给各业务函数里的 may_edit()（需求(17)）
         if path in POST_RECORD_ACTIONS and self._auth() is None:
             return self._send_json({"error": "未登录：请先登录", "login": "/login.html"}, 401)
         if path == "/api/contracts":
@@ -1811,10 +1811,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._send_json({"error": f"请求体不是合法 JSON: {e}"}, 400)
             body, code = create_contract({**(payload if isinstance(payload, dict) else {}),
-                              "_actor": self._auth()}, part)          # 需求⑰：带上当前身份
+                              "_actor": self._auth()}, part)          # 需求(17)：带上当前身份
             return self._send_json(body, code)
         if path == "/api/contract_update":
-            # 需求㉜：合同详情页「编辑 → 保存」（编辑页在弹层 iframe 里）
+            # 需求32：合同详情页「编辑 → 保存」（编辑页在弹层 iframe 里）
             payload, err = self._body()
             if err:
                 return self._send_json(err, 400)
@@ -1829,9 +1829,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._send_json({"error": f"请求体不是合法 JSON: {e}"}, 400)
             body, code = create_order({**(payload if isinstance(payload, dict) else {}),
-                              "_actor": self._auth()}, part)          # 需求⑰：带上当前身份
+                              "_actor": self._auth()}, part)          # 需求(17)：带上当前身份
             return self._send_json(body, code)
-        # ---- 需求③：弹层内临时新建（落该分区主数据）----
+        # ---- 需求(3)：弹层内临时新建（落该分区主数据）----
         if path == "/api/customers":
             payload, err = self._body()
             if err:
@@ -1853,7 +1853,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                           payload.get("_actor"))
             return self._send_json(body, code)
         if path == "/api/order/update":
-            # 需求⑫：订单详情页「编辑 → 保存」（表单1 + 表单2 的字段）
+            # 需求(12)：订单详情页「编辑 → 保存」（表单1 + 表单2 的字段）
             payload, err = self._body()
             if err:
                 return self._send_json(err, 400)
@@ -1861,14 +1861,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                       payload.get("_actor"))
             return self._send_json(body, code)
         if path == "/api/orders/submit":
-            # 需求㛃：订单列表页「提交订单」批量提交（= 启动履行时钟，150 秒后自动关闭）
+            # 需求(16)：订单列表页「提交订单」批量提交（= 启动履行时钟，150 秒后自动关闭）
             payload, err = self._body()
             if err:
                 return self._send_json(err, 400)
             body, code = submit_orders(part, (payload or {}).get("nos"), self._auth())
             return self._send_json(body, code)
         if path == "/api/orders/cancel":
-            # 需求㛃：订单列表页「取消订单」批量取消（**软删除**，状态 ⇒ 已取消）
+            # 需求(16)：订单列表页「取消订单」批量取消（**软删除**，状态 -> 已取消）
             payload, err = self._body()
             if err:
                 return self._send_json(err, 400)
@@ -1889,7 +1889,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                       payload.get("_actor"))
             return self._send_json(body, code)
         if path == "/api/order/lines/close":
-            # 需求⑧：手工关闭订单行（line_nos 省略/为空 ⇒ 全部关闭）
+            # 需求(8)：手工关闭订单行（line_nos 省略/为空 -> 全部关闭）
             payload, err = self._body()
             if err:
                 return self._send_json(err, 400)
@@ -1901,10 +1901,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             payload, err = self._body()
             if err:
                 return self._send_json(err, 400)
-            body, code = create_invoice({**payload, "_actor": self._auth()}, part)   # 需求⑰：带当前身份
+            body, code = create_invoice({**payload, "_actor": self._auth()}, part)   # 需求(17)：带当前身份
             return self._send_json(body, code)
         if path == "/api/invoice/update":
-            # 需求⑲：发票详情页「保存」（基础信息 + 发票行）
+            # 需求(19)：发票详情页「保存」（基础信息 + 发票行）
             payload, err = self._body()
             if err:
                 return self._send_json(err, 400)
@@ -1929,7 +1929,7 @@ def main():
     # ThreadingTCPServer：并发（pytest-xdist 多 worker）下不再串行排队，避免超时抖动
     class _Server(socketserver.ThreadingTCPServer):
         daemon_threads = True
-    n = len(_store("default"))     # 需求⑯：启动**加载盘上数据**（只有没有盘文件时才播种预置）
+    n = len(_store("default"))     # 需求(16)：启动**加载盘上数据**（只有没有盘文件时才播种预置）
     with _Server(("", PORT), Handler) as httpd:
         print(f"[demo app] serving {DIR} on http://localhost:{PORT} (page={DEFAULT_PAGE})")
         print(f"[demo app] build = {DEMO_BUILD}   ← 版本标记（/api/health 里也有 build 字段，可核对）")

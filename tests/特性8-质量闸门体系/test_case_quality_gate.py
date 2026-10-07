@@ -1,7 +1,7 @@
-"""换页证据质量闸（弱 url 断言 = 假绿）的回归测试（2026-09-17，服务目标 ② AI 语义准）。
+"""换页证据质量闸（弱 url 断言 = 假绿）的回归测试（2026-09-17，服务目标 (2) AI 语义准）。
 
 背景（2026-09-14 实测挖出）：AI 给「点返回列表回到列表页」产的 `expect_url` 只是 `localhost`
-—— 而**上一个页面的 URL 也含 localhost** ⇒ 点击后立刻就能通过，「确实换页了」这件事根本没被验到。
+—— 而**上一个页面的 URL 也含 localhost** -> 点击后立刻就能通过，「确实换页了」这件事根本没被验到。
 当时 AI 提示词甚至**在教 AI 这么写**（「列表页写 localhost 或留空不要写」），所以这是**根因级**修复：
 提示词纠正 + 闸门拦 + 历史产物修正，三层一起。
 
@@ -60,7 +60,7 @@ def _cross(asserts: list[dict]) -> dict:
 
 # ---------------------------------------------------------------- 1. 闸门自己不能崩
 def test_warnings_never_crash_on_structured_expect():
-    """11 种断言 kind × 各种期望值形态 ⇒ 质量闸必须给出结论，不许抛异常。
+    """11 种断言 kind × 各种期望值形态 -> 质量闸必须给出结论，不许抛异常。
 
     回归的正是 2026-09-17 实测踩到的：`case_warnings({"asserts":[{"kind":"count","expect":20}]})`
     → `TypeError: expected string or bytes-like object, got 'int'`。
@@ -114,7 +114,7 @@ def test_host_only_in_single_page_case_only_warns():
 
 
 def test_fabricated_fragment_warns_but_does_not_block():
-    """片段跟声明的页面 URL 都对不上 ⇒ 是「可能永远不通过」的假红风险，告警但不拦（可能清单不全）。"""
+    """片段跟声明的页面 URL 都对不上 -> 是「可能永远不通过」的假红风险，告警但不拦（可能清单不全）。"""
     case = _cross([{"kind": "url", "expect": "index.html"}])
     assert case_errors(case) == []
     assert any("都对不上" in w for w in case_warnings(case))
@@ -127,13 +127,13 @@ def test_missing_url_assertion_warning_still_there():
 
 
 def test_url_assert_without_expect_is_redline():
-    """url 断言不给 expect ⇒ 无法判断指向哪一页（生成脚本里也是结构性错误）⇒ 红线。"""
+    """url 断言不给 expect -> 无法判断指向哪一页（生成脚本里也是结构性错误）-> 红线。"""
     assert case_errors({"asserts": [{"kind": "url"}]})
 
 
 # ---------------------------------------------------------------- 3. 红线真的拒绝产物
 def test_ai_case_written_nowhere_when_redline(tmp_path):
-    """AI 落盘路径：有红线 ⇒ 抛 CaseQualityError，且**一个文件都不写**。
+    """AI 落盘路径：有红线 -> 抛 CaseQualityError，且**一个文件都不写**。
 
     走真实管线形态：页面清单由 `scenario.case_extra()` 带进 `extra["pages"]`
     —— 跨页质量闸正是靠它判「这条片段被几页含」。
@@ -155,7 +155,7 @@ def test_ai_case_written_nowhere_when_redline(tmp_path):
 def test_cross_page_by_goto_without_pages_still_blocks_host_fragment():
     """跨页信号只在 goto 上体现（没声明 pages）时，host 片段同样必须拦。
 
-    回归：闸门最初把「没声明 pages 但两次 goto」的 host 断言只落到告警 ⇒ 洞。
+    回归：闸门最初把「没声明 pages 但两次 goto」的 host 断言只落到告警 -> 洞。
     """
     case = {
         "case_id": "no_pages",
@@ -167,7 +167,7 @@ def test_cross_page_by_goto_without_pages_still_blocks_host_fragment():
 
 
 def test_generate_gate_blocks_redline_cases():
-    """生成路径：坏用例 ⇒ 抛；好用例 ⇒ 放行（假拦会逼人绕过，所以两态都要测）。"""
+    """生成路径：坏用例 -> 抛；好用例 -> 放行（假拦会逼人绕过，所以两态都要测）。"""
     with pytest.raises(CaseQualityError) as ei:
         _gate_false_green([_cross([{"kind": "url", "expect": "localhost"}])])
     assert ei.value.entries[0][0] == "demo_cross"

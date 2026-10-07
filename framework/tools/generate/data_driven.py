@@ -6,7 +6,7 @@
   - case_ctx 是一个 【function-scope】 的 dict：每个用例独享一个实例（fixture 注入），
     新建返回的合同编号等"缓存变量"写在这里，并发执行时【互不污染】。
 
-✔ 本文件不含任何 LLM/浏览器调用 —— 纯数据层。
+v 本文件不含任何 LLM/浏览器调用 —— 纯数据层。
 """
 from __future__ import annotations
 import json

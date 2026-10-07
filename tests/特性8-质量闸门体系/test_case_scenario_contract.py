@@ -1,11 +1,11 @@
-"""cases ↔ scenarios 的**来源契约**（R8 · 2026-09-23 AprilPark1012定）。
+"""cases <-> scenarios 的**来源契约**（R8 · 2026-09-23 AprilPark1012定）。
 
 **契约（两条链路各自的来源，必须能一眼分清）**
-  · **场景①（AI 链路）**：`cases/ai_*.json` **必须**带场景来源 —— `scenario_id` + `source_scenario`，
+  · **场景(1)（AI 链路）**：`cases/ai_*.json` **必须**带场景来源 —— `scenario_id` + `source_scenario`，
     且 `source_scenario` 指向**真实存在**的 `scenarios/**/*.yml`。
-    ⇒ 内联 `--scenario "…"` 生成的用例**没有 yml 来源**，属**孤儿**：要么补一个场景文件，
+    -> 内联 `--scenario "…"` 生成的用例**没有 yml 来源**，属**孤儿**：要么补一个场景文件，
     要么删掉（2026-09-23 就清掉一条这样的孤儿）。
-  · **场景②（手搓链路）**：**其他所有用例都是手搓**，**不得**带 `scenario_id` / `source_scenario`。
+  · **场景(2)（手搓链路）**：**其他所有用例都是手搓**，**不得**带 `scenario_id` / `source_scenario`。
 
 **为什么需要**：现场发现 cases/ 里混着一条孤儿 AI 用例
 （`ai_在合同列表页面的搜索框输入_1005_点击搜索按_235545`，内联场景生成、无 yml 来源，
@@ -71,24 +71,24 @@ def manual_cases_with_source(cases_dir: Path) -> list[str]:
             continue
         carried = [f for f in SRC_FIELDS if d.get(f)]
         if carried:
-            bad.append(f"{p.name}：手搓用例不该带 {'/'.join(carried)}（场景②的来源是 cases/ 本身）")
+            bad.append(f"{p.name}：手搓用例不该带 {'/'.join(carried)}（场景(2)的来源是 cases/ 本身）")
     return bad
 
 
-# ---------------- ① AI 用例必须有真实场景来源 ----------------
+# ---------------- (1) AI 用例必须有真实场景来源 ----------------
 
 def test_ai_cases_have_existing_scenario():
     bad = missing_scenario_sources(CASES, REPO)
     assert not bad, (
-        "AI 用例（ai_*.json）必须有**真实存在**的场景来源（场景①的契约）：\n  - " + "\n  - ".join(bad)
+        "AI 用例（ai_*.json）必须有**真实存在**的场景来源（场景(1)的契约）：\n  - " + "\n  - ".join(bad)
         + "\n  修法：补 `scenarios/**/*.yml` 后重跑 `explore --ai --scenario-file`，或删掉这条孤儿用例。")
 
 
-# ---------------- ② 手搓用例不得带场景来源 ----------------
+# ---------------- (2) 手搓用例不得带场景来源 ----------------
 
 def test_manual_cases_have_no_scenario_source():
     bad = manual_cases_with_source(CASES)
-    assert not bad, "手搓用例（场景②）不该带场景来源字段：\n  - " + "\n  - ".join(bad)
+    assert not bad, "手搓用例（场景(2)）不该带场景来源字段：\n  - " + "\n  - ".join(bad)
 
 
 # ---------------- 负向自证（判据自身必须抓得住坏输入）----------------

@@ -1,8 +1,8 @@
 """二类验证（真跑 demo）：锚点内表单字段的 target 步**不能落到 get_by_text**（P22 批 5）。
 
 真值背景（2026-09-30）：订单详情页行内输入框 `<input name="qty" title="数量" aria-label="数量">`
-在「锚点下钻」路径上被生成成 `...get_by_text("数量", exact=True)` ⇒ 表单控件没有文本节点
-⇒ 定位永远 0 命中（用例报「元素定位失败且自愈未成功」）。
+在「锚点下钻」路径上被生成成 `...get_by_text("数量", exact=True)` -> 表单控件没有文本节点
+-> 定位永远 0 命中（用例报「元素定位失败且自愈未成功」）。
 
 判据：
   V1 这类元素的 path 的 target 步 by ∈ {placeholder,label,title,role}（**不许是 text**）；
@@ -52,7 +52,7 @@ def main() -> int:
                and it.get("path")]
     print(f"带 path 的「数量」元素：{len(targets)} 个")
     if not targets:
-        print("❌ 没探到这类元素（探测口径变了？）")
+        print("[NG] 没探到这类元素（探测口径变了？）")
         return 1
     for it in targets:
         tgt = [s for s in it["path"] if s.get("axis") == "target"]
@@ -65,11 +65,11 @@ def main() -> int:
             fails.append(f"{it.get('semantic_name')} 合成出 get_by_text：{expr[:80]}")
 
     if fails:
-        print("\n❌ FAIL")
+        print("\n[NG] FAIL")
         for f in fails:
             print("   -", f)
         return 1
-    print("\n✅ PASS")
+    print("\n[OK] PASS")
     return 0
 
 

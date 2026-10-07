@@ -2,10 +2,10 @@
 
 三个「换个环境就红」的真 bug 在这里钉住，**每一项都带负向自证**（R7：只跑正向不算验证过）：
 
-① 非 git 目录（交付包解压目录）⇒ 文件清单判据不许红，且降级扫描**必须仍扫到新增文件**；
-② 任何「连不上」的形态都必须给出「先起 demo」的动作（Windows 抛 TimeoutError、
+(1) 非 git 目录（交付包解压目录）-> 文件清单判据不许红，且降级扫描**必须仍扫到新增文件**；
+(2) 任何「连不上」的形态都必须给出「先起 demo」的动作（Windows 抛 TimeoutError、
    Linux 抛 ConnectionRefusedError；还有 DNS 失败 / 泛 OSError / 库级超时）—— 负向：可达时不许乱报；
-③ 生成物不存在 / 0 字节 ⇒ 报错必须是**人话 + 建议命令**，不是「缺接线」天书
+(3) 生成物不存在 / 0 字节 -> 报错必须是**人话 + 建议命令**，不是「缺接线」天书
    （9 条契约判据的读取口已统一到 `tests/_helpers/artifacts.py`）。
 
 秒级、不需要 demo、不需要浏览器。
@@ -28,7 +28,7 @@ import repo_files                                            # noqa: E402
 from framework.tools.common import target_probe              # noqa: E402
 
 
-# ==================== ① 文件清单：非 git 环境等效降级 ====================
+# ==================== (1) 文件清单：非 git 环境等效降级 ====================
 
 def _fake_pkg_repo(tmp: Path) -> Path:
     """造一个像「交付包解压目录」的树：无 .git，另带第三方树与运行时目录。"""
@@ -47,7 +47,7 @@ def _fake_pkg_repo(tmp: Path) -> Path:
 def test_file_list_falls_back_outside_git_repo(tmp_path):
     """非 git 目录：必须走降级来源，且清单非空（不许再自报「前提不成立」）。"""
     files, source = repo_files.file_list(_fake_pkg_repo(tmp_path))
-    assert files, "降级扫描返回空清单 ⇒ 团队用户在交付包现场又会看到红"
+    assert files, "降级扫描返回空清单 -> 团队用户在交付包现场又会看到红"
     assert "文件树扫描" in source, source
     assert "note.md" in files, "★ 新增（未跟踪）文件必须被扫到 —— 否则又是「提交后才发现」的假绿"
     assert "framework/cli.py" in files
@@ -61,20 +61,20 @@ def test_file_list_fallback_skips_third_party_and_runtime(tmp_path):
 
 
 def test_file_list_uses_git_inside_repo():
-    """本仓是 git 仓库 ⇒ 必须走 git 口径（含未跟踪但不被忽略那一半）。
+    """本仓是 git 仓库 -> 必须走 git 口径（含未跟踪但不被忽略那一半）。
 
-    ⚠️ 环境前提：这条只在**仓库内**有效 —— 交付包解压目录本来就不是 git 仓库，
-    在那里跑它必然红（那就是被修的那个 bug 本身）。⇒ 显式 SKIP 并说明，绝不假装通过。
+    [!] 环境前提：这条只在**仓库内**有效 —— 交付包解压目录本来就不是 git 仓库，
+    在那里跑它必然红（那就是被修的那个 bug 本身）。-> 显式 SKIP 并说明，绝不假装通过。
     """
     if repo_files._git_file_list(REPO) is None:
-        pytest.skip("当前目录不是 git 仓库（例：交付包解压目录）⇒ 本条只在仓库内有效；"
+        pytest.skip("当前目录不是 git 仓库（例：交付包解压目录）-> 本条只在仓库内有效；"
                     "降级路径由 test_file_list_falls_back_outside_git_repo 覆盖")
     files, source = repo_files.file_list(REPO)
     assert "git ls-files" in source, source
-    assert "tests/_helpers/repo_files.py" in files, "清单里没有本文件 ⇒ 未跟踪文件没被收进来（假绿形态）"
+    assert "tests/_helpers/repo_files.py" in files, "清单里没有本文件 -> 未跟踪文件没被收进来（假绿形态）"
 
 
-# ==================== ② 「连不上」必须给动作 ====================
+# ==================== (2) 「连不上」必须给动作 ====================
 
 def _free_port() -> int:
     with socket.socket() as s:
@@ -104,7 +104,7 @@ def test_unreachable_hint_covers_every_reason_shape(reason):
 
 
 def test_reachability_wrapped_timeout_still_has_action(monkeypatch):
-    """Windows 上 urllib 会把超时包成 `URLError(TimeoutError)` ⇒ 文案仍须带动作。"""
+    """Windows 上 urllib 会把超时包成 `URLError(TimeoutError)` -> 文案仍须带动作。"""
     def _boom(*a, **k):
         raise urllib.error.URLError(TimeoutError("timed out"))
 
@@ -114,7 +114,7 @@ def test_reachability_wrapped_timeout_still_has_action(monkeypatch):
 
 
 def test_reachability_wrapped_oserror_still_has_action(monkeypatch):
-    """中文 Windows 上「积极拒绝」是 OSError(10061) ⇒ 文案也要给动作。"""
+    """中文 Windows 上「积极拒绝」是 OSError(10061) -> 文案也要给动作。"""
     def _boom(*a, **k):
         raise OSError(10061, "由于目标计算机积极拒绝，无法连接。")
 
@@ -139,7 +139,7 @@ def test_reachable_target_message_does_not_cry_wolf(monkeypatch):
     assert ok is True and "demo.app" not in why, why
 
 
-# ==================== ③ 生成物空 / 缺 ⇒ 人话 + 动作 ====================
+# ==================== (3) 生成物空 / 缺 -> 人话 + 动作 ====================
 
 def test_artifact_missing_says_what_to_do(tmp_path):
     """产物不存在：一句话说清「没产出」+ 两条下一步（起 demo + generate / 重新解压）。"""
@@ -150,7 +150,7 @@ def test_artifact_missing_says_what_to_do(tmp_path):
 
 
 def test_artifact_empty_says_what_to_do(tmp_path):
-    """★ 现场形态：产物 0 字节 ⇒ 必须点明「产物是空的」而不是报「缺接线」。"""
+    """★ 现场形态：产物 0 字节 -> 必须点明「产物是空的」而不是报「缺接线」。"""
     p = tmp_path / "conftest.py"
     p.write_text("", encoding="utf-8")
     with pytest.raises(AssertionError) as ei:
@@ -180,11 +180,11 @@ def test_contract_gates_now_report_actionable_message(tmp_path, monkeypatch):
         assert "generate" in str(ei.value), f"{fn.__name__} 的报错没给出下一步：{ei.value}"
 
 
-# ==================== ④ 二类统一入口：跨平台 Python 实现 ====================
-# 背景（2026-09-22 使用者现场反馈）：Windows PowerShell 里**没有 bash** ⇒
-# `bash tests/_runner/run_verifications.sh` 直接报「无法将"bash"项识别为 cmdlet」⇒
+# ==================== (4) 二类统一入口：跨平台 Python 实现 ====================
+# 背景（2026-09-22 使用者现场反馈）：Windows PowerShell 里**没有 bash** ->
+# `bash tests/_runner/run_verifications.sh` 直接报「无法将"bash"项识别为 cmdlet」->
 # 二类验证对团队里的 Windows 用户等于不存在，而本框架的现场恰恰是 Windows。
-# 口径：**唯一实现 = tests/_runner/run_verifications.py**；`.sh` 退化成转发包装（防漂移判据见 ⑤ 节）。
+# 口径：**唯一实现 = tests/_runner/run_verifications.py**；`.sh` 退化成转发包装（防漂移判据见 (5) 节）。
 
 def _run_runner(args):
     import subprocess
@@ -194,9 +194,9 @@ def _run_runner(args):
 
 
 def test_runner_lists_exactly_the_repo_verify_scripts():
-    """★ `--list` 必须与仓库里的 verify_*.py 对得上（**自动收录、不许手写清单** ⇒ 新增脚本不会漏跑）。
+    """★ `--list` 必须与仓库里的 verify_*.py 对得上（**自动收录、不许手写清单** -> 新增脚本不会漏跑）。
 
-    例外（D2 · 2026-09-24）：脚本可在自己文件头部声明 `HYBRID_DAILY_SKIP: <原因>`⇒不日常跑
+    例外（D2 · 2026-09-24）：脚本可在自己文件头部声明 `HYBRID_DAILY_SKIP: <原因>`->不日常跑
     （如真调 LLM 的场景1）—— 这类**必须**出现在 `--full` 的列表里，且日常列表里要有它的"不进日常"提示。
     """
     r = _run_runner(["--list"])
@@ -205,13 +205,13 @@ def test_runner_lists_exactly_the_repo_verify_scripts():
     rf = _run_runner(["--list", "--full"])
     assert rf.returncode == 0, rf.stderr
     listed_full = sorted(ln.strip() for ln in rf.stdout.splitlines() if ln.strip().endswith(".py"))
-    # 2026-10-07：verify_*.py 已按 9 特性分文件夹 ⇒ 递归全 tests/（不许只扫某一个目录）
+    # 2026-10-07：verify_*.py 已按 9 特性分文件夹 -> 递归全 tests/（不许只扫某一个目录）
     expected = sorted(p.name for p in (REPO / "tests").rglob("verify_*.py"))
     assert listed_full == expected, f"\n--full 给的: {listed_full}\n仓库实际有: {expected}"
     missing = [n for n in expected if n not in listed]
     assert missing, "没有自声明排除的脚本时，日常列表应与 --full 一致（本判据要能反映差异）" if len(listed) == len(expected) else True
     for n in missing:
-        assert "不进日常" in r.stdout, f"{n} 不在日常列表里，但没给出原因 ⇒ 不许悄悄消失"
+        assert "不进日常" in r.stdout, f"{n} 不在日常列表里，但没给出原因 -> 不许悄悄消失"
 
 
 def test_runner_only_filter_and_unknown_flag():
@@ -245,18 +245,18 @@ def test_runner_classify_maps_exit_codes():
         ("ok", "skip", "fail", "fail")
 
 
-# ==================== ⑤ .sh 只许转发（防两处逻辑漂移）====================
+# ==================== (5) .sh 只许转发（防两处逻辑漂移）====================
 
 def test_sh_entry_is_thin_wrapper_over_python():
     """★ 防漂移：`.sh` 只做转发 —— **唯一实现是 `.py`**（Windows 上 bash 根本不存在）。
 
     历史：这份 .sh 原先自带全套逻辑（参数解析 / 内存检查 / demo 启停 / 逐个跑 / 汇总），
-    2026-09-22 因为 Windows 跑不起来而把实现搬到 Python ⇒ 若 .sh 里还留着旧逻辑，
+    2026-09-22 因为 Windows 跑不起来而把实现搬到 Python -> 若 .sh 里还留着旧逻辑，
     两边就会各改各的（这类「改了一处忘了另一处」在本项目已踩过多次）。
     """
     sh = (REPO / "tests" / "_runner" / "run_verifications.sh").read_text(encoding="utf-8")
-    assert "run_verifications.py" in sh, ".sh 没有转发到 Python 版 ⇒ 两处逻辑会漂移"
+    assert "run_verifications.py" in sh, ".sh 没有转发到 Python 版 -> 两处逻辑会漂移"
     body = [ln for ln in sh.splitlines() if ln.strip() and not ln.strip().startswith("#")]
-    assert len(body) <= 12, f".sh 里还有 {len(body)} 行实体逻辑 ⇒ 应只剩转发：{body}"
+    assert len(body) <= 12, f".sh 里还有 {len(body)} 行实体逻辑 -> 应只剩转发：{body}"
     for stale in ("mapfile", "MemAvailable", "declare -a NAMES", "demo_up()"):
         assert stale not in sh, f".sh 里还留着旧实现片段（应已搬到 .py）：{stale}"

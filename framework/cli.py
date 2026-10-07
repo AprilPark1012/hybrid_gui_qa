@@ -43,12 +43,12 @@ from framework.tools.common.text_io import force_stdio, fs_encoding_warning, run
 def _write_run_summary(run_dir: Path, run_id: str, exit_code: int) -> None:
     """给 run 目录落 `summary.json` —— 归档保留策略据此判「能否证明成功」。
 
-    缺它 / 坏了 ⇒ 策略一律只**瘦身**不整删（宁可少回收，也不赌一次运行是成功的），
+    缺它 / 坏了 -> 策略一律只**瘦身**不整删（宁可少回收，也不赌一次运行是成功的），
     所以这个文件也承担"失败证据永远留得住"的责任。
 
-    失败数从**用例日志**里数（`✗` 是 runner 执行失败时打的、另有 Python traceback 兜底），
+    失败数从**用例日志**里数（`X` 是 runner 执行失败时打的、另有 Python traceback 兜底），
     不去解析 pytest 的文本输出：日志是框架自己的产物、口径稳定，pytest 输出格式会随版本变。
-    误判方向是安全的（多算失败 ⇒ 更保守）。
+    误判方向是安全的（多算失败 -> 更保守）。
     """
     try:
         logs = [p for p in run_dir.rglob("*.log") if p.is_file()]
@@ -58,7 +58,7 @@ def _write_run_summary(run_dir: Path, run_id: str, exit_code: int) -> None:
                 txt = p.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            if "✗" in txt or "Traceback (most recent call last)" in txt:
+            if "X" in txt or "Traceback (most recent call last)" in txt:
                 failed += 1
         tdir = run_dir / "traces"
         traces = sum(p.stat().st_size for p in tdir.glob("*.zip")) if tdir.is_dir() else 0
@@ -69,12 +69,12 @@ def _write_run_summary(run_dir: Path, run_id: str, exit_code: int) -> None:
             "case_logs": len(logs),
             "failed_cases": failed,
             "traces_bytes": traces,
-            "note": "failed_cases 由用例日志里的 ✗ / Traceback 计数；exit_code = pytest 退出码",
+            "note": "failed_cases 由用例日志里的 X / Traceback 计数；exit_code = pytest 退出码",
         }
         (run_dir / "summary.json").write_text(
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError as e:
-        print(f"  [run] ⚠️ summary.json 写入失败（归档策略会因此保守：只瘦身不整删）：{e}")
+        print(f"  [run] [!] summary.json 写入失败（归档策略会因此保守：只瘦身不整删）：{e}")
 
 
 def _now() -> str:
@@ -162,7 +162,7 @@ def cmd_probe():
 
     除了基础页面，还会点开「新建类」弹窗、**并钻进弹窗里嵌的 picker 层**（如客户列表），
     把层内控件一并探测出来（2026-09-14）—— 否则「从列表里选一行」这类 UI 对 AI/人都是盲区。
-    层内元素在输出里带 🔸 标记，JSON 里带 `"source": "layer"`。
+    层内元素在输出里带 - 标记，JSON 里带 `"source": "layer"`。
     """
     ensure_dirs()
     # ---- 目标可达性预检（V7.5.1）：先回答「活没活」，别让 Playwright 甩一屏 traceback ----
@@ -171,7 +171,7 @@ def cmd_probe():
     from framework.tools.common.target_probe import reachability
     ok, why = reachability(TARGET_URL)
     if not ok:
-        print(f"\n[probe] ❌ 探测没跑：{why}")
+        print(f"\n[probe] [NG] 探测没跑：{why}")
         print("[probe]    目标地址可用 TARGET_URL / HYBRID_BASE_URL 覆盖（两者等效）；"
               "demo 起好后重跑 `python -m framework.cli probe`（或 all）")
         raise SystemExit(2)
@@ -185,7 +185,7 @@ def cmd_probe():
         pg.goto(TARGET_URL)
         items = probe_page(pg)
         # P22（2026-09-29）：**可展开容器**（隐藏菜单/下拉）补探 —— 不点开就永远探不到里面的项
-        # （典型形态 = demo 右上角角色菜单 #nu-menu，初始 display:none ⇒ 切角色步骤以前无控件可引用）。
+        # （典型形态 = demo 右上角角色菜单 #nu-menu，初始 display:none -> 切角色步骤以前无控件可引用）。
         # 点开后自动关掉：探测是**只读动作**，框架开的必须由框架关。
         menu_items = expand_and_collect(pg, items)
         for it in menu_items:
@@ -204,15 +204,15 @@ def cmd_probe():
     print(f"[probe] 探测到 {len(items)} 个交互元素"
           f"（其中可展开菜单内 {n_menu} 个 · 弹窗/弹层内 {n_layer} 个）→ {out}")
     for it in items:
-        mark = ("🔹" if it.get("source") == "menu"
-                else ("🔸" if it.get("source") == "layer" else "  "))
+        mark = ("-" if it.get("source") == "menu"
+                else ("-" if it.get("source") == "layer" else "  "))
         print(f"      {mark} - {it['semantic_name']:<20} [{it['role']:<8}] "
               f"name={it['name']!r} ph={it['placeholder']!r} test_id={it['test_id']!r}")
 
 
 def _report_unmapped(e) -> NoReturn:
     """映射质量闸触发时的交代：缺什么 / 为什么 / 下一步 —— **绝不落产物**，exit 2。"""
-    print(f"\n[generate] ❌ 映射质量闸拦下：{len(e.missing)} 个语义名映射不上 → 拒绝产出任何产物")
+    print(f"\n[generate] [NG] 映射质量闸拦下：{len(e.missing)} 个语义名映射不上 → 拒绝产出任何产物")
     print(f"[generate]    locator 来源：{e.sources}")
     if e.probe_error:
         print(f"[generate]    现场 probe 失败：{e.probe_error}")
@@ -225,7 +225,7 @@ def _report_unmapped(e) -> NoReturn:
         if not ok:
             print(f"[generate]    真因：{why}")
         else:
-            print(f"[generate]    目标可达（{why}）⇒ 失败不是「没起」，查上面那条 probe 报错"
+            print(f"[generate]    目标可达（{why}）-> 失败不是「没起」，查上面那条 probe 报错"
                   f"（权限/超时/页面结构变了）；`--debug` 可留截图与 trace")
     shown = e.missing[:20]
     print(f"[generate]    缺失项（共 {len(e.missing)} 个，最多列 20）：{shown}")
@@ -236,14 +236,14 @@ def _report_unmapped(e) -> NoReturn:
         # 批次 2（S1/S2）：这一档缺失不是「名字拼错」，而是**同名歧义**——页面上有 ≥2 个控件
         # 争同一个基础名，探测已把它们全部唯一化（`base@上下文`），所以裸名不再存在。
         # 直接给候选，别让人去猜（历史事故就是含糊报错把人绕了半天）。
-        print(f"[generate]    ⚠️ 其中 {len(conflicts)} 个是**同名歧义**（不是拼写错误）："
-              f"该名字在页面上对应 ≥2 个控件，探测已全部唯一化 ⇒ 裸名不存在了。请改用下列候选之一：")
+        print(f"[generate]    [!] 其中 {len(conflicts)} 个是**同名歧义**（不是拼写错误）："
+              f"该名字在页面上对应 ≥2 个控件，探测已全部唯一化 -> 裸名不存在了。请改用下列候选之一：")
         for base, names in sorted(conflicts.items()):
             print(f"[generate]      · {base!r} → 候选：{'、'.join(names)}")
         print("[generate]    下一步：挑一个候选写进用例的 element（上下文后缀来自该控件所在区域/行），"
               "或行内/子元素改用「锚点 + 容器内相对语义」（anchor + path）；"
               "data-testid 只是可选优化 —— 框架不要求被测系统为测试埋点。")
-    print("[generate]    （旧行为：只打一句警告就照样落盘 ⇒ 产出「每步都是 pytest.fail 存根」的垃圾产物；"
+    print("[generate]    （旧行为：只打一句警告就照样落盘 -> 产出「每步都是 pytest.fail 存根」的垃圾产物；"
           "2026-09-15 的 V7.5 交付事故就是它进包的）")
     print("[generate]    仅调试时可显式加 --allow-unmapped 放行；那样的产物永不允许进交付。")
     raise SystemExit(2)
@@ -251,7 +251,7 @@ def _report_unmapped(e) -> NoReturn:
 
 def _report_data_sets(e) -> NoReturn:
     """数据组与占位符对不上时的交代：哪个用例 / 哪一组 / 差哪几个 —— **绝不落产物**，exit 2。"""
-    print(f"\n[generate] ❌ 数据组校验拦下 → 拒绝产出任何产物（exit 2）")
+    print(f"\n[generate] [NG] 数据组校验拦下 → 拒绝产出任何产物（exit 2）")
     for line in str(e).splitlines():
         print(f"[generate]    {line}")
     print("[generate]    为什么拦：未解析的 {占位符} 会被**原样填进页面**（看着在跑、其实全错），"
@@ -262,16 +262,16 @@ def _report_data_sets(e) -> NoReturn:
 
 def _report_case_quality(e) -> NoReturn:
     """假绿红线触发时的交代：哪条用例 / 什么证据没牙 / 怎么改 —— **绝不落产物**，exit 2。"""
-    print(f"\n[质量闸] ❌ 假绿红线拦下：{len(e.entries)} 条用例、共 {e.total} 处 → 拒绝产出任何产物")
+    print(f"\n[质量闸] [NG] 假绿红线拦下：{len(e.entries)} 条用例、共 {e.total} 处 → 拒绝产出任何产物")
     for cid, errs in e.entries:
         print(f"[质量闸]   用例 {cid}:")
         for m in errs:
             print(f"[质量闸]     · {m}")
     print("[质量闸]    真因：换页证据（kind=url 的 expect）若在**多个页面**的 URL 里都出现，"
-          "换页前后都能通过 ⇒ 用例照样绿，但「确实换页了」这件事根本没被验到。")
-    print("[质量闸]    下一步：① 换成只出现在目标页的片段（详情页 → contract_detail）；"
-          "② 目标页没有独有 URL 片段（列表页就是根路径 /）→ 改对该页独有文案做 text 断言；"
-          "③ 顺带确认用例的页面清单 pages[].url 填全了。")
+          "换页前后都能通过 -> 用例照样绿，但「确实换页了」这件事根本没被验到。")
+    print("[质量闸]    下一步：(1) 换成只出现在目标页的片段（详情页 → contract_detail）；"
+          "(2) 目标页没有独有 URL 片段（列表页就是根路径 /）→ 改对该页独有文案做 text 断言；"
+          "(3) 顺带确认用例的页面清单 pages[].url 填全了。")
     print("[质量闸]    （旧行为：这条假绿一路跑到报告里，靠人工复核才发现 —— 2026-09-14 就是。）")
     raise SystemExit(2)
 
@@ -308,7 +308,7 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
         if _i + 1 < len(rest):
             only_ids = [x.strip() for x in rest[_i + 1].split(",") if x.strip()]
         if not only_ids:
-            print("❌ --only 后面要跟用例 id（逗号分隔，可多个）", file=sys.stderr)
+            print("[NG] --only 后面要跟用例 id（逗号分隔，可多个）", file=sys.stderr)
             return 2
     try:
         res = generate_scripts(element_map_path=map_path, live_probe="--live-probe" in rest,
@@ -318,8 +318,8 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
     except CaseQualityError as e:
         _report_case_quality(e)
     except DanglingDatasetError as e:
-        print(f"❌ {e}", file=sys.stderr)
-        print("   ⇒ 产物已拒绝落盘（宁可报错，也不产出跑不通的产物）；重跑一次 generate 即可自愈。",
+        print(f"[NG] {e}", file=sys.stderr)
+        print("   -> 产物已拒绝落盘（宁可报错，也不产出跑不通的产物）；重跑一次 generate 即可自愈。",
               file=sys.stderr)
         return 2
     except UnmappedElementsError as e:
@@ -333,9 +333,9 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
         print(f"            - {d}")
     print(f"          locator 来源: {res.get('locator_sources', '(未统计)')}")
     # 0 个用例 = 什么都没生成（2026-09-13 修）：以前照打一行"生成 0 个用例"就 exit 0，
-    # 脚本/CI 会把空用例集当成功 ⇒ 明确失败并给下一步动作。
+    # 脚本/CI 会把空用例集当成功 -> 明确失败并给下一步动作。
     if res["count"] == 0:
-        print("[generate] ❌ cases/ 里一个用例都没有 → 没有生成任何可执行测试。"
+        print("[generate] [NG] cases/ 里一个用例都没有 → 没有生成任何可执行测试。"
               "先写 cases/*.json，或用 explore --ai 让 AI 出题")
         raise SystemExit(2)
 
@@ -344,7 +344,7 @@ def _arg_value(rest: list[str], flag: str) -> str | None:
     """取 `--flag <value>` 的值（下一个 token 以 -- 开头视为缺值 → None）。
 
     也认 `--flag=value`（2026-09-18）：`_validate_args` 本来就放行等号写法，
-    但本函数以前只认分离写法 ⇒ `--llm-record=/tmp/x` 这种会**静默退回默认目录**
+    但本函数以前只认分离写法 -> `--llm-record=/tmp/x` 这种会**静默退回默认目录**
     （用户明给的路径被丢掉，属于「说了不听」）。两种写法现在等价。
     """
     for i, a in enumerate(rest):
@@ -380,8 +380,8 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
     from framework.tools.explore.explorer import ai_explore
     prefix = f"【{label}】" if label else ""
     # 刻意不在外面探测：ai_explore 内部会探测（且会打开弹窗补表单控件）。
-    # 2026-09-11 修复：旧写法先探一次再交给 ai_explore ⇒ 连开两个 Chromium，内存吃紧时
-    # 第二次探测失败，叠加 ai_explore 里的静默兜底 ⇒ AI 只能看到基础控件（弹窗字段全丢）。
+    # 2026-09-11 修复：旧写法先探一次再交给 ai_explore -> 连开两个 Chromium，内存吃紧时
+    # 第二次探测失败，叠加 ai_explore 里的静默兜底 -> AI 只能看到基础控件（弹窗字段全丢）。
     emap = ai_explore(scenario_text, [], url, allow_mock_fallback=mock_fallback,
                       page_bg=page_bg, guard=guard_text, pages=pages, llm_cassette=cassette,
                       cassette_strict=cassette_strict, auth=auth)
@@ -411,11 +411,11 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
         try:
             cpath, warns = elementmap_to_cases_file(emap, case_id=case_id, extra=extra, guard=guard_spec)
         except _CaseQE as e:
-            # 假绿红线（如换页证据只写 localhost）⇒ 拒绝落盘，绝不产出「看着绿、其实没验」的用例
+            # 假绿红线（如换页证据只写 localhost）-> 拒绝落盘，绝不产出「看着绿、其实没验」的用例
             _report_case_quality(e)
         print(f"          → 用例: {cpath}  （AI 用例，ai_ 前缀）")
         for w in warns:
-            print(f"          ⚠️ 质量警告: {w}")
+            print(f"          [!] 质量警告: {w}")
     return emap, cpath, warns
 
 
@@ -441,7 +441,7 @@ def cmd_explore(rest: list[str] = None):
       --llm-cassette [DIR]      【回放】只读录像目录：命中即用（**不联网、不需要 key**）；
                                 先按严格键（prompt 逐字一致）找，找不到再用**结构键**兜底
                                 （同场景、同页面结构，但页面数据的值不同 —— 换台机器就是这样）
-                                ⇒ 结构键命中会**大声告警**，请核对后再用
+                                -> 结构键命中会**大声告警**，请核对后再用
       --llm-cassette-strict     回放只认严格键（不要结构键兜底）
       · 两者互斥；都不给 = 实时调用（与以前逐字一致，行为不变）
       · 无外网的机器怎么用：先在**有外网**的机器上 --llm-record 录一次 → 把整个录像目录
@@ -450,7 +450,7 @@ def cmd_explore(rest: list[str] = None):
     ensure_dirs()
     rest = rest or []
     if "--ai" not in rest:
-        print("[explore] ❌ 缺 --ai：explore 只做真 AI 语义识别（不提供隐式降级 —— 静默兜底=造假）。")
+        print("[explore] [NG] 缺 --ai：explore 只做真 AI 语义识别（不提供隐式降级 —— 静默兜底=造假）。")
         print("          要跑确定性链路请用： python -m framework.cli probe → generate → run")
         raise SystemExit(2)
 
@@ -464,11 +464,11 @@ def cmd_explore(rest: list[str] = None):
     has_rec = "--llm-record" in rest or any(a.startswith("--llm-record=") for a in rest)
     has_rep = "--llm-cassette" in rest or any(a.startswith("--llm-cassette=") for a in rest)
     if has_rec and has_rep:
-        print("[explore] ❌ --llm-record 与 --llm-cassette 互斥：一次只能「录」或「放」"
+        print("[explore] [NG] --llm-record 与 --llm-cassette 互斥：一次只能「录」或「放」"
               "（要边录边放请分两次跑）")
         raise SystemExit(2)
     if (has_rec or has_rep) and mock_fallback:
-        print("[explore] ❌ --mock-fallback 与录像模式互斥：mock 是确定性假产物、录像里存的是"
+        print("[explore] [NG] --mock-fallback 与录像模式互斥：mock 是确定性假产物、录像里存的是"
               "真 AI 回答 —— 混用没有意义")
         raise SystemExit(2)
     cassette = None
@@ -478,11 +478,11 @@ def cmd_explore(rest: list[str] = None):
         elif has_rep:
             cassette = Cassette(MODE_REPLAY, _arg_value(rest, "--llm-cassette"))
     except CassetteError as e:
-        print(f"[explore] ❌ {e}")
+        print(f"[explore] [NG] {e}")
         raise SystemExit(2) from None
     cassette_strict = "--llm-cassette-strict" in rest
     if cassette_strict and not has_rep:
-        print("[explore] ❌ --llm-cassette-strict 只与 --llm-cassette 搭配使用"
+        print("[explore] [NG] --llm-cassette-strict 只与 --llm-cassette 搭配使用"
               "（它的意思是「回放只认逐字一致的录像」）")
         raise SystemExit(2)
     if cassette is not None:
@@ -495,7 +495,7 @@ def cmd_explore(rest: list[str] = None):
     given = [(f, v) for f, v in (("--scenario", inline), ("--scenario-file", sfile),
                                  ("--scenario-dir", sdir)) if v]
     if len(given) > 1:
-        print(f"[explore] ❌ 参数互斥：{'、'.join(g[0] for g in given)} 只能给一个（不猜你的意图）")
+        print(f"[explore] [NG] 参数互斥：{'、'.join(g[0] for g in given)} 只能给一个（不猜你的意图）")
         raise SystemExit(2)
 
     from framework.tools.generate.case_builder import make_case_id_from_scenario_id
@@ -520,15 +520,15 @@ def cmd_explore(rest: list[str] = None):
         try:
             scs = discover_scenarios(Path(sdir), tags=tags, limit=int(lim) if lim else None)
         except ScenarioError as e:
-            print(f"[explore] ❌ {e}")
+            print(f"[explore] [NG] {e}")
             raise SystemExit(2) from None
         print(f"[explore] 场景目录: {sdir} → 命中 {len(scs)} 个场景"
               + (f"（tag={','.join(tags)}）" if tags else ""))
         for sc in scs:
             for w in sc.warnings:
-                print(f"  ⚠️ [{sc.id}] {w}")
+                print(f"  [!] [{sc.id}] {w}")
             # P22 批 5：把场景的**登录前置声明**带进 job —— 不带的话跨页探测每页都只拿到登录页控件
-        #（实测 2026-09-30：7 页全是 7 个控件 ⇒ AI 的 31 个步骤 element 全为空）
+        #（实测 2026-09-30：7 页全是 7 个控件 -> AI 的 31 个步骤 element 全为空）
         jobs.append({**_job_from_scenario(sc, sc.scenario), "auth": sc.auth_spec()})
     elif sfile:
         from pathlib import Path
@@ -536,15 +536,15 @@ def cmd_explore(rest: list[str] = None):
         try:
             sc = load_scenario_file(Path(sfile))
         except ScenarioError as e:
-            print(f"[explore] ❌ {e}")
+            print(f"[explore] [NG] {e}")
             raise SystemExit(2) from None
         for w in sc.warnings:
-            print(f"  ⚠️ [{sc.id}] {w}")
+            print(f"  [!] [{sc.id}] {w}")
         print(f"[explore] 场景文件: {sfile}（id={sc.id}"
               + (f", tags={','.join(sc.tags)}" if sc.tags else "")
               + (f", priority={sc.priority}" if sc.priority else "") + "）")
         # P22 批 5：把场景的**登录前置声明**带进 job —— 不带的话跨页探测每页都只拿到登录页控件
-        #（实测 2026-09-30：7 页全是 7 个控件 ⇒ AI 的 31 个步骤 element 全为空）
+        #（实测 2026-09-30：7 页全是 7 个控件 -> AI 的 31 个步骤 element 全为空）
         jobs.append({**_job_from_scenario(sc, sc.scenario), "auth": sc.auth_spec()})
     else:
         jobs.append(dict(
@@ -567,28 +567,28 @@ def cmd_explore(rest: list[str] = None):
                 to_cases=to_cases, mock_fallback=mock_fallback, pages=job.get("pages"),
                 cassette=cassette, cassette_strict=cassette_strict, auth=job.get("auth"))
         except AiExploreError as e:
-            print(f"[explore] ❌ 【{job['label'] or '内联'}】{e}")
+            print(f"[explore] [NG] 【{job['label'] or '内联'}】{e}")
             raise SystemExit(2) from None
         last_emap = emap
         if cpath:
             done.append((job["label"], cpath.stem))
         if mock_fallback:
-            print("          ⚠️ mock 兜底产物 → 按约定【不落 cases/】（避免假 AI 用例污染用例库）")
+            print("          [!] mock 兜底产物 → 按约定【不落 cases/】（避免假 AI 用例污染用例库）")
 
     prune_snapshots(quiet_if_none=True)          # 归档保留策略：快照各留最近 N 个
     auto_prune_runs(quiet_if_none=True)          # 归档保留策略：run 目录（L5）
 
     if cassette is not None and cassette.is_replay:
-        print(f"[explore] ⚠️ 本次 AI 判断来自**录像回放**（{cassette.root}）："
+        print(f"[explore] [!] 本次 AI 判断来自**录像回放**（{cassette.root}）："
               f"是录制那一刻问出来的，不是现在实时问的 —— 用例里的 llm_source 字段已标注来源")
 
     if done and do_verify:
         if _verify_cases(done) is False:
-            print("[explore] ❌ 有 AI 用例【实测未通过】→ 不可当可用用例（请修正场景/断言后重来；"
+            print("[explore] [NG] 有 AI 用例【实测未通过】→ 不可当可用用例（请修正场景/断言后重来；"
                   "坏用例仍在 cases/ 里，确认后可删）")
             raise SystemExit(3)
     elif done:
-        print("          ℹ️ 按 --no-verify 跳过试跑校验（这些用例未经实测验证）")
+        print("          [info] 按 --no-verify 跳过试跑校验（这些用例未经实测验证）")
 
     return last_emap
 
@@ -605,12 +605,12 @@ def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
         return None
     gen_dir = SCRIPTS_DIR / "generated"
     print(f"[explore] --verify：先 generate 一次，再逐条试跑 {len(entries)} 条新用例…")
-    # ⚠️ 必须用 run_capture（显式 UTF-8 解码）：以前是裸 `subprocess.run(..., text=True)`，
-    # 父进程按系统默认编码（中文 Windows = cp936/gbk）解码子进程的 UTF-8 中文输出 ⇒
+    # [!] 必须用 run_capture（显式 UTF-8 解码）：以前是裸 `subprocess.run(..., text=True)`，
+    # 父进程按系统默认编码（中文 Windows = cp936/gbk）解码子进程的 UTF-8 中文输出 ->
     # `UnicodeDecodeError: 'gbk' codec can't decode byte 0xbb in position 13`（2026-09-13 AprilPark1012实测）。
     gen = run_capture([sys.executable, "-m", "framework.cli", "generate"], cwd=str(config.BASE))
     if gen.returncode != 0:
-        print("  ⚠️ 校验未执行：generate 失败（多半是「映射质量闸」拦下：目标没起 / 探测不可用）"
+        print("  [!] 校验未执行：generate 失败（多半是「映射质量闸」拦下：目标没起 / 探测不可用）"
               "→ scripts/ **未更新**，新用例【未经实测验证】，别把它当成已验证")
         tail = ((gen.stdout or "") + (gen.stderr or ""))[-400:]
         print("  " + tail.replace("\n", "\n  "))
@@ -620,12 +620,12 @@ def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
     vdir.mkdir(parents=True, exist_ok=True)
     all_ok = True
     for label, name in entries:
-        # P20：一个用例一个脚本 ⇒ 用 index.json（case_id → script_path）拿 node id
+        # P20：一个用例一个脚本 -> 用 index.json（case_id → script_path）拿 node id
         try:
             _idx = json.loads((gen_dir / "index.json").read_text(encoding="utf-8"))
             _script = config.BASE / _idx[name]["script_path"]
         except Exception as _e:
-            print(f"      ⚠️ 取不到 {name} 的脚本路径（index.json 里没有？）：{_e}")
+            print(f"      [!] 取不到 {name} 的脚本路径（index.json 里没有？）：{_e}")
             continue
         node = f"{_script}::test_{name}"
         r = run_capture([sys.executable, "-m", "pytest", node, "-v", "-s"],
@@ -635,10 +635,10 @@ def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
         log.write_text(text, encoding="utf-8")
         tag = f"【{label}】" if label else ""
         if r.returncode == 0:
-            print(f"  ✅ {tag}校验通过：该用例实测 PASSED（校验日志 {log}）")
+            print(f"  [OK] {tag}校验通过：该用例实测 PASSED（校验日志 {log}）")
         else:
             all_ok = False
-            print(f"  ❌ {tag}校验失败：该用例实测 FAILED（断言是猜的？页面结构变了？）校验日志 {log}")
+            print(f"  [NG] {tag}校验失败：该用例实测 FAILED（断言是猜的？页面结构变了？）校验日志 {log}")
             for line in text.splitlines():
                 s = line.strip()
                 if s.startswith("E ") or "TimeoutError" in s or "not found" in s:
@@ -654,8 +654,8 @@ def _verify_case(case_name: str) -> bool | None:
 def _int_flag(rest: list[str], name: str, default: int) -> int:
     """取 `--name v` / `--name=v` 的**整数**取值；没给返回默认值，取值不合法按参数错误处理（exit 2）。
 
-    ⚠️ 名字故意不叫 `_arg_value`：本文件早有一个 `_arg_value(rest, flag)`（返回字符串或 None，
-    给 llm-cassette / scenario 用）。同名会**遮蔽**它 ⇒ 那些 2 参数调用全部 TypeError（实测踩到，
+    [!] 名字故意不叫 `_arg_value`：本文件早有一个 `_arg_value(rest, flag)`（返回字符串或 None，
+    给 llm-cassette / scenario 用）。同名会**遮蔽**它 -> 那些 2 参数调用全部 TypeError（实测踩到，
     被一类 `test_arg_value_supports_equals_form` 抓出来）。
     """
     for i, a in enumerate(rest):
@@ -675,17 +675,17 @@ def _int_flag(rest: list[str], name: str, default: int) -> int:
 def cmd_prune(rest: list[str] = None):
     """归档保留策略（两类目录）：
 
-      ① `output/element_maps/`：element_map_*.json / probe_*.json 各留最近 `--keep` 个；
-      ② `log/<run_id>/` 与 `output/verify/`（`--runs` / `--all` 才生效）：
+      (1) `output/element_maps/`：element_map_*.json / probe_*.json 各留最近 `--keep` 个；
+      (2) `log/<run_id>/` 与 `output/verify/`（`--runs` / `--all` 才生效）：
          保留最近 `--keep-runs` 个 ∪ `--keep-days` 天（默认 30 个 / 7 天）；超龄的 run 里，
-         **能证明成功**（有 summary.json 且全绿）的才整删，历史（无 summary）/失败 ⇒
+         **能证明成功**（有 summary.json 且全绿）的才整删，历史（无 summary）/失败 ->
          只**瘦身**（删掉 traces 录像，保留 .log + report.html + summary.json）。
 
     用法: python -m framework.cli prune [--keep 20] [--dry-run]
           python -m framework.cli prune --all [--keep-runs 30] [--keep-days 7] [--max-delete 20] [--dry-run]
     默认值可用环境变量覆盖：HYBRID_KEEP_SNAPSHOTS / HYBRID_KEEP_RUNS / HYBRID_KEEP_RUN_DAYS /
     HYBRID_MAX_DELETE_PER_PRUNE / HYBRID_MAX_FREE_MB；`--dry-run` 只预演不删。
-    ⚠️ 不带 `--runs/--all` 时行为同旧版（**只清快照，不碰 log/**）。
+    [!] 不带 `--runs/--all` 时行为同旧版（**只清快照，不碰 log/**）。
     """
     ensure_dirs()
     rest = rest or []
@@ -736,21 +736,21 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
           看着它一步步执行到用例结束；
         · 无图形显示（服务器）→ **不改需求，改成录下来**：整条用例录成 `log/<run_id>/videos/<case_id>.webm`，
           并且每一步存一张图 `log/<run_id>/shots/<case_id>/01_*.png`（直接打开就能看），另有 trace 可交互回放。
-      ⚠️ 调试模式刻意**不带 `-n`**：`pytest -n 1` 也会设 `PYTEST_XDIST_WORKER=gw0`，而 conftest 判定
-      "在 worker 里 ⇒ 无头" ⇒ 旧版 `--headed` 因此是空操作（2026-09-11 修复）。
+      [!] 调试模式刻意**不带 `-n`**：`pytest -n 1` 也会设 `PYTEST_XDIST_WORKER=gw0`，而 conftest 判定
+      "在 worker 里 -> 无头" -> 旧版 `--headed` 因此是空操作（2026-09-11 修复）。
 
     默认（不写 `--debug`）＝ 无头并发跑，按内存预检裁并发（防 OOM 杀 Hermes 网关），不录像不截图。
     cases=[...]（`--case <case_id>`，可重复）：只跑指定用例（透传 pytest `-k`）；不传=整包跑。
-    产物落在 log/<run_id>/（run-id 隔离 ⇒ 天然"本次运行干净"）。
+    产物落在 log/<run_id>/（run-id 隔离 -> 天然"本次运行干净"）。
     """
     ensure_dirs()
     import os
     import subprocess
     from framework.tools.common.config import SCRIPTS_DIR
-    # P20：产物改成 scripts/generated/<场景>/<用例>.py（一个用例一个文件）⇒ 直接跑目录
+    # P20：产物改成 scripts/generated/<场景>/<用例>.py（一个用例一个文件）-> 直接跑目录
     tests = SCRIPTS_DIR / "generated"
     if not (tests / "index.json").exists():
-        print("[run] ❌ scripts/generated/index.json 不存在 → 没有可跑的东西（先跑 generate）")
+        print("[run] [NG] scripts/generated/index.json 不存在 → 没有可跑的东西（先跑 generate）")
         print("      （2026-09-13 修：这里以前只提示一句就 return，**exit 0** —— "
               "CI/脚本调用方会把\"什么都没跑\"误判成成功）")
         raise SystemExit(2)
@@ -761,10 +761,10 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
     if workers and n < workers:
         if force_workers:
             n = workers
-            print(f"[run] ⚠️ --force-workers 生效：无视预检，强行用 {n} 并发"
+            print(f"[run] [!] --force-workers 生效：无视预检，强行用 {n} 并发"
                   f"（内存不足时有 OOM 风险，可能连带影响 Hermes 网关）")
         else:
-            print(f"[run] ⚠️ 请求并发 {workers} 超出安全值 → 已降级为 {n}"
+            print(f"[run] [!] 请求并发 {workers} 超出安全值 → 已降级为 {n}"
                   f"（确有把握可加 --force-workers 覆盖；预算可用 "
                   f"HYBRID_MB_PER_WORKER / HYBRID_RESERVE_MB 调整）")
 
@@ -782,8 +782,8 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
             if capable:
                 print(f"[run] 并发隔离：{why_p} → 保持 {n} worker（框架会给每个 worker 注入独立数据分区）")
             else:
-                print(f"[run] ⚠️ 并发隔离：{why_p}")
-                print(f"[run] ⚠️ 目标未声明可并发隔离 → 并发由 {n} 保守降级为 1")
+                print(f"[run] [!] 并发隔离：{why_p}")
+                print(f"[run] [!] 目标未声明可并发隔离 → 并发由 {n} 保守降级为 1")
                 print(f"[run]    多 worker 共享一份状态时，精确计数断言会随机红、且失败原因指向错误的地方；"
                       f"要并发请让目标支持按 worker 分区（/api/health 返回 partitioned=true），"
                       f"或确知已隔离时加 --isolated-target")
@@ -791,21 +791,21 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
     # ---- 调试开关（--debug / --headed）：开了就"看得见"（有屏幕开窗；没屏幕录制）----
     if debug:
         if n != 1:
-            print(f"[run] 🐞 调试模式 → 并发由 {n} 强制降为 1（单浏览器顺序跑，才看得清）")
+            print(f"[run] [bug] 调试模式 → 并发由 {n} 强制降为 1（单浏览器顺序跑，才看得清）")
         n = 1
         os.environ["HYBRID_DEBUG"] = "1"
         if _has_display():
             os.environ["HYBRID_HEADED"] = "1"
-            print("[run] 🐞 调试模式：有图形显示 → 弹出 Chromium 窗口，看它一步步执行到用例结束")
+            print("[run] [bug] 调试模式：有图形显示 → 弹出 Chromium 窗口，看它一步步执行到用例结束")
         else:
             os.environ["HYBRID_VIDEO"] = "1"
             os.environ["HYBRID_SHOTS"] = "1"
-            print("[run] 🐞 调试模式：本机没有图形显示（DISPLAY/WAYLAND_DISPLAY 未设置）")
+            print("[run] [bug] 调试模式：本机没有图形显示（DISPLAY/WAYLAND_DISPLAY 未设置）")
             print("[run]       → 不改需求，这次执行【录下来给你看】：视频 + 每一步截图 + trace")
             print("[run]       → 换到带屏幕的机器（如 Windows 桌面）跑同一个开关，就直接弹出浏览器窗口")
         if not slowmo:
             slowmo = 200
-            print("[run] 🐞 调试模式默认放慢 200ms/动作（--slowmo N 覆盖，0 = 不放慢）")
+            print("[run] [bug] 调试模式默认放慢 200ms/动作（--slowmo N 覆盖，0 = 不放慢）")
 
     # ---- run-id 隔离的产物目录 ----
     run_id = _now()
@@ -819,7 +819,7 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
            f"--html={run_dir / 'report.html'}", "-s"]
     if not debug:
         # 调试模式绝不能带 -n：xdist 会起 worker 进程，worker 里带 PYTEST_XDIST_WORKER
-        # ⇒ conftest 判定"在 worker 里 ⇒ 无头"，调试开关就白传了（旧版实测 bug）
+        # -> conftest 判定"在 worker 里 -> 无头"，调试开关就白传了（旧版实测 bug）
         cmd += ["-n", str(n)]
     if cases:
         # 只跑指定用例：test_<case_id> or test_<case_id>...（pytest -k 表达式）
@@ -832,7 +832,7 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
     print(f"[run] 执行 → {' '.join(cmd)}  ({mode})")
     print(f"[run] 本次运行产物 → {run_dir}（逐用例 .log + report.html）")
     # env=utf8_env()：让 pytest 子进程按 UTF-8 输出（否则 Windows cp936 控制台下
-    # conftest 里的 ✓ / ⚠️ 会 UnicodeEncodeError，跑到一半崩）；父进程已 force_stdio()
+    # conftest 里的 v / [!] 会 UnicodeEncodeError，跑到一半崩）；父进程已 force_stdio()
     # 把 Windows 控制台代码页设成 65001，所以中文在控制台照样显示正常。
     r = subprocess.run(cmd, cwd=str(config.BASE), env=utf8_env())
     print(f"[run] pytest 退出码 {r.returncode}")
@@ -840,7 +840,7 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
         vids = sorted((run_dir / "videos").glob("*.webm")) if (run_dir / "videos").exists() else []
         shots = sorted((run_dir / "shots").glob("*/*.png")) if (run_dir / "shots").exists() else []
         traces = sorted((run_dir / "traces").glob("*.zip")) if (run_dir / "traces").exists() else []
-        print(f"[run] 🐞 调试产物：视频 {len(vids)} 个 / 逐步截图 {len(shots)} 张 / trace {len(traces)} 个")
+        print(f"[run] [bug] 调试产物：视频 {len(vids)} 个 / 逐步截图 {len(shots)} 张 / trace {len(traces)} 个")
         for p in (vids[:1] + shots[:3]):
             print(f"        - {p}")
         if len(shots) > 3:
@@ -848,10 +848,10 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
         if traces:
             print(f"        trace 交互回放：playwright show-trace {traces[0]}")
     if r.returncode == 5:
-        print("[run] ℹ️ 退出码 5 = 没有匹配到任何用例（--case 的名字对不上？已生成的用例见 "
+        print("[run] [info] 退出码 5 = 没有匹配到任何用例（--case 的名字对不上？已生成的用例见 "
               "scripts/test_cases.py 里的 def test_* ）")
-    # 退出码必须**如实传递**（2026-09-13 修）：以前 cmd_run 跑完就返回 ⇒ cli 永远 exit 0，
-    # 用例失败(1)/没匹配到用例(5)/collect error(2) 全被吞掉 ⇒ CI 与脚本调用方一律误判成功。
+    # 退出码必须**如实传递**（2026-09-13 修）：以前 cmd_run 跑完就返回 -> cli 永远 exit 0，
+    # 用例失败(1)/没匹配到用例(5)/collect error(2) 全被吞掉 -> CI 与脚本调用方一律误判成功。
     # ---- 收尾（**必须在退出码判断之前**）：summary.json + 归档保留 ----
     # 为什么要在 raise 之前：失败 run 也要留下 summary.json —— 归档策略据此判「能否证明成功」
     # （失败/无 summary 一律只瘦身不整删），而且"最近一次全红"要靠它才保得住。
@@ -859,7 +859,7 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
     auto_prune_runs(quiet_if_none=True)
 
     if r.returncode != 0:
-        print(f"[run] ❌ 以 pytest 退出码 {r.returncode} 结束（1=有用例失败 / 5=没匹配到用例 / "
+        print(f"[run] [NG] 以 pytest 退出码 {r.returncode} 结束（1=有用例失败 / 5=没匹配到用例 / "
               f"其它=执行环境问题）→ cli 同样返回该退出码，别把它当成功")
         raise SystemExit(r.returncode)
 
@@ -869,7 +869,7 @@ def cmd_all(workers: int | None = None, debug: bool = False, force_workers: bool
             isolated_target: bool = False, allow_unmapped: bool = False):
     """probe → generate → run 一条龙。
 
-    ⚠️ 需要被测目标在跑（`python -m demo.app`）：任一步拿不到目标都会**在生成期就红**，
+    [!] 需要被测目标在跑（`python -m demo.app`）：任一步拿不到目标都会**在生成期就红**，
     不会产出「全是 pytest.fail 存根」的假脚本（--allow-unmapped 是调试逃生口，别用于交付）。
     """
     cmd_probe()
@@ -881,9 +881,9 @@ def cmd_all(workers: int | None = None, debug: bool = False, force_workers: bool
 # ============================ CLI 参数契约 ============================
 # 原则（2026-09-13 定）：**未知 / 错位参数一律报错 + 非 0 退出，绝不静默忽略**。
 # 起因（实测三个真问题）：
-#   ① `prune --dry-run --workres 1`（--workers 拼错）→ 静默按默认跑完、exit 0；
-#   ② 未知子命令 `frobnicate` → 只打 __doc__、**exit 0** ⇒ 脚本调用方误判成功；
-#   ③ `_arg_values` 曾重复定义（后者静默覆盖前者）。
+#   (1) `prune --dry-run --workres 1`（--workers 拼错）→ 静默按默认跑完、exit 0；
+#   (2) 未知子命令 `frobnicate` → 只打 __doc__、**exit 0** -> 脚本调用方误判成功；
+#   (3) `_arg_values` 曾重复定义（后者静默覆盖前者）。
 # 值含义: "value" = 必须带值； "opt" = 可带可不带值（如 --debug true|false）； None = 纯开关
 FLAG_SPECS: dict[str, str | None] = {
     "--workers": "value", "--debug": "opt", "--headed": None, "--force-workers": None,
@@ -934,7 +934,7 @@ def _usage(cmd: str) -> str:
 
 def _fail(msg: str, hint: str = "") -> None:
     """参数错误：明确报错 + 非 0 退出（脚本调用方必须能察觉）。"""
-    print(f"\n[cli] ❌ {msg}", file=sys.stderr)
+    print(f"\n[cli] [NG] {msg}", file=sys.stderr)
     if hint:
         print(f"        {hint}", file=sys.stderr)
     print("        （本项目约定：看不懂的参数一律报错，不静默忽略；"
@@ -981,10 +981,10 @@ def _validate_args(cmd: str, rest: list[str]) -> None:
 def _print_help(cmd: str | None = None) -> None:
     """`--help` / `-h`：总览或单子命令帮助。
 
-    ⚠️ 业务规则（2026-09-28 定）：**help 的每一行都由代码生成** ——
+    [!] 业务规则（2026-09-28 定）：**help 的每一行都由代码生成** ——
       · 子命令清单 / 每个子命令的**全部参数**取自 `CMD_FLAGS`（唯一注册表）；
       · 一句话说明取自各子命令函数的 docstring 首行。
-    ⇒ 新增子命令 / 参数时**不用改本函数**，总览自动带上它（人只写那句 docstring）。
+    -> 新增子命令 / 参数时**不用改本函数**，总览自动带上它（人只写那句 docstring）。
     判据：`tests/_helpers/test_cli_help_coverage.py`（含「注册即显示」机制自证
     + 「漏一个 flag 必须被判红」的负向自证）。
     """
@@ -1022,13 +1022,13 @@ def _version() -> str:
 
 def main():
     # ★ 统一 UTF-8（跨进程/落盘文本口径的唯一入口）——必须在任何 print / subprocess 之前跑：
-    #   ① 自身 stdout/stderr 转 UTF-8（Windows cp936 下 ✓/❌/⚠️ 不再 UnicodeEncodeError）；
-    #   ② PYTHONUTF8/PYTHONIOENCODING 写进 os.environ ⇒ 之后所有 Python 子进程按 UTF-8 输出；
-    #   ③ Windows 控制台代码页 → 65001，中文显示不乱码。
+    #   (1) 自身 stdout/stderr 转 UTF-8（Windows cp936 下 v/[NG]/[!] 不再 UnicodeEncodeError）；
+    #   (2) PYTHONUTF8/PYTHONIOENCODING 写进 os.environ -> 之后所有 Python 子进程按 UTF-8 输出；
+    #   (3) Windows 控制台代码页 → 65001，中文显示不乱码。
     force_stdio()
     _fs_warn = fs_encoding_warning()
     if _fs_warn:
-        # 文件系统编码不是 UTF-8 ⇒ 中文文件名会落成 GBK/其他字节名（仓库里就是乱码）。
+        # 文件系统编码不是 UTF-8 -> 中文文件名会落成 GBK/其他字节名（仓库里就是乱码）。
         # 运行期改不了，只能大声提醒（不静默：静默的后果是留下一堆打不开的文件名）。
         print(_fs_warn, file=sys.stderr)
     ensure_dirs()
@@ -1056,7 +1056,7 @@ def main():
     slowmo = _slowmo_from(rest)
     allow_unmapped = "--allow-unmapped" in rest
     # ★ 浏览器预检（2026-09-23，V8.2.2）：需要浏览器的命令先探一次，
-    #   缺浏览器 ⇒ 当场给「一行修复命令」+ exit 2（绝不让它到 Playwright 那层才炸原始栈）。
+    #   缺浏览器 -> 当场给「一行修复命令」+ exit 2（绝不让它到 Playwright 那层才炸原始栈）。
     if cmd in ("probe", "generate", "explore", "run", "all"):
         try:
             from framework.tools.common.browser import BrowserNotInstalledError, ensure_browser_installed
@@ -1068,10 +1068,10 @@ def main():
             raise SystemExit(2) from None
 
     # ★ 分发必须**采纳**子命令的返回值（2026-09-23，V8.2.3 修）：
-    #   原来这里是 8 个裸调用，返回值被丢弃 ⇒ cmd_generate 里 DanglingDatasetError 的
+    #   原来这里是 8 个裸调用，返回值被丢弃 -> cmd_generate 里 DanglingDatasetError 的
     #   `return 2` 变成**空转**（"报了错却告诉调用方成功" exit 0）。同族另外三个错误
     #   （_report_unmapped / _report_data_sets / _report_case_quality）都是 -> NoReturn 直接 raise，
-    #   只有这一条走 return ⇒ 典型的不一致。修在分发层 = 根因修复：以后任何子命令
+    #   只有这一条走 return -> 典型的不一致。修在分发层 = 根因修复：以后任何子命令
     #   只要 return 非 0，调用方都看得见。
     if cmd == "probe":
         rc = cmd_probe()
@@ -1106,7 +1106,7 @@ def cmd_setup(argv: list[str]) -> int:
         --force-browser  浏览器强制重下（playwright 包换过版本就用它，避免 revision 对不上）
         --with-ai  连 AI 依赖（requirements-ai.txt）一起装
 
-    顺序：① 依赖 → ② 浏览器 → ③ 自检（真启一次 chromium 验证能干活）。
+    顺序：(1) 依赖 → (2) 浏览器 → (3) 自检（真启一次 chromium 验证能干活）。
     任一步失败即退出码 2，并把原始输出尾部打出来（不静默）。
     """
     import subprocess
@@ -1124,24 +1124,24 @@ def cmd_setup(argv: list[str]) -> int:
 
     ok = True
 
-    # ---- ① 依赖 ----
+    # ---- (1) 依赖 ----
     reqs = ["requirements.txt"] + (["requirements-ai.txt"] if with_ai else [])
     have_reqs = [r for r in reqs if (repo_root / r).exists()]
     if check_only:
         missing = [m for m in ("playwright", "pytest", "yaml") if not _can_import(m)]
         if missing:
             ok = False
-            print(f"\n[setup] ① 依赖：❌ 缺 {missing}")
+            print(f"\n[setup] (1) 依赖：[NG] 缺 {missing}")
         else:
-            print("\n[setup] ① 依赖：✅ 关键包都在（playwright / pytest / yaml）")
+            print("\n[setup] (1) 依赖：[OK] 关键包都在（playwright / pytest / yaml）")
     elif not have_reqs:
-        print("\n[setup] ① 依赖：⚠️ 没找到 requirements.txt，跳过（解压不完整？）")
+        print("\n[setup] (1) 依赖：[!] 没找到 requirements.txt，跳过（解压不完整？）")
     else:
-        print(f"\n[setup] ① 装依赖：{', '.join(have_reqs)}")
+        print(f"\n[setup] (1) 装依赖：{', '.join(have_reqs)}")
         cmd, kind = _pip_install_cmd(py, have_reqs)
         if cmd is None:
             ok = False
-            print("[setup]    ❌ 本环境既没有 pip 也没有 uv ⇒ 请先装一个：")
+            print("[setup]    [NG] 本环境既没有 pip 也没有 uv -> 请先装一个：")
             print("            python -m ensurepip --upgrade      # 自带 pip")
         else:
             print(f"[setup]    用 {kind} 安装 …")
@@ -1149,62 +1149,62 @@ def cmd_setup(argv: list[str]) -> int:
                                errors="replace", timeout=900)
             if r.returncode != 0:
                 ok = False
-                print(f"[setup]    ❌ 装依赖失败（exit {r.returncode}），尾部输出：")
+                print(f"[setup]    [NG] 装依赖失败（exit {r.returncode}），尾部输出：")
                 print(_tail(r.stdout, r.stderr))
             else:
-                print("[setup]    ✅ 依赖就绪")
+                print("[setup]    [OK] 依赖就绪")
 
-    # ---- ② 浏览器 ----
+    # ---- (2) 浏览器 ----
     if check_only:
         ok_b, why = _browser_state()
-        print(f"\n[setup] ② 浏览器：{'✅ 可用（真启一次成功）' if ok_b else '❌ 不可用 —— ' + why}")
+        print(f"\n[setup] (2) 浏览器：{'[OK] 可用（真启一次成功）' if ok_b else '[NG] 不可用 —— ' + why}")
         ok = ok and ok_b
     else:
-        print("\n[setup] ② 装浏览器（chromium + 无头用的 chromium-headless-shell）")
+        print("\n[setup] (2) 装浏览器（chromium + 无头用的 chromium-headless-shell）")
         cmd = [py, "-m", "playwright", "install", "chromium"] + (["--force"] if force else [])
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                                errors="replace", timeout=1800)
         except Exception as e:  # noqa: BLE001
             r = None
-            print(f"[setup]    ❌ 起不来：{e}")
+            print(f"[setup]    [NG] 起不来：{e}")
             ok = False
         if r is not None:
             if r.returncode != 0:
                 ok = False
-                print(f"[setup]    ❌ 装浏览器失败（exit {r.returncode}），尾部输出：")
+                print(f"[setup]    [NG] 装浏览器失败（exit {r.returncode}），尾部输出：")
                 print(_tail(r.stdout, r.stderr))
                 print("[setup]    提示：若机器不能联网，请在能联网的机器上装好后拷 "
                       "ms-playwright 缓存目录（见培训页 9.0）")
             else:
-                print("[setup]    ✅ 浏览器就绪")
+                print("[setup]    [OK] 浏览器就绪")
 
-    # ---- ③ 自检（真启一次）----
+    # ---- (3) 自检（真启一次）----
     if not check_only and ok:
         ok_b, why = _browser_state()
-        print(f"\n[setup] ③ 自检：{'✅ 真启 chromium 成功' if ok_b else '❌ ' + why}")
+        print(f"\n[setup] (3) 自检：{'[OK] 真启 chromium 成功' if ok_b else '[NG] ' + why}")
         ok = ok and ok_b
 
     if ok:
-        print("\n[setup] ✅ 环境就绪，可以跑了：")
+        print("\n[setup] [OK] 环境就绪，可以跑了：")
         print("            python -m framework.cli probe     # 探测页面元素")
         print("            python -m framework.cli all       # 探测→生成→执行 全链路")
         return 0
-    print("\n[setup] ❌ 环境还没就绪（上面有原因）；修好后重跑 python -m framework.cli setup")
+    print("\n[setup] [NG] 环境还没就绪（上面有原因）；修好后重跑 python -m framework.cli setup")
     return 2
 
 
 def _version_report(pin: str | None, inst: str | None) -> list[str]:
-    """给 `setup` 打印「锁定版本 vs 实际版本」这几行（抽成纯函数 ⇒ 好做负向判据）。
+    """给 `setup` 打印「锁定版本 vs 实际版本」这几行（抽成纯函数 -> 好做负向判据）。
 
     不一致时**只告警不拦**：新版 playwright 未必不能用（框架本身不挑版本），
     但「包升了、浏览器没重下」是踩坑的头号原因（期望的 revision 号会变）——所以要让漂移**看得见**。
     """
     if pin and inst:
         if pin == inst:
-            return [f"[setup] playwright 版本：锁定 {pin} · 环境 {inst}   ✅ 一致"]
+            return [f"[setup] playwright 版本：锁定 {pin} · 环境 {inst}   [OK] 一致"]
         return [
-            f"[setup] playwright 版本：锁定 {pin} · 环境 {inst}   ⚠️ 不一致",
+            f"[setup] playwright 版本：锁定 {pin} · 环境 {inst}   [!] 不一致",
             "[setup]   不是错，但浏览器可能对不上（期望的 revision 号会变）；要对齐就：",
             "[setup]       python -m framework.cli setup --force-browser",
         ]
@@ -1216,7 +1216,7 @@ def _version_report(pin: str | None, inst: str | None) -> list[str]:
 
 
 def _pinned_playwright(repo_root) -> str | None:
-    """从 `requirements.txt` 读 playwright 的锁定版本（`playwright==X`；没锁/读不到 ⇒ None）。"""
+    """从 `requirements.txt` 读 playwright 的锁定版本（`playwright==X`；没锁/读不到 -> None）。"""
     try:
         text = (repo_root / "requirements.txt").read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -1229,7 +1229,7 @@ def _pinned_playwright(repo_root) -> str | None:
 
 
 def _installed_playwright() -> str | None:
-    """当前环境里 playwright 的实际版本（没装 ⇒ None）。"""
+    """当前环境里 playwright 的实际版本（没装 -> None）。"""
     try:
         import importlib.metadata as md
         return md.version("playwright")

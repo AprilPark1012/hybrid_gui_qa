@@ -8,7 +8,7 @@
     AI 读  target.page / target.preconditions / business_context / scenario(必填)
     质量闸 assert_guard.must_contain / assert_guard.forbidden
     数据读 data（一期只解析不展开）
-**只有 scenario 必填**，其余全可选 ⇒ `explore --ai --scenario "…"`（内联）等价于"只给 scenario 字段"，
+**只有 scenario 必填**，其余全可选 -> `explore --ai --scenario "…"`（内联）等价于"只给 scenario 字段"，
 两条路共用同一套下游（ElementMap → cases → generate → run），不存在两套实现。
 格式 YAML：多行中文块标量免转义 + 可写注释 + pyyaml 已在依赖里。
 """
@@ -36,20 +36,20 @@ class ScenarioError(RuntimeError):
 class ScenarioPage:
     """场景里的一个页面（P3 跨页流程）：name 是人/AI 都看的页名，url 是该页直连地址。
 
-    P22 批 5（缺口 ④⑤）：`pre` = **该页的前置动作**，按控件的 accessibility name 依次点。
+    P22 批 5（缺口 (4)(5)）：`pre` = **该页的前置动作**，按控件的 accessibility name 依次点。
     为什么需要：有些控件只在"做了某个动作之后"才存在 ——
       · 合同列表页的「新建订单」弹层：不先选中合同，点了只弹「请选择某个合同」，弹层压根不开；
       · 订单详情页的行控件（数量/单位/行类型/收入）：只在「编辑 + 新增行」之后才有。
-    探针默认"打开页面就看一遍"永远看不到它们 ⇒ AI 拿不到语义名、用例引用不了
-    （批 5 实测：行必填没填 ⇒ 保存无效 ⇒ 提交被拦，状态永远停在「已新建」）。
+    探针默认"打开页面就看一遍"永远看不到它们 -> AI 拿不到语义名、用例引用不了
+    （批 5 实测：行必填没填 -> 保存无效 -> 提交被拦，状态永远停在「已新建」）。
     """
     name: str
     url: str
     page: str = ""            # 该页的页面说明（给 AI 的领域知识）
     pre: list = field(default_factory=list)   # 该页探测前要做的动作，如 ["编辑", "新增行"]
     # P22 批 5：**探测期用的地址**（可选）。页面 url 带运行期才有的值（订单号之类）时，
-    # 探测期那个对象还不存在 ⇒ 场景另给一个"探测时去哪个地址"。
-    # ⚠️ 框架只认「探测地址」这个概念，**不认识任何具体业务值** —— 值由场景给
+    # 探测期那个对象还不存在 -> 场景另给一个"探测时去哪个地址"。
+    # [!] 框架只认「探测地址」这个概念，**不认识任何具体业务值** —— 值由场景给
     # （AprilPark1012 2026-09-30 口径：补能力要与场景解耦、不能写死）。
     probe_url: str = ""
 
@@ -139,14 +139,14 @@ class Scenario:
             rel = str(self.path)
         extra = {"scenario_id": self.id, "source_scenario": rel}
         # D3（2026-09-24 他定）：记下**当时场景文件的内容指纹**。
-        # 场景一改（指纹变）⇒ 判据当场红 ⇒ 必须重新生成，保证用例与场景同步。
+        # 场景一改（指纹变）-> 判据当场红 -> 必须重新生成，保证用例与场景同步。
         try:
             _raw = self.path.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n")
             extra["scenario_fingerprint"] = hashlib.sha256(_raw.encode("utf-8")).hexdigest()[:16]
         except Exception as _e:  # 绝不静默：指纹写不进去 = D3 的同步判据会失效
             import sys as _sys
-            print(f"  ⚠️ [scenario] 场景指纹计算失败（{type(_e).__name__}: {_e}）"
-                  f"⇒ D3 同步判据将失效，必须修", file=_sys.stderr)
+            print(f"  [!] [scenario] 场景指纹计算失败（{type(_e).__name__}: {_e}）"
+                  f"-> D3 同步判据将失效，必须修", file=_sys.stderr)
         if self.pages:                      # P3 跨页：把页面清单带进用例（质量闸与溯源都用）
             extra["pages"] = [p.to_dict() for p in self.pages]
         return extra
@@ -251,7 +251,7 @@ def load_scenario_file(path) -> Scenario:
         auth = {"login_api": api, "username": uname,
                 "password": str(pwd) if pwd else "", "password_env": pwd_env, "token_key": key}
         if not key:
-            warns.append("auth 未声明 token_key ⇒ 只做接口登录、不注入 localStorage"
+            warns.append("auth 未声明 token_key -> 只做接口登录、不注入 localStorage"
                          "（页面若靠 localStorage 认身份，会仍然显示未登录）")
     guard = raw.get("assert_guard") or {}
     if not isinstance(guard, dict):

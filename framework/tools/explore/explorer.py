@@ -11,7 +11,7 @@
   - mock_explore(): 不用 LLM，用一条简单的确定性规则挑元素拼出演示场景，
                     让整条链路在无 key 环境下仍能跑通验证。
 
-✚ 本文件是【智能层】。它负责"理解与决策"，把每个步骤的【目标元素】
++ 本文件是【智能层】。它负责"理解与决策"，把每个步骤的【目标元素】
    用人类可读的语义引用出来。但它【不产生】最终 locator —— 定位永远
    由 locator_bridge（Playwright）完成，绝不让 LLM 输出 CSS/XPath。
 """
@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 from framework.tools.probe.element_map import ElementMap, TestStep, ElementRef
 from framework.tools.common.browser import launch_opts
 from framework.tools.run.login import ensure_logged_in      # P22 批 5：登录前置
-from framework.tools.common.textutil import collapse_ws  # 事故②：accessible name 口径归一化
+from framework.tools.common.textutil import collapse_ws  # 事故(2)：accessible name 口径归一化
 
 
 # 交给 ChatDeepSeek(ainvoke output_format) 的结构化步骤 schema
@@ -75,7 +75,7 @@ def _shadowed_names(items: list[dict]) -> list[tuple[str, str]]:
     为什么要专门列给 AI：同一页面不同区域的重名控件（典型：列表页筛选区的「...」按钮 与
     新建弹窗里的「...」按钮，两者 title 都是「选择业务单元」）会被唯一化成
     `选择业务单元`（筛选区）与 `选择业务单元@新建订单`（弹窗）。
-    AI 最容易犯的错就是只写前半段 ⇒ 操作到被弹窗挡住的筛选区按钮 ⇒ 点击 30s 超时
+    AI 最容易犯的错就是只写前半段 -> 操作到被弹窗挡住的筛选区按钮 -> 点击 30s 超时
     （2026-09-17 订单场景实测就是这么失败的）。这里把这组名字显式列出来。
     """
     names = {str(it.get("semantic_name") or "") for it in items}
@@ -95,7 +95,7 @@ def _field_identity(it: dict) -> str:
     用于发现「筛选区 与 弹窗里 各有一个『订单名称』」这类**近名不同区域**陷阱 ——
     它们的 semantic_name 完全不同（`订单名称_全模糊` vs `请输入订单名称`），
     所以 `_shadowed_names`（只看完全同名）永远报不出来，AI 只能靠人话比对，实测 6/6 次全错
-    （2026-09-17 订单场景）。⇒ 这里把「同字段名」抽出来做归一化比对。
+    （2026-09-17 订单场景）。-> 这里把「同字段名」抽出来做归一化比对。
     """
     for raw in (it.get("label"), it.get("name"), it.get("placeholder")):
         t = str(raw or "").strip()
@@ -129,9 +129,9 @@ def _same_field_pairs(items: list[dict]) -> list[tuple[str, str, str, str]]:
         names = {str(x.get("semantic_name") or "") for x in its}
         regions = {str(x.get("container_heading") or "").strip() for x in its}
         if len(names) < 2 or len(regions) < 2:
-            continue                                        # 只有一个名字 / 同一个区域 ⇒ 不是陷阱
+            continue                                        # 只有一个名字 / 同一个区域 -> 不是陷阱
         # 完全同名的区域变体（`选择业务单元` 与 `选择业务单元@新建订单`）已经由 _shadowed_names
-        # 单独列过一遍 ⇒ 这里跳过，避免同一件事在提示词里说两遍（重复告警会稀释注意力）。
+        # 单独列过一遍 -> 这里跳过，避免同一件事在提示词里说两遍（重复告警会稀释注意力）。
         if any(n.split("@")[0] in names for n in names if "@" in n):
             continue
         where = defaultdict(list)
@@ -149,17 +149,17 @@ def _same_field_pairs(items: list[dict]) -> list[tuple[str, str, str, str]]:
 def _warn_region_variants(sn: str, it, items: list[dict]) -> None:
     """名字的后缀用错时**明确提醒**（两个方向都查，机器可判；不硬拦 —— 宁漏不误伤）。
 
-    方向①（实测 2026-09-17）：AI 写了不带 @ 的名字，而清单里有带后缀的版本
-      ⇒ `选择业务单元` 会被操作到列表页筛选区那个（弹窗打开时点不到）。
-    方向②（实测 2026-09-17）：AI **自己给名字套了后缀**，清单里其实没有这个形态
-      ⇒ `选择销售员@新建订单`（清单里就叫 `选择销售员`）—— 它还会把这个坏习惯传染给所有按钮。
+    方向(1)（实测 2026-09-17）：AI 写了不带 @ 的名字，而清单里有带后缀的版本
+      -> `选择业务单元` 会被操作到列表页筛选区那个（弹窗打开时点不到）。
+    方向(2)（实测 2026-09-17）：AI **自己给名字套了后缀**，清单里其实没有这个形态
+      -> `选择销售员@新建订单`（清单里就叫 `选择销售员`）—— 它还会把这个坏习惯传染给所有按钮。
     """
     if not sn:
         return
     if it is None and "@" in sn:
         base = sn.split("@")[0]
         if any(str(x.get("semantic_name") or "") == base for x in items):
-            print(f"      [explore] ⚠️ 「{sn}」在清单里不存在，但「{base}」存在 ——"
+            print(f"      [explore] [!] 「{sn}」在清单里不存在，但「{base}」存在 ——"
                   f"**不要自己给名字拼后缀**：清单里没有的写法一律不合法，请整段复制清单里的名字")
             return
     if "@" in sn or it is None:
@@ -167,7 +167,7 @@ def _warn_region_variants(sn: str, it, items: list[dict]) -> None:
     alts = [x.get("semantic_name") for x in items
             if str(x.get("semantic_name") or "").startswith(sn + "@")]
     if alts:
-        print(f"      [explore] ⚠️ 「{sn}」在清单里还有带区域后缀的版本 {alts} ——"
+        print(f"      [explore] [!] 「{sn}」在清单里还有带区域后缀的版本 {alts} ——"
               f"若你要操作的是弹窗/弹层里的那个（场景里说“在弹窗里填/选”），"
               f"必须写带 @ 后缀的名字；只写前半段会操作到别的区域的同名控件（多半被弹窗挡住而失败）")
 
@@ -176,11 +176,11 @@ def _match_item(sn: str, items: list[dict]) -> tuple[dict | None, str]:
     """把 AI 给的 semantic_name 对到清单里的控件。返回 (item | None, 说明)。
 
     四级（越往后越保守；命中必须**唯一**，宁可判未命中也不猜）：
-      ① 精确匹配 → ② 规范化后唯一包含（AI 写了人话名，如"合同名称" vs 清单"请输入合同名称"）；
-      ③ **按元素自身语义兜底**（label / placeholder / help_text / container_heading / nearby_text /
+      (1) 精确匹配 → (2) 规范化后唯一包含（AI 写了人话名，如"合同名称" vs 清单"请输入合同名称"）；
+      (3) **按元素自身语义兜底**（label / placeholder / help_text / container_heading / nearby_text /
          text / name）—— 修的是这一类实测失败：下拉的语义名由选项拼出来（`请选择_标准销售订单_…`），
-         AI 只能写字段人话名「订单类型」⇒ ②对不上、旧实现直接判未映射（2026-09-17 订单场景实测）；
-      ④ 仍对不上就返回 None（由调用方**明确告警** + 打印清单可用名，不再静默丢弃）。
+         AI 只能写字段人话名「订单类型」-> (2)对不上、旧实现直接判未映射（2026-09-17 订单场景实测）；
+      (4) 仍对不上就返回 None（由调用方**明确告警** + 打印清单可用名，不再静默丢弃）。
     """
     if not sn:
         return None, "空"
@@ -189,14 +189,14 @@ def _match_item(sn: str, items: list[dict]) -> tuple[dict | None, str]:
             return x, "精确"
     key = _norm_name(sn)
     if key:
-        # ②0 规范化后**完全相等**：AI 与探针只是书写习惯不同（HT-1001 vs HT_1001、空格/连字符差异）。
+        # (2)0 规范化后**完全相等**：AI 与探针只是书写习惯不同（HT-1001 vs HT_1001、空格/连字符差异）。
         #     必须先判这一条 —— 否则会被下面的「包含」规则搅成歧义（2026-09-17 实测：
         #     AI 写 选择@HT-1001，清单里是 选择@HT_1001，而分页按钮就叫 `1`，`1` 是
-        #     任何含「1」的名字的子串 ⇒ 判歧义 ⇒ 该步没绑定元素）。
+        #     任何含「1」的名字的子串 -> 判歧义 -> 该步没绑定元素）。
         eq = [x for x in items if _norm_name(x.get("semantic_name")) == key]
         if len(eq) == 1:
             return eq[0], f"规范化对齐({sn} → {eq[0].get('semantic_name')})"
-        # ② 唯一包含（双向）。⚠️ 两条安全约束（2026-09-17 实测）：
+        # (2) 唯一包含（双向）。[!] 两条安全约束（2026-09-17 实测）：
         #    a) 反向包含（清单名是 AI 名字的子串）必须**够长**：分页按钮叫 1 / 2 / 3，
         #       短名字当子串会把任何长名字污染成歧义；而过短的“片段匹配”还会**静默匹配到错的控件**
         #       （实测：AI 写 选择客户@新建订单，被匹配成 新建订单 —— 点下去就是点错按钮）。
@@ -215,7 +215,7 @@ def _match_item(sn: str, items: list[dict]) -> tuple[dict | None, str]:
             return hits[0], f"模糊对齐({sn} → {hits[0].get('semantic_name')})"
         if len(hits) > 1:
             return None, "歧义"
-    # ③ 语义兜底：拿元素自身的 label/placeholder/上下文去认领这个名字（必须唯一命中）
+    # (3) 语义兜底：拿元素自身的 label/placeholder/上下文去认领这个名字（必须唯一命中）
     ctx_hits: list[dict] = []
     for x in items:
         blob = " ".join(str(x.get(k) or "") for k in
@@ -241,7 +241,7 @@ def _plan_to_steps(plan, items: list[dict]) -> list[TestStep]:
         sn = (s.semantic_name or "").strip()
         it, how = _match_item(sn, items)
         if it is not None and (how.startswith("模糊") or how.startswith("语义兜底")):
-            print(f"      [explore] ⚠️ 第 {s.order or i + 1} 步元素名自动对齐：{how}")
+            print(f"      [explore] [!] 第 {s.order or i + 1} 步元素名自动对齐：{how}")
         _warn_region_variants(sn, it, items)
         if sn and it is None:
             unmatched.append(f"第 {s.order or i + 1} 步 {s.action} 的 semantic_name={sn!r}")
@@ -262,7 +262,7 @@ def _plan_to_steps(plan, items: list[dict]) -> list[TestStep]:
         ))
 
     if unmatched:
-        print(f"      [explore] ⚠️ 有 {len(unmatched)} 步的元素名不在探测清单里（这些步骤无法定位）：")
+        print(f"      [explore] [!] 有 {len(unmatched)} 步的元素名不在探测清单里（这些步骤无法定位）：")
         for u in unmatched:
             print(f"          - {u}")
         print(f"      [explore]    清单可用名字：{[x.get('semantic_name') for x in items]}")
@@ -353,7 +353,7 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
     跨页流程（P3）：pages 给 ≥2 页时走 `_collect_pages_context`（一个浏览器顺序探每页 + 同名唯一化）；
     单页（pages 为空/只有 1 页）走原来的路径，**行为与改造前完全一致**。
 
-    ⚠️ 必须在事件循环**之外**调用。2026-09-11 修复的真 bug：这段探测原来写在 async 函数里，
+    [!] 必须在事件循环**之外**调用。2026-09-11 修复的真 bug：这段探测原来写在 async 函数里，
     `sync_playwright()` 在 asyncio loop 中必然抛
     "It looks like you are using Playwright Sync API inside the asyncio loop"，
     然后被一处静默 `except` 兜底成"只有外部清单、没有弹窗控件、没有 DOM 上下文" ——
@@ -371,16 +371,16 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
             b = p.chromium.launch(**launch_opts(headless=True))
             ctx = b.new_context()
             # P22 批 5（方案 H）：**登录前置** —— demo 加登录后，未登录访问业务页会被 auth.js 踢到
-            # /login.html ⇒ 探针只能探到登录页控件（"看着探成功、其实什么都没探到"）。
+            # /login.html -> 探针只能探到登录页控件（"看着探成功、其实什么都没探到"）。
             _lg = ensure_logged_in(ctx, _base_of(url), auth or {})
             if _lg.get("attempted"):
-                print("      [explore] 🔑 登录前置：" + ("ok" if _lg.get("ok") else
-                      f"⚠️ 失败 → {_lg.get('reason')}（探到的可能是登录页控件）"))
+                print("      [explore] [key] 登录前置：" + ("ok" if _lg.get("ok") else
+                      f"[!] 失败 → {_lg.get('reason')}（探到的可能是登录页控件）"))
             pg = ctx.new_page()
             pg.goto(url, wait_until="domcontentloaded")
             # P22 批 3（实测 2026-09-29）：**别用 networkidle 等这个 demo 的页面** ——
             # 页面里的 fetch（auth.js 的 /api/me）在 Chromium 侧会挂着不 finished
-            # ⇒ networkidle 永不达成 ⇒ 30s 超时抛错（login.html 实测必超时；原实现还没有 try/except）。
+            # -> networkidle 永不达成 -> 30s 超时抛错（login.html 实测必超时；原实现还没有 try/except）。
             # 口径：优先等页面自己的就绪契约（与 _goto / 生成物同源），拿不到再给个有界缓冲。
             try:
                 pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
@@ -396,24 +396,24 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
             b.close()
         return page_items, dom_ctx, "", [], row_fields
     except Exception as e:
-        print(f"      [explore] ⚠️ 页面探测失败（{type(e).__name__}: {str(e)[:160]}）"
+        print(f"      [explore] [!] 页面探测失败（{type(e).__name__}: {str(e)[:160]}）"
               f"→ 退化为外部传入清单（{len(items)} 项）：弹窗内控件与 DOM 上下文将缺失")
         return items, [], f"{type(e).__name__}: {str(e)[:160]}", [], []
 
 
 def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: int = 5000) -> list[str]:
-    """探测前执行该页声明的**前置动作**（P22 批 5 缺口 ④⑤）。
+    """探测前执行该页声明的**前置动作**（P22 批 5 缺口 (4)(5)）。
 
     为什么需要：有些控件只在"做了某个动作之后"才存在 ——
       · 合同列表页的「新建订单」弹层：不先选中合同，点它只弹「请选择某个合同」，弹层压根不开；
       · 订单详情页的行控件：要先点「编辑」进编辑态、再点「新增行」才出现。
-    探针默认"打开页面就看一遍"永远看不到它们 ⇒ AI 拿不到语义名 ⇒ 用例引用不了
-    （批 5 实测：行必填没填 ⇒ 保存无效 ⇒ 提交被拦，状态恒「已新建」）。
+    探针默认"打开页面就看一遍"永远看不到它们 -> AI 拿不到语义名 -> 用例引用不了
+    （批 5 实测：行必填没填 -> 保存无效 -> 提交被拦，状态恒「已新建」）。
 
     口径（宁可少一份清单，也不乱点）：
       · 每项只按**控件的 accessibility name** 找（button 优先，其次文本）；
         **不接受 CSS selector** —— 与"不给 AI 猜 CSS"同一条铁律；
-      · 找不到/点不动 ⇒ **如实告警并继续**（不猜别的控件、不换做法）；
+      · 找不到/点不动 -> **如实告警并继续**（不猜别的控件、不换做法）；
       · 有界：最多 5 步、每步有界超时。
     返回：实际点成功的名字（给日志与判据用）。
     """
@@ -422,7 +422,7 @@ def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: 
     if not steps:
         return done
     if len(steps) > 5:
-        print(f"      [explore] ⚠️ [{page_name}] pre 声明了 {len(steps)} 步（上限 5）→ 只执行前 5 步")
+        print(f"      [explore] [!] [{page_name}] pre 声明了 {len(steps)} 步（上限 5）→ 只执行前 5 步")
         steps = steps[:5]
     for nm in steps:
         try:
@@ -430,24 +430,24 @@ def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: 
             if not loc.count():
                 loc = pg.get_by_text(nm)
             if not loc.count():
-                print(f"      [explore] ⚠️ [{page_name}] 前置动作「{nm}」没找到 → 跳过"
+                print(f"      [explore] [!] [{page_name}] 前置动作「{nm}」没找到 → 跳过"
                       f"（不猜别的控件去点）")
                 continue
             loc.first.click(timeout=per_step_ms)
             pg.wait_for_timeout(350)
             done.append(nm)
         except Exception as e:                                        # noqa: BLE001
-            print(f"      [explore] ⚠️ [{page_name}] 前置动作「{nm}」执行失败"
+            print(f"      [explore] [!] [{page_name}] 前置动作「{nm}」执行失败"
                   f"（{type(e).__name__}: {str(e)[:80]}）→ 继续后面的步骤")
     if done:
-        print(f"      [explore] ⏩ [{page_name}] 前置动作已执行：{done}")
+        print(f"      [explore] [fast] [{page_name}] 前置动作已执行：{done}")
     return done
 
 
 def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | None = None):
     """【同步】跨页探测（P3）：一个浏览器 + 一个 context，按声明顺序 goto 每页。
 
-    - 环境约束：本机 1.87G 无 swap ⇒ 绝不为多页多开浏览器/并发探测（顺序 do 才是安全的）。
+    - 环境约束：本机 1.87G 无 swap -> 绝不为多页多开浏览器/并发探测（顺序 do 才是安全的）。
     - 每页都做：基础控件探测（打 page 标记）→ 弹窗补探测 → DOM 上下文（带页名前缀）。
     - 合并时做**同名唯一化**（`probe.uniquify_across_pages`）：两页同名的元素改成 `原名@页名`，
       并返回冲突清单供 CLI 明示 —— 因为 generate 的 semantic_name→locator 是全局一张表，
@@ -466,8 +466,8 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
             # P22 批 5：登录前置（跨页脚本同样需要，否则每页都落到登录页）
             _lg = ensure_logged_in(ctx, _base_of((pages or [{}])[0].get("url", "")), auth or {})
             if _lg.get("attempted"):
-                print("      [explore] 🔑 登录前置：" + ("ok" if _lg.get("ok") else
-                      f"⚠️ 失败 → {_lg.get('reason')}"))
+                print("      [explore] [key] 登录前置：" + ("ok" if _lg.get("ok") else
+                      f"[!] 失败 → {_lg.get('reason')}"))
             pg = ctx.new_page()
             for spec in pages:
                 # P22 批 5：探测期优先用场景声明的探测地址（运行期才有值的页面，探测期对象不存在）
@@ -500,12 +500,12 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
             b.close()
         merged, collisions = uniquify_across_pages(per_page)
         for c in collisions:
-            print(f"      [explore] ⚠️ 跨页同名元素 {c['semantic_name']!r} 出现在 "
+            print(f"      [explore] [!] 跨页同名元素 {c['semantic_name']!r} 出现在 "
                   f"{'、'.join(c['pages'])} → 已唯一化为 "
                   f"{'、'.join(c['semantic_name'] + '@' + p for p in c['pages'])}")
         return merged, dom_ctx, "", collisions, row_fields
     except Exception as e:
-        print(f"      [explore] ⚠️ 跨页探测失败（{type(e).__name__}: {str(e)[:160]}）"
+        print(f"      [explore] [!] 跨页探测失败（{type(e).__name__}: {str(e)[:160]}）"
               f"→ 退化为外部传入清单（{len(items)} 项）")
         return items, [], f"{type(e).__name__}: {str(e)[:160]}", [], []
 
@@ -532,10 +532,10 @@ def ai_explore(
     """
     import asyncio
 
-    # ① 同步阶段：Playwright 探测（基础控件 + 弹窗内控件 + 富 DOM 上下文）
+    # (1) 同步阶段：Playwright 探测（基础控件 + 弹窗内控件 + 富 DOM 上下文）
     # 必须在事件循环【之外】做 —— Playwright Sync API 不能在 asyncio loop 里跑。
     # P22 批 5：登录前置声明由**调用方**传进来（`scenario` 参数是字符串，拿不到对象上的 auth_spec
-    # —— 实测踩过：这里 getattr 永远是 None ⇒ 跨页探测全落登录页 ⇒ AI 31 步元素全空）。
+    # —— 实测踩过：这里 getattr 永远是 None -> 跨页探测全落登录页 -> AI 31 步元素全空）。
     ctx = _collect_page_context(items, url, pages=pages, auth=auth or {})
     page_items, dom_ctx, err = ctx[0], ctx[1], ctx[2]
     collisions = ctx[3] if len(ctx) > 3 else []
@@ -545,7 +545,7 @@ def ai_explore(
         raise AiExploreError("页面探测失败且没有备用控件清单 → 拒绝在信息不全时硬猜（会选错控件）。"
                              f"原因：{err}")
 
-    # ② 异步阶段：LLM 语义识别（ChatDeepSeek）
+    # (2) 异步阶段：LLM 语义识别（ChatDeepSeek）
     return asyncio.run(  # type: ignore
         _ai_explore_async(scenario, page_items, url, dom_ctx=dom_ctx,
                           allow_mock_fallback=allow_mock_fallback, page_bg=page_bg, guard=guard,
@@ -582,13 +582,13 @@ def _llm_failure_hint(detail: str) -> str:
     if re.search(r"Connection error|ConnectError|ConnectTimeout|timed out|Timeout|"
                  r"Name or service not known|getaddrinfo|nodename nor servname|"
                  r"Temporary failure in name resolution|SSL|Proxy|Connection refused", d, re.I):
-        return ("⚠️ 看起来是**网络 / 端点不可达**（不是解析问题）⇒ 检查 DEEPSEEK_BASE_URL、"
+        return ("[!] 看起来是**网络 / 端点不可达**（不是解析问题）-> 检查 DEEPSEEK_BASE_URL、"
                 "代理、出网权限；\n   完全离线的机器改用录像：有外网的机器 --llm-record，本机 --llm-cassette。\n")
     if re.search(r"401|403|invalid_api_key|Authentication|Unauthorized|Incorrect API key|"
                  r"insufficient|balance", d, re.I):
-        return "⚠️ 看起来是 **key / 鉴权 / 额度**问题 ⇒ 检查 DEEPSEEK_API_KEY 是否有效、余额是否够。\n"
+        return "[!] 看起来是 **key / 鉴权 / 额度**问题 -> 检查 DEEPSEEK_API_KEY 是否有效、余额是否够。\n"
     if re.search(r"429|rate limit|Too Many Requests|overloaded", d, re.I):
-        return "⚠️ 看起来是**上游限流** ⇒ 稍后重试，或调大 HYBRID_LLM_ATTEMPTS（重试已带退避）。\n"
+        return "[!] 看起来是**上游限流** -> 稍后重试，或调大 HYBRID_LLM_ATTEMPTS（重试已带退避）。\n"
     return ""
 
 
@@ -637,9 +637,9 @@ def _replay_from_cassette(cassette, prompt: str, items: list[dict], first_url: s
     —— 顺序与 live 的「先结构化、失败再文本」一致。
 
     命中方式两种，都在日志里说清楚（绝不含糊）：
-      · strict：prompt 逐字相同 ⇒ 最高保真；
+      · strict：prompt 逐字相同 -> 最高保真；
       · struct：只有页面/控件**结构**相同、业务数据的值不同（另一台机器、或跑过测试的机器
-        就是这种，实测必然发生）⇒ **大声告警**：步骤是录制当时针对那批数据做的判断，请核对。
+        就是这种，实测必然发生）-> **大声告警**：步骤是录制当时针对那批数据做的判断，请核对。
     """
     rec = cassette.lookup(prompt, _PLANNER_SYSTEM,
                           struct_key_value=struct_key_value, strict_only=strict_only)
@@ -651,10 +651,10 @@ def _replay_from_cassette(cassette, prompt: str, items: list[dict], first_url: s
             + render_miss_help(prompt, _PLANNER_SYSTEM, cassette.root)
         )
     if rec.get("_match") == "struct":
-        print(f"      [explore] [LLM] ⚠️ 按**结构键**命中录像 {rec.get('key')}"
+        print(f"      [explore] [LLM] [!] 按**结构键**命中录像 {rec.get('key')}"
               f"（录制于 {rec.get('created_at')}）：页面/控件**结构**相同，但**页面数据的值**与录制时不同"
               f"（另一台机器、或跑过测试的机器就是这种）。\n"
-              f"                       ⇒ 步骤是录制当时针对那批数据做的判断，**请核对后再用**；"
+              f"                       -> 步骤是录制当时针对那批数据做的判断，**请核对后再用**；"
               f"只认逐字一致请加 --llm-cassette-strict。")
     else:
         print(f"      [explore] [LLM] 回放录像 {rec.get('key')}（录制于 {rec.get('created_at')}，"
@@ -678,14 +678,14 @@ def _replay_from_cassette(cassette, prompt: str, items: list[dict], first_url: s
     detail = "；".join(dict.fromkeys(errs)) or "没有任何一条回答能解析出步骤"
     raise AiExploreError(
         f"录像命中但解析不出步骤（{detail}）—— 录的那份与当前框架 / 控件清单可能不兼容。\n"
-        "  ⇒ 核对两台机器的框架版本与 demo 页面是否一致，或重录一份。"
+        "  -> 核对两台机器的框架版本与 demo 页面是否一致，或重录一份。"
     )
 
 
 async def _aclose_llm(obj) -> None:
     """兜底：若 LLM 对象自己提供了 `aclose()`/`close()`，就在**本场景的 loop 还活着时**关掉它。
 
-    ⚠️ 别把 `getattr(obj, "_client")` 当客户端用：browser-use 的 `ChatDeepSeek._client`
+    [!] 别把 `getattr(obj, "_client")` 当客户端用：browser-use 的 `ChatDeepSeek._client`
     是**方法**（每次调用 new 一个 `AsyncOpenAI`），拿到的只是绑定方法，关它毫无意义。
     真正避免「连接池泄漏 + 关 loop 后 GC 报 Event loop is closed」的做法是：
     由我们持有 httpx 连接池（见 `_ai_explore_async` 里注入 `client_params={'http_client': …}`，
@@ -721,11 +721,11 @@ async def _ai_explore_async(
                                    pages=pages, collisions=collisions, row_fields=row_fields)
     first_url = (pages[0]["url"] if pages else url)
 
-    # ① 离线回放（--llm-cassette）：命中即用 —— **刻意放在 llm_from_env() 之前**，
+    # (1) 离线回放（--llm-cassette）：命中即用 —— **刻意放在 llm_from_env() 之前**，
     #    因为离线机器常常连 .env 都没配（回放不需要 key，也不联网）。
     if llm_cassette is not None and llm_cassette.is_replay:
         from framework.tools.explore.llm_cassette import struct_key, struct_key_legacy
-        # ⚠️ **两把结构键都试**（2026-09-22）：新算法（值归一化 ⇒ 换数据/参数化不再失效）
+        # [!] **两把结构键都试**（2026-09-22）：新算法（值归一化 -> 换数据/参数化不再失效）
         #    + 旧算法（兼容此前录的录像 —— 它们的 key_struct 是按旧算法算的，
         #    不做这层兼容，升级就会让所有旧录像集体失效 = 逼用户把所有场景重录一遍）
         return _replay_from_cassette(
@@ -739,13 +739,13 @@ async def _ai_explore_async(
 
     # ★ 连接池由**我们自己**持有并关闭（2026-09-13 批量 --scenario-dir 实测的坑）：
     #   browser-use 的 `ChatDeepSeek._client()` 每次 ainvoke 都 new 一个 AsyncOpenAI，
-    #   既不复用也不关闭 ⇒ ① 每次调用白扔一个 httpx 连接池；
-    #   ② 那个连接池绑在**本场景的 loop** 上，等它被 GC 时（往往已经是下一个场景的 loop 在跑），
+    #   既不复用也不关闭 -> (1) 每次调用白扔一个 httpx 连接池；
+    #   (2) 那个连接池绑在**本场景的 loop** 上，等它被 GC 时（往往已经是下一个场景的 loop 在跑），
     #      openai 的 `AsyncHttpxClientWrapper.__del__` 会 `create_task(self.aclose())`
-    #      ⇒ 在**已关闭的旧 loop** 上关 transport ⇒ stderr 一坨
+    #      -> 在**已关闭的旧 loop** 上关 transport -> stderr 一坨
     #        `Task exception was never retrieved … RuntimeError('Event loop is closed')`。
     #   正解：注入一个我们自己的 httpx 连接池，并在本场景 loop 还活着时显式关闭
-    #   （`__del__` 里有 `if self.is_closed: return` ⇒ 关过就彻底安静）。
+    #   （`__del__` 里有 `if self.is_closed: return` -> 关过就彻底安静）。
     http_client = None
     try:
         import httpx
@@ -756,12 +756,12 @@ async def _ai_explore_async(
             http_client = None
     except Exception as e:
         http_client = None
-        print(f"      [explore] ℹ️ 共享 httpx 连接池未启用（{type(e).__name__}: {e}）"
+        print(f"      [explore] [info] 共享 httpx 连接池未启用（{type(e).__name__}: {e}）"
               f"——识别不受影响，批量模式下可能多几条客户端清理告警")
 
     # 2026-09-11 实测：DeepSeek 的 function calling 有【间歇性】JSON 解析抖动
     # （同一 prompt 第 1 次成功、第 2 次报 ModelProviderError: Extra data: line 1 column 550），
-    # 属上游不稳 ⇒ 带退避重试（HYBRID_LLM_ATTEMPTS 可调），不能一次发抖就判死刑。
+    # 属上游不稳 -> 带退避重试（HYBRID_LLM_ATTEMPTS 可调），不能一次发抖就判死刑。
     n_attempts = max(1, int(os.environ.get("HYBRID_LLM_ATTEMPTS", "3")))
     errs: list[str] = []          # 累积每次失败的原因（**不再后写覆盖先写** —— 见函数尾部注释）
     raw_plan = raw_text = None    # 录制用：本次真正拿到的原始回答
@@ -828,7 +828,7 @@ async def _ai_explore_async(
 
     # 重试用尽 —— 绝不静默用 mock 冒充 AI 产物（2026-09-11 修复的假 AI 缺陷）
     if not allow_mock_fallback:
-        # ⚠️ 2026-09-18 修：以前是单个 `last_err` 字符串、**后写覆盖先写** ⇒
+        # [!] 2026-09-18 修：以前是单个 `last_err` 字符串、**后写覆盖先写** ->
         #   连接失败（真因）会被随后那次「文本解析没抽出步骤（返回 0 字符）」冲掉，
         #   于是「没网」被报成「解析器坏了」（实测：端点指到黑洞端口时提示语就是这个误导）。
         #   现在把每一次失败都攒下来、去重保序，并按特征给出「最可能是什么问题 + 下一步」。
@@ -840,7 +840,7 @@ async def _ai_explore_async(
             "若这台机器连不上外网：可在有外网的机器上 `--llm-record` 录一份，"
             "再把目录拷过来用 `--llm-cassette` 离线回放（回放不联网、不需要 key）。"
         )
-    print("      [explore] ⚠️ LLM 不可用 → 按 --mock-fallback 显式降级为【确定性 mock】"
+    print("      [explore] [!] LLM 不可用 → 按 --mock-fallback 显式降级为【确定性 mock】"
           "（这不是 AI 产物，不会写入 cases/）")
     steps = mock_explore(scenario, page_items, url).steps
     steps = _apply_semantic_calibration(steps, page_items)
@@ -869,7 +869,7 @@ async def _get_llm_text_async(obj, prompt: str) -> str:
     """从 LLM 拿纯文本（**async 版**）——供事件循环内使用。
 
     为什么单独写一个：原来的 `_get_llm_text` 内部用 `asyncio.run(...)`，而 ai_explore 的
-    调用链本身就跑在 `asyncio.run` 里 ⇒ 在协程里再调它会 RuntimeError（被 except 吞掉），
+    调用链本身就跑在 `asyncio.run` 里 -> 在协程里再调它会 RuntimeError（被 except 吞掉），
     导致"文本兜底路径"实际是**死代码**（2026-09-11 实测发现）。这里改成 await，兜底才真的兜得住。
     """
     if hasattr(obj, "ainvoke"):
@@ -925,8 +925,8 @@ _LAYER_AVOID_HINTS = ("提交", "确定", "保存", "删除", "取消", "关闭"
 _LAYER_CLOSE_HINTS = ("取消", "关闭", "返回", "Cancel", "Close")
 # 有界：每层最多再展开几个、最多往下钻几层、最多尝试几个候选（防在陌生页面里乱点）
 # 2026-09-17：原来写死 2 —— 订单页有 6 个 picker 层（业务单元/管理单元/帐套/合同/客户/销售员），
-# 只探到前 2 个 ⇒ 后面几层的行内「选择」按钮对 AI 完全不可见（它只能猜，实测就是这么错下去的）。
-# ⇒ 默认提到 8，并可用环境变量按页面复杂度调（HYBRID_LAYER_CLICKS / HYBRID_LAYER_TRIES）。
+# 只探到前 2 个 -> 后面几层的行内「选择」按钮对 AI 完全不可见（它只能猜，实测就是这么错下去的）。
+# -> 默认提到 8，并可用环境变量按页面复杂度调（HYBRID_LAYER_CLICKS / HYBRID_LAYER_TRIES）。
 def _env_int(name: str, default: int) -> int:
     import os
     try:
@@ -936,13 +936,13 @@ def _env_int(name: str, default: int) -> int:
 
 
 _MAX_LAYER_CLICKS = _env_int("HYBRID_LAYER_CLICKS", 8)
-# 2026-09-22（口径 C）：以前写死 2 ⇒ 循环只跑一轮，而**弹窗内的层入口**要等弹窗打开后才被采集到
-# ⇒ 订单页 6 个挑选入口里总有 2 个轮不到（实测只探到 4 层）。放宽到 4 轮，配合下面的"无进展就停"。
+# 2026-09-22（口径 C）：以前写死 2 -> 循环只跑一轮，而**弹窗内的层入口**要等弹窗打开后才被采集到
+# -> 订单页 6 个挑选入口里总有 2 个轮不到（实测只探到 4 层）。放宽到 4 轮，配合下面的"无进展就停"。
 _MAX_LAYER_DEPTH = _env_int("HYBRID_LAYER_ROUNDS", 4)
 _MAX_LAYER_TRIES = _env_int("HYBRID_LAYER_TRIES", 8)
 # 2026-09-14：点开一层/一个弹窗后，**最长等多久**让新控件出现（轮询间隔）。
 # 为什么是「有界轮询」而不是固定 sleep(300)：实测（2026-09-14 00:33，机器内存吃紧、
-# 并发在跑 pytest 时）客户列表层的渲染慢于 300ms，探测拿到「没有新控件」⇒ AI 把
+# 并发在跑 pytest 时）客户列表层的渲染慢于 300ms，探测拿到「没有新控件」-> AI 把
 # 「从列表里选一行」判成无法绑定的步骤、--verify 因此 FAILED。固定 sleep 两头不讨好：
 # 健康机器上白等，拥挤机器上又不够。轮询到就立刻走，最坏只等 _LAYER_RENDER_WAIT_S。
 _LAYER_RENDER_WAIT_S = 2.5
@@ -952,14 +952,14 @@ _LAYER_POLL_MS = 200
 def _try_collect_modal_items(pg, base_items: list[dict]) -> list[dict]:
     """点开「新建类」弹窗 —— **并继续钻进弹窗里嵌的层（picker）** —— 探测其中的控件。
 
-    2026-09-14 扩展（AprilPark1012需求①：客户从下拉框改成「弹出客户列表页里选一行」）：
+    2026-09-14 扩展（AprilPark1012需求(1)：客户从下拉框改成「弹出客户列表页里选一行」）：
     原来只探**一层**弹窗 —— 嵌在弹窗之上的 picker 层（客户列表）里的控件对 AI
     **完全不可见**：AI 既不知道列表长什么样，也不知道该点哪一行的「选择」，
     于是「从列表里选一个」这种最常见的企业 UI 直接没法测。现在：
-      ① 点开弹窗后，从弹窗控件里挑「选择/打开/查询」类按钮继续点开下一层；
-      ② 每点开一层就重新探测，把**新出现**的可见控件并入结果（不再按 test_id 白名单卡死，
+      (1) 点开弹窗后，从弹窗控件里挑「选择/打开/查询」类按钮继续点开下一层；
+      (2) 每点开一层就重新探测，把**新出现**的可见控件并入结果（不再按 test_id 白名单卡死，
          否则 pick-c1 这种命名会被过滤掉）；
-      ③ 钻完把这一层关掉、最后把弹窗也关掉，页面恢复干净状态。
+      (3) 钻完把这一层关掉、最后把弹窗也关掉，页面恢复干净状态。
     有界（≤2 层、每层 ≤2 次点击）+ 排除提交/删除/取消类关键词 —— 绝不在陌生页面上乱点。
     失败只影响"少一份控件清单"，不打断探测，但**不静默**：打印原因。
     """
@@ -973,7 +973,7 @@ def _try_collect_modal_items(pg, base_items: list[dict]) -> list[dict]:
 
         去重口径（2026-09-14 修）：**先按元素身份（test_id / role+name+placeholder）去重，再看语义名**。
         只按语义名去重会漏掉这种真问题：同一个按钮在不同探测轮次里**名字会变**
-        （只开弹窗时叫「取消」，再开一层后同一个按钮变成「取消@新建合同」）⇒ 同一个元素被收两遍，
+        （只开弹窗时叫「取消」，再开一层后同一个按钮变成「取消@新建合同」）-> 同一个元素被收两遍，
         AI 看到一个不存在的"重复按钮"，生成的 locator 也会指向同一个元素。
         """
         fresh = []
@@ -993,32 +993,32 @@ def _try_collect_modal_items(pg, base_items: list[dict]) -> list[dict]:
                        and any(h in (it.get("name") or "") for h in _MODAL_BUTTON_HINTS)), None)
         if opener is None:
             return []
-        btn = pg.get_by_role("button", name=collapse_ws(opener.get("name")))  # 事故②
+        btn = pg.get_by_role("button", name=collapse_ws(opener.get("name")))  # 事故(2)
         if btn.count() != 1:
             return []
-        # P22 批 3：置灰按钮（超管点「+ 新建订单」）会让常规点击 30s 超时 ⇒ 整段探测中断
+        # P22 批 3：置灰按钮（超管点「+ 新建订单」）会让常规点击 30s 超时 -> 整段探测中断
         if not _probe_click(btn.first, timeout=8000):
-            print(f"      [explore] ⚠️ 点不开「{_one_line(opener.get('name') or '')}」"
+            print(f"      [explore] [!] 点不开「{_one_line(opener.get('name') or '')}」"
                   f"（常规与置灰降级都失败）→ 跳过弹窗补充（不影响其余探测）")
             return []
-        _dismiss_tips(pg)          # 权限拦截会弹提示浮层 ⇒ 由触发方收掉，别挡后面的探测
+        _dismiss_tips(pg)          # 权限拦截会弹提示浮层 -> 由触发方收掉，别挡后面的探测
 
-        # ---- 第 1 层：弹窗本体（沿用原有 test_id 特征过滤 ⇒ 老页面行为不变）----
+        # ---- 第 1 层：弹窗本体（沿用原有 test_id 特征过滤 -> 老页面行为不变）----
         # 2026-09-14：固定 sleep(300) → 有界轮询（弹窗渲染可能慢于 300ms，见 _LAYER_RENDER_WAIT_S 注释）
         # ★2026-09-22（口径 C：demo 对齐生产——弹层内层不再有埋点）：
-        # 旧判据靠「内层 test_id 以 modal-* 开头」筛弹窗控件 ⇒ 内层埋点撤除后**必然采到 0 个**
+        # 旧判据靠「内层 test_id 以 modal-* 开头」筛弹窗控件 -> 内层埋点撤除后**必然采到 0 个**
         # （实测：弹窗明明开了，日志是"点开后没有任何弹窗控件出现"，下游表现为 26 个语义名映射不上）。
         # 改成与更深层**同一套口径**：打开后**新出现的可见控件**全收（不预筛 testid）。
         modal_items = _wait_fresh_items(pg, _absorb)
         if not modal_items:
-            print(f"      [explore] ℹ️ 点开「{_one_line(opener.get('name') or '')}」后"
+            print(f"      [explore] [info] 点开「{_one_line(opener.get('name') or '')}」后"
                   f"没有任何弹窗控件出现（不是弹窗？或页面响应太慢）→ 跳过弹窗补充")
             return []
 
         # ---- 第 2..N 层：弹窗里嵌的 picker 层 ----
         # 只把**按钮/链接**当"打开下一层"的候选（原生 select 名字常带「请选择」但点了不新增 DOM）。
         # ★2026-09-22（口径 C）：改成**"有新候选就继续"**——弹窗内的层入口是**弹窗打开后**才被采集到的，
-        # 旧实现按固定轮数跑（写死 2 ⇒ 只跑一轮）⇒ 订单页 6 个挑选入口总有 2 个轮不到（实测只探到 4 层）。
+        # 旧实现按固定轮数跑（写死 2 -> 只跑一轮）-> 订单页 6 个挑选入口总有 2 个轮不到（实测只探到 4 层）。
         # 每轮只尝试**没见过**的候选，且"一层都没开成"就停（配合可见性预检，不会在陌生页面里乱点）。
         rounds, tried = 0, set()
         while rounds < _MAX_LAYER_DEPTH:
@@ -1039,11 +1039,11 @@ def _try_collect_modal_items(pg, base_items: list[dict]) -> list[dict]:
                     opened += 1
             if not opened:
                 break
-        _close_layer_by_item(pg, collected)          # 收尾①：挑选层（点该行「选择」回填并关层）
-        _close_open_modal(pg)                        # 收尾②：表单弹窗没有"那一行"，得单独关（见函数注释）
+        _close_layer_by_item(pg, collected)          # 收尾(1)：挑选层（点该行「选择」回填并关层）
+        _close_open_modal(pg)                        # 收尾(2)：表单弹窗没有"那一行"，得单独关（见函数注释）
     except Exception as e:
         hint = "" if _page_alive(pg) else "（页面/渲染进程已失效：崩溃或被 OOM 杀 → 环境事故）"
-        print(f"      [explore] ⚠️ 弹窗/弹层探测中断（{type(e).__name__}: {str(e)[:120]}）"
+        print(f"      [explore] [!] 弹窗/弹层探测中断（{type(e).__name__}: {str(e)[:120]}）"
               f"—— 已收集 {len(collected)} 项，层内控件可能缺失{hint}")
     return collected
 
@@ -1052,10 +1052,10 @@ def _close_open_modal(pg) -> bool:
     """收尾兜底：把**当前还开着的弹层**关掉（只关自己开的，绝不点提交/保存类按钮）。
 
     为什么需要（2026-09-22 实测）：`_close_layer_by_item` 是给**挑选层**写的（点那一行的「选择」
-    回填并关层）；对**表单弹窗**（没有那一行）它无能为力 ⇒ 探完「新建订单」弹窗后弹窗**一直开着** ✗，
+    回填并关层）；对**表单弹窗**（没有那一行）它无能为力 -> 探完「新建订单」弹窗后弹窗**一直开着** X，
     下游脚本点工具栏按钮全被它挡住（实测 30s 超时、`intercepts pointer events`）。
     **框架开了的层必须由框架关掉**，否则"探测"这个只读动作会留下副作用污染后面的步骤。
-    关法（确定性、无副作用）：先 Esc；不行就点弹层内文案为「取消 / 关闭 / ✕」的按钮；再不行如实返回 False。
+    关法（确定性、无副作用）：先 Esc；不行就点弹层内文案为「取消 / 关闭 / X」的按钮；再不行如实返回 False。
     """
     try:
         for _ in range(3):
@@ -1065,19 +1065,19 @@ def _close_open_modal(pg) -> bool:
             pg.wait_for_timeout(150)
             if not pg.locator(".modal.show").count():
                 return True
-            for label in ("取消", "关闭", "×", "✕"):
-                btn = pg.locator(".modal.show").get_by_role("button", name=collapse_ws(label))  # 事故②
+            for label in ("取消", "关闭", "×", "X"):
+                btn = pg.locator(".modal.show").get_by_role("button", name=collapse_ws(label))  # 事故(2)
                 if btn.count():
                     btn.first.click(timeout=3000)
                     pg.wait_for_timeout(150)
                     break
         left = pg.locator(".modal.show").count()
         if left:
-            print(f"      [explore] ⚠️ 收尾关层失败：仍有 {left} 个 .modal.show 开着"
+            print(f"      [explore] [!] 收尾关层失败：仍有 {left} 个 .modal.show 开着"
                   f"（后面的步骤可能被遮挡，已如实上报，不静默）")
         return left == 0
     except Exception as e:
-        print(f"      [explore] ⚠️ 收尾关层异常（{type(e).__name__}: {str(e)[:80]}）")
+        print(f"      [explore] [!] 收尾关层异常（{type(e).__name__}: {str(e)[:80]}）")
         return False
 
 
@@ -1085,10 +1085,10 @@ def _item_identity(it: dict) -> str:
     """元素身份（跨探测轮次稳定）：test_id 优先 → 锚点+相对路径 → 语义签名。
 
     ★2026-09-22（P16 批 5 实测根因，第 2 条）：行内埋点按口径撤除后，**不同层、不同行的同类子元素
-    签名完全一样**（订单页 6 个挑选层的按钮都是 `sig:button|选择||`）⇒ 旧口径把它们当成"同一个元素"，
-    第 2 层起的控件全被去重掉（`fresh` 为空）⇒ 层关不掉、后面的层被挡住 ⇒ 生成时表现为
+    签名完全一样**（订单页 6 个挑选层的按钮都是 `sig:button|选择||`）-> 旧口径把它们当成"同一个元素"，
+    第 2 层起的控件全被去重掉（`fresh` 为空）-> 层关不掉、后面的层被挡住 -> 生成时表现为
     「8 个语义名映射不上」。锚点 + 相对路径**正是它们的结构身份**（层 用 anchor 区分、行 用 row.text
-    区分）⇒ 纳入身份即可。同一元素重复探测时这两个字段是稳定的，不会造成重复采集。
+    区分）-> 纳入身份即可。同一元素重复探测时这两个字段是稳定的，不会造成重复采集。
     """
     tid = (it.get("test_id") or "").strip()
     if tid:
@@ -1100,9 +1100,9 @@ def _item_identity(it: dict) -> str:
         p = "|".join(f"{s.get('axis')}.{s.get('by')}={s.get('value')}"
                      for s in path if isinstance(s, dict))
         # ★★2026-09-22（口径 C 深水区实测）：**图标按钮（文字都是 "..."）的锚点与路径完全相同**
-        # ⇒ 只按锚点+路径算身份，3 个「…」（业务单元/管理单元/帐套）会被当成**同一个元素**合并掉
-        # ⇒ 订单页 6 个挑选入口永远只探得到 4 个（管理单元/帐套的层根本没被点开）。
-        # title(help_text) / 邻近文本是区分它们的唯一稳定信号 ⇒ 纳入身份。
+        # -> 只按锚点+路径算身份，3 个「…」（业务单元/管理单元/帐套）会被当成**同一个元素**合并掉
+        # -> 订单页 6 个挑选入口永远只探得到 4 个（管理单元/帐套的层根本没被点开）。
+        # title(help_text) / 邻近文本是区分它们的唯一稳定信号 -> 纳入身份。
         extra = "|".join(str(it.get(k) or "") for k in ("help_text", "nearby_text", "placeholder"))
         return f"ap:{a}#{p}#{extra}"
     return "sig:" + "|".join(str(it.get(k) or "") for k in ("role", "name", "placeholder", "text"))
@@ -1149,7 +1149,7 @@ def _dismiss_tips(pg) -> None:
     """关掉**探测期自己触发**的顶部提示浮层（`#demo-tip`）—— P22 批 3。
 
     为什么需要：权限不足的按钮点了会弹 `DEMO_TIPS` 浮层（顶部居中 · `position: fixed`）
-    ⇒ 它会遮挡页面顶部元素，让后续探测/点击撞上「intercepts pointer events」
+    -> 它会遮挡页面顶部元素，让后续探测/点击撞上「intercepts pointer events」
     （与 2026-09-22「弹窗没关挡住工具栏」同一类坑）。**框架触发的副作用必须由框架收掉。**
     """
     try:
@@ -1165,11 +1165,11 @@ def _probe_click(loc, *, timeout: int = 5000) -> bool:
     """探测期点击：**先常规，只在"确定被禁用"时才 force**（P22 批 3 · 缺口 1c）。
 
     起因（实测真值 2026-09-29 22:2x）：超管身份下「+ 新建订单」是 `aria-disabled="true"`
-    （`auth.js:148-151` 故意不设 disabled）⇒ Playwright 常规点击重试到 **30s 超时**
-    ⇒ `_try_collect_modal_items` 整体中断 ⇒ **弹层控件整份丢失**（"已收集 0 项"）
+    （`auth.js:148-151` 故意不设 disabled）-> Playwright 常规点击重试到 **30s 超时**
+    -> `_try_collect_modal_items` 整体中断 -> **弹层控件整份丢失**（"已收集 0 项"）
     —— 正是"看着正常、其实没在干活"那一类静默失效。
 
-    为什么**不一刀切 force**：force 会跳过可操作性检查 ⇒ 把"点不动"（被遮挡 / 未稳定）
+    为什么**不一刀切 force**：force 会跳过可操作性检查 -> 把"点不动"（被遮挡 / 未稳定）
     的失败变成"点了但没生效"的**静默无效**，那是更坏的假绿。只对**声明式置灰**
     （`aria-disabled=true` 或 `.perm-off`）用 force —— 那时点击的真实后果只是弹个提示、不改数据。
     """
@@ -1192,9 +1192,9 @@ def is_layer_opener(it: dict) -> bool:
     """这个控件点了会不会弹出「下一层」（picker 层）？—— 判定要覆盖无名按钮。
 
     2026-09-17 实测踩到的坑：订单页的业务单元/管理单元/帐套三个按钮**文字就是 `...`**
-    （名字无信息量、只有 title="选择业务单元"），旧判据只看 `name` ⇒ 它们永远进不了候选，
+    （名字无信息量、只有 title="选择业务单元"），旧判据只看 `name` -> 它们永远进不了候选，
     对应弹层里的「选择」按钮对 AI 完全不可见（AI 只能猜，实测就是这么错下去的）。
-    ⇒ 判据扩到 name / help_text(title) / nearby_text / container_heading / test_id，
+    -> 判据扩到 name / help_text(title) / nearby_text / container_heading / test_id，
     并保留 `btn-pick-*` 这类命名形态兜底；仍然**排除**提交/删除/取消类（点了会毁掉探测上下文）。
     """
     if it.get("role") not in ("button", "link"):
@@ -1222,44 +1222,44 @@ def _open_layer_and_collect(pg, cand: dict, absorb, collected: list | None = Non
 
     打开后立刻用该层内的「取消/关闭」按钮（按 test_id 精确定位 —— 页面上同名「取消」往往有多个）
     把这一层关掉，避免层叠影响后续点击。
-    ⚠️ 失败必须**打印原因**：以前这里静默 return False，导致「层没探到」和「层里啥也没有」
+    [!] 失败必须**打印原因**：以前这里静默 return False，导致「层没探到」和「层里啥也没有」
     在日志上长得一模一样（2026-09-14 实测踩到：客户列表层没被收集，日志里一点线索都没有）。
     """
     from framework.tools.probe.probe import probe_page
     role, name, test_id = cand.get("role"), cand.get("name") or "", cand.get("test_id") or ""
     shown = _one_line(name)
     try:
-        loc = pg.get_by_test_id(test_id) if test_id else pg.get_by_role(role, name=collapse_ws(name))  # 事故②
+        loc = pg.get_by_test_id(test_id) if test_id else pg.get_by_role(role, name=collapse_ws(name))  # 事故(2)
         n = loc.count()
         # ★2026-09-22（口径 C 实测）：图标按钮（文字就是 "..."，靠 title 表明用途）在页面上往往**同名多个**
-        # ⇒ 按 name 取必然 count>1 被跳过（订单页 6 个挑选入口里 3 个正是这种，实测只探到 3 层）。
-        # title 是这类按钮唯一的稳定标识 ⇒ 同名时用 title 消歧（生产里图标按钮就是这么写的）。
+        # -> 按 name 取必然 count>1 被跳过（订单页 6 个挑选入口里 3 个正是这种，实测只探到 3 层）。
+        # title 是这类按钮唯一的稳定标识 -> 同名时用 title 消歧（生产里图标按钮就是这么写的）。
         if n != 1 and not test_id and str(name).strip() in ("...", "…", "") and cand.get("help_text"):
             alt = pg.locator(f'[title="{cand["help_text"]}"]')
             if alt.count() == 1:
                 loc, n = alt, 1
         if n != 1:
-            print(f"      [explore] ℹ️ 弹层候选「{shown}」命中 {n} 个（要求唯一）→ 跳过")
+            print(f"      [explore] [info] 弹层候选「{shown}」命中 {n} 个（要求唯一）→ 跳过")
             return False
         # 2026-09-22（P16 批 5 实测）：候选可能来自**已经被关掉的层**（如「…」按钮在新建弹窗里，
-        # 弹窗关了它就不可见）⇒ 直接点会卡到 Playwright 30s 超时，而超时异常会把**本层其余钻取**
+        # 弹窗关了它就不可见）-> 直接点会卡到 Playwright 30s 超时，而超时异常会把**本层其余钻取**
         # 一起吃掉（实测订单页 6 个挑选层因此只探到 2 个，其余层的行内控件全部缺失）。
-        # ⇒ 先做可见性预检 + 把点击超时收短（5s）：只在**当前看得见**的东西上点，绝不硬等。
+        # -> 先做可见性预检 + 把点击超时收短（5s）：只在**当前看得见**的东西上点，绝不硬等。
         if not loc.first.is_visible():
-            print(f"      [explore] ℹ️ 弹层候选「{shown}」当前不可见（层已关/被遮挡）→ 跳过")
+            print(f"      [explore] [info] 弹层候选「{shown}」当前不可见（层已关/被遮挡）→ 跳过")
             return False
         _probe_click(loc.first, timeout=5000)      # P22 批 3：置灰/遮挡时不至于整段中断
         _dismiss_tips(pg)
         fresh = _wait_fresh_items(pg, absorb)
         if not fresh:
-            # ★2026-09-22：**关了再退**。以前这里直接 return False ⇒ 层留在打开状态，
+            # ★2026-09-22：**关了再退**。以前这里直接 return False -> 层留在打开状态，
             # 后面的层被它盖住、点击全部超时（订单页实测）。关层是幂等的，多关一次无害。
             _close_layer_by_item(pg, collected or [])
             if not _page_alive(pg):
-                print(f"      [explore] ⚠️ 点开「{shown}」后页面/渲染进程已失效（标签崩溃或被 OOM 杀掉）"
+                print(f"      [explore] [!] 点开「{shown}」后页面/渲染进程已失效（标签崩溃或被 OOM 杀掉）"
                       f"—— 这不是「没有弹层」，是环境事故，本层控件会缺失")
             else:
-                print(f"      [explore] ℹ️ 点开「{shown}」后没有出现新的可见控件（不是弹层？）→ 跳过")
+                print(f"      [explore] [info] 点开「{shown}」后没有出现新的可见控件（不是弹层？）→ 跳过")
             return False
         print(f"      [explore] 弹层探测：点开「{shown}」→ 新收集 {len(fresh)} 个控件"
               f"（{', '.join(_one_line(x.get('semantic_name', ''), 18) for x in fresh[:4])}…）")
@@ -1267,7 +1267,7 @@ def _open_layer_and_collect(pg, cand: dict, absorb, collected: list | None = Non
         return True
     except Exception as e:
         hint = "" if _page_alive(pg) else "（页面/渲染进程已失效：崩溃或被 OOM 杀 → 环境事故，不是页面没有弹层）"
-        print(f"      [explore] ⚠️ 弹层探测失败（{shown}）：{type(e).__name__}: {str(e)[:140]}{hint}")
+        print(f"      [explore] [!] 弹层探测失败（{shown}）：{type(e).__name__}: {str(e)[:140]}{hint}")
         return False
 
 
@@ -1275,10 +1275,10 @@ def _close_layer_by_item(pg, items: list[dict]) -> None:
     """用给定控件清单里的「取消/关闭」按钮把当前层关掉（有 test_id 才对，避免同名点错）。
 
     2026-09-17 补：**没有「取消」按钮的层**（本项目 demo 的业务单元/管理单元/帐套/合同弹层按需求就是
-    「选中即回填并关闭」）以前关不掉 ⇒ 层一直盖着，后面几个 picker 全部探不到（实测订单页只探到
-    2 个弹层）。现在按「先温和、后确定」顺序兜底：① 该层的取消/关闭按钮；② Esc 键（很多企业 UI 支持）；
-    ③ 点该层内**任意一行的「选择」按钮**（这类层的设计就是选中即关）。
-    ⚠️ 绝不点提交/确定/删除，也绝不猜元素。
+    「选中即回填并关闭」）以前关不掉 -> 层一直盖着，后面几个 picker 全部探不到（实测订单页只探到
+    2 个弹层）。现在按「先温和、后确定」顺序兜底：(1) 该层的取消/关闭按钮；(2) Esc 键（很多企业 UI 支持）；
+    (3) 点该层内**任意一行的「选择」按钮**（这类层的设计就是选中即关）。
+    [!] 绝不点提交/确定/删除，也绝不猜元素。
     """
     closer = next((x for x in items
                    if x.get("role") == "button" and x.get("test_id")
@@ -1292,12 +1292,12 @@ def _close_layer_by_item(pg, items: list[dict]) -> None:
         except Exception:
             pass
         return
-    try:                                    # ② Esc
+    try:                                    # (2) Esc
         pg.keyboard.press("Escape")
         pg.wait_for_timeout(200)
     except Exception:
         pass
-    row_pick = next((x for x in items                       # ③ 行内「选择」（选中即关）
+    row_pick = next((x for x in items                       # (3) 行内「选择」（选中即关）
                      if x.get("role") == "button"
                      and str(x.get("semantic_name") or "").startswith("选择@")), None)
     if row_pick:
@@ -1309,7 +1309,7 @@ def _close_layer_by_item(pg, items: list[dict]) -> None:
                 if cand.count() == 1:
                     loc = cand.first
             # 2026-09-22（P16 批 4/5 实测根因）：行内埋点按口径撤除后，`get_by_role("button", name="选择")`
-            # 在「每行一个选择按钮」的表里**必然歧义**（count>1）⇒ 这一层再也关不掉 ⇒ 层一直盖着，
+            # 在「每行一个选择按钮」的表里**必然歧义**（count>1）-> 这一层再也关不掉 -> 层一直盖着，
             # 后面的挑选层全被挡住（实测订单页 6 个挑选层只探到 1 个，生成时表现为「8 个语义名映射不上」）。
             # 改走框架自己的「锚点 + 容器内相对路径」——行锚文本定位到行、再取该行的按钮。
             if loc is None and row_pick.get("anchor") and row_pick.get("path"):
@@ -1333,16 +1333,16 @@ def _merge_items(base: list[dict], extra: list[dict]) -> list[dict]:
 
     2026-09-18 批次 2（S1）根因修复。旧实现按 `semantic_name` **字符串**去重，埋了两个坑：
 
-      ① 弹层控件是**另起一轮 `probe_page`** 探的、名字由那一轮自己分配 ⇒ 两轮各自命名时，
+      (1) 弹层控件是**另起一轮 `probe_page`** 探的、名字由那一轮自己分配 -> 两轮各自命名时，
          一个同名控件在「弹窗没开」那轮里是**唯一**的、独占裸名；另一枚在别的轮次里带 `@上下文`
          后缀。于是**裸名归谁 = 探测那一刻谁可见**，下游拿着裸名根本分不清它指哪一个。
          实测事故：合同页搜索区按钮与新建弹窗按钮同名，用例引用裸名，生成物指向被弹窗遮挡的
-         那一枚 ⇒ `Locator.click` 30s 超时 ⇒ 3 条用例红（demo 侧改名掩盖了症状，框架侧没修）。
-      ② 按名字去重 ≠ 按**元素身份**去重 ⇒ 同一个元素在不同轮次里名字变了会被收两遍。
+         那一枚 -> `Locator.click` 30s 超时 -> 3 条用例红（demo 侧改名掩盖了症状，框架侧没修）。
+      (2) 按名字去重 ≠ 按**元素身份**去重 -> 同一个元素在不同轮次里名字变了会被收两遍。
          （`_try_collect_modal_items._absorb` 已按 test_id/签名身份过滤，这里只补一道 test_id 兜底。）
 
     现在：先按 test_id 去重（同一元素只留第一次），再 `probe.assign_semantic_names()` 在**全量清单**
-    上重算一次命名 ⇒ 同名控件**必然全部带上下文**，不可能再有谁独占裸名；
+    上重算一次命名 -> 同名控件**必然全部带上下文**，不可能再有谁独占裸名；
     留痕字段（`base_name` / `name_source` / `base_conflict`）随产物一起给下游判歧义用。
     """
     from framework.tools.probe.probe import assign_semantic_names
@@ -1421,7 +1421,7 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
       单页/不给 → 提示与改造前**逐字一致**（老链路行为不变）。
 
     row_fields（2026-09-17 行内定位）：表格「行内列清单」（probe_row_fields 的产物）。
-      为什么要喂：新建记录的编号是服务端动态分配 ⇒ 那一行**没有 semantic_name 可用**，
+      为什么要喂：新建记录的编号是服务端动态分配 -> 那一行**没有 semantic_name 可用**，
       只能「行锚文本 row_text + 列字段 cell_field」定位；不给清单，AI 只能猜 CSS
       （本项目铁律：绝不让 LLM 产 selector）。
     """
@@ -1439,15 +1439,15 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                   + "  · 每个控件都有 `page` 字段，标出它属于哪一页 —— **只能操作当前所在页面的控件**；\n"
                   + "  · 换页用 action=goto + value=<页面清单里的该页 URL>，"
                     "或点击当前页上能跳过去的目标（如结果行里可点的编号/详情链接）；\n"
-                  + "  · ⚠️ **新 tab（多窗口）**：目标控件若标了 `opens_new_tab: true`（点它会**开新 tab**）"
-                    "⇒ 必须用 action=click_new_tab（用 goto/click 会留在原页，后续步骤全乱）；"
-                    "在新 tab 里点「返回/关闭」类按钮要**关掉当前 tab 回到上一个** ⇒ 用 action=close_tab"
+                  + "  · [!] **新 tab（多窗口）**：目标控件若标了 `opens_new_tab: true`（点它会**开新 tab**）"
+                    "-> 必须用 action=click_new_tab（用 goto/click 会留在原页，后续步骤全乱）；"
+                    "在新 tab 里点「返回/关闭」类按钮要**关掉当前 tab 回到上一个** -> 用 action=close_tab"
                     "（不要用 goto 回退，那样 tab 没关、也没验到「关 tab 返回」这个行为）；"
                     "**切 tab / 关 tab 之后都要有到达证据**（expect_url 用目标页独有片段，或 expect_text 用该页独有文案）；\n"
                   + "  · **换页必须有断言**（证明\"确实到了那一页\"）："
                     "action=expect_url + value=**逐字从上面页面清单里复制**该页 URL 里真实存在的片段"
                     "（如详情页写 contract_detail —— 只出现在目标页 URL 里的片段；"
-                    "⚠️ **禁止**用 localhost / localhost:8000 / 127.0.0.1 这类**每个页面都含**的片段"
+                    "[!] **禁止**用 localhost / localhost:8000 / 127.0.0.1 这类**每个页面都含**的片段"
                     "当换页证据：点击前后都能通过 = 没验到换页，框架会直接拦下这种用例），"
                     "**禁止自造片段**（写 index.html / list 这类清单里没有的字符串就会直接失败）；"
                     "或 action=expect_text + assertion=目标页的特征文本（更稳，推荐与 expect_url 一起用；**目标页没有独有 URL 片段时改用它**，如列表页就是根路径 /）；\n")
@@ -1482,21 +1482,21 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
     # 同名控件（同一页不同区域）—— 最容易被 AI「只写前半段」的陷阱，显式列出来
     pairs = _shadowed_names(items)
     if pairs:
-        prompt += ("⚠️ 清单里存在**同名控件的不同区域版本**（两个名字都真实存在于清单里）——"
+        prompt += ("[!] 清单里存在**同名控件的不同区域版本**（两个名字都真实存在于清单里）——"
                    "必须整段复制你要操作的那个名字，**不要自己给名字加/减 @ 后缀**"
                    "（后缀不是风格，而是那个控件的唯一合法名字）：\n"
                    + "\n".join(f"  - {p}  与  {n}  都存在" for p, n in pairs) + "\n"
-                   + "  （判断依据：场景说“在新建弹窗里选” ⇒ 用带 @ 后缀的那版；"
-                     "场景说“用列表页上方的筛选条件” ⇒ 用不带后缀的那版）\n\n")
+                   + "  （判断依据：场景说“在新建弹窗里选” -> 用带 @ 后缀的那版；"
+                     "场景说“用列表页上方的筛选条件” -> 用不带后缀的那版）\n\n")
     # 同一字段、不同区域、**名字却不同**（`订单名称_全模糊` vs `请输入订单名称`）—— 比同名更隐蔽：
-    # 两个名字都真实存在 ⇒ 选错不会报「未映射」，而是静默操作到另一个控件（= 假红/假绿隐患）。
+    # 两个名字都真实存在 -> 选错不会报「未映射」，而是静默操作到另一个控件（= 假红/假绿隐患）。
     # 2026-09-18 实测：6 次 AI 端到端 6 次都把弹窗字段选成了筛选区那个（名字字面最像）。
     field_pairs = _same_field_pairs(items)
     if field_pairs:
-        prompt += ("⚠️ 清单里**同一个字段有多个不同名字的版本**（分属不同区域，每个名字都真实存在）：\n"
+        prompt += ("[!] 清单里**同一个字段有多个不同名字的版本**（分属不同区域，每个名字都真实存在）：\n"
                    + "\n".join(f"  - 「{ident}」字段: {detail}" for ident, _a, _b, detail in field_pairs) + "\n"
-                   + "  （**按你要操作的区域选**：步骤描述说“在新建弹窗/弹层里填/选” ⇒ 用 container_heading = "
-                     "该弹窗标题 的那个名字；“用页面顶部筛选条件” ⇒ 用另一个。选错不会报错，只会悄悄操作到别的控件）\n\n")
+                   + "  （**按你要操作的区域选**：步骤描述说“在新建弹窗/弹层里填/选” -> 用 container_heading = "
+                     "该弹窗标题 的那个名字；“用页面顶部筛选条件” -> 用另一个。选错不会报错，只会悄悄操作到别的控件）\n\n")
     # 行内列清单（2026-09-17）：表格里「动态生成的那一行」只能靠 行锚文本+列字段 定位，
     # 把可用的列字段（td[data-field]）列给 AI —— 不然它只能猜 CSS（本项目铁律）。
     if row_fields:
@@ -1524,20 +1524,20 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         f"规则:\n"
         f"1. action 只允许: goto / click / fill / check / select / expect_text / expect_url / press_enter / "
         f"click_new_tab / close_tab / expect_first_row\n"
-        f"1b. **新 tab（多窗口）**：清单里 `opens_new_tab: true` 的控件，点击会**打开新 tab** ⇒ "
+        f"1b. **新 tab（多窗口）**：清单里 `opens_new_tab: true` 的控件，点击会**打开新 tab** -> "
         f"必须用 action=click_new_tab（框架会等新 tab 出现并切过去）；**不要**用 click（点了还留在原页，"
         f"后续步骤会在错误的页面上执行）；\n"
-        f"   在新 tab 里点「返回/关闭」类按钮，要**关掉当前 tab 回到上一个** ⇒ 用 action=close_tab"
+        f"   在新 tab 里点「返回/关闭」类按钮，要**关掉当前 tab 回到上一个** -> 用 action=close_tab"
         f"（它只用于「从新开的 tab 返回」，不要拿 goto 代替 —— 那样 tab 没关，也没验到关 tab 这个行为）；\n"
         f"   每完成一次切/关 tab，都要紧跟一条**到达证据**：expect_url（目标 tab 独有的 URL 片段）"
         f"或 expect_text（该页独有文案）；\n"
         f"2. semantic_name 必须**原样复制**上面清单里的 semantic_name（含下划线，如 请输入合同名称 / "
         f"请选择_0021_0451_1031），禁止自造、禁止写你自己的描述性名字（“合同名称”≠`请输入合同名称`）；\n"
-        f"   ⚠️ **逐字**：名字必须**恰好等于清单里某一项的完整名字** —— 不要自己拼后缀、也不要截断后缀。"
+        f"   [!] **逐字**：名字必须**恰好等于清单里某一项的完整名字** —— 不要自己拼后缀、也不要截断后缀。"
         f"清单里写了 `选择销售员` 就是 `选择销售员`（写成 `选择销售员@新建订单` 在清单里不存在）；"
         f"清单里写了 `选择@北京华信科技有限公司@订单系统` 就必须连最后的 `@订单系统` 一起写。"
         f"拿不准就把清单里那一项的名字整段复制粘贴。\n"
-        f"   ⚠️ 名字里带 `@` 的（如 选择业务单元@新建订单、选择客户@订单系统、HT_1001@合同列表页）"
+        f"   [!] 名字里带 `@` 的（如 选择业务单元@新建订单、选择客户@订单系统、HT_1001@合同列表页）"
         f"都是**去重后的最终名**：必须**连 @ 后面那段一起原样写**。清单里同时存在带后缀与不带后缀的版本时，"
         f"按你要操作的那片**区域**选：场景说“在弹窗/弹层里填/选”就用带 `@新建xx` 后缀的那个；"
         f"只写前半段会操作到别的区域/页面的同名控件（多半被弹窗挡住，点击直接超时失败）；\n"
@@ -1552,10 +1552,10 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         f"新建弹窗里的 `请输入订单名称`），必须按步骤描述里的区域逐字挑那个名字；\n"
         f"   挑错**不会**报「未映射」—— 它会静默操作到**另一个真实控件**（用例最后以"
         f"“提交后首行不是新建的那条 / 字段没填进去”这类假红收场，很难查）。\n"
-        f"   判据：要操作的是弹窗/弹层里的字段 ⇒ 选 container_heading 等于该弹窗标题的那个名字；\n"
+        f"   判据：要操作的是弹窗/弹层里的字段 -> 选 container_heading 等于该弹窗标题的那个名字；\n"
         f"3. fill 需给 value；断言类步骤用 expect_text + assertion\n"
         f"3a. **弹层/弹窗里逐行的「选择」按钮已经有了语义名**（形如 `选择@HT-1001`、"
-        f"`选择@北京华信科技有限公司`、`选择@bu_a`）⇒ 要「选某一行」就用**该语义名 + action=click**，"
+        f"`选择@北京华信科技有限公司`、`选择@bu_a`）-> 要「选某一行」就用**该语义名 + action=click**，"
         f"**不要**用 row_text/cell_field 去点它（行内定位点的是那一列里的链接/文本，不是「选择」按钮）；"
         f"弹层/弹窗的**打开按钮**同样有名字（如 `选择合同`、`选择业务单元`——「...」按钮的名字取自它的 title），"
         f"先 click 打开、再 click 行内的「选择」；\n"
@@ -1564,13 +1564,13 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         f"   `row_text` = 该行里唯一的锚文本（例如你刚填的订单名称，必须与前面 fill 的 value **逐字相同**，"
         f"有动态占位符时写成同一串）；`cell_field` = 该行的列字段，**只能**取上面【行内列清单】里的 field"
         f"（如 orderName / contractNo），**禁止自造**；\n"
-        f"   例：「点这一行的合同编号（会开新 tab）」⇒ action=click_new_tab, row_text=<刚填的名称>, "
-        f"cell_field=contractNo；「点这一行的编号（当前页跳转）」⇒ action=click, row_text=…, cell_field=…\n"
-        f"3c. 新建成功后要验「**列表第一条就是刚建的那条**」⇒ 用 action=expect_first_row + "
+        f"   例：「点这一行的合同编号（会开新 tab）」-> action=click_new_tab, row_text=<刚填的名称>, "
+        f"cell_field=contractNo；「点这一行的编号（当前页跳转）」-> action=click, row_text=…, cell_field=…\n"
+        f"3c. 新建成功后要验「**列表第一条就是刚建的那条**」-> 用 action=expect_first_row + "
         f"cell_field=<列> + value=<你刚填的同一个值>。这是**唯一**允许「期望值 = 输入值」的场合"
         f"（它验的是「新记录确实落在第一行」，text 断言证明不了位置）；\n"
         f"3d. **埋点现实（P16 · 2026-09-22 现场口径）**：真实系统里 **只有顶层容器**（表格/弹层/工具栏/区块）"
-        f"通常有 data-testid，行、单元格、行内链接按钮**往往没有** ⇒ 控件清单里每个控件自带的 "
+        f"通常有 data-testid，行、单元格、行内链接按钮**往往没有** -> 控件清单里每个控件自带的 "
         f"`anchor`（所属容器：kind/by/value）与 `path`（容器内相对路径：row=行锚文本、col=data-field 或表头文本、"
         f"target=目标语义）就是给你描述「从哪个锚点、沿什么路径找到它」的依据。"
         f"**控件没有 test_id 是常态、不是缺陷**：不要因此放弃它，也**不要自己编 CSS/selector**"
@@ -1623,7 +1623,7 @@ def _parse_steps_text(text: str, items: list[dict]) -> list[TestStep]:
         sn = (s.get("semantic_name") or "").strip()
         it, how = _match_item(sn, items)      # 文本兜底路径同样不静默丢元素
         if it is not None and (how.startswith("模糊") or how.startswith("语义兜底")):
-            print(f"      [explore] ⚠️ 元素名自动对齐：{how}")
+            print(f"      [explore] [!] 元素名自动对齐：{how}")
         _warn_region_variants(sn, it, items)
         if sn and it is None:
             unmatched.append(f"{s.get('action', 'click')} 的 semantic_name={sn!r}")
@@ -1649,12 +1649,12 @@ def _parse_steps_text(text: str, items: list[dict]) -> list[TestStep]:
             cell_field=s.get("cell_field"),
         ))
     if unmatched:
-        print(f"      [explore] ⚠️ 有 {len(unmatched)} 步的元素名不在探测清单里（无法定位）：{unmatched}")
+        print(f"      [explore] [!] 有 {len(unmatched)} 步的元素名不在探测清单里（无法定位）：{unmatched}")
         print(f"      [explore]    清单可用名字：{[x.get('semantic_name') for x in items]}")
     return steps
 
 
-# 方向①语义校准：AI 的 description 是否和它选中的元素语义一致
+# 方向(1)语义校准：AI 的 description 是否和它选中的元素语义一致
 SEMANTIC_MIN_SIM = 0.3   # 低于此重叠度 → 判"AI 可能选错控件"，降 conf + 打警告
 # desc 侧要剔的"纯动作动词"（这些是'做了什么'，不是控件名；元素语义侧不剔，
 # 因为元素语义里的"提交/搜索/选择"正是控件名，剔了会误伤）。
@@ -1701,7 +1701,7 @@ def _element_semantics_blob(it: dict) -> str:
 
 
 def _apply_semantic_calibration(steps: list[TestStep], items: list[dict]) -> list[TestStep]:
-    """方向①：AI 挑完元素后，用其 description(自然语言) 与元素自身语义比对。
+    """方向(1)：AI 挑完元素后，用其 description(自然语言) 与元素自身语义比对。
 
     注意：AI 的 description 是"动作句"（如 输入/点击），元素语义是"控件名词"
     （如 placeholder/搜索），两者语法层不同。所以先提取 desc 的【核心控件词】，
@@ -1720,6 +1720,6 @@ def _apply_semantic_calibration(steps: list[TestStep], items: list[dict]) -> lis
                 f"[语义校准警告] AI 描述《{st.description}》与所选控件语义重叠度仅 {sim:.2f}"
                 f"(<{SEMANTIC_MIN_SIM})，疑似选错控件，请人工核对"
             )
-            print(f"      [语义校准⚠] step{st.order} 「{st.description}」 "
+            print(f"      [语义校准[!]] step{st.order} 「{st.description}」 "
                   f"vs 控件语义 重叠度 {sim:.2f} → 疑似选错")
     return steps

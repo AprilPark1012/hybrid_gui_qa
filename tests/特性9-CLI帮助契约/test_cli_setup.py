@@ -2,11 +2,11 @@
 
 守两件事：
 
-1. **`setup --check` 的退出码必须能区分好坏** —— 环境好 ⇒ 0；环境坏 ⇒ **非 0**。
-   为什么单独立判据：修之前 `main()` 的分发是 8 个裸调用，**返回值被丢弃** ⇒
+1. **`setup --check` 的退出码必须能区分好坏** —— 环境好 -> 0；环境坏 -> **非 0**。
+   为什么单独立判据：修之前 `main()` 的分发是 8 个裸调用，**返回值被丢弃** ->
    `cmd_generate` 里 `DanglingDatasetError` 的 `return 2` 是**空转**
    （"报了错却告诉调用方成功"，exit 0）。同族另外三个错误都是 `-> NoReturn` 直接 raise，
-   只有那一条走 return ⇒ 典型的不一致。本文件守住"子命令 return 非 0 ⇒ 进程就非 0"。
+   只有那一条走 return -> 典型的不一致。本文件守住"子命令 return 非 0 -> 进程就非 0"。
 
 2. **`setup --check` 只读** —— 它不能顺手装东西（体检命令不该有副作用）。
 """
@@ -39,17 +39,17 @@ def _empty_dir(tmp_path):
 
 
 def test_setup_check_ok_exit_zero():
-    """环境好 ⇒ exit 0，且明确说"就绪"。"""
+    """环境好 -> exit 0，且明确说"就绪"。"""
     rc, out = _run(["setup", "--check"])
     if rc != 0:
         import pytest
         pytest.skip("本机浏览器不可用（负向用例已覆盖该路径）")
     assert "就绪" in out, f"--check 通过时必须明确报就绪：{out[-400:]}"
-    assert "① 依赖" in out and "② 浏览器" in out, "应当分步报告（依赖 / 浏览器）"
+    assert "(1) 依赖" in out and "(2) 浏览器" in out, "应当分步报告（依赖 / 浏览器）"
 
 
 def test_setup_check_missing_browser_exit_nonzero(tmp_path):
-    """★负向（核心）：环境坏 ⇒ 必须 **非 0** 退出（这正是修 dispatch 丢弃返回值的那件事）。"""
+    """★负向（核心）：环境坏 -> 必须 **非 0** 退出（这正是修 dispatch 丢弃返回值的那件事）。"""
     rc, out = _run(["setup", "--check"], browsers_path=_empty_dir(tmp_path))
     assert rc != 0, f"环境不就绪却返回 {rc}（调用方会以为成功）"
     assert "还没就绪" in out, f"应当明确说没就绪：{out[-400:]}"
@@ -73,7 +73,7 @@ def test_setup_is_registered_in_help():
     """回归：新子命令必须出现在 --help（文档与代码同源，别只加代码忘了注册）。"""
     rc, out = _run(["--help"])
     assert rc == 0
-    assert "setup" in out, "--help 里没有 setup ⇒ 新人看不到这条命令"
+    assert "setup" in out, "--help 里没有 setup -> 新人看不到这条命令"
     assert "第一次跑" in out or "装浏览器" in out, "setup 的说明要能自解释"
 
 
@@ -128,7 +128,7 @@ def test_version_report_warns_on_mismatch():
     assert "--force-browser" in lines, "必须给出可照抄的对齐命令"
     assert "不是错" in lines, "不能把版本漂移说成错误（框架不挑版本）"
     ok = "\n".join(cli._version_report("1.63.0", "1.63.0"))
-    assert "一致" in ok and "⚠️" not in ok
+    assert "一致" in ok and "[!]" not in ok
 
 
 def test_version_report_edge_cases():

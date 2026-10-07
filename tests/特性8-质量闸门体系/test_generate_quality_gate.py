@@ -30,7 +30,7 @@ CASES = REPO / "cases"
 
 @pytest.fixture
 def probe_down(monkeypatch):
-    """把 `playwright.sync_api` 换成「一调 `sync_playwright()` 就抛」的假模块 ⇒ 现场 probe 必失败。"""
+    """把 `playwright.sync_api` 换成「一调 `sync_playwright()` 就抛」的假模块 -> 现场 probe 必失败。"""
     fake = types.ModuleType("playwright.sync_api")
 
     def _boom(*a, **k):
@@ -67,7 +67,7 @@ def _read_generated(root: Path) -> str:
 
 
 def test_generate_refuses_to_write_when_probe_unavailable(probe_down, tmp_path):
-    """探测不可用 ⇒ 抛 UnmappedElementsError，且 **一个用例模块都不许落盘**。"""
+    """探测不可用 -> 抛 UnmappedElementsError，且 **一个用例模块都不许落盘**。"""
     out = tmp_path / "scripts"
     with pytest.raises(UnmappedElementsError) as ei:
         generate_scripts(cases_dir=CASES, scripts_dir=out)
@@ -107,7 +107,7 @@ def test_normal_run_reports_zero_unmapped(probe_down, tmp_path, monkeypatch):
     real_needed.discard(None)
     real_needed.discard("")
 
-    # 造一份「覆盖全部所需语义名」的快照 ⇒ 映射齐全 ⇒ 不需要现场 probe
+    # 造一份「覆盖全部所需语义名」的快照 -> 映射齐全 -> 不需要现场 probe
     snap = tmp_path / "element_map_full.json"
     snap.write_text(_element_map_json(real_needed), encoding="utf-8")
 
@@ -123,14 +123,14 @@ def test_normal_run_reports_zero_unmapped(probe_down, tmp_path, monkeypatch):
 def test_cli_generate_exits_2_with_actionable_message(probe_down, tmp_path, monkeypatch, capsys):
     """CLI 层：退出码必须是 2（不是 0/1），并明说「先起 demo」与逃生口（人话，不是 traceback）。
 
-    ⚠️ 这里把「可达性预检」也钉成「不可达」：否则本机 demo 正在跑时，消息会走「目标可达」分支，
+    [!] 这里把「可达性预检」也钉成「不可达」：否则本机 demo 正在跑时，消息会走「目标可达」分支，
     断言就失真了（测试要点是**目标没起**时的那段话）。
     """
     monkeypatch.setattr("framework.tools.generate.generator.SCRIPTS_DIR", tmp_path / "scripts")
     monkeypatch.setattr("framework.tools.common.target_probe.reachability",
                         lambda url=None, timeout=1.5: (False,
                                                        "连不上 http://localhost:8000（ConnectionRefused）"
-                                                       "⇒ 被测目标没起：另开一个窗口跑 `python -m demo.app`"))
+                                                       "-> 被测目标没起：另开一个窗口跑 `python -m demo.app`"))
 
     with pytest.raises(SystemExit) as si:
         cli.cmd_generate([])

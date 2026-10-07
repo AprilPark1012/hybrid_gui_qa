@@ -1,4 +1,4 @@
-"""L5 归档保留策略（run / verify）· 一类判据（2026-09-22，服务目标 ③ 稳定 + ④ 脚本健壮）。
+"""L5 归档保留策略（run / verify）· 一类判据（2026-09-22，服务目标 (3) 稳定 + (4) 脚本健壮）。
 
 背景：`log/<run_id>/` 是真跑产物（每用例 `.log` + `assets` + **`traces/*.zip` 录像**），只增不减 ——
 实测 281 个目录 / 212 MB，其中 **103 MB 是 trace 录像**。矛盾是「证据价值 vs 空间」，所以策略分两级，
@@ -9,9 +9,9 @@
   1. **保留集 = 最近 N 个 ∪ 最近 D 天**（两个旋钮取**并集保护**，不是"满足其一就删"）；
   2. **未超龄的东西一动不动**（连大录像也不删 —— 新鲜证据必须完整）；
   3. **两级处理**：只有**能证明成功**的 run（`summary.json` 且 `exit_code==0` 且 `failed_cases==0`）
-     才整删；**历史（无 summary.json）/ 失败** ⇒ 只**瘦身**（删录像、留 `.log` + `report.html` + `summary.json`）；
+     才整删；**历史（无 summary.json）/ 失败** -> 只**瘦身**（删录像、留 `.log` + `report.html` + `summary.json`）；
   4. **最近一次全绿 / 全红各保一个**（无论 N/D）；
-  5. **`.protected_runs` 登记过的 ⇒ 完全不碰**（被台账/发行说明/交付邮件引用过的 run）；
+  5. **`.protected_runs` 登记过的 -> 完全不碰**（被台账/发行说明/交付邮件引用过的 run）；
   6. **不认识的命名一律不动**（用户手工产物绝不误删）；
   7. **`dry-run` 必须真不动**（前后目录树逐字节一致）；
   8. **单次上限生效**（防"策略写错、一夜清空"）；
@@ -50,7 +50,7 @@ def _mk_run(log: Path, name: str, *, traces: int = 0, summary: dict | None = Non
     """造一个 run 目录：N 个 1 MB 假录像 + 一个用例日志 + 一个报告（+可选 summary.json）。"""
     d = log / name
     (d / "traces").mkdir(parents=True)
-    (d / "case.log").write_text("[TEST] 场景开始\n[CHECK] ✓ 断言\n", encoding="utf-8")
+    (d / "case.log").write_text("[TEST] 场景开始\n[CHECK] v 断言\n", encoding="utf-8")
     (d / "report.html").write_text("<html>report</html>", encoding="utf-8")
     for i in range(traces):
         (d / "traces" / f"case{i}_trace.zip").write_bytes(b"x" * 1_000_000)
@@ -83,11 +83,11 @@ def _scene(tmp_path: Path) -> dict:
     d = {
         "fresh": _mk_run(log, "20260922_080000", traces=2),                       # 今天：未超龄
         "d2": _mk_run(log, _name(2), traces=2),                                   # 2 天前：未超龄
-        "ok_new": _mk_run(log, _name(10), traces=2, summary=GREEN),               # 最近一次全绿 ⇒ 保护
-        "ok_old": _mk_run(log, _name(30), traces=2, summary=GREEN),               # 较老全绿 ⇒ 整删
-        "legacy": _mk_run(log, _name(15), traces=3),                              # 历史无 summary ⇒ 只瘦身
-        "fail": _mk_run(log, _name(16), traces=2, summary=RED),                   # 失败 ⇒ 只瘦身
-        "ref": _mk_run(log, _name(20), traces=2),                                 # 被引用 ⇒ 完全不碰
+        "ok_new": _mk_run(log, _name(10), traces=2, summary=GREEN),               # 最近一次全绿 -> 保护
+        "ok_old": _mk_run(log, _name(30), traces=2, summary=GREEN),               # 较老全绿 -> 整删
+        "legacy": _mk_run(log, _name(15), traces=3),                              # 历史无 summary -> 只瘦身
+        "fail": _mk_run(log, _name(16), traces=2, summary=RED),                   # 失败 -> 只瘦身
+        "ref": _mk_run(log, _name(20), traces=2),                                 # 被引用 -> 完全不碰
     }
     (log / ".protected_runs").write_text(f"# 示例：台账引用过的 run\n{d['ref'].name}  # 被交付邮件引用\n",
                                          encoding="utf-8")
@@ -121,7 +121,7 @@ def test_keeps_recent_count_union_recent_days(tmp_path):
     # 最近 3 个（fresh/d2/ok_new）与 7 天内的都在
     assert runs["fresh"].exists() and runs["d2"].exists()
     assert runs["ok_new"].exists()
-    # 超过 7 天且不在最近 3 个内的历史 ⇒ 已被处理（整删或瘦身）
+    # 超过 7 天且不在最近 3 个内的历史 -> 已被处理（整删或瘦身）
     assert not runs["ok_old"].exists(), "较老的全绿应被整删"
 
 
@@ -140,7 +140,7 @@ def test_two_level_policy_slim_vs_whole_delete(tmp_path):
     sc = _scene(tmp_path)
     res = _prune(sc)
     runs = sc["runs"]
-    assert not runs["ok_old"].exists(), "能证明成功且超龄 ⇒ 整删"
+    assert not runs["ok_old"].exists(), "能证明成功且超龄 -> 整删"
     assert runs["legacy"].exists(), "历史（无 summary）不许整删"
     assert (runs["legacy"] / "case.log").exists() and (runs["legacy"] / "report.html").exists()
     assert not list(runs["legacy"].glob("traces/*.zip")), "历史 run 的录像应被瘦身掉"
@@ -160,7 +160,7 @@ def test_latest_green_and_latest_red_are_protected(tmp_path):
 
 # ----------------------------------------------------------------- 负向自证（每条都要能真的抓住）
 def test_negative_protected_runs_untouched(tmp_path):
-    """`.protected_runs` 登记过的 ⇒ 完全不碰（连录像也不删）。"""
+    """`.protected_runs` 登记过的 -> 完全不碰（连录像也不删）。"""
     sc = _scene(tmp_path)
     res = _prune(sc)
     ref = sc["runs"]["ref"]
@@ -229,7 +229,7 @@ def test_negative_slowgate_naming_included(tmp_path):
 
 # ----------------------------------------------------------------- 辅助函数本身的契约
 def test_summary_contract_only_proven_success_counts(tmp_path):
-    """「能证明成功」口径：缺 summary / 坏 JSON / 有失败数 ⇒ 都不算成功（宁可不回收）。"""
+    """「能证明成功」口径：缺 summary / 坏 JSON / 有失败数 -> 都不算成功（宁可不回收）。"""
     log = tmp_path / "log"
     log.mkdir()
     good = _mk_run(log, _name(30), summary=GREEN)
@@ -247,7 +247,7 @@ def test_summary_contract_only_proven_success_counts(tmp_path):
 def test_summary_writer_contract(tmp_path):
     """`summary.json` 的写入契约（**这条本该挡住一次真实事故**）。
 
-    2026-09-22 实测：`framework/cli.py` 里写 summary 的 helper 用了 `json` 却没 import ⇒
+    2026-09-22 实测：`framework/cli.py` 里写 summary 的 helper 用了 `json` 却没 import ->
     只有真跑 `cli run` 才炸（一类当时全绿、二类是抓出来的）。所以这里直接调那个 helper，
     把「字段齐全 + 失败计数口径 + 不因缺东西而崩」钉在一类里。
     """
@@ -255,15 +255,15 @@ def test_summary_writer_contract(tmp_path):
 
     run = tmp_path / "log" / "20260922_120000"
     (run / "traces").mkdir(parents=True)
-    (run / "ok.log").write_text("[CHECK] ✓ 断言\n", encoding="utf-8")
-    (run / "bad.log").write_text("[CHECK] ✗ 断言\n", encoding="utf-8")
+    (run / "ok.log").write_text("[CHECK] v 断言\n", encoding="utf-8")
+    (run / "bad.log").write_text("[CHECK] X 断言\n", encoding="utf-8")
     (run / "traces" / "x_trace.zip").write_bytes(b"z" * 1234)
 
     _write_run_summary(run, "20260922_120000", 0)
     data = json.loads((run / "summary.json").read_text(encoding="utf-8"))
     assert data["run_id"] == "20260922_120000" and data["exit_code"] == 0
     assert data["case_logs"] == 2, f"用例日志计数（实为 {data.get('case_logs')}）"
-    assert data["failed_cases"] == 1, "含 ✗ 的日志必须计为失败（策略据此只瘦身）"
+    assert data["failed_cases"] == 1, "含 X 的日志必须计为失败（策略据此只瘦身）"
     assert data["traces_bytes"] == 1234, "录像体积要记账（供体量观测）"
     # 失败运行：exit_code 如实记下（策略据此保留"最近一次全红"）
     _write_run_summary(run, "20260922_120000", 3)

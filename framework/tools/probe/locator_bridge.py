@@ -20,13 +20,13 @@ Playwright locator。采用业界验证过的四层思路，这里实现前两�
     命中后 count()==1。没有把握就【如实报错】，绝不返回可能点错的 locator。
   - 返回 confidence / 命中层级 / healed 标记，供人工复核。
 
-✔ 本文件不含任何 LLM 调用 —— 100% 确定性，是回归可复现的根基。
+v 本文件不含任何 LLM 调用 —— 100% 确定性，是回归可复现的根基。
 """
 from __future__ import annotations
 from difflib import SequenceMatcher
 from playwright.sync_api import Page
 from framework.tools.probe.element_map import ElementRef
-from framework.tools.common.textutil import collapse_ws  # 事故②：accessible name 口径归一化
+from framework.tools.common.textutil import collapse_ws  # 事故(2)：accessible name 口径归一化
 
 # ---------------- Tier1：语义精确（按稳定性从高到低） ----------------
 # data-testid 是 component contract，不随视觉改版变，业界公认最稳 → 置顶。
@@ -42,12 +42,12 @@ TIER1 = [
 ]
 
 
-# 方向③：Tier1 命中后意图复验阈值
+# 方向(3)：Tier1 命中后意图复验阈值
 INTENT_MIN_SIM = 0.15
 
 
 def _intent_verify(page: Page, el: ElementRef, loc_obj, locator_expr: str) -> bool:
-    """方向③：Tier1 命中唯一后，回读该元素实际语义，与目标意图核对。
+    """方向(3)：Tier1 命中唯一后，回读该元素实际语义，与目标意图核对。
 
     目的：防止"AI 选对了名字、但命中的元素语义与目标不符"（如选中了另一个
     长得像 / 弹窗里同名控件）。若太不像 → 返回 False，让 resolve_locator 降级。
@@ -84,7 +84,7 @@ def _try_test_id(page: Page, el: ElementRef):
 
 def _try_role(page: Page, el: ElementRef):
     if el.role and el.name:
-        # 事故②：name 里的换行/多余空白要按 accessible name 口径归一化（否则永远匹配不到）
+        # 事故(2)：name 里的换行/多余空白要按 accessible name 口径归一化（否则永远匹配不到）
         _nm = collapse_ws(el.name)
         loc = page.get_by_role(el.role, name=_nm)
         return loc, f'page.get_by_role("{el.role}", name="{_nm}")', loc.count()
@@ -134,7 +134,7 @@ _TIER1_FNS = {
 
 # ---------------- Tier2：元素指纹 + intent 判别 + P4 语义上下文消歧 ----------------
 def _anchor_key(anchor: dict | None) -> tuple | None:
-    """锚点归一成可比较的键（Tier2 判断"在不在同一容器"用）；无锚点 ⇒ None。"""
+    """锚点归一成可比较的键（Tier2 判断"在不在同一容器"用）；无锚点 -> None。"""
     if not anchor:
         return None
     return (anchor.get("kind"), anchor.get("by"), anchor.get("value"))
@@ -161,7 +161,7 @@ def _sim(a: str, b: str) -> float:
 
 def _ctx_sim(a: str, b: str) -> float:
     """语义上下文相似度：模糊匹配（目标文本包含在候选里，或两者相似）。
-    不同于 _sim 的纯比例——"买牛奶" ⊆ "写周报 ... 买牛奶" 这类包含关系更可信。"""
+    不同于 _sim 的纯比例——"买牛奶" [subset] "写周报 ... 买牛奶" 这类包含关系更可信。"""
     a, b = (a or "").strip(), (b or "").strip()
     if not a or not b:
         return 0.0
@@ -257,7 +257,7 @@ def _tier2_fingerprint(page: Page, el: ElementRef,
     if not candidates:
         return None
 
-    # P16 批 3：有锚点 ⇒ **先在锚点作用域内打分**（同名控件跨容器会互相干扰：工具栏输入框 vs 弹层输入框），
+    # P16 批 3：有锚点 -> **先在锚点作用域内打分**（同名控件跨容器会互相干扰：工具栏输入框 vs 弹层输入框），
     # 域内没把握再回落全页。作用域靠 probe 采到的 `anchor` 数据比对（不额外查 DOM）。
     groups = [candidates]
     if el.anchor:
@@ -309,7 +309,7 @@ def resolve_locator(page: Page, el: ElementRef,
         if r:
             loc_obj, expr, cnt = r
             if cnt == 1:
-                # 方向③：Tier1 唯一命中后，意图复验（防"选对名字但语义不符"）。
+                # 方向(3)：Tier1 唯一命中后，意图复验（防"选对名字但语义不符"）。
                 # P16 批 3 例外：`anchor_path` 的消歧靠**结构**（行锚文本 + 列语义）而不是文本相似度，
                 # 且它通常用于"行内子元素"（自身文本很短，与 page_hint 相似度天然低）——
                 # 硬做复验会把这条主通道整条毙掉（实测会走到这里）。
@@ -325,6 +325,6 @@ def resolve_locator(page: Page, el: ElementRef,
         return t2
     return {"ok": False, "locator": None, "locator_obj": None,
             "strategy": None, "count": None, "confidence": 0.0, "healed": False,
-            "reason": "Tier1 语义 & Tier2 指纹均无法唯一确定。先查①行内/子元素能否用"
+            "reason": "Tier1 语义 & Tier2 指纹均无法唯一确定。先查(1)行内/子元素能否用"
                       "「锚点 + 容器内相对语义」唯一（anchor + path，见 scope_locate）；"
-                      "② 语义名是否过期；data-testid 只是可选优化，框架不要求被测系统为测试埋点"}
+                      "(2) 语义名是否过期；data-testid 只是可选优化，框架不要求被测系统为测试埋点"}

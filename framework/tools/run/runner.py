@@ -10,7 +10,7 @@
   - 自愈只修 locator 漂移；若业务断言不过 → 判定疑似真 bug，如实报错。
   - 每条 heal 都落盘成可审 diff（output/heals/），绝不静默改写。
 
-✔ 本文件不含 LLM 调用（Healer 的 LLM 重猜是可选路径）。
+v 本文件不含 LLM 调用（Healer 的 LLM 重猜是可选路径）。
 """
 from __future__ import annotations
 from playwright.sync_api import sync_playwright, expect
@@ -39,7 +39,7 @@ def _run_step(page, t: TestStep, log, healer: Healer):
             loc = page.get_by_text(t.assertion, exact=False)
             loc.first.wait_for(timeout=5000)
         expect(loc).to_be_visible()          # web-first：自动重试
-        log(f"assert_text -> {t.assertion!r}  ✓")
+        log(f"assert_text -> {t.assertion!r}  v")
         return
 
     if t.element is None:
@@ -54,20 +54,20 @@ def _run_step(page, t: TestStep, log, healer: Healer):
             raise RuntimeError(
                 f"[{t.order}] {t.element.semantic_name} 定位失败且自愈未成功: "
                 f"{healed.get('reason') or '未知'}。"
-                f"排查顺序：① 目标是**行内/子元素**（行、单元格、行内链接按钮）时，先看"
+                f"排查顺序：(1) 目标是**行内/子元素**（行、单元格、行内链接按钮）时，先看"
                 f" anchor + path（锚点 + 容器内相对语义）能否唯一 —— 见 framework/tools/probe/scope_locate.py；"
-                f"② 再看语义名是否过期（页面改版后重跑 probe/generate）；"
-                f"③ data-testid 只是可选优化 —— **框架不要求被测系统为测试埋点**。"
+                f"(2) 再看语义名是否过期（页面改版后重跑 probe/generate）；"
+                f"(3) data-testid 只是可选优化 —— **框架不要求被测系统为测试埋点**。"
             )
         loc = healed["locator_obj"]
-        log(f"[HEAL ✓] {t.element.semantic_name} 自愈 -> {healed['strategy']} "
+        log(f"[HEAL v] {t.element.semantic_name} 自愈 -> {healed['strategy']} "
             f"conf={healed['confidence']} ({healed['result']})")
     else:
         loc = resolved["locator_obj"]
         tag = "fingerprint-heal" if resolved.get("healed") else "exact"
         if resolved.get("healed"):
             healer.record_heal(t, resolved)      # 指纹自愈也进可审 diff
-            log(f"[HEAL ✓] {t.element.semantic_name} 指纹自愈 -> {resolved['strategy']} "
+            log(f"[HEAL v] {t.element.semantic_name} 指纹自愈 -> {resolved['strategy']} "
                 f"conf={resolved['confidence']}")
         log(f"{a:<10} -> {t.element.semantic_name} "
             f"[{resolved['strategy']} {tag} conf={resolved['confidence']}]")
@@ -102,13 +102,13 @@ def run_scenario(m: ElementMap, headless: bool = True, save_trace: bool = True) 
         try:
             for t in m.steps:
                 _run_step(page, t, log, healer)
-            print("      ✓ 全部步骤通过")
+            print("      v 全部步骤通过")
         except Exception as e:
             # 若发生过自愈但场景仍失败 → 提示疑似真 bug（不掩盖回归）
             if healer.events:
-                print(f"      ✗ 场景失败，但期间发生 {len(healer.events)} 次自愈 "
+                print(f"      X 场景失败，但期间发生 {len(healer.events)} 次自愈 "
                       f"→ 疑似真 bug 或自愈点错，请人工确认 heal diff")
-            print(f"      ✗ 执行失败: {e}")
+            print(f"      X 执行失败: {e}")
             raise
         finally:
             if healer.events:

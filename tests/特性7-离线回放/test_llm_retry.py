@@ -1,13 +1,13 @@
 """LLM 抖动退避重试的回归测试（2026-09-13 冷启动排查时挖出的真 bug）。
 
 背景：`_ai_explore_async` 里 `await asyncio.sleep(...)`（重试退避）用的是**函数内局部** import，
-只有 `ai_explore` / `_get_llm_text` 那两个函数里 import 了 asyncio ⇒ 重试路径一触发就
+只有 `ai_explore` / `_get_llm_text` 那两个函数里 import 了 asyncio -> 重试路径一触发就
 `NameError: name 'asyncio' is not defined` 崩溃。后果很严重：
-  ① 我们最依赖的「DeepSeek function calling 间歇抖动 → 重试恢复」**从来没生效过**；
-  ② LLM 401/抖动时抛的是 traceback（exit 1），而不是干净的「AI 不可用 → exit 2」，防假 AI 闸门也被绕了。
+  (1) 我们最依赖的「DeepSeek function calling 间歇抖动 → 重试恢复」**从来没生效过**；
+  (2) LLM 401/抖动时抛的是 traceback（exit 1），而不是干净的「AI 不可用 → exit 2」，防假 AI 闸门也被绕了。
 
 注意每次尝试里其实有**两条路径**：先结构化输出（ainvoke + output_format），失败再走纯文本兜底
-（ainvoke 无 output_format）⇒ 一次 attempt 最多 2 次 ainvoke。
+（ainvoke 无 output_format）-> 一次 attempt 最多 2 次 ainvoke。
 
 跑法（不需要 key、不需要 demo、秒级）：
     cd ~/hybrid_gui_qa && source .venv/bin/activate && python -m pytest tests/特性7-离线回放/test_llm_retry.py -q

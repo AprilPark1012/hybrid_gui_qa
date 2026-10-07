@@ -6,7 +6,7 @@
     python -m framework.cli run
 三条命令各炸一次，抛的都是 Playwright 原始异常栈：
     BrowserType.launch: Executable doesn't exist at ...\\chromium_headless_shell-1243\\...\\chrome-headless-shell.exe
-新人看不懂、也搜不到该跑哪条命令 ⇒ 违反「开箱即用 + 提示说人话」。
+新人看不懂、也搜不到该跑哪条命令 -> 违反「开箱即用 + 提示说人话」。
 
 本文件守两件事：
 1. **负向**：浏览器不可用时，必须抛 BrowserNotInstalledError，且文案里**必须有一行修复命令**
@@ -34,7 +34,7 @@ def _empty_browsers(tmp_path) -> str:
 
 
 def test_missing_browser_raises_with_actionable_message(tmp_path, monkeypatch):
-    """★负向（核心）：浏览器不可用 ⇒ 必须抛错，且文案里必须有可照抄的修复命令。"""
+    """★负向（核心）：浏览器不可用 -> 必须抛错，且文案里必须有可照抄的修复命令。"""
     from framework.tools.common.browser import BrowserNotInstalledError, ensure_browser_installed
 
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", _empty_browsers(tmp_path))
@@ -51,7 +51,7 @@ def test_missing_browser_raises_with_actionable_message(tmp_path, monkeypatch):
 
 
 def test_skip_env_does_not_block(tmp_path, monkeypatch):
-    """不误伤：用户显式跳过 ⇒ 不许再拦。"""
+    """不误伤：用户显式跳过 -> 不许再拦。"""
     from framework.tools.common.browser import ensure_browser_installed
 
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", _empty_browsers(tmp_path))
@@ -74,7 +74,7 @@ def test_normal_env_passes_through():
 
 
 def test_cli_probe_exits_2_with_friendly_message(tmp_path):
-    """★端到端：走真实 CLI（子进程 ⇒ 不受进程内 driver 缓存影响），必须 exit 2 + 人话。"""
+    """★端到端：走真实 CLI（子进程 -> 不受进程内 driver 缓存影响），必须 exit 2 + 人话。"""
     env = dict(os.environ)
     env["PLAYWRIGHT_BROWSERS_PATH"] = _empty_browsers(tmp_path)
     env.pop("HYBRID_SKIP_BROWSER_CHECK", None)

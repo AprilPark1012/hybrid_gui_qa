@@ -55,7 +55,7 @@ def main() -> int:
     print(f"  仓库: {BASE}")
     print("=" * 64)
     if not (BASE / "build_tools" / "build_html.py").exists():
-        print("  ⏭️ 跳过：找不到 build_tools/build_html.py")
+        print("  [skip] 跳过：找不到 build_tools/build_html.py")
         return SKIP
 
     import tempfile
@@ -66,39 +66,39 @@ def main() -> int:
     ok1, out1 = _build(a, "0")
     ok2, out2 = _build(b, "12345")
     if not (ok1 and ok2):
-        print(f"  ❌ 生成失败：{(out1 or out2)[-400:]}")
+        print(f"  [NG] 生成失败：{(out1 or out2)[-400:]}")
         return USAGE
 
-    # ① 可复现
+    # (1) 可复现
     same = _md5(a) == _md5(b)
-    print(f"  {'✅' if same else '❌'} ① 可复现：两个哈希种子 → md5 {'相同' if same else '不同'}"
+    print(f"  {'[OK]' if same else '[NG]'} (1) 可复现：两个哈希种子 → md5 {'相同' if same else '不同'}"
           f"  ({_md5(a)[:8]} / {_md5(b)[:8]})")
     if not same:
         bad.append("生成不可复现")
 
-    # ② 同步（与仓库里已提交的那份逐字节比）
+    # (2) 同步（与仓库里已提交的那份逐字节比）
     if not OUT.exists():
-        print("  ⏭️ 仓库里没有 docs/training.html，跳过『同步』判据")
+        print("  [skip] 仓库里没有 docs/training.html，跳过『同步』判据")
     else:
         synced = a.read_bytes() == OUT.read_bytes()
-        print(f"  {'✅' if synced else '❌'} ② 同步：生成结果与 docs/training.html "
-              f"{'逐字节一致' if synced else '不一致 ⇒ 需 python build_tools/build_html.py 后提交'}")
+        print(f"  {'[OK]' if synced else '[NG]'} (2) 同步：生成结果与 docs/training.html "
+              f"{'逐字节一致' if synced else '不一致 -> 需 python build_tools/build_html.py 后提交'}")
         if not synced:
             bad.append("html 与代码不同步")
 
-    # ③ 健康（零畸形嵌套）
+    # (3) 健康（零畸形嵌套）
     txt = a.read_text(encoding="utf-8")
     n_bad = txt.count("<span <span")
-    print(f"  {'✅' if n_bad == 0 else '❌'} ③ 健康：畸形 span <span <span = {n_bad} 处（要求 0）")
+    print(f"  {'[OK]' if n_bad == 0 else '[NG]'} (3) 健康：畸形 span <span <span = {n_bad} 处（要求 0）")
     if n_bad:
         bad.append(f"畸形 span {n_bad} 处")
 
     print("-" * 64)
     if bad:
-        print(f"  ❌ 未通过：{' / '.join(bad)}")
+        print(f"  [NG] 未通过：{' / '.join(bad)}")
         print("     修法：python build_tools/build_html.py && git add docs/training.html && 提交")
         return FAIL
-    print("  ✅ 全部通过（可复现 + 与代码同步 + 无畸形嵌套）")
+    print("  [OK] 全部通过（可复现 + 与代码同步 + 无畸形嵌套）")
     return OK
 
 

@@ -2,7 +2,7 @@
 
 真值 2026-09-30（P22 批 5）：
   `wait_text` 断言渲染出 `_assert_wait_text(...)`，但用例头部的 `from _harness import (...)` 是
-  **硬编码列表** ⇒ 生成物一跑就是 `NameError: name '_assert_wait_text' is not defined`。
+  **硬编码列表** -> 生成物一跑就是 `NameError: name '_assert_wait_text' is not defined`。
   模板里连「漏一个就是 NameError」的警告都写着，仍然漏了 —— 所以把这条变成红灯，而不是靠记性。
 
 口径：凡在模板源码里以调用形式出现（非 `def`）的 `_assert_*`，都必须在 import 列表里。
@@ -42,4 +42,4 @@ def test_every_rendered_assert_helper_is_imported():
     missing = sorted(rendered - _imported_from_harness())
     assert not missing, (
         f"这些 helper 会被渲染进用例、却没在 `from _harness import (...)` 里：{missing}"
-        f"⇒ 生成物运行必然 NameError")
+        f"-> 生成物运行必然 NameError")

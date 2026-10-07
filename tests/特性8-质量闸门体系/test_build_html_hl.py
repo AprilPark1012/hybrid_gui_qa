@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""build_html.hl() 的判据：单遍分词 ⇒ 无畸形嵌套 · 可复现 · 字符串真高亮。
+"""build_html.hl() 的判据：单遍分词 -> 无畸形嵌套 · 可复现 · 字符串真高亮。
 
 背景（2026-09-19 实测，三个真 bug）：
-- 老实现是三趟 `re.sub` 串起来跑，关键字那趟在**前一趟注入的 HTML** 上再跑 ⇒ 把
+- 老实现是三趟 `re.sub` 串起来跑，关键字那趟在**前一趟注入的 HTML** 上再跑 -> 把
   `<span class="k">` 里的 `class` 又包一层：`<span <span class="k">class</span>="k">raise</span>`
   （已发布的 `docs/training.html` 里实测 **1520 处**）。
-- `KEYWORDS` 是 set，`sorted(key=len)` 对**同长度**词按哈希序排，而哈希序每个进程不同 ⇒
-  同一份代码重跑两次 `build_html.py`，html 的 md5 都不一样（实测差 140 行）⇒
+- `KEYWORDS` 是 set，`sorted(key=len)` 对**同长度**词按哈希序排，而哈希序每个进程不同 ->
+  同一份代码重跑两次 `build_html.py`，html 的 md5 都不一样（实测差 140 行）->
   「html 与代码是否同步」这条判据被废掉（重跑必出 diff，分不清同步还是没同步）。
 - 字符串高亮**早就死了**：先 `html.escape` 把引号变成 `&quot;`/`&#x27;`，字符串正则
   `['"][^'"]*['"]` 永远匹配不上 —— 一个静默退化的功能。
@@ -104,16 +104,16 @@ def test_deterministic_across_processes():
         )
         assert r.returncode == 0, r.stderr
         outs.add(r.stdout)
-    assert len(outs) == 1, "同一输入在不同哈希种子下输出不同 ⇒ 生成结果不可复现"
+    assert len(outs) == 1, "同一输入在不同哈希种子下输出不同 -> 生成结果不可复现"
 
 
 def test_committed_html_has_no_malformed_nesting():
-    """仓库不变量：已提交的培训页里零畸形 span（有 ⇒ 说明生成器退化了或忘了重跑）。"""
+    """仓库不变量：已提交的培训页里零畸形 span（有 -> 说明生成器退化了或忘了重跑）。"""
     f = BASE / "docs" / "training.html"
     if not f.exists():
         return
     t = f.read_text(encoding="utf-8")
     assert "<span <span" not in t, (
-        "docs/training.html 里有畸形 span（共 %d 处）⇒ 用修好的生成器重跑：python build_tools/build_html.py"
+        "docs/training.html 里有畸形 span（共 %d 处）-> 用修好的生成器重跑：python build_tools/build_html.py"
         % t.count("<span <span")
     )

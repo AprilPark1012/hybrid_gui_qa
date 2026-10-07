@@ -5,11 +5,11 @@
 —— 重写就违反单一来源，也验不到真东西。
 
 判据口径：
-  ① 正向 A：目标文本已在页面上 ⇒ **探到就走**（不许白等满超时）
-  ② 正向 B：**服务端新增数据、页面自己不会刷新** ⇒ `refresh=research` 每轮重放搜索 ⇒ 等到它出现
+  (1) 正向 A：目标文本已在页面上 -> **探到就走**（不许白等满超时）
+  (2) 正向 B：**服务端新增数据、页面自己不会刷新** -> `refresh=research` 每轮重放搜索 -> 等到它出现
      （这正是「订单提交后 150 秒自动关闭」那条业务需要的能力：demo 列表页无任何自动刷新）
-  ③ 负向：等一个**永不出现**的文本 + 短超时 ⇒ **必须抛 AssertionError**，且信息里如实说明轮询了几轮
-  ④ 负向自证：把超时设成极小 ⇒ 快速失败（证明①不是"永远返回成功"那种恒真）
+  (3) 负向：等一个**永不出现**的文本 + 短超时 -> **必须抛 AssertionError**，且信息里如实说明轮询了几轮
+  (4) 负向自证：把超时设成极小 -> 快速失败（证明(1)不是"永远返回成功"那种恒真）
 
 跑法（需要 demo 在 8000 上）：python tests/特性8-质量闸门体系/verify_wait_text.py
 退出码：0 通过 · 1 有失败 · 2 环境不可用 · 3 内存不足 SKIP（**SKIP 不是通过**）。
@@ -37,7 +37,7 @@ fails: list[str] = []
 
 
 def check(ok, desc, detail=""):
-    print(("  ✅ " if ok else "  ❌ ") + desc + (f"   [{detail}]" if detail else ""))
+    print(("  [OK] " if ok else "  [NG] ") + desc + (f"   [{detail}]" if detail else ""))
     if not ok:
         fails.append(desc)
 
@@ -81,7 +81,7 @@ def main() -> int:
         with urllib.request.urlopen(DEMO + "/api/health", timeout=5) as r:
             r.read()
     except Exception as e:                                     # noqa: BLE001
-        print(f"❌ 被测 demo 不可达（{DEMO}）——先跑：python -m demo.app  [{e}]")
+        print(f"[NG] 被测 demo 不可达（{DEMO}）——先跑：python -m demo.app  [{e}]")
         return 2
 
     mem = mem_available_mb()
@@ -106,16 +106,16 @@ def main() -> int:
         pg.goto(DEMO + "/orders.html?demo_role=order_admin", wait_until="domcontentloaded")
         pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000)
 
-        # ---- ① 正向 A：已在页面上的文本 ⇒ 探到就走 ----
+        # ---- (1) 正向 A：已在页面上的文本 -> 探到就走 ----
         t0 = time.time()
         try:
             H._assert_wait_text(pg, "订单名称", timeout_ms=10000)
             dt = time.time() - t0
-            check(dt < 3.0, "正向 A：目标已在页面上 ⇒ 探到就走（不是白等满超时）", f"{dt:.2f}s")
+            check(dt < 3.0, "正向 A：目标已在页面上 -> 探到就走（不是白等满超时）", f"{dt:.2f}s")
         except Exception as e:                                 # noqa: BLE001
             check(False, "正向 A：等到已存在的文本", f"{type(e).__name__}: {str(e)[:80]}")
 
-        # ---- ② 正向 B：服务端新增 + refresh=research（列表页自己不刷新）----
+        # ---- (2) 正向 B：服务端新增 + refresh=research（列表页自己不刷新）----
         # 先在页面上点一次「搜索」——harness 的 _act 会记下"最近一次搜索"，research 靠它重放
         try:
             H._act(pg, "click", semantic="搜索",
@@ -130,12 +130,12 @@ def main() -> int:
         t0 = time.time()
         try:
             H._assert_wait_text(pg, created_name, timeout_ms=30000, refresh="research")
-            check(True, "正向 B：refresh=research 每轮重放搜索 ⇒ 等到服务端新增的记录", f"{time.time()-t0:.1f}s")
+            check(True, "正向 B：refresh=research 每轮重放搜索 -> 等到服务端新增的记录", f"{time.time()-t0:.1f}s")
         except Exception as e:                                 # noqa: BLE001
             check(False, "正向 B：refresh=research 能等到（这是 150 秒自动关闭那条业务的地基）",
                   f"{type(e).__name__}: {str(e)[:90]}")
 
-        # ---- ③ 负向：永不出现的文本 ⇒ 必须抛 ----
+        # ---- (3) 负向：永不出现的文本 -> 必须抛 ----
         t0 = time.time()
         raised, msg = False, ""
         try:
@@ -144,18 +144,18 @@ def main() -> int:
             raised, msg = True, str(e)
         except Exception as e:                                 # noqa: BLE001
             raised, msg = True, f"（非 AssertionError）{type(e).__name__}: {e}"
-        check(raised and "轮询" in msg, "负向：永不出现的文本 ⇒ 抛 AssertionError 且说明轮询轮数",
+        check(raised and "轮询" in msg, "负向：永不出现的文本 -> 抛 AssertionError 且说明轮询轮数",
               f"{time.time()-t0:.1f}s · {msg[:70]}")
         check(raised and ("等待超时" in msg), "负向：失败信息里明确写「等待超时」（人看得懂为什么红）")
 
-        # ---- ④ 负向自证：极小超时下"已存在的文本"也应该走完（证明不是恒真也不是恒假）----
+        # ---- (4) 负向自证：极小超时下"已存在的文本"也应该走完（证明不是恒真也不是恒假）----
         try:
             H._assert_wait_text(pg, "订单名称", timeout_ms=200)
-            check(True, "自证：极小超时下，已在页面上的文本仍能命中（说明 ③ 的红是超时、不是实现坏了）")
+            check(True, "自证：极小超时下，已在页面上的文本仍能命中（说明 (3) 的红是超时、不是实现坏了）")
         except Exception as e:                                 # noqa: BLE001
             check(False, "自证：极小超时下已在页面上的文本应能命中", f"{type(e).__name__}: {str(e)[:60]}")
 
-        # ---- 收尾：撤掉造出来的那条（soft cancel ⇒ 列表不再显示，保持零残渣）----
+        # ---- 收尾：撤掉造出来的那条（soft cancel -> 列表不再显示，保持零残渣）----
         api("/api/orders/cancel", {"no": d.get("no"), "reason": "信息输入错误"})
         st2, _ = api("/api/orders/cancel", {"no": d.get("no"), "reason": "信息输入错误"})
         print(f"[收尾] 已尝试撤掉 {d.get('no')}（软删；重复调用返回 HTTP {st2} 属正常）")
@@ -164,11 +164,11 @@ def main() -> int:
 
     print()
     if fails:
-        print(f"❌ {len(fails)} 条判据不符预期：")
+        print(f"[NG] {len(fails)} 条判据不符预期：")
         for f in fails:
             print(f"   · {f}")
         return 1
-    print("全部符合预期 ✅（探到就走 · research 能等到新增记录 · 超时如实报 · 不恒真）")
+    print("全部符合预期 [OK]（探到就走 · research 能等到新增记录 · 超时如实报 · 不恒真）")
     return 0
 
 

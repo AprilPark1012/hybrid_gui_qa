@@ -2,17 +2,17 @@
 
 **他的原话**：「补一条 AI 用例，但是**如果关联的 scenario 变化了，它就要刷新过来，保证同步**。」
 
-⇒ 机制：每条 AI 用例落盘时记下**它来自哪个场景、以及当时场景文件的内容指纹**。
-   场景文件一改（指纹变）⇒ 判据当场红 ⇒ 必须跑一次刷新命令重新生成，才能绿。
+-> 机制：每条 AI 用例落盘时记下**它来自哪个场景、以及当时场景文件的内容指纹**。
+   场景文件一改（指纹变）-> 判据当场红 -> 必须跑一次刷新命令重新生成，才能绿。
    刷新命令（用录像回放，不花 token）：
      `python -m framework.cli explore --ai --scenario-file scenarios/xxx.yml --llm-cassette`
      然后 `python -m framework.cli generate`
 
 判据：
-  ① 每条 `cases/ai_*.json` 都要带 `scenario_id` + `scenario_fingerprint`
-  ② 指纹必须与**当前**场景文件的内容一致（不一致 ⇒ 场景改过而用例没刷新 ⇒ 红）
-  ③ `scenario_id` 必须指向真实存在的场景（与 R7-f 同源，这里只做交叉引用）
-  ④ 负向自证：改一个字 ⇒ 指纹必须变（否则判据永远绿、等于没写）
+  (1) 每条 `cases/ai_*.json` 都要带 `scenario_id` + `scenario_fingerprint`
+  (2) 指纹必须与**当前**场景文件的内容一致（不一致 -> 场景改过而用例没刷新 -> 红）
+  (3) `scenario_id` 必须指向真实存在的场景（与 R7-f 同源，这里只做交叉引用）
+  (4) 负向自证：改一个字 -> 指纹必须变（否则判据永远绿、等于没写）
 """
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ def stale() -> list[str]:
             continue
         want = fingerprint(scen[sid])
         if fp != want:
-            bad.append(f"{p.stem}:<场景 {sid} 变过（指纹 {fp} → {want}）⇒ 要刷新用例>")
+            bad.append(f"{p.stem}:<场景 {sid} 变过（指纹 {fp} → {want}）-> 要刷新用例>")
     return bad
 
 
@@ -78,11 +78,11 @@ def test_ai_cases_record_scenario_fingerprint():
 
 
 def test_sync_helper_detects_change(tmp_path):
-    """负向自证：改一个字 ⇒ 指纹必须变（否则判据永远绿）。"""
+    """负向自证：改一个字 -> 指纹必须变（否则判据永远绿）。"""
     f = tmp_path / "s.yml"
     f.write_text("id: a\ntitle: 甲\n", encoding="utf-8")
     h1 = fingerprint(f)
     f.write_text("id: a\ntitle: 乙\n", encoding="utf-8")
-    assert fingerprint(f) != h1, "场景内容变了但指纹没变 ⇒ 同步判据失效"
+    assert fingerprint(f) != h1, "场景内容变了但指纹没变 -> 同步判据失效"
     f.write_text("id: a\ntitle: 甲\n", encoding="utf-8")
     assert fingerprint(f) == h1, "内容改回来指纹应复原（说明只跟内容有关）"

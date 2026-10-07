@@ -52,14 +52,14 @@ def _ancestor_chain(loc, max_depth: int = ANCESTOR_MAX_DEPTH) -> list[dict]:
 
 
 def _table_context(loc) -> dict | None:
-    """若元素在表格行内 ⇒ 采集「行锚文本 + 列（data-field / 表头文本 / 列序）」，供下钻定位。
+    """若元素在表格行内 -> 采集「行锚文本 + 列（data-field / 表头文本 / 列序）」，供下钻定位。
 
     真实项目表格常没有 `data-field`（也不是埋点），所以列信息是**三级降级**：
     `data-field` → 表头文本 → 显式列序。拿不到就留空（下游据此放弃或另找锚点，绝不猜）。
 
     **行锚口径（L18 修法 A · 2026-09-28）**：不再取整行 `textContent`（含 demo `seed()` 的随机字段
-    ⇒ 每次重启必失配、静默降级），改为「**整表内恰好出现 1 次**的最短单元格文本」。
-    取不到唯一候选 ⇒ **保持现状**（整行文本）并置 `row_anchor_stable=False`（由生成期告警，批 3 落地）。
+    -> 每次重启必失配、静默降级），改为「**整表内恰好出现 1 次**的最短单元格文本」。
+    取不到唯一候选 -> **保持现状**（整行文本）并置 `row_anchor_stable=False`（由生成期告警，批 3 落地）。
     """
     try:
         ctx = loc.evaluate(
@@ -78,9 +78,9 @@ def _table_context(loc) -> dict | None:
                    colIndex = idx >= 0 ? idx + 1 : null;
                    if (colIndex && colIndex <= heads.length) colHeader = heads[colIndex - 1];
                  }
-                 // ★L18 修法 A（2026-09-28）：行锚不再取整行文本（含 demo 随机字段 ⇒ 每次重启必失配），
+                 // ★L18 修法 A（2026-09-28）：行锚不再取整行文本（含 demo 随机字段 -> 每次重启必失配），
                  //   改为「**整表内恰好出现 1 次**的最短单元格文本」—— 纯数据驱动，不猜哪列是业务键。
-                 //   取最短：编号列这类键值天然短 ⇒ 表达式更短更稳（顺带缓解 L13）。
+                 //   取最短：编号列这类键值天然短 -> 表达式更短更稳（顺带缓解 L13）。
                  const norm = (x) => (x.textContent || '').replace(/\\s+/g, ' ').trim();
                  const counts = new Map();
                  if (tbl) {
@@ -98,7 +98,7 @@ def _table_context(loc) -> dict | None:
                  cand.sort((a, b) => (a.t.length - b.t.length) || (a.i - b.i));
                  const stable = cand.length > 0;
                  const rowText = (tr.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
-                 // ⚠️ 无唯一候选 ⇒ **保持现状**（整行文本），绝不静默编锚；stable=false 由生成期告警
+                 // [!] 无唯一候选 -> **保持现状**（整行文本），绝不静默编锚；stable=false 由生成期告警
                  //    （「该行锚未取得稳定值，数据变动后可能降级为语义兜底」——批 3 落地，P18 §四兜底）
                  return {row_text: stable ? cand[0].t : rowText, row_anchor_stable: stable,
                          row_text_full: rowText,
@@ -123,9 +123,9 @@ def readable_name(text: str, help_text: str) -> str:
     """挑一个「有信息量」的名字来给控件命名。
 
     纯标点的名字没有信息量：企业 UI 里「选择/更多」按钮常写成 `...`，与 title="选择业务单元"
-    配对。若直接用 `...` 当基础名，`_slug` 会把标点全吃掉 ⇒ 退化成 `el` / `el_2` / `el_3`
+    配对。若直接用 `...` 当基础名，`_slug` 会把标点全吃掉 -> 退化成 `el` / `el_2` / `el_3`
     （2026-09-17 实测：订单页 3 个「...」按钮全叫 `el@…`，AI 与人工都认不出是哪一个）。
-    ⇒ 名字里没有任何字母/数字/汉字时，用 help_text（title / aria-describedby）兜底。
+    -> 名字里没有任何字母/数字/汉字时，用 help_text（title / aria-describedby）兜底。
     """
     t = (text or "").strip()
     if any(ch.isalnum() for ch in t):
@@ -143,12 +143,12 @@ def _visible(page: Page, locator) -> bool:
 def _accessible_name(locator) -> str:
     """优先 aria-label，其次可见文本。
 
-    ⚠️ 2026-09-24 事故④（真实系统也会踩）：**`<select>` 的 inner_text 是它全部 `<option>` 的拼接**，
+    [!] 2026-09-24 事故(4)（真实系统也会踩）：**`<select>` 的 inner_text 是它全部 `<option>` 的拼接**，
     不是它的可访问名。demo 的 `<select id="sel-mu">` 因此被叫成
-    `"请选择\n0021\n0451\n1031"`（换行连接）⇒ 拿这个名字去 `get_by_role(name=…)`
+    `"请选择\n0021\n0451\n1031"`（换行连接）-> 拿这个名字去 `get_by_role(name=…)`
     **永远匹配不到**（实测 `RuntimeError: 元素定位失败且自愈未成功: 请选择_0021_0451_1031`）。
     浏览器口径：`<select>` 的可访问名只来自 aria-label/aria-labelledby/关联 `<label>`，与选项文本无关
-    ⇒ 这里对 select **不看 inner_text**，返回空 ⇒ 上游自然回落到 label/placeholder 走「容器锚点 + 下钻」。
+    -> 这里对 select **不看 inner_text**，返回空 -> 上游自然回落到 label/placeholder 走「容器锚点 + 下钻」。
     """
     try:
         if locator.get_attribute("aria-label"):
@@ -181,7 +181,7 @@ def _label_text(page: Page, locator) -> str:
             return wrapped.strip()
     # 兜底（2026-09-11 新增）：同容器内【前置的 <label>】——最常见的手写表单写法：
     #   <div class="field"><label>合同名称</label><input id="inp-name"></div>
-    # （label 无 for、input 也没被 label 包裹 ⇒ 上面两条都拿不到，导致 AI 对表单字段完全失去标签信号）
+    # （label 无 for、input 也没被 label 包裹 -> 上面两条都拿不到，导致 AI 对表单字段完全失去标签信号）
     try:
         near = locator.evaluate("""(e) => {
             let cur = e.parentElement;
@@ -265,8 +265,8 @@ def _nearest_heading(locator) -> str:
     """向上找最近的标题，作为所在区块/栏目标题（区域消歧信号）。
 
     两级（2026-09-11 增强）：
-      ① 祖先链上本身是 heading（原逻辑）；
-      ② **最近一个"内部含 heading"的祖先区块**的标题 —— 例如
+      (1) 祖先链上本身是 heading（原逻辑）；
+      (2) **最近一个"内部含 heading"的祖先区块**的标题 —— 例如
          <div class="modal"><h3>新建合同</h3><div class="field"><input id="inp-name"></div></div>
          从这里能拿到「新建合同」这个区域名，AI 才分得清"弹窗内字段"和"列表页筛选控件"
          （实测：缺了它，AI 把弹窗的客户下拉错选成搜索区的"全部客户_c1_c2_c3_c4"）。
@@ -348,16 +348,16 @@ def assign_semantic_names(items: list[dict], max_len: int = 26) -> None:
     一旦同名（≥2 个），这一组**全部**带上上下文后缀 `base@上下文`，拿不到上下文才退回 `base_2/base_3`。
 
     为什么不沿用「第一个用原名、后续加序号」：
-      ① 序号是 DOM 顺序，行序一变就指向别的行（脆弱）；
-      ② 对 AI 就是"天书"——`选择_3` 是哪一行？而 `选择@北京华信科技有限公司` 一眼就懂；
-      ③ 一致性：同一组按钮里"只有一个不带上下文"会让人误以为它是特殊的那一个。
+      (1) 序号是 DOM 顺序，行序一变就指向别的行（脆弱）；
+      (2) 对 AI 就是"天书"——`选择_3` 是哪一行？而 `选择@北京华信科技有限公司` 一眼就懂；
+      (3) 一致性：同一组按钮里"只有一个不带上下文"会让人误以为它是特殊的那一个。
 
-    ⚠️ **必须在「合并完所有探测轮次」之后重算一次**（2026-09-18 批次 2 S1 根因修复）：
+    [!] **必须在「合并完所有探测轮次」之后重算一次**（2026-09-18 批次 2 S1 根因修复）：
     弹窗/弹层是**另起一轮 `probe_page`** 探的（`explorer._try_collect_modal_items`），
-    每轮各自命名时，一个同名控件在「弹窗没开」那轮里是**唯一**的 ⇒ 它独占裸名；
-    另一个控件在别的轮次里带后缀 ⇒ **裸名归谁取决于探测那一刻谁可见**，下游根本分不清
+    每轮各自命名时，一个同名控件在「弹窗没开」那轮里是**唯一**的 -> 它独占裸名；
+    另一个控件在别的轮次里带后缀 -> **裸名归谁取决于探测那一刻谁可见**，下游根本分不清
     （实测事故：两枚同名按钮，用例引用裸名，被静默映射到另一枚，点击被遮挡的按钮 30s 超时）。
-    ⇒ 落点：`explorer._merge_items()`（合并后统一重算）。
+    -> 落点：`explorer._merge_items()`（合并后统一重算）。
 
     留痕字段（下游判歧义 / 给人话用，绝不静默）：
       · `base_name`     唯一化前的基础名；
@@ -373,11 +373,11 @@ def assign_semantic_names(items: list[dict], max_len: int = 26) -> None:
             base = _slug(readable_name(it.get("text") or "", it.get("help_text") or "")
                          or it.get("tag") or "")
         # ★2026-09-22（口径 C 实测，订单页工具栏三个下拉）：
-        # 占位符是**通用词**（"请选择"/"请输入"/"选填"）时拿它当基础名**毫无区分度** ⇒ 同名一组只能落到
+        # 占位符是**通用词**（"请选择"/"请输入"/"选填"）时拿它当基础名**毫无区分度** -> 同名一组只能落到
         # `请选择_2/3/4`（序号 = DOM 顺序，行序一变就指向别的控件）；而且**命名随探测范围漂移**
-        # （一次性探测里是 `请选择_0021_0451_1031`，分轮探测里变成 `请选择_3`）⇒ 用例引用哪个名字都不稳。
-        # 这类控件真正稳定的身份是它的 **label**（实测正是"业务单元/管理单元/帐套"）⇒ 通用占位符时改用 label。
-        # ⚠️ 只对**光秃秃的通用占位符**生效（"请选择"/"请输入"/"选填"）：像「请选择客户」「请输入合同名称」
+        # （一次性探测里是 `请选择_0021_0451_1031`，分轮探测里变成 `请选择_3`）-> 用例引用哪个名字都不稳。
+        # 这类控件真正稳定的身份是它的 **label**（实测正是"业务单元/管理单元/帐套"）-> 通用占位符时改用 label。
+        # [!] 只对**光秃秃的通用占位符**生效（"请选择"/"请输入"/"选填"）：像「请选择客户」「请输入合同名称」
         # 这类**描述性**占位符本身就是好名字，不该被改（改了反而与弹层里的客户字段撞名，
         # 实测把 5 个搜索用例引用的 `客户名称_右模糊_前缀匹配` 逼成了不稳的 `客户_2`）。
         _ph = _slug(it.get("placeholder") or "")
@@ -423,9 +423,9 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
 
     P16（2026-09-22）新增两个字段 —— 为「真实系统只有顶层元素有 testid」这件事服务：
       · `anchor`：最近的**可锚定容器**（表格/弹层/表单/区块）+ 它的锚点信号
-        （`{"kind","by","value"}`；有容器但没信号时 by/value 为 None；没有容器 ⇒ None）；
+        （`{"kind","by","value"}`；有容器但没信号时 by/value 为 None；没有容器 -> None）；
       · `path`：行内元素的**容器内相对路径**（行锚文本 / 列 = data-field→表头文本→列序 / 目标语义）；
-        不在表格行内 ⇒ None（此时靠 anchor + role/name 定位，不需要相对路径）。
+        不在表格行内 -> None（此时靠 anchor + role/name 定位，不需要相对路径）。
     两者都**只描述、不定位**，也不含任何 CSS/selector（本项目的铁律：不让 AI 猜 CSS）。
     page_name（跨页流程 P3 新增）：给每个元素打上所属页面标记，供「跨页同名唯一化」与 AI 分页理解用。
     单页场景不传 → 字段为空串，行为与改造前完全一致。
@@ -462,7 +462,7 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
 
         # --- P16（2026-09-22）：顶层锚点 + 容器内相对路径 -----------------------------
         # 为什么：真实系统一般只有顶层元素（表格/弹层/工具栏/区块）有 data-testid，
-        # 子元素没有埋点 ⇒ 定位必须"从锚点下钻"。这里把"锚点 + 相对路径"采集下来，
+        # 子元素没有埋点 -> 定位必须"从锚点下钻"。这里把"锚点 + 相对路径"采集下来，
         # 交给 locator_bridge 合成 locator、交给 AI 作为描述口径（不让 AI 猜 CSS）。
         chain = _ancestor_chain(loc)
         if chain:
@@ -481,12 +481,12 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
             # 但内层埋点撤除后它们恰恰最需要"从锚点下钻"。按字段自身信号产出一条 target 步：
             # placeholder（最稳）→ label → text。相对锚点定位，唯一性由 scope_locate 兜底。
             # 按**元素类型**挑最稳的信号（实测教训：demo 的 <label> 没有 for、也没包住 input
-            # ⇒ `get_by_label` 关联不上，给按钮选 label 步会定位失败 ⇒ 按钮/链接优先用文本）
+            # -> `get_by_label` 关联不上，给按钮选 label 步会定位失败 -> 按钮/链接优先用文本）
             if tag in ("input", "textarea", "select"):
                 # P22 批 5：补 `title` 一步。为什么必须补：`get_by_text` 对表单控件**无效** ——
                 # 它们的"名字"在 aria-label / title / name 上，没有文本节点。实测（demo 订单详情页
                 # 行内输入框 `title="数量" aria-label="数量"`）：placeholder 空、label 空（<label> 无 for）
-                # ⇒ 原候选只剩 text ⇒ 生成 `get_by_text("数量", exact=True)` ⇒ 永远 0 命中。
+                # -> 原候选只剩 text -> 生成 `get_by_text("数量", exact=True)` -> 永远 0 命中。
                 # title 是这类控件稳定且生产常见的写法（与下面按钮分支同一口径）。
                 cands = (("placeholder", placeholder), ("label", label),
                          ("title", help_text), ("text", text))
@@ -525,7 +525,7 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
             "page": page_name or "",
             # 跨 tab 流程（2026-09-17）：点击是否新开 tab（探针给信号，AI 据此选 click_new_tab）
             "opens_new_tab": opens_new_tab,
-            # P16：顶层锚点 + 容器内相对路径（无锚点/不在行内 ⇒ None，绝不编造）
+            # P16：顶层锚点 + 容器内相对路径（无锚点/不在行内 -> None，绝不编造）
             "anchor": anchor,
             "path": path,
         })

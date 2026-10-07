@@ -6,13 +6,13 @@
 `demo/` 的订单两页 + todo 页、`tests/_runner/` 的两个入口（`run_verifications.py` / `run_acceptance.py`）
 与判据公共件、`releases/` 整节、仓库根配置文件全没写。
 根因：那棵树是 `build_html.py` 里**硬编码的字符串**，改动代码时没人回头改它
-⇒ 「看着正常、其实没在干活」的老毛病（同 R9 搬家协议打的是同一类病）。
+-> 「看着正常、其实没在干活」的老毛病（同 R9 搬家协议打的是同一类病）。
 
 判据三条（含负向自证 —— R7：只跑正向不算验证过）：
-  ① **关键入口/模块必须在培训页里出现**（新增模块忘了补文档 ⇒ 红）
-  ② **培训页正文引用的仓库路径必须存在**；版本史附录（`A 版本与更新记录`）属**冻结历史**，
-     按 R9 口径原样保留 ⇒ 那片区域不查（否则会逼着人去改历史记录）
-  ③ **实际顶层目录必须被 README 提到**（新增顶层目录不能悄悄加）
+  (1) **关键入口/模块必须在培训页里出现**（新增模块忘了补文档 -> 红）
+  (2) **培训页正文引用的仓库路径必须存在**；版本史附录（`A 版本与更新记录`）属**冻结历史**，
+     按 R9 口径原样保留 -> 那片区域不查（否则会逼着人去改历史记录）
+  (3) **实际顶层目录必须被 README 提到**（新增顶层目录不能悄悄加）
 
 跑法（秒级，不需要 demo/key/git）：
     python -m pytest tests/特性8-质量闸门体系/test_docs_sync.py -v
@@ -31,7 +31,7 @@ import repo_files  # noqa: E402
 README = REPO / "README.md"
 HTML = REPO / "docs" / "training.html"
 
-# ① 这些「入口 / 框架模块 / 开发期工具 / 判据公共件」必须能在培训页里找到
+# (1) 这些「入口 / 框架模块 / 开发期工具 / 判据公共件」必须能在培训页里找到
 MUST_BE_DOCUMENTED = (
     # 运行期（framework/）
     "cli.py", "config.py", "text_io.py", "browser.py", "limits.py", "retention.py", "target_probe.py",
@@ -47,13 +47,13 @@ MUST_BE_DOCUMENTED = (
     "repo_files.py", "artifacts.py", "testid_policy.py",
 )
 
-# ② 路径引用：只认「带目录前缀 + 带扩展名」
+# (2) 路径引用：只认「带目录前缀 + 带扩展名」
 _PATH = re.compile(
     r"(?<![\w/.-])((?:cases|tests|docs|build_tools|framework|scenarios|demo|scripts|releases)"
     r"/[\w./-]+\.(?:py|md|json|html|yml|yaml|sh))")
 # 教程里的占位示例（指「你自己的文件」，不是真路径）
 _PLACEHOLDER = ("xxx", "用例.json", "你的")
-# 运行期目录：交付包解压目录里可能不存在 ⇒ 不查（一类判据必须与「在不在包里」无关）
+# 运行期目录：交付包解压目录里可能不存在 -> 不查（一类判据必须与「在不在包里」无关）
 _RUNTIME_PREFIXES = ("output/", "log/")
 
 # 版本史附录（冻结历史：里面的旧文档引用按 R9 原样保留，不逼人改历史）
@@ -91,7 +91,7 @@ def repo_top_level_dirs(repo: Path = REPO) -> list[str]:
     return sorted({r.split("/")[0] for r in rels if "/" in r})
 
 
-# ---------------- ① 关键模块必须在培训页里 ----------------
+# ---------------- (1) 关键模块必须在培训页里 ----------------
 
 def test_training_html_documents_key_modules():
     html = HTML.read_text(encoding="utf-8")
@@ -101,7 +101,7 @@ def test_training_html_documents_key_modules():
         "`python build_tools/build_html.py`）：\n  - " + "\n  - ".join(missing))
 
 
-# ---------------- ② 培训页引用的路径必须存在 ----------------
+# ---------------- (2) 培训页引用的路径必须存在 ----------------
 
 def test_training_html_referenced_paths_exist():
     html = HTML.read_text(encoding="utf-8")
@@ -111,7 +111,7 @@ def test_training_html_referenced_paths_exist():
         "`python build_tools/build_html.py`）：\n  - " + "\n  - ".join(miss))
 
 
-# ---------------- ③ 顶层目录必须被 README 覆盖 ----------------
+# ---------------- (3) 顶层目录必须被 README 覆盖 ----------------
 
 def test_every_repo_top_level_dir_is_documented():
     readme = README.read_text(encoding="utf-8")
@@ -150,16 +150,16 @@ def test_negative_changelog_area_is_excluded():
 
 
 def test_negative_undocumented_module_is_detected():
-    assert undocumented_modules("clients: cli.py")  # 缺一大批 ⇒ 非空
+    assert undocumented_modules("clients: cli.py")  # 缺一大批 -> 非空
     assert undocumented_modules(" · ".join(MUST_BE_DOCUMENTED)) == []
 
 
-# ---------------- ④ 目录树的「父子归属」（L20 · 2026-09-28 新增） ----------------
+# ---------------- (4) 目录树的「父子归属」（L20 · 2026-09-28 新增） ----------------
 # 起因：第 2 章目录树里，6 个**一类**条目（test_*.py / demo_freshness.py / repo_files.py · artifacts.py /
 # testid_policy.py / fixtures/*.html）被挂在 `tests/_runner/` 父节点下，而它们实际住在
-# `tests/_helpers/` ⇒ 对外培训页把两类目录的职责讲反了。
-# 为什么以前的判据抓不到：①「关键模块名出现过」只查名字在不在页面里，不查**挂在谁下面**；
-# ② 引用路径判据只看路径存在性。⇒ 这条判据看的是**树的结构**。
+# `tests/_helpers/` -> 对外培训页把两类目录的职责讲反了。
+# 为什么以前的判据抓不到：(1)「关键模块名出现过」只查名字在不在页面里，不查**挂在谁下面**；
+# (2) 引用路径判据只看路径存在性。-> 这条判据看的是**树的结构**。
 
 _TREE_BLOCK = re.compile(r'<pre class="tree">(.*?)</pre>', re.S)
 _TREE_ENTRY = re.compile(r"^([\s│]*)(?:├──|└──)\s*(.+)$")
@@ -172,10 +172,10 @@ _RUNNER_ONLY = ("run_verifications.py", "run_acceptance.py", "rerecord_cassettes
 def tree_entries(html_text: str) -> list[tuple[int, str, str]]:
     """把「含 tests/_helpers/ 的那棵目录树」解析成 [(深度, 条目名, 父条目名)]。
 
-    只认 `├──` / `└──` 这一种画法 —— 换画法 ⇒ 解析不出 ⇒ 判据会红（有意的：目录树的结构必须机器可读，
+    只认 `├──` / `└──` 这一种画法 —— 换画法 -> 解析不出 -> 判据会红（有意的：目录树的结构必须机器可读，
     否则「谁挂在谁下面」这件事没法钉）。
     """
-    # 2026-10-07：目录树改成 `tests/` → 特性夹 + `_helpers/` + `_runner/` 两级 ⇒
+    # 2026-10-07：目录树改成 `tests/` → 特性夹 + `_helpers/` + `_runner/` 两级 ->
     # 不能再找 "tests/_helpers/" 这一整串（重组后树里没这串），改判「同时含 _helpers/ 与特性夹」。
     block = next((b for b in _TREE_BLOCK.findall(html_text)
                   if "_helpers/" in b and "特性1-混合链路" in b), None)
@@ -205,27 +205,27 @@ def belonging_problems(entries: list[tuple[int, str, str]]) -> list[str]:
     · `_helpers/` 只许放**公共模块**（repo_files / artifacts / testid_policy / demo_freshness / _gen_layout）；
     · `_runner/` 只许放**入口与工具**（run_verifications / run_acceptance / rerecord_cassettes / fixtures）。
 
-    ⚠️ 旧版这条判据查的是「一类不挂 `_runner`、二类不挂 `_helpers`」—— 重组后两类都搬进特性夹，
-    那两个目录里**再也不会出现** test_/verify_ ⇒ 判据**恒真空转**（2026-10-07 审视时发现）。
+    [!] 旧版这条判据查的是「一类不挂 `_runner`、二类不挂 `_helpers`」—— 重组后两类都搬进特性夹，
+    那两个目录里**再也不会出现** test_/verify_ -> 判据**恒真空转**（2026-10-07 审视时发现）。
     """
-    # ⚠️ 只按目录名匹配：重组后目录树是 `tests/` → `_helpers/`/`_runner/` 两级，
-    # 父节点名里**没有** "tests/_helpers/" 这整串（旧版按它匹配 ⇒ 永远空 ⇒ 判据空转）。
+    # [!] 只按目录名匹配：重组后目录树是 `tests/` → `_helpers/`/`_runner/` 两级，
+    # 父节点名里**没有** "tests/_helpers/" 这整串（旧版按它匹配 -> 永远空 -> 判据空转）。
     helpers = [n for _, n, p in entries if "_helpers" in p]
     runner = [n for _, n, p in entries if "_runner" in p]
     bad: list[str] = []
     for name in helpers + runner:
         if name.startswith("test_") or name.startswith("verify_"):
-            bad.append(f"{name} 挂在 `_helpers/` 或 `_runner/` 下 ⇒ "
+            bad.append(f"{name} 挂在 `_helpers/` 或 `_runner/` 下 -> "
                        f"一类/二类都**必须住特性夹**（`tests/特性N-<名>/`）")
     for name in _RUNNER_ONLY:
         if any(name in h for h in helpers):
-            bad.append(f"{name} 挂在 `tests/_helpers/` 下 ⇒ 入口/工具应住 `tests/_runner/`")
+            bad.append(f"{name} 挂在 `tests/_helpers/` 下 -> 入口/工具应住 `tests/_runner/`")
     for name in _HELPERS_ONLY:
         if any(name in r for r in runner):
-            bad.append(f"{name} 挂在 `_runner/` 下 ⇒ 公共模块应住 `_helpers/`")
+            bad.append(f"{name} 挂在 `_runner/` 下 -> 公共模块应住 `_helpers/`")
     for name in _HELPERS_ONLY:            # 同一模块名出现在两类清单里也不许（防清单漂移）
         if any(name in h for h in helpers) and name in _RUNNER_ONLY:
-            bad.append(f"{name} 同时出现在两类清单里 ⇒ 清单漂移")
+            bad.append(f"{name} 同时出现在两类清单里 -> 清单漂移")
     return bad
 
 
@@ -234,7 +234,7 @@ def test_training_tree_parent_child_belonging():
     `_helpers/` 只放公共模块、`_runner/` 只放入口与工具。"""
     html_text = HTML.read_text(encoding="utf-8")
     entries = tree_entries(html_text)
-    assert entries, "解析不出第 2 章目录树（树画法变了 ⇒ 本判据要同步）"
+    assert entries, "解析不出第 2 章目录树（树画法变了 -> 本判据要同步）"
     bad = belonging_problems(entries)
     assert not bad, (
         "培训页目录树把两类文件挂错了父节点（改完重跑 `python build_tools/build_html.py`）：\n  - "

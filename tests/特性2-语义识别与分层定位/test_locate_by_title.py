@@ -12,15 +12,15 @@ RuntimeError: 语义名未找到：'超@订单列表页'（逐字不存在；清
 （探针以超管身份探测时叫 `超`；执行到那一步身份已是订单管理员，按钮显示 `super · 订单管理员`）。
 但它的 `title="点击切换角色 / 退出登录"` **跨身份不变** —— 是稳定锚。
 
-⇒ 框架要能表达「**就用这个稳定锚定位**」，而不是只能靠"探测期抓到的语义名"。
-⇒ 这不是某个页面的特例：**凡"文案会随状态变、而 title/标签不变"的控件**都适用
-  （角色按钮、开关、动态徽标……）⇒ 做成**通用字段**，框架层零业务词。
+-> 框架要能表达「**就用这个稳定锚定位**」，而不是只能靠"探测期抓到的语义名"。
+-> 这不是某个页面的特例：**凡"文案会随状态变、而 title/标签不变"的控件**都适用
+  （角色按钮、开关、动态徽标……）-> 做成**通用字段**，框架层零业务词。
 
 ## 判据口径
 
 `by` 是**可选的定位方式覆盖**，取值白名单：title / label / placeholder / testid / alt。
-- 不给 `by` ⇒ **行为与改造前逐字节一致**（回归护栏，见 V3）。
-- 给非法值 ⇒ **生成期就报错**（不许静默忽略 —— 否则产物看着合法、实际没用上）。
+- 不给 `by` -> **行为与改造前逐字节一致**（回归护栏，见 V3）。
+- 给非法值 -> **生成期就报错**（不许静默忽略 —— 否则产物看着合法、实际没用上）。
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ from framework.tools.generate.generator import (  # noqa: E402
 
 
 def test_by_title_renders_get_by_title():
-    """`by: "title"` ⇒ 表达式用 `get_by_title`，且**优先于**探测期的语义名分支。"""
+    """`by: "title"` -> 表达式用 `get_by_title`，且**优先于**探测期的语义名分支。"""
     it = {
         "semantic_name": "超@订单列表页",     # 探测期抓到的、会随身份变的可见文本
         "role": "button",
@@ -68,7 +68,7 @@ def test_by_title_beats_semantic_name():
 
 
 def test_illegal_by_raises():
-    """`by` 不在白名单 ⇒ 生成期抛错，不许静默忽略。"""
+    """`by` 不在白名单 -> 生成期抛错，不许静默忽略。"""
     it = {"semantic_name": "x", "title": "t"}
     try:
         _semantic_to_locator_expr(it, by="xpath")   # css/role 已合法（见 test_step_direct_locator）
@@ -87,17 +87,17 @@ def test_whitelist_contents():
     assert set(_BY_WHITELIST) == {"title", "label", "placeholder", "testid", "alt", "role", "css"}
 
 
-# ---- V3：不给 by ⇒ 行为不变（回归护栏）----
+# ---- V3：不给 by -> 行为不变（回归护栏）----
 
 
 def test_without_by_behaviour_unchanged():
-    """不给 `by` ⇒ 与改造前一致（拿掉 by 参数调用，结果应相同）。"""
+    """不给 `by` -> 与改造前一致（拿掉 by 参数调用，结果应相同）。"""
     it = {"semantic_name": "搜索", "role": "button", "name": "搜索", "test_id": ""}
     assert _semantic_to_locator_expr(it, scope="page") == _semantic_to_locator_expr(
         dict(it, by=None), scope="page")
 
 
-# ---- V4：by=title 但元素无 title ⇒ 生成期报错（不许产出空定位）----
+# ---- V4：by=title 但元素无 title -> 生成期报错（不许产出空定位）----
 
 
 def test_by_title_without_title_raises():
@@ -107,7 +107,7 @@ def test_by_title_without_title_raises():
     except ValueError as e:
         assert "title" in str(e)
     else:
-        raise AssertionError("元素没有 title 却要求 by=title ⇒ 必须报错而不是产出无效定位")
+        raise AssertionError("元素没有 title 却要求 by=title -> 必须报错而不是产出无效定位")
 
 
 # ---- V5：每个白名单值都能渲染（不遗漏）----
@@ -125,6 +125,6 @@ def test_every_whitelist_value_renders():
 
 
 def test_validate_by_accepts_none():
-    """不传/None ⇒ 合法（表示"用默认 Tier1 顺序"）。"""
+    """不传/None -> 合法（表示"用默认 Tier1 顺序"）。"""
     assert _validate_by(None) is None
     assert _validate_by("") is None

@@ -20,7 +20,7 @@ from _harness import (  # noqa: F401  —— 显式列名，防止 import * 漏�
 
 
 # P20：用例模块按 **case_id 命名**（ai_xxx_160019.py / assert_kinds_todo.py），
-# 不匹配 pytest 默认的 test_*.py ⇒ 必须有这个钩子，否则「一条都收集不到」✗
+# 不匹配 pytest 默认的 test_*.py -> 必须有这个钩子，否则「一条都收集不到」X
 # （这正是 P20 判据 test_generated_pytest_discovery 当场抓出来的问题）
 def pytest_collect_file(file_path, parent):
     import pytest as _pt

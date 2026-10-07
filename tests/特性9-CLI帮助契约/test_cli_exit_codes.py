@@ -1,10 +1,10 @@
 """CLI 退出码契约（2026-09-13 冷启动端到端排查时挖出的三个「静默成功」缺陷）。
 
 背景：clean-room 重跑场景1 时实测到
-  ① `cli run` 在 scripts/ 缺失时只提示一句就 `return` ⇒ **exit 0**；
-  ② `cli run` **完全不吃 pytest 的退出码** ⇒ 用例失败(1)/没匹配到用例(5) 也 exit 0；
-  ③ `cli generate` 在 cases/ 为空时照打「生成 0 个用例」⇒ **exit 0**；
-  ④ `ensure_dirs()` 不管 log/ 与 scripts/，冷启动时靠"碰巧"被别的 mkdir 建出来。
+  (1) `cli run` 在 scripts/ 缺失时只提示一句就 `return` -> **exit 0**；
+  (2) `cli run` **完全不吃 pytest 的退出码** -> 用例失败(1)/没匹配到用例(5) 也 exit 0；
+  (3) `cli generate` 在 cases/ 为空时照打「生成 0 个用例」-> **exit 0**；
+  (4) `ensure_dirs()` 不管 log/ 与 scripts/，冷启动时靠"碰巧"被别的 mkdir 建出来。
 这些都会让 CI / 脚本调用方把失败当成功 —— 与 V7.1 立的「不许静默」契约同一条线。
 
 跑法（不需要 demo、不需要浏览器、秒级）：
@@ -35,7 +35,7 @@ def test_run_without_generated_scripts_exits_2(monkeypatch, tmp_path):
 @pytest.mark.parametrize("returncode", [1, 2, 5])
 def test_run_propagates_pytest_exit_code(monkeypatch, tmp_path, returncode):
     """pytest 非 0 → cli 必须返回同一个退出码（CI 判成败就靠它）。"""
-    # P20：产物是 scripts/generated/<场景>/<用例>.py ⇒ 运行器按 index.json 判断"有没有可跑的东西"
+    # P20：产物是 scripts/generated/<场景>/<用例>.py -> 运行器按 index.json 判断"有没有可跑的东西"
     (tmp_path / "generated").mkdir(exist_ok=True)
     (tmp_path / "generated" / "index.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(config, "SCRIPTS_DIR", tmp_path)
@@ -54,7 +54,7 @@ def test_run_propagates_pytest_exit_code(monkeypatch, tmp_path, returncode):
 
 def test_run_success_still_exits_zero(monkeypatch, tmp_path):
     """pytest 全绿 → cli 正常返回（不抛 SystemExit），别把成功路径也改坏。"""
-    # P20：产物是 scripts/generated/<场景>/<用例>.py ⇒ 运行器按 index.json 判断"有没有可跑的东西"
+    # P20：产物是 scripts/generated/<场景>/<用例>.py -> 运行器按 index.json 判断"有没有可跑的东西"
     (tmp_path / "generated").mkdir(exist_ok=True)
     (tmp_path / "generated" / "index.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(config, "SCRIPTS_DIR", tmp_path)

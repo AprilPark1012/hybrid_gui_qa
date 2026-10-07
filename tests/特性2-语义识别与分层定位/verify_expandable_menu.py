@@ -1,15 +1,15 @@
 """可展开菜单探针 · 特性验证（P22 批 1 · V1）—— 真浏览器 + 真 demo。
 
 验的是什么（框架特性，不是 demo 功能）：
-  ① 探针必须能收到**藏在 display:none 菜单里**的可点元素（角色切换项）—— 缺口 1a 的解药；
-  ② 探测是**只读动作**：探完菜单必须被关掉（否则后面的步骤会被展开的菜单挡住 —— 这是
+  (1) 探针必须能收到**藏在 display:none 菜单里**的可点元素（角色切换项）—— 缺口 1a 的解药；
+  (2) 探测是**只读动作**：探完菜单必须被关掉（否则后面的步骤会被展开的菜单挡住 —— 这是
      `_close_open_modal` 那条纪律的同类要求）；
-  ③ **负向自证**：关掉展开开关时清单里**不该**有菜单项 ⇒ 证明"能收到"确实来自展开动作，
+  (3) **负向自证**：关掉展开开关时清单里**不该**有菜单项 -> 证明"能收到"确实来自展开动作，
      而不是页面本来就可见（不然这条判据是恒真的假绿）。
 
 跑法（需要 demo 在 8000 上：`python -m demo.app`）：
     cd ~/hybrid_gui_qa && source .venv/bin/activate
-    python tests/特性2-语义识别与分层定位/verify_expandable_menu.py        # 期望最后一行：全部符合预期 ✅
+    python tests/特性2-语义识别与分层定位/verify_expandable_menu.py        # 期望最后一行：全部符合预期 [OK]
 退出码：0 通过 · 1 有失败 · 2 环境不可用 · 3 内存不足 SKIP（**SKIP 不是通过**）。
 """
 from __future__ import annotations
@@ -34,7 +34,7 @@ fails: list[str] = []
 
 
 def check(ok, desc, detail=""):
-    print(("  ✅ " if ok else "  ❌ ") + desc + (f"   [{detail}]" if detail else ""))
+    print(("  [OK] " if ok else "  [NG] ") + desc + (f"   [{detail}]" if detail else ""))
     if not ok:
         fails.append(desc)
 
@@ -45,7 +45,7 @@ def mem_available_mb() -> int:
             if line.startswith("MemAvailable:"):
                 return int(line.split()[1]) // 1024
     except Exception:                                          # noqa: BLE001
-        return -1                                              # 拿不到 ⇒ 如实"未测"，不据此 SKIP
+        return -1                                              # 拿不到 -> 如实"未测"，不据此 SKIP
     return -1
 
 
@@ -65,7 +65,7 @@ def main() -> int:
         with urllib.request.urlopen(DEMO + "/api/health", timeout=5) as r:
             r.read()
     except Exception as e:                                     # noqa: BLE001
-        print(f"❌ 被测 demo 不可达（{DEMO}）——先跑：python -m demo.app  [{e}]")
+        print(f"[NG] 被测 demo 不可达（{DEMO}）——先跑：python -m demo.app  [{e}]")
         return 2
 
     mem = mem_available_mb()
@@ -98,7 +98,7 @@ def main() -> int:
               "前置事实：菜单项在**未展开**时不可见（探针基础采集拿不到它）",
               f"{WANT_MENU_ITEM} 命中={any(WANT_MENU_ITEM in n for n in base_names)}")
 
-        # ---- ① 展开后必须收到菜单项 ----
+        # ---- (1) 展开后必须收到菜单项 ----
         extra = expand_and_collect(pg, base, enabled=True)
         extra_names = names_of(extra)
         check(any(WANT_MENU_ITEM in n for n in extra_names),
@@ -108,7 +108,7 @@ def main() -> int:
               "正向：三个角色切换项 + 其余菜单项都被收到（不是只捞到一条）",
               f"新增 {len(extra)} 项")
 
-        # ---- ② 探完必须关掉（探测 = 只读动作，不许留副作用）----
+        # ---- (2) 探完必须关掉（探测 = 只读动作，不许留副作用）----
         menu = pg.locator("#nu-menu")
         visible = menu.count() == 1 and menu.is_visible()
         check(not visible, "正向：探完菜单**已关闭**（探测不留副作用，后续步骤不被挡住）",
@@ -118,7 +118,7 @@ def main() -> int:
             pg.click("#nu-avatar", force=True)
             pg.wait_for_timeout(200)
 
-        # ---- ③ 负向自证：关掉展开开关 ⇒ 不该收到（证明①不是恒真）----
+        # ---- (3) 负向自证：关掉展开开关 -> 不该收到（证明(1)不是恒真）----
         pg2 = ctx.new_page()
         pg2.goto(DEMO + "/orders.html?demo_role=super_admin", wait_until="networkidle")
         _ready(pg2)
@@ -126,7 +126,7 @@ def main() -> int:
         off = expand_and_collect(pg2, base2, enabled=False)
         off_names = names_of(off)
         check(not any(WANT_MENU_ITEM in n for n in off_names),
-              "负向：关闭展开开关 ⇒ 清单里没有菜单项（证明正向那条不是恒真的假绿）",
+              "负向：关闭展开开关 -> 清单里没有菜单项（证明正向那条不是恒真的假绿）",
               f"新增 {len(off)} 项")
         pg2.close()
         pg.close()
@@ -134,11 +134,11 @@ def main() -> int:
 
     print()
     if fails:
-        print(f"❌ {len(fails)} 条判据不符预期：")
+        print(f"[NG] {len(fails)} 条判据不符预期：")
         for f in fails:
             print(f"   · {f}")
         return 1
-    print("全部符合预期 ✅（隐藏菜单能探到 · 探完会关 · 关掉开关就收不到）")
+    print("全部符合预期 [OK]（隐藏菜单能探到 · 探完会关 · 关掉开关就收不到）")
     return 0
 
 

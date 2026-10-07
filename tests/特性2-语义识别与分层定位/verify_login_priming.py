@@ -2,14 +2,14 @@
 
 验的是一条**真问题**：demo 加了登录之后，**未登录的上下文去探业务页，探到的是登录页控件**
 （2026-09-29 实测：裸跑 `cli probe` 只探到 7 项「账号/密码/登 录」）。
-而场景声明 `auth:` 之后，框架能在 context 建好时注入 token ⇒ 探到的才是真业务控件。
+而场景声明 `auth:` 之后，框架能在 context 建好时注入 token -> 探到的才是真业务控件。
 
 判据（负向自证是重点）：
-  ① **负向（先证问题存在）**：不带登录前置访问 `orders.html` ⇒ 页面被踢到 `/login.html`
-  ② **正向**：`ensure_logged_in` 注入后访问同一页 ⇒ 停在业务页 + 探到业务控件（如「订单名称」）
-  ③ **负向自证**：把 `token_key` 故意写错 ⇒ 必须回到"被踢到登录页"的状态
-     （证明 ② 的通过**确实来自注入的 token**，而不是页面本来就能开）
-  ④ **同源**：auth 声明从**主场景 yml** 读（不在脚本里另写一份，避免两处漂移）
+  (1) **负向（先证问题存在）**：不带登录前置访问 `orders.html` -> 页面被踢到 `/login.html`
+  (2) **正向**：`ensure_logged_in` 注入后访问同一页 -> 停在业务页 + 探到业务控件（如「订单名称」）
+  (3) **负向自证**：把 `token_key` 故意写错 -> 必须回到"被踢到登录页"的状态
+     （证明 (2) 的通过**确实来自注入的 token**，而不是页面本来就能开）
+  (4) **同源**：auth 声明从**主场景 yml** 读（不在脚本里另写一份，避免两处漂移）
 
 跑法（需要 demo）：python tests/特性2-语义识别与分层定位/verify_login_priming.py
 退出码：0 通过 · 1 有失败 · 2 环境不可用 · 3 内存不足 SKIP（**SKIP 不是通过**）。
@@ -35,7 +35,7 @@ fails: list[str] = []
 
 
 def check(ok, desc, detail=""):
-    print(("  ✅ " if ok else "  ❌ ") + desc + (f"   [{detail}]" if detail else ""))
+    print(("  [OK] " if ok else "  [NG] ") + desc + (f"   [{detail}]" if detail else ""))
     if not ok:
         fails.append(desc)
 
@@ -55,7 +55,7 @@ def main() -> int:
         with urllib.request.urlopen(DEMO + "/api/health", timeout=5) as r:
             r.read()
     except Exception as e:                                         # noqa: BLE001
-        print(f"❌ 被测 demo 不可达（{DEMO}）——先跑：python -m demo.app  [{e}]")
+        print(f"[NG] 被测 demo 不可达（{DEMO}）——先跑：python -m demo.app  [{e}]")
         return 2
 
     from framework.tools.generate.scenario import load_scenario_file   # noqa: PLC0415
@@ -97,33 +97,33 @@ def main() -> int:
     with sync_playwright() as p:
         b = p.chromium.launch(**launch_opts(headless=True))
 
-        # ① 负向：不登录 ⇒ 被踢到登录页（先证问题真实存在）
+        # (1) 负向：不登录 -> 被踢到登录页（先证问题真实存在）
         url1, n1, pg1 = _open(b)
-        check("login" in url1, "① 负向：不带登录前置访问 orders.html ⇒ 被 auth.js 踢到登录页", url1)
-        check(n1 <= 15, "① 负向：此时探到的是登录页控件（数量很少）", f"{n1} 项")
+        check("login" in url1, "(1) 负向：不带登录前置访问 orders.html -> 被 auth.js 踢到登录页", url1)
+        check(n1 <= 15, "(1) 负向：此时探到的是登录页控件（数量很少）", f"{n1} 项")
 
-        # ② 正向：登录前置 ⇒ 停在业务页 + 探到业务控件
+        # (2) 正向：登录前置 -> 停在业务页 + 探到业务控件
         url2, n2, pg2 = _open(b, install_spec=spec)
-        check("login" not in url2, "② 正向：登录前置后停在业务页（不再被踢）", url2)
+        check("login" not in url2, "(2) 正向：登录前置后停在业务页（不再被踢）", url2)
         names2 = {str(it.get("name") or "") for it in probe_page(pg2)}
         hit = [x for x in names2 if WANT_CONTROL in x]
-        check(bool(hit), f"② 正向：探到业务控件「{WANT_CONTROL}」（登录页绝不会有）",
+        check(bool(hit), f"(2) 正向：探到业务控件「{WANT_CONTROL}」（登录页绝不会有）",
               f"{n2} 项 · 命中 {hit[:3]}")
-        check(n2 > n1, "② 正向：控件数明显多于未登录态（业务页 vs 登录页）", f"未登录 {n1} → 登录后 {n2}")
+        check(n2 > n1, "(2) 正向：控件数明显多于未登录态（业务页 vs 登录页）", f"未登录 {n1} → 登录后 {n2}")
 
-        # ③ 负向自证：token_key 写错 ⇒ 回到未登录（证明 ② 的通过来自注入的 token）
+        # (3) 负向自证：token_key 写错 -> 回到未登录（证明 (2) 的通过来自注入的 token）
         url3, n3, pg3 = _open(b, install_spec=spec, key_override="wrong_token_key_p22")
-        check("login" in url3, "③ 负向自证：token_key 写错 ⇒ 又被踢回登录页"
-                               "（证明 ② 确实来自注入的 token）", url3)
+        check("login" in url3, "(3) 负向自证：token_key 写错 -> 又被踢回登录页"
+                               "（证明 (2) 确实来自注入的 token）", url3)
         b.close()
 
     print()
     if fails:
-        print(f"❌ {len(fails)} 条判据不符预期：")
+        print(f"[NG] {len(fails)} 条判据不符预期：")
         for f in fails:
             print(f"   · {f}")
         return 1
-    print("全部符合预期 ✅（不登录取不到业务控件 · 登录前置后取到 · 换个键名就失效）")
+    print("全部符合预期 [OK]（不登录取不到业务控件 · 登录前置后取到 · 换个键名就失效）")
     return 0
 
 

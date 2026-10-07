@@ -4,10 +4,10 @@
 （比未映射更糟：未映射会大声告警，错映射点下去就错了）。这里把踩过的坑钉成判据。
 
 2026-09-17 实测的两个坑：
-  ① 分页按钮就叫 `1`/`2`/`3` ⇒ 反向包含（清单名是 AI 名字的子串）把
+  (1) 分页按钮就叫 `1`/`2`/`3` -> 反向包含（清单名是 AI 名字的子串）把
      `选择@HT-1001 → 选择@HT_1001` 判成歧义（该对齐的没对齐）；
-  ② 同一个反向包含又会把 `选择客户@新建订单` 匹配成 `新建订单`（**不该对齐的错了**）。
-⇒ 规则：先判「规范化后完全相等」；反向包含必须够长（≥3 且 ≥60% 长度）、且
+  (2) 同一个反向包含又会把 `选择客户@新建订单` 匹配成 `新建订单`（**不该对齐的错了**）。
+-> 规则：先判「规范化后完全相等」；反向包含必须够长（≥3 且 ≥60% 长度）、且
    AI 名字里带 `@`（指定了区域/页面变体）时只接受同样带 `@` 的候选。
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ def _items(*names):
 
 
 def test_normalized_equality_beats_pagination_noise():
-    """HT-1001 vs HT_1001 只是书写差异 ⇒ 必须对齐（不能被分页按钮 `1` 搅成歧义）。"""
+    """HT-1001 vs HT_1001 只是书写差异 -> 必须对齐（不能被分页按钮 `1` 搅成歧义）。"""
     it, how = _match_item("选择@HT-1001", _items("1", "2", "3", "选择@HT_1001"))
     assert it and it["semantic_name"] == "选择@HT_1001", how
 
@@ -39,13 +39,13 @@ def test_ai_name_with_suffix_never_matches_bare_fragment():
 
 
 def test_bare_name_aligns_to_unique_prefixed_item():
-    """AI 只写了前半段、而清单里只有一个带后缀的版本 ⇒ 可以对齐（唯一才允许）。"""
+    """AI 只写了前半段、而清单里只有一个带后缀的版本 -> 可以对齐（唯一才允许）。"""
     it, how = _match_item("订单备注", _items("订单备注_可不填", "订单名称_全模糊"))
     assert it and it["semantic_name"] == "订单备注_可不填", how
 
 
 def test_ambiguous_bare_name_is_not_guessed():
-    """同一个前半段在清单里有两个区域版本 ⇒ 不许猜，判未命中（由调用方大声告警）。"""
+    """同一个前半段在清单里有两个区域版本 -> 不许猜，判未命中（由调用方大声告警）。"""
     it, how = _match_item("选择@北京华信科技有限公司",
                          _items("选择@北京华信科技有限公司@订单系统",
                                 "选择@北京华信科技有限公司@合同列表页"))
@@ -69,9 +69,9 @@ def test_shadowed_names_lists_intra_page_dupes():
 # 2026-09-18 实测（订单场景 AI 端到端连跑 6 次、6 次全错）：
 #   筛选区的 `订单名称_全模糊`（label=订单名称, container_heading=空）与
 #   新建弹窗里的 `请输入订单名称`（label=订单名称 *, container_heading=新建订单）
-#   **名字完全不同** ⇒ `_shadowed_names` 报不出来；AI 一律选了「字面最像人话描述」的筛选区那个，
-#   因为名字真实存在，generate 不报未映射 ⇒ **静默错映射**（提交后弹窗字段仍为空 ⇒ 首行断言假红）。
-# ⇒ 框架必须把这类歧义显式摊在提示词里（`_same_field_pairs`）。
+#   **名字完全不同** -> `_shadowed_names` 报不出来；AI 一律选了「字面最像人话描述」的筛选区那个，
+#   因为名字真实存在，generate 不报未映射 -> **静默错映射**（提交后弹窗字段仍为空 -> 首行断言假红）。
+# -> 框架必须把这类歧义显式摊在提示词里（`_same_field_pairs`）。
 
 def _field_items():
     return [
@@ -85,7 +85,7 @@ def _field_items():
 
 
 def test_same_field_pairs_flags_filter_vs_modal_input():
-    """同一个「订单名称」字段、两个区域、两个名字 ⇒ 必须被列出来（含两个名字与所属区域）。"""
+    """同一个「订单名称」字段、两个区域、两个名字 -> 必须被列出来（含两个名字与所属区域）。"""
     pairs = _same_field_pairs(_field_items())
     assert len(pairs) == 1, pairs
     ident, a, b, detail = pairs[0]

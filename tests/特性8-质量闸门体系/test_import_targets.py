@@ -112,7 +112,7 @@ def test_all_internal_imports_resolve_to_real_files():
     """全仓内部 import 的目标文件必须真实存在（旧路径会因文件不存在被点名）。"""
     broken = collect_broken_imports(REPO)
     assert not broken, ("有 import 指向磁盘上不存在的模块（结构重构漏改 / 手滑写错）：\n"
-                        + "\n".join(f"  {p.relative_to(REPO)}:{ln}  {stmt}  ⇒ {why}"
+                        + "\n".join(f"  {p.relative_to(REPO)}:{ln}  {stmt}  -> {why}"
                                     for p, ln, stmt, why in broken[:30]))
 
 
@@ -126,14 +126,14 @@ def test_old_flat_module_paths_are_gone():
 def test_resolver_reports_nonexistent_module():
     """负向自证：解析器对不存在的模块必须返回 None（否则这条判据是空判据）。"""
     assert resolve_module(REPO, "framework.probe") is None, \
-        "framework.probe 已被 V8.0 废弃 ⇒ 解析器必须判为不存在（若这里通过，说明判据没牙）"
+        "framework.probe 已被 V8.0 废弃 -> 解析器必须判为不存在（若这里通过，说明判据没牙）"
     assert resolve_module(REPO, "framework.tools.probe.probe") is not None, \
         "新路径必须解析得到（否则判据会误报全仓）"
     assert resolve_module(REPO, "requests") is None, "第三方模块不归本判据管（返回 None 表示跳过）"
 
 
 def test_collect_broken_imports_flags_bogus_import(tmp_path):
-    """负向自证 2：造一个假仓库，里面写坏 import ⇒ 采集器必须点名它。"""
+    """负向自证 2：造一个假仓库，里面写坏 import -> 采集器必须点名它。"""
     good = tmp_path / "framework" / "tools" / "probe"
     good.mkdir(parents=True)
     for d in (tmp_path / "framework", tmp_path / "framework" / "tools", good):

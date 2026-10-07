@@ -11,21 +11,21 @@
 本判据把上面几条变成**每次一类都跑的红线**。
 
 判据清单：
-  ① `tests/` 是容器，且**9 个特性夹 + `_helpers` + `_runner`** 齐备、无第三类目录
-  ② 所有一类 `test_*.py` 必须住在**特性夹**里（不许散落 `_helpers`/`_runner`/仓库别处）
-  ③ 所有二类 `verify_*.py` 必须住在**特性夹**里
-  ④ runner 收录口径必须是**自动 glob** `tests/**/verify_*.py`（不许手写清单 ⇒ 不许死脚本）
-  ⑤ 不许空壳判据文件（`test_*.py` 里至少 1 个 `def test_`）
-  ⑥ 时长预算只有一处声明，且被 runner 真正读取
-  ⑦ **零判据的特性必须显式标 `UNVERIFIED.md`**（有实现、没验证 = 必须被看见）
-  ⑧ 纯函数层负向自证（判据自己能抓坏输入，否则等于没写）
+  (1) `tests/` 是容器，且**9 个特性夹 + `_helpers` + `_runner`** 齐备、无第三类目录
+  (2) 所有一类 `test_*.py` 必须住在**特性夹**里（不许散落 `_helpers`/`_runner`/仓库别处）
+  (3) 所有二类 `verify_*.py` 必须住在**特性夹**里
+  (4) runner 收录口径必须是**自动 glob** `tests/**/verify_*.py`（不许手写清单 -> 不许死脚本）
+  (5) 不许空壳判据文件（`test_*.py` 里至少 1 个 `def test_`）
+  (6) 时长预算只有一处声明，且被 runner 真正读取
+  (7) **零判据的特性必须显式标 `UNVERIFIED.md`**（有实现、没验证 = 必须被看见）
+  (8) 纯函数层负向自证（判据自己能抓坏输入，否则等于没写）
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path, PurePosixPath
 
-REPO = Path(__file__).resolve().parents[2]          # tests/<特性>/ ⇒ 上两级才是仓库根
+REPO = Path(__file__).resolve().parents[2]          # tests/<特性>/ -> 上两级才是仓库根
 TESTS_DIR = REPO / "tests"                          # 容器目录（2026-09-24 定：容器保留）
 HELPERS = TESTS_DIR / "_helpers"                    # 公共模块（artifacts / repo_files / …）
 RUNNER_DIR = TESTS_DIR / "_runner"                  # runner 工具（入口 / 重录 / fixtures）
@@ -59,8 +59,8 @@ def find_test_modules(root: Path) -> list[str]:
     for p in root.rglob("test_*.py"):
         if any(part in skip for part in p.parts):
             continue
-        # ⚠️ 跨平台（2026-10-07 修）：必须 `as_posix()` —— Windows 上 str(relative_to) 给 `\`，
-        # 而下游 in_feature_dir / 断言里的期望串都是 `/` 风格 ⇒ 集合永远对不上（假红）。
+        # [!] 跨平台（2026-10-07 修）：必须 `as_posix()` —— Windows 上 str(relative_to) 给 `\`，
+        # 而下游 in_feature_dir / 断言里的期望串都是 `/` 风格 -> 集合永远对不上（假红）。
         out.append(p.relative_to(root).as_posix())
     return sorted(out)
 
@@ -74,7 +74,7 @@ def find_verify_modules(root: Path) -> list[str]:
 
 def has_real_test_body(text: str) -> bool:
     """文件里是否有真正的 `def test_*` 函数（空壳文件 = 占着收数不干活）。"""
-    # ⚠️ 用例名允许中文（本项目多处用中文命名）
+    # [!] 用例名允许中文（本项目多处用中文命名）
     return bool(re.search(r"^\s*def test_[^\s(]+\s*\(", text, re.M))
 
 
@@ -98,16 +98,16 @@ def declared_budgets(text: str) -> dict[str, int]:
 def in_feature_dir(rel_path: str) -> bool:
     """相对路径是否落在某个「特性N-…」夹里。
 
-    ⚠️ **跨平台**（2026-10-07 修，Windows 内网实测红）：**不许**直接 `split("/")` ——
+    [!] **跨平台**（2026-10-07 修，Windows 内网实测红）：**不许**直接 `split("/")` ——
     Windows 的分隔符是反斜杠，测试里传进来的可能是「tests + 反斜杠 + 特性1-… + 反斜杠 + test_x.py」
-    ⇒ 切不开、判断恒 False（表现为「明明在特性夹里却说没归位」）。统一先归一化成 POSIX 再切。
+    -> 切不开、判断恒 False（表现为「明明在特性夹里却说没归位」）。统一先归一化成 POSIX 再切。
     """
     parts = PurePosixPath(str(rel_path).replace("\\", "/")).parts
     return len(parts) >= 2 and parts[0] == "tests" and any(
         parts[1].startswith(f"特性{i}-") for i in range(1, 10))
 
 
-# ---------------- ① 容器 + 9 特性夹齐备 ----------------
+# ---------------- (1) 容器 + 9 特性夹齐备 ----------------
 
 
 def test_tests_dir_holds_nine_feature_folders():
@@ -122,7 +122,7 @@ def test_tests_dir_holds_nine_feature_folders():
     assert not stray, f"tests/ 下出现了预期外的目录（结构漂了）：{stray}"
 
 
-# ---------------- ② 一类必须住特性夹 ----------------
+# ---------------- (2) 一类必须住特性夹 ----------------
 
 
 def test_class1_tests_live_in_feature_folders():
@@ -133,7 +133,7 @@ def test_class1_tests_live_in_feature_folders():
     assert not stray, f"这些 test_*.py 没归到特性夹（应归位，别散落 _helpers/_runner/仓库别处）：{stray[:8]}"
 
 
-# ---------------- ③ 二类必须住特性夹 ----------------
+# ---------------- (3) 二类必须住特性夹 ----------------
 
 
 def test_class2_verifies_live_in_feature_folders():
@@ -145,7 +145,7 @@ def test_class2_verifies_live_in_feature_folders():
         assert (RUNNER_DIR / entry).is_file(), f"缺入口 tests/_runner/{entry}"
 
 
-# ---------------- ④ 不许死脚本 ----------------
+# ---------------- (4) 不许死脚本 ----------------
 
 
 def test_runner_auto_collects_every_verify_script():
@@ -157,7 +157,7 @@ def test_runner_auto_collects_every_verify_script():
     assert collected, "runner 一条 verify_*.py 都收不到（glob 口径错了）"
 
 
-# ---------------- ⑤ 不许空壳 ----------------
+# ---------------- (5) 不许空壳 ----------------
 
 
 def test_no_empty_test_modules():
@@ -167,7 +167,7 @@ def test_no_empty_test_modules():
     assert not empty, f"这些判据文件没有任何 def test_（空壳占数，R7-d 要清掉）：{empty}"
 
 
-# ---------------- ⑥ 预算只有一处声明且被 runner 使用 ----------------
+# ---------------- (6) 预算只有一处声明且被 runner 使用 ----------------
 
 
 def test_budget_declared_once_and_used():
@@ -180,13 +180,13 @@ def test_budget_declared_once_and_used():
         f"runner 里的特性自验证预算应声明为 {BUDGET_FEATURE_MIN}min，实际 {got.get('feature_min')}")
 
 
-# ---------------- ⑦ 零判据的特性必须显式标记（2026-10-07 新要求）----------------
+# ---------------- (7) 零判据的特性必须显式标记（2026-10-07 新要求）----------------
 
 
 def test_unverified_features_are_marked():
-    """特性已实现但无判据 ⇒ **必须**在该特性夹里有 `UNVERIFIED.md`（不许默默漏）。
+    """特性已实现但无判据 -> **必须**在该特性夹里有 `UNVERIFIED.md`（不许默默漏）。
 
-    口径：一个特性夹里既没有 `test_*.py` 也没有 `verify_*.py` ⇒ 视为「零判据」，
+    口径：一个特性夹里既没有 `test_*.py` 也没有 `verify_*.py` -> 视为「零判据」，
     此时必须有 UNVERIFIED.md 说明「实现住哪 / 风险 / 待补哪几条判据」。
     """
     problems = []
@@ -201,7 +201,7 @@ def test_unverified_features_are_marked():
     assert not problems, f"这些特性零判据却没显式标记：{problems}"
 
 
-# ---------------- ⑧ 负向自证（判据必须抓得住坏输入）----------------
+# ---------------- (8) 负向自证（判据必须抓得住坏输入）----------------
 
 
 def test_negative_find_modules_ignores_noise(tmp_path):
@@ -219,7 +219,7 @@ def test_negative_empty_shell_is_detected():
     assert has_real_test_body("def test_a():\n    assert 1\n") is True
     assert has_real_test_body("# 只写注释，没有任何 test 函数\n") is False
     assert has_real_test_body("def helper():\n    return 1\n") is False
-    # 中文用例名必须被认出来（踩过：只认 ASCII ⇒ 把好文件判成空壳）
+    # 中文用例名必须被认出来（踩过：只认 ASCII -> 把好文件判成空壳）
     assert has_real_test_body("def test_中文用例():\n    assert 1\n") is True
     assert has_real_test_body("class T:\n    def test_m(self):\n        assert 1\n") is True
 
@@ -227,7 +227,7 @@ def test_negative_empty_shell_is_detected():
 def test_negative_runner_glob_detection():
     assert runner_uses_glob('items = sorted(repo.glob("tests/**/verify_*.py"))') is True
     assert runner_uses_glob('items = [Path("tests/_runner/verify_a.py")]') is False, \
-        "手写清单必须被判为不合规（否则 ④ 判据等于没写）"
+        "手写清单必须被判为不合规（否则 (4) 判据等于没写）"
 
 
 def test_negative_budget_parsing():
@@ -245,16 +245,16 @@ def test_negative_in_feature_dir():
 def test_in_feature_dir_accepts_windows_style_paths():
     """★ **跨平台守门**（2026-10-07 加，来源：内网 Windows 实测一类 7 条红）。
 
-    Windows 上 `Path.relative_to()` / `str()` 给的是**反斜杠**路径 ⇒
+    Windows 上 `Path.relative_to()` / `str()` 给的是**反斜杠**路径 ->
     凡是用 `split("/")` 判路径层级的纯函数，在 Windows 上会被**静默判 False**
     （表现为「文件明明在特性夹里，却说没归位」）。
-    ⇒ 这里**喂 Windows 风格路径**，把这类问题**在 Linux 上就钉住**（不必等真去 Windows 跑）。
+    -> 这里**喂 Windows 风格路径**，把这类问题**在 Linux 上就钉住**（不必等真去 Windows 跑）。
 
-    ⚠️ 为什么用「行为判据」而不是扫源码文本：`str(x.relative_to())` 有两种用法 ——
+    [!] 为什么用「行为判据」而不是扫源码文本：`str(x.relative_to())` 有两种用法 ——
     当 subprocess 参数是**安全**的（Windows 的 Python 认 `\`），用于**集合/比较**才危险；
-    纯文本扫描分不出来（会误报）⇒ 直接测行为更可靠。
+    纯文本扫描分不出来（会误报）-> 直接测行为更可靠。
     """
     assert in_feature_dir("tests\\特性1-混合链路\\test_a.py") is True, \
-        "反斜杠路径没被认出来 ⇒ in_feature_dir 又用 split('/') 了"
+        "反斜杠路径没被认出来 -> in_feature_dir 又用 split('/') 了"
     assert in_feature_dir("tests\\_helpers\\artifacts.py") is False
     assert in_feature_dir("tests\\特性10-没有这个\\test_a.py") is False

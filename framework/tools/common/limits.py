@@ -2,17 +2,17 @@
 
 背景（实证，不是拍脑袋）
 ------------------------
-`cli.py` 原先默认 `pytest -n auto`，而本机 `nproc = 2` ⇒ 起 2 个 worker，
+`cli.py` 原先默认 `pytest -n auto`，而本机 `nproc = 2` -> 起 2 个 worker，
 每个 worker 一个 headless Chromium，**实测 ≈ 515 MB/实例**（多轮重复测量 513~516MB），
-2 个即 ~1030 MB，吃穿仅剩 ~700 MB 的 MemAvailable ⇒ 内核 global OOM
-⇒ 渲染进程被杀（Target crashed）+ **Hermes 网关被连带杀**。
+2 个即 ~1030 MB，吃穿仅剩 ~700 MB 的 MemAvailable -> 内核 global OOM
+-> 渲染进程被杀（Target crashed）+ **Hermes 网关被连带杀**。
 
 策略
 ----
     cap = max(1, min( (MemAvailable - RESERVE_MB) // PER_WORKER_MB , CPU 核数 ))
-本机当前值：(725-450)//550 = 0 → max(1,0) = 1 ⇒ 自动降到 1 worker（实测安全档位）。
+本机当前值：(725-450)//550 = 0 → max(1,0) = 1 -> 自动降到 1 worker（实测安全档位）。
 
-⚠️ 预算是**启发式**：Chromium 的 RSS 含大量可共享的 file-backed 映射，
+[!] 预算是**启发式**：Chromium 的 RSS 含大量可共享的 file-backed 映射，
 不同负载下波动较大（实测区间 383~516MB/实例）。故取**观测上界 550MB** + 系统保留，
 宁保守不冒险；确有把握时用 `--force-workers` 覆盖。
 
@@ -33,7 +33,7 @@ RESERVE_MB = int(os.environ.get("HYBRID_RESERVE_MB", "450"))
 def mem_available_mb() -> int:
     """/proc/meminfo 的 MemAvailable（MB）；读不到返回 0（视为未知）。
 
-    Windows 上没有 /proc ⇒ 退到 GlobalMemoryStatusEx（ullAvailPhys）。读到 0 时
+    Windows 上没有 /proc -> 退到 GlobalMemoryStatusEx（ullAvailPhys）。读到 0 时
     `safe_workers` 会恒降级为 1（保守不冒险，不会 OOM）——非 Linux 上的"读不到"以前
     就是这样处理的，这里只是补上 Windows 的真实读数，避免大内存机器被无谓压到 1 并发。
     """

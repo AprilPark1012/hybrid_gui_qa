@@ -3,10 +3,10 @@
 """批量重录录像 —— 把当前版本所有场景的录像补齐 / 刷新（**需要 key + 外网**，发版前跑一次）。
 
 为什么需要它（2026-09-22 现场反馈驱动）：
-  ① 录像的键含场景文案与控件骨架 ⇒ 改了场景 / 页面 / 命名逻辑后，旧录像会失效；
-  ② 手工重录是「每个场景敲一条 `explore --ai --llm-record`」——场景一多就没人愿意干，
+  (1) 录像的键含场景文案与控件骨架 -> 改了场景 / 页面 / 命名逻辑后，旧录像会失效；
+  (2) 手工重录是「每个场景敲一条 `explore --ai --llm-record`」——场景一多就没人愿意干，
      于是录像越来越旧、离线机器上"有些场景就是跑不了"；
-  ③ 发版时应该**先把录像补齐再打包**，而不是发出去等人踩（今早那个录像包就是这么出问题的）：
+  (3) 发版时应该**先把录像补齐再打包**，而不是发出去等人踩（今早那个录像包就是这么出问题的）：
      体检（`check_cassettes.py`）报缺 4 个场景，而包已经发出去了。
 
 用法：
@@ -19,8 +19,8 @@
 退出码：**0** 全成功 · **1** 有失败 · **2** 前置不满足（缺 key / 没场景 / 解释器不可用）· **3** 跳过（没有要录的）
 
 口径（与项目红线一致）：
-  · **录制 = 真调 LLM**（花钱、要外网）⇒ 参数必须显式、失败要大声；绝不静默降级成"看着像录了"；
-  · 录完**不动 `cases/`**（`--no-cases --no-verify`）⇒ 录制过程绝不污染用例库；
+  · **录制 = 真调 LLM**（花钱、要外网）-> 参数必须显式、失败要大声；绝不静默降级成"看着像录了"；
+  · 录完**不动 `cases/`**（`--no-cases --no-verify`）-> 录制过程绝不污染用例库；
   · 录完请接着跑 `check_cassettes.py` 复检；发版时再 `pack_release.py --with-cassettes` 重打录像包。
 """
 from __future__ import annotations
@@ -88,9 +88,9 @@ def pick_python() -> str:
             print(f"   解释器: {src} → {' '.join(cmd)}")
             return cmd[0] if len(cmd) == 1 else " ".join(cmd)
         for s, c, good, why in tried:
-            print(f"     ✗ {s:<40} {'✓' if good else why}")
+            print(f"     X {s:<40} {'v' if good else why}")
     except Exception as e:
-        print(f"   （解释器自动挑选不可用：{type(e).__name__}: {e}⇒ 退回本进程解释器）")
+        print(f"   （解释器自动挑选不可用：{type(e).__name__}: {e}-> 退回本进程解释器）")
     return sys.executable
 
 
@@ -106,7 +106,7 @@ def target_scenarios(args) -> list[Path]:
             miss_names = {Path(str(m["scenario"])).name for m in missing}
             files = [f for f in files if f.name in miss_names]
         except Exception as e:
-            print(f"   ⚠️ --missing-only 取「缺录像」清单失败（{type(e).__name__}: {e}）⇒ 录全部")
+            print(f"   [!] --missing-only 取「缺录像」清单失败（{type(e).__name__}: {e}）-> 录全部")
     return files
 
 
@@ -119,7 +119,7 @@ def record_one(py: str, yml: Path, timeout: int = 420) -> tuple[int, str]:
                            stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                            errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
-        return 124, f"⏱️ 超时 {timeout}s ⇒ 已杀"
+        return 124, f"[time] 超时 {timeout}s -> 已杀"
     return p.returncode, (p.stdout or "")
 
 
@@ -148,7 +148,7 @@ def main(argv: list[str]) -> int:
     if args.list:
         return OK
     if not files:
-        print("⏭️  SKIP：没有要录的场景（--missing-only 时说明体检没报缺）；**不算通过**")
+        print("[skip]  SKIP：没有要录的场景（--missing-only 时说明体检没报缺）；**不算通过**")
         return SKIP
 
     print("\n—— 前置检查 ——")
@@ -157,13 +157,13 @@ def main(argv: list[str]) -> int:
     py = pick_python()
     if args.check_deps:
         bad = (not has_key()) or (not demo_up())
-        print(f"   ⇒ 结论：{'前置不满足（上面标「缺/否」的项先解决）' if bad else '前置齐全，可以录'}")
+        print(f"   -> 结论：{'前置不满足（上面标「缺/否」的项先解决）' if bad else '前置齐全，可以录'}")
         return USAGE if bad else OK
     if not has_key():
-        print("❌ 缺 LLM key（录制必须真调模型）⇒ 在项目根 .env 配 DEEPSEEK_API_KEY，或从有网机器拷录像")
+        print("[NG] 缺 LLM key（录制必须真调模型）-> 在项目根 .env 配 DEEPSEEK_API_KEY，或从有网机器拷录像")
         return USAGE
     if not demo_up():
-        print("❌ demo 不可达 ⇒ 先另开一个窗口跑 `python -m demo.app`（录制要探测真实页面控件）")
+        print("[NG] demo 不可达 -> 先另开一个窗口跑 `python -m demo.app`（录制要探测真实页面控件）")
         return USAGE
 
     print(f"\n—— 开始录制（{len(files)} 个场景）——")
@@ -177,21 +177,21 @@ def main(argv: list[str]) -> int:
             print(f"     | {ln[:170]}")
         if rc == 0:
             done.append(f.name)
-            print(f"   ✅ 已录（{time.time() - t0:.0f}s）")
+            print(f"   [OK] 已录（{time.time() - t0:.0f}s）")
         else:
             failed.append((f.name, rc))
-            print(f"   ❌ 失败 exit {rc}（{time.time() - t0:.0f}s）")
+            print(f"   [NG] 失败 exit {rc}（{time.time() - t0:.0f}s）")
 
     print("\n" + "=" * 66)
     print(f" 汇总：成功 {len(done)} · 失败 {len(failed)}")
     for name, rc in failed:
-        print(f"   ❌ {name}  exit {rc}")
+        print(f"   [NG] {name}  exit {rc}")
     print("=" * 66)
     if failed:
-        print("❌ 有失败 ⇒ 修完重录（录像不齐，无网机器上那些场景跑不了）")
+        print("[NG] 有失败 -> 修完重录（录像不齐，无网机器上那些场景跑不了）")
         return FAIL
-    print("✅ 全部录好。下一步：① `python build_tools/check_cassettes.py` 复检；"
-          "② 发版时 `python build_tools/pack_release.py --with-cassettes` 重打录像包")
+    print("[OK] 全部录好。下一步：(1) `python build_tools/check_cassettes.py` 复检；"
+          "(2) 发版时 `python build_tools/pack_release.py --with-cassettes` 重打录像包")
     return OK
 
 

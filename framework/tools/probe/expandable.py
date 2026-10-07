@@ -2,16 +2,16 @@
 
 为什么需要（真值 · P22 §二 缺口 1a）：
   demo 右上角角色菜单 `#nu-menu` 初始 `style="display:none"`（`demo/auth.js:188`），而探针按**可见性**过滤
-  （`probe.py:442` · `explorer.py:1261`）⇒ 藏在菜单里的「切换为订单管理员」**永远不会进清单**
-  ⇒ 跨角色场景第 2 步无控件可引用（本项目铁律：AI/场景不许自造语义名）。
+  （`probe.py:442` · `explorer.py:1261`）-> 藏在菜单里的「切换为订单管理员」**永远不会进清单**
+  -> 跨角色场景第 2 步无控件可引用（本项目铁律：AI/场景不许自造语义名）。
 
 做法（复用 `_try_collect_modal_items` 的二次探测模式，不另造一套）：
-  ① 纯结构判据认出「隐藏容器 + 它的可见触发器」—— `pick_expandable_opener()`，**纯函数、可单测、不需浏览器**；
-  ② 探测期点开一次 ⇒ 重新探测 ⇒ 把**新出现的可见控件**并入清单（去重按 semantic_name）；
-  ③ **必收尾**：再把菜单关掉 —— 「框架开了的必须由框架关」，与 `_close_open_modal` 同一条纪律
+  (1) 纯结构判据认出「隐藏容器 + 它的可见触发器」—— `pick_expandable_opener()`，**纯函数、可单测、不需浏览器**；
+  (2) 探测期点开一次 -> 重新探测 -> 把**新出现的可见控件**并入清单（去重按 semantic_name）；
+  (3) **必收尾**：再把菜单关掉 —— 「框架开了的必须由框架关」，与 `_close_open_modal` 同一条纪律
      （否则展开的菜单会挡住后续步骤，这是 2026-09-22 实测过的坑）。
 
-⚠️ 绝不在陌生页面乱点：判据要求「触发器**可见可点**、且 DOM 位置在容器**之前**」，取不到就放弃；
+[!] 绝不在陌生页面乱点：判据要求「触发器**可见可点**、且 DOM 位置在容器**之前**」，取不到就放弃；
    触发器**没有 id** 时**本版不展开**（不猜选择器），并如实打印原因 —— 宁可少一份清单，也不乱点。
 """
 from __future__ import annotations
@@ -71,7 +71,7 @@ def pick_expandable_opener(siblings: list[dict]) -> dict | None:
       2. 显式声明：可见可点兄弟带 `aria-haspopup`，其后有隐藏容器（`reason="aria-haspopup"`）
       3. 结构判据：隐藏容器（内含交互控件）+ 同父中 **DOM 在前的可见可点**兄弟
          （取**最靠近容器**的那一个；`reason="hidden-container-after-visible-trigger"`）
-    任何一步取不到 ⇒ None（**绝不猜一个去点**）。
+    任何一步取不到 -> None（**绝不猜一个去点**）。
     """
     if not siblings:
         return None
@@ -98,7 +98,7 @@ def pick_expandable_opener(siblings: list[dict]) -> dict | None:
         cands = [s for s in siblings
                  if s.get("visible") and s.get("interactive") and s.get("order", 0) < c.get("order", 0)]
         if not cands:
-            continue                                   # 没有可见可点触发器 ⇒ 放弃（判据 3）
+            continue                                   # 没有可见可点触发器 -> 放弃（判据 3）
         cands.sort(key=lambda s: s.get("order", 0), reverse=True)   # 取最近的那个
         return {"opener_key": cands[0]["key"], "container_key": c["key"],
                 "reason": "hidden-container-after-visible-trigger"}
@@ -114,7 +114,7 @@ def expand_and_collect(page: Page, base_items: list[dict], *, enabled: bool = Tr
     """扫「可展开容器」→ 逐个点开 → 有界等待新控件 → 并入清单 → **收尾关掉**。
 
     参数：
-      enabled=False ⇒ 直接返回空列表（给判据当**负向自证**用：关掉这个开关就收不到菜单项，
+      enabled=False -> 直接返回空列表（给判据当**负向自证**用：关掉这个开关就收不到菜单项，
                       从而证明"收得到"确实来自展开动作，而不是页面本来就可见）。
       max_opens：最多展开几次（有界，绝不在页面上连点）。
       settle_s：每次点开后最多等多久（有界轮询，不是固定 sleep —— 探到就走）。
@@ -130,7 +130,7 @@ def expand_and_collect(page: Page, base_items: list[dict], *, enabled: bool = Tr
     try:
         cands = page.evaluate(_JS_SCAN) or []
     except Exception as e:                                           # noqa: BLE001
-        print(f"      [probe] ⚠️ 可展开容器扫描失败（{type(e).__name__}: {str(e)[:100]}）")
+        print(f"      [probe] [!] 可展开容器扫描失败（{type(e).__name__}: {str(e)[:100]}）")
         return []
 
     if not cands:
@@ -146,16 +146,16 @@ def expand_and_collect(page: Page, base_items: list[dict], *, enabled: bool = Tr
         sibs = {s.get("key"): s for s in cand["siblings"]}
         opener_id = (sibs.get(pick["opener_key"]) or {}).get("id") or ""
         if not opener_id:
-            print(f"      [probe] ℹ️ 发现可展开容器 {pick['container_key']}（{pick['reason']}），"
-                  f"但触发器没有 id ⇒ 本版不展开（不猜选择器，如实少一份清单）")
+            print(f"      [probe] [info] 发现可展开容器 {pick['container_key']}（{pick['reason']}），"
+                  f"但触发器没有 id -> 本版不展开（不猜选择器，如实少一份清单）")
             continue
 
         loc = page.locator(f"#{opener_id}").first
         try:
             loc.click(timeout=3000)
         except Exception as e:                                       # noqa: BLE001
-            print(f"      [probe] ⚠️ 点开「{opener_id}」失败（{type(e).__name__}: {str(e)[:80]}）"
-                  f"⇒ 跳过该容器（不影响其余探测）")
+            print(f"      [probe] [!] 点开「{opener_id}」失败（{type(e).__name__}: {str(e)[:80]}）"
+                  f"-> 跳过该容器（不影响其余探测）")
             continue
 
         # ---- 有界等待：探到新控件就走（不固定 sleep）----
@@ -174,10 +174,10 @@ def expand_and_collect(page: Page, base_items: list[dict], *, enabled: bool = Tr
             for it in got:
                 seen.add(it.get("semantic_name") or "")
             fresh.extend(got)
-            print(f"      [probe] ✅ 展开「{opener_id}」后补探到 {len(got)} 个控件"
+            print(f"      [probe] [OK] 展开「{opener_id}」后补探到 {len(got)} 个控件"
                   f"（容器 {pick['container_key']}）")
         else:
-            print(f"      [probe] ℹ️ 点开「{opener_id}」后没有新控件出现（不是菜单？或渲染太慢）")
+            print(f"      [probe] [info] 点开「{opener_id}」后没有新控件出现（不是菜单？或渲染太慢）")
         opened += 1
 
         # ---- 收尾：框架开的必须由框架关掉（探测 = 只读动作）----

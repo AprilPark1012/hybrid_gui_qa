@@ -7,7 +7,7 @@
 case.vars 变量池（运行过程数据）+ 动态占位符 {datetime} 解析（一次解析固化，填表名==断言名，重跑不重名）。
 """
 # ---- 统一 UTF-8（生成物自带，裸跑 pytest 也不炸；与 framework/tools/common/text_io.py 同口径）----
-# 为什么：Windows 控制台是 cp936 时，本文件里的 ✓/⚠️ 会 UnicodeEncodeError（跑到一半崩）；
+# 为什么：Windows 控制台是 cp936 时，本文件里的 v/[!] 会 UnicodeEncodeError（跑到一半崩）；
 # 而 pytest 的 fd 捕获把输出写回真实 fd 时**硬编码 UTF-8**（_pytest/capture.py），
 # 只要外层按 locale 解码就 UnicodeDecodeError。这里把本进程 stdio 拉齐到 UTF-8，
 # 并把 Windows 控制台代码页设成 65001（否则我们写出的 UTF-8 中文在控制台显示成乱码）。
@@ -35,13 +35,13 @@ import pytest
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import expect as _expect
 
-# P20：产物位置变了 —— 本文件在 scripts/generated/_harness.py ⇒ 仓库根 = parents[3]
+# P20：产物位置变了 —— 本文件在 scripts/generated/_harness.py -> 仓库根 = parents[3]
 BASE = Path(__file__).resolve().parent.parent.parent
 LOG_DIR = BASE / "log"
 
 # ---- 本次运行的日志目录（run-id 隔离）----
 # cli run 会设 HYBRID_RUN_ID=YYYYmmdd_HHMMSS，日志/报告落 log/<run_id>/；
-# 裸跑 pytest（未设）则落 log/latest/，并在会话开始时清空 ⇒ 每次运行都干净。
+# 裸跑 pytest（未设）则落 log/latest/，并在会话开始时清空 -> 每次运行都干净。
 import os
 RUN_ID = os.environ.get("HYBRID_RUN_ID", "latest")
 RUN_LOG_DIR = LOG_DIR / RUN_ID
@@ -121,13 +121,13 @@ def _data(key, ctx):
 
 def _load_data(case_id):
     import json
-    p = Path(__file__).resolve().parent.parent / "datasets" / f"{case_id}.json"   # scripts/datasets/ ✓
+    p = Path(__file__).resolve().parent.parent / "datasets" / f"{case_id}.json"   # scripts/datasets/ v
     return json.loads(p.read_text(encoding="utf-8"))
 
 
 # ---- L1（2026-09-21）：一组数据 = 一条用例 -------------------------------------------------
 def _load_sets(case_id):
-    """多组数据（可选）：<case_id>.sets.json。没有该文件 ⇒ []（= 保持单组行为）。"""
+    """多组数据（可选）：<case_id>.sets.json。没有该文件 -> []（= 保持单组行为）。"""
     import json
     p = Path(__file__).resolve().parent.parent / "datasets" / f"{case_id}.sets.json"
     if not p.exists():
@@ -154,7 +154,7 @@ def _ds_params(case_id):
 def _ds_ids(case_id):
     """参数名：显式 id > 组里第一个占位符的值 > 序号 dsN；唯一化 + 去 pytest 会转义的字符。
 
-    ⚠️ 模板是普通字符串 ⇒ 里头的反斜杠一律写双，生成出来的产物才是单个 \（输出不变）。
+    [!] 模板是普通字符串 -> 里头的反斜杠一律写双，生成出来的产物才是单个 \（输出不变）。
     """
     import re
     sets = _load_sets(case_id)
@@ -205,9 +205,9 @@ _WATCHDOG_SINK = None
 def _watchdog_sink():
     """看门狗转储目标：run 日志目录里的 watchdog.txt（无缓冲，一定落盘）。
 
-    为什么不用 stderr：pytest 的 fd 捕获会把 **fd 2 也换成临时文件** ⇒ 硬退出时那段调用栈
+    为什么不用 stderr：pytest 的 fd 捕获会把 **fd 2 也换成临时文件** -> 硬退出时那段调用栈
     随临时文件一起被丢弃（实测：日志里一个字节都没有，看门狗等于没留证据）。
-    自己开一个专用文件（fd 3+，不受捕获影响）+ buffering=0 ⇒ 转储一定写进去；
+    自己开一个专用文件（fd 3+，不受捕获影响）+ buffering=0 -> 转储一定写进去；
     这也比 stderr 更好找：`log/<run_id>/watchdog.txt`。
     """
     global _WATCHDOG_SINK
@@ -235,7 +235,7 @@ def _case_watchdog():
     try:
         faulthandler.dump_traceback_later(int(float(secs)), exit=True, file=_watchdog_sink())
     except Exception as e:
-        print(f"[setup] ⚠️ 用例看门狗没装上（HYBRID_CASE_TIMEOUT={_CASE_TIMEOUT!r}）：{e}", flush=True)
+        print(f"[setup] [!] 用例看门狗没装上（HYBRID_CASE_TIMEOUT={_CASE_TIMEOUT!r}）：{e}", flush=True)
         yield None
         return
     try:
@@ -246,9 +246,9 @@ def _case_watchdog():
 
 # ---- 分区（F6）+ 就绪契约（F1）+ 定位等待（F2）—— 2026-09-14 ----
 # 为什么会需要（团队演示实测，见内部设计文档「慢目标与并发修复方案」）：
-#   ① 被测页面是异步取数（fetch 之后才 render），goto 之后立刻动作/断言，在慢机器/高并发下必假红；
-#   ② 多 worker 打同一个「有状态」被测服务，精确计数断言互相踩。
-# 约定：worker 分区号 = PYTEST_XDIST_WORKER（没有 xdist 时为空串 ⇒ 单跑行为与以前完全一致）；
+#   (1) 被测页面是异步取数（fetch 之后才 render），goto 之后立刻动作/断言，在慢机器/高并发下必假红；
+#   (2) 多 worker 打同一个「有状态」被测服务，精确计数断言互相踩。
+# 约定：worker 分区号 = PYTEST_XDIST_WORKER（没有 xdist 时为空串 -> 单跑行为与以前完全一致）；
 #       页面从 window.__HYBRID_W 读自己的分区，并把它带进所有 /api 调用。
 _WORKER = os.environ.get("PYTEST_XDIST_WORKER", "")
 _PARTITION = os.environ.get("HYBRID_PARTITION", _WORKER)
@@ -285,8 +285,8 @@ def _count_attached(cand, timeout_ms=None):
 
 
 def _goto(page, url):
-    """统一导航入口：① 支持 HYBRID_BASE_URL 覆盖目标（同一套用例跑本机/慢代理/预发）
-    ② goto 之后等页面数据就绪（F1）。生成脚本里的每个 goto 都走这里。"""
+    """统一导航入口：(1) 支持 HYBRID_BASE_URL 覆盖目标（同一套用例跑本机/慢代理/预发）
+    (2) goto 之后等页面数据就绪（F1）。生成脚本里的每个 goto 都走这里。"""
     target = url
     if _HYBRID_BASE:
         import urllib.parse as _up
@@ -299,9 +299,9 @@ def _goto(page, url):
 def _wait_ready(page, url=""):
     """等页面数据就绪（F1 契约）。
 
-    ① 页面声明契约：<body data-hybrid-ready="0"> …… 渲染完成后置 "1"（本项目 demo 两页已实现）；
-    ② 老页面没契约：用 HYBRID_READY_SELECTOR 指定一个「数据已就绪」选择器；
-    ③ 两者都没有：只提醒一次、不阻塞（后续动作/断言自带 F2 的有界等待）。
+    (1) 页面声明契约：<body data-hybrid-ready="0"> …… 渲染完成后置 "1"（本项目 demo 两页已实现）；
+    (2) 老页面没契约：用 HYBRID_READY_SELECTOR 指定一个「数据已就绪」选择器；
+    (3) 两者都没有：只提醒一次、不阻塞（后续动作/断言自带 F2 的有界等待）。
     超时默认只告警；HYBRID_READY_REQUIRED=1 时才硬失败（CI 想要「页面必须就绪」语义时用）。
     """
     if not _WAIT_READY:
@@ -319,7 +319,7 @@ def _wait_ready(page, url=""):
     if not has_contract:
         if "no_contract" not in _READY_WARNED:
             _READY_WARNED.add("no_contract")
-            print("[ready] ⚠️ 被测页面没有就绪契约（body[data-hybrid-ready]）——建议页面补上；"
+            print("[ready] [!] 被测页面没有就绪契约（body[data-hybrid-ready]）——建议页面补上；"
                   "或设置 HYBRID_READY_SELECTOR=<数据已就绪选择器>；本次不阻塞（动作/断言仍自带等待）。", flush=True)
         return
     try:
@@ -329,7 +329,7 @@ def _wait_ready(page, url=""):
 
 
 def _ready_timeout(url=""):
-    msg = (f"[ready] ⚠️ 等待页面数据就绪超时（{_READY_TIMEOUT_MS}ms）：{url}"
+    msg = (f"[ready] [!] 等待页面数据就绪超时（{_READY_TIMEOUT_MS}ms）：{url}"
            f" —— 页面可能卡在取数或报错；用 --debug 看逐步截图（log/<run_id>/shots/）与浏览器 console。")
     if _READY_REQUIRED:
         raise RuntimeError(msg)
@@ -344,7 +344,7 @@ def _ready_timeout(url=""):
 # 设计：`_Tabs` 维护一个 tab 栈（最后一个是当前页）；生成脚本用
 #   page = _t.open_new(lambda: _act(page, "click", ...))
 #   page = _t.close_current(lambda: _act(page, "click", ...))
-# **重新绑定局部变量 page** ⇒ 后续步骤与断言自动落在当前 tab 上（旧的 page 变量指向的仍是旧 tab 对象，
+# **重新绑定局部变量 page** -> 后续步骤与断言自动落在当前 tab 上（旧的 page 变量指向的仍是旧 tab 对象，
 # 但我们所有步骤都读 `page`，所以重新赋值即"切页"）。
 # ============================================================================
 _TAB_TIMEOUT_MS = int(os.environ.get("HYBRID_TAB_TIMEOUT", "8000"))
@@ -370,8 +370,8 @@ class _Tabs:
         except Exception as e:
             raise RuntimeError(
                 f"点了「会开新 tab」的控件，但 {_TAB_TIMEOUT_MS}ms 内没有新 tab 出现"
-                f"（{type(e).__name__}: {e}）。常见原因：① 该控件其实不会开新 tab"
-                f"（探针的 opens_new_tab 标记或场景判断有误）；② 弹窗被浏览器拦截；③ 点到的不是预想元素。"
+                f"（{type(e).__name__}: {e}）。常见原因：(1) 该控件其实不会开新 tab"
+                f"（探针的 opens_new_tab 标记或场景判断有误）；(2) 弹窗被浏览器拦截；(3) 点到的不是预想元素。"
                 f"排查：--debug 看逐步截图（log/<run_id>/shots/）。") from e
         new = info.value
         try:
@@ -386,7 +386,7 @@ class _Tabs:
     def close_current(self, click):
         """点「返回」类按钮 → 等当前 tab **真的关闭** → 切回上一个 tab。
 
-        ⚠️ 默认**严格**：需求就是「点返回会关闭该页面」—— 关不掉时静默切回 = 假绿
+        [!] 默认**严格**：需求就是「点返回会关闭该页面」—— 关不掉时静默切回 = 假绿
         （看着过了，其实页面没关）。要放宽：HYBRID_TAB_CLOSE_STRICT=0。
         """
         cur = self.page
@@ -401,9 +401,9 @@ class _Tabs:
         if not closed and _TAB_CLOSE_STRICT:
             raise RuntimeError(
                 f"点「返回」后该 tab 在 {_TAB_TIMEOUT_MS}ms 内**没有关闭** —— 需求是「关闭该页面并返回上一页」，"
-                f"所以这是真失败（不是超时抖动）：① 该按钮可能只是普通跳转而不是关 tab；"
-                f"② 该 tab 不是脚本打开的 ⇒ 浏览器不允许 window.close()（用例里应**点击**打开它，别直接 goto）；"
-                f"③ 这个 tab 已被别的动作关掉了。放宽判定：HYBRID_TAB_CLOSE_STRICT=0。")
+                f"所以这是真失败（不是超时抖动）：(1) 该按钮可能只是普通跳转而不是关 tab；"
+                f"(2) 该 tab 不是脚本打开的 -> 浏览器不允许 window.close()（用例里应**点击**打开它，别直接 goto）；"
+                f"(3) 这个 tab 已被别的动作关掉了。放宽判定：HYBRID_TAB_CLOSE_STRICT=0。")
         self.stack.pop()
         prev = self.page
         try:
@@ -418,7 +418,7 @@ class _Tabs:
 # 行内定位「列」的指定方式（与生成期 generator._CELL_BY_WHITELIST **同口径**）：
 # field（td[data-field=]，缺省）/ header（按表头文本）/ index（第 N 列，0 基）。
 # 为什么需要 header/index：有些列没有 data-field —— 实测订单列表勾选列是 `<td class="pick-cell">`，
-# 表头 `<th class="pick-head">` 还没文本 ⇒ 只能按列序定位。
+# 表头 `<th class="pick-head">` 还没文本 -> 只能按列序定位。
 _CELL_BY_WHITELIST = ("field", "header", "index")
 
 
@@ -432,12 +432,12 @@ def _row_col_step(cell_field, cell_by, cell_index) -> dict:
         if cell_index is None:
             raise ValueError("cell_by=index 时必须同时给 cell_index（第几列）")
         n = int(cell_index)
-        # ⚠️ 口径是 **1 基**（与 scope_locate 的 col.index 一致：第 N 列 ⇒ .nth(N-1)）。
-        # 传 0 会算成 .nth(-1) = **最后一列** ⇒ 静默取错列（实测：想要勾选列却拿到"是否开票"，
+        # [!] 口径是 **1 基**（与 scope_locate 的 col.index 一致：第 N 列 -> .nth(N-1)）。
+        # 传 0 会算成 .nth(-1) = **最后一列** -> 静默取错列（实测：想要勾选列却拿到"是否开票"，
         # 报的错还是 "Not a checkbox"，看着像另一个问题，极难查）。所以必须在这里拦住。
         if n < 1:
             raise ValueError(
-                f"cell_index 是**从 1 起**的列序号（第 1 列 = 1），收到 {n} ⇒ 会取到最后一列，必须拦下")
+                f"cell_index 是**从 1 起**的列序号（第 1 列 = 1），收到 {n} -> 会取到最后一列，必须拦下")
         return {"axis": "col", "by": "index", "value": n}
     val = str(cell_field or "")
     if not val:
@@ -451,17 +451,17 @@ def _click_row_cell(page, row_text, cell_field, tabs=None, op="click", value=Non
 
     `op`（2026-09-30 P22 批 5 新增）：click（默认，点列里的链接）/ check / uncheck / fill。
     - click 之外的 op 为什么需要：**勾选某一行**（然后点批量按钮）是列表页的常见动作，
-      而"选哪一行"只能靠行锚表达 ⇒ 行内定位必须支持 check/fill，否则只能改用例绕过（丢验证点）。
+      而"选哪一行"只能靠行锚表达 -> 行内定位必须支持 check/fill，否则只能改用例绕过（丢验证点）。
 
     为什么需要这个能力：新建记录的编号/合同号是**服务端动态分配**的，探测清单里不可能有它的语义名，
-    AI 无法按名字引用那一条 ⇒ 只能「按行内容锚定行 + 按列字段取元素」。
+    AI 无法按名字引用那一条 -> 只能「按行内容锚定行 + 按列字段取元素」。
     `data-field` 是被测页面既有约定（td[data-field='contractNo'] 这类）。
 
     唯一性：含该文本的行必须**恰好 1 行**，否则直接失败 —— 宁可失败，也不点错行。
 
     2026-09-22（P16 批 3）：列定位改走 `scope_locate.locate_in_scope` —— 与「锚点 + 相对路径」
     **同一条通道**（同一套唯一性口径、同一套表达式拼法），不再各写一份列逻辑。
-    函数名与签名保持不变 ⇒ **既有生成物零改动可跑**。
+    函数名与签名保持不变 -> **既有生成物零改动可跑**。
     """
     from framework.tools.probe.scope_locate import locate_in_scope
 
@@ -470,8 +470,8 @@ def _click_row_cell(page, row_text, cell_field, tabs=None, op="click", value=Non
     if n != 1:
         raise RuntimeError(
             f"行内定位失败：含文本 {row_text!r} 的行命中 {n} 个（要求恰好 1 个）。"
-            f" 常见原因：① 这段文本不在任何行里（上一步的新建没成功 / 名称写错）；"
-            f" ② 锚文本太短，多行都含它（用更长的独有片段）。")
+            f" 常见原因：(1) 这段文本不在任何行里（上一步的新建没成功 / 名称写错）；"
+            f" (2) 锚文本太短，多行都含它（用更长的独有片段）。")
     _col = locate_in_scope(rows.first, [_row_col_step(cell_field, cell_by, cell_index)])
     if not _col["ok"]:
         raise RuntimeError(f"行内列 {cell_field!r} 定位失败：{_col['reason']}")
@@ -526,12 +526,12 @@ def _assert_first_row(page, field, expected, desc=""):
 
 # ---- 用例间数据复位（2026-09-14）----
 # 为什么需要：被测应用（demo）现在把合同数据放在**服务端**（详情页要读同一条真实记录），
-# 新建用例会真的写进去 ⇒ 不复位的话「列表恢复 20 行」这类断言会被上一条用例的残留数据打乱，
+# 新建用例会真的写进去 -> 不复位的话「列表恢复 20 行」这类断言会被上一条用例的残留数据打乱，
 # 而且失败原因会指向错误的地方（用例互相污染比用例失败更难查）。
 # 口径：HYBRID_RESET_URL 可覆盖默认值；设为 off/0/none/空 则完全不复位（被测应用没有复位接口时）。
 # 复位失败**大声告警但不中断**：那是「用例可能互相污染」的信号，绝不该被静默吞掉。
 # 2026-09-28：demo 的 /api/reset 默认**保留用户手工数据**（免得跑判据把演示数据清了），
-# 用例间要做干净隔离 ⇒ 默认 URL 带 ?purge=1（可用 HYBRID_RESET_URL 覆盖）
+# 用例间要做干净隔离 -> 默认 URL 带 ?purge=1（可用 HYBRID_RESET_URL 覆盖）
 _RESET_URL = os.environ.get("HYBRID_RESET_URL", "http://localhost:8000/api/reset?purge=1")
 _RESET_OFF = ("", "off", "0", "none", "no", "false")
 
@@ -551,7 +551,7 @@ def _reset_target_data():
             print(f"[setup] 数据复位 {target} → HTTP {r.status}"
                   + (f"（分区 {_PARTITION}）" if _PARTITION else ""), flush=True)
     except Exception as e:
-        print(f"[setup] ⚠️ 数据复位失败（{target}）：{type(e).__name__}: {e}"
+        print(f"[setup] [!] 数据复位失败（{target}）：{type(e).__name__}: {e}"
               f" —— 用例之间可能互相污染（要关掉这条提示：HYBRID_RESET_URL=off）", flush=True)
     yield None
 
@@ -589,7 +589,7 @@ class _BrowserPool:
         if self.browser is None or not self.browser.is_connected():
             if self.browser is not None:
                 self.restarts += 1
-                print(f"[browser] ⚠️ 会话级浏览器已断开（第 {self.restarts} 次）→ 重启。"
+                print(f"[browser] [!] 会话级浏览器已断开（第 {self.restarts} 次）→ 重启。"
                       f"若 dmesg 有 OOM 记录，说明内存不够（见 framework/tools/common/limits.py 的并发降级）",
                       flush=True)
             self.browser = self._p.chromium.launch(**self._opts)
@@ -605,7 +605,7 @@ class _BrowserPool:
 
 
 # ---- P22 批 5：登录前置表（case_id → auth 声明）----
-# generate 按场景的 `auth:` 段写进同目录 `_auth.json`；没有该文件 ⇒ 空表 ⇒ 行为与从前**完全一致**。
+# generate 按场景的 `auth:` 段写进同目录 `_auth.json`；没有该文件 -> 空表 -> 行为与从前**完全一致**。
 _AUTH_TABLE: dict = {}
 try:
     import json as _json_auth          # 显式 import：harness 顶层没有 json（实测踩过 NameError）
@@ -614,9 +614,9 @@ try:
     if _ap.exists():
         _AUTH_TABLE = _json_auth.loads(_ap.read_text(encoding="utf-8")) or {}
 except Exception as _e_auth:
-    # ⚠️ 兜底**不许把"自己写错"吞成"没有登录前置"**（P19 教训：NameError 被 except 吞掉 ⇒ 静默失效，
+    # [!] 兜底**不许把"自己写错"吞成"没有登录前置"**（P19 教训：NameError 被 except 吞掉 -> 静默失效，
     # 现象是"整条用例跑在登录页上"，排查方向还容易被带偏）。产物里明明有 _auth.json 却读不出来
-    # = 环境/产物坏了 ⇒ **当场抛**，不降级。
+    # = 环境/产物坏了 -> **当场抛**，不降级。
     raise RuntimeError(
         f"_auth.json 读取失败（{type(_e_auth).__name__}: {_e_auth}）"
         f" —— 登录前置无法生效，用例会整条跑在登录页上，故当场失败（不静默降级）") from _e_auth
@@ -625,8 +625,8 @@ except Exception as _e_auth:
 def _install_login(context, auth_spec=None):
     """**登录前置**：context 建好后立刻把 token 注入 localStorage（P22 批 5 · 方案 H）。
 
-    为什么需要：目标系统未登录会跳登录页 ⇒ 用例里的 goto 全落在登录页（整条用例白跑）。
-    没声明（空 spec）⇒ 直接返回 —— 行为与不加这个特性时**完全一致**（零开销）。
+    为什么需要：目标系统未登录会跳登录页 -> 用例里的 goto 全落在登录页（整条用例白跑）。
+    没声明（空 spec）-> 直接返回 —— 行为与不加这个特性时**完全一致**（零开销）。
     登录失败**当场抛**：静默继续会变成"整条用例都在登录页上跑"的假象，比失败更坏。
     """
     if not auth_spec:
@@ -637,7 +637,7 @@ def _install_login(context, auth_spec=None):
         raise RuntimeError(
             f"登录前置失败（场景声明了 auth，但登录没成功）：{r.get('reason')}"
             f" —— 未登录态下跑用例没有意义，故当场失败（不静默）")
-    print(f"[setup] 🔑 登录前置 ok（{auth_spec.get('username')}）", flush=True)
+    print(f"[setup] [key] 登录前置 ok（{auth_spec.get('username')}）", flush=True)
 
 
 def _is_headed():
@@ -660,7 +660,7 @@ def page(request, _pool):
     _SHOT_N = 0                                # 每条用例从 01 重新编号
     import re as _re
     # trace 文件名带 case_id：多用例并发/多次运行**不再互相覆盖**（原先都写 latest_trace.zip）
-    # ⚠️ 同 ctx fixture：L1 参数化后节点名带 [组名] 后缀，必须切掉
+    # [!] 同 ctx fixture：L1 参数化后节点名带 [组名] 后缀，必须切掉
     #（否则 trace 文件名变成 xxx[编号-1005]_trace.zip，且并发/多次运行的文件名口径不一致）
     _m = _re.match(r"test_([^\[]+)", request.node.name)
     _cid = _m.group(1) if _m else request.node.name
@@ -672,7 +672,7 @@ def page(request, _pool):
     context = browser.new_context(**_ctx_kw)
     _install_login(context, _AUTH_TABLE.get(_cid) or _AUTH_TABLE.get("*") or {})   # P22 批 5
     if _PARTITION:
-        # F6：把分区号注入页面（页面据此把 /api 调用带上 ?w=…）⇒ 并发 worker 各用各的数据
+        # F6：把分区号注入页面（页面据此把 /api 调用带上 ?w=…）-> 并发 worker 各用各的数据
         context.add_init_script("window.__HYBRID_W = " + repr(_PARTITION) + ";")
     context.tracing.start(screenshots=True, snapshots=True)
     pg = context.new_page()
@@ -683,7 +683,7 @@ def page(request, _pool):
         trace_dir.mkdir(parents=True, exist_ok=True)
         context.tracing.stop(path=str(trace_dir / f"{_cid}_trace.zip"))
         _vid = pg.video if _DEBUG_VIDEO else None   # 必须在关闭前拿到 video 句柄
-        context.close()                             # ⚠️ 关上下文才会把 webm 真正写盘（否则只有几 KB）
+        context.close()                             # [!] 关上下文才会把 webm 真正写盘（否则只有几 KB）
         if _vid:
             try:
                 _t = RUN_LOG_DIR / "videos" / f"{_cid}.webm"
@@ -703,7 +703,7 @@ def page(request, _pool):
 def ctx(request):
     import re
     node = request.node.name                       # test_<case_id> 或 test_<case_id>[<数据组>]
-    # ⚠️ 必须切掉「[数据组]」后缀 —— L1 参数化后节点名带后缀，用 .+ 会把整串当 case_id，
+    # [!] 必须切掉「[数据组]」后缀 —— L1 参数化后节点名带后缀，用 .+ 会把整串当 case_id，
     #    于是找不到数据集（防复发判据见 tests/_helpers/test_data_expand.py）
     m = re.match(r"test_([^\[]+)", node)
     case_id = m.group(1) if m else "run"
@@ -737,7 +737,7 @@ def _item_for(hint, page):
     """semantic_name → probe 控件项。缓存优先；未命中才重探一次（兼容弹窗后出现的控件）。
 
     改造前每个动作都全页 probe（并发下页面时序不稳会超时）；现在只在首次/未命中时探。
-    ⚠️ 2026-09-18 批次 2 S3：逐字名不存在时不再「随便挑一个」—— 见 `_fuzzy_lookup`。
+    [!] 2026-09-18 批次 2 S3：逐字名不存在时不再「随便挑一个」—— 见 `_fuzzy_lookup`。
     """
     from framework.tools.probe.probe import probe_page
     it = _INDEX.get(hint)
@@ -751,7 +751,7 @@ def _item_for(hint, page):
 
 
 def _strict_locate() -> bool:
-    """HYBRID_STRICT_LOCATE=1/true/yes/on ⇒ 禁用模糊兜底（CI 语义：失败即报，绝不猜）。"""
+    """HYBRID_STRICT_LOCATE=1/true/yes/on -> 禁用模糊兜底（CI 语义：失败即报，绝不猜）。"""
     return str(os.environ.get("HYBRID_STRICT_LOCATE", "")).strip().lower() in ("1", "true", "yes", "on")
 
 
@@ -759,11 +759,11 @@ def _fuzzy_lookup(hint):
     """模糊兜底（包含关系）—— 批次 2 S3 收敛：**唯一候选才接受，多候选严格失败**。
 
     旧写法（`for k, v in _INDEX.items(): if hint in k or k in hint: return v`）两个坑：
-      ① 多候选时按 **dict 顺序**拿第一个（顺序 = 探测顺序，页面多一个同名控件就可能换人）；
-      ② 全程**零告警** ⇒ 名字写错/过期时不会报失败，而是静默点到另一个控件（点错还报绿）。
+      (1) 多候选时按 **dict 顺序**拿第一个（顺序 = 探测顺序，页面多一个同名控件就可能换人）；
+      (2) 全程**零告警** -> 名字写错/过期时不会报失败，而是静默点到另一个控件（点错还报绿）。
     这正是本项目最忌的那种「看着对、其实错」——同「绝不返回可能点错的 locator」红线。
     现在：候选唯一 → 接受 + 打印并落日志（留痕，含改法建议）；候选 ≥2 → 抛错并列出候选；
-    `HYBRID_STRICT_LOCATE=1` ⇒ 连唯一候选也不兜（要求名字逐字准确，适合 CI）。
+    `HYBRID_STRICT_LOCATE=1` -> 连唯一候选也不兜（要求名字逐字准确，适合 CI）。
     """
     hits = [(k, v) for k, v in _INDEX.items() if k and (hint in k or k in hint)]
     if len(hits) > 1:
@@ -772,10 +772,10 @@ def _fuzzy_lookup(hint):
         raise RuntimeError(
             f"语义名歧义：{hint!r} 逐字不存在，而清单里有多个名字含它 → {cand}{more}。"
             f"模糊兜底不再「随便挑一个」（旧行为 = 按探测顺序静默挑，可能点到另一个控件还照样报绿）。"
-            f"下一步：① 用例里改用清单中的准确名（同名控件用 base@上下文 形式）；"
-            f"② 行内/子元素改用「锚点 + 容器内相对语义」表达（anchor + path）；"
-            f"③ testid 只是可选优化 —— **框架不要求被测系统为测试埋点**；"
-            f"④ 确认不是语义名过期 —— 页面改版后重跑 probe/generate。"
+            f"下一步：(1) 用例里改用清单中的准确名（同名控件用 base@上下文 形式）；"
+            f"(2) 行内/子元素改用「锚点 + 容器内相对语义」表达（anchor + path）；"
+            f"(3) testid 只是可选优化 —— **框架不要求被测系统为测试埋点**；"
+            f"(4) 确认不是语义名过期 —— 页面改版后重跑 probe/generate。"
         )
     if not hits:
         return None
@@ -784,7 +784,7 @@ def _fuzzy_lookup(hint):
             f"语义名未找到：{hint!r}（逐字不存在；模糊兜底已被 HYBRID_STRICT_LOCATE=1 禁用，"
             f"清单里唯一接近的是 {hits[0][0]!r}）。改用准确名，或去掉该开关。"
         )
-    _log(None, "locate", f"⚠️ 模糊兜底命中：{hint!r} → {hits[0][0]!r}"
+    _log(None, "locate", f"[!] 模糊兜底命中：{hint!r} → {hits[0][0]!r}"
                          f"（逐字名不存在，靠包含关系蒙的；建议改用清单里的准确名）")
     return hits[0][1]
 
@@ -814,8 +814,8 @@ def _loc(hint, page):
     if it is None:
         raise RuntimeError(
             f"元素语义未找到: {hint} —— 确定性主定位没命中，语义兜底也没找到这个语义名。"
-            f"常见原因：① 页面还在异步取数/弹层未渲染（慢机器与高并发下常见；检查就绪契约或设 HYBRID_READY_SELECTOR）；"
-            f"② 弹层没打开（先确认上一步点击是否生效）；③ 语义名过期（页面改版后要重跑 probe/generate）。"
+            f"常见原因：(1) 页面还在异步取数/弹层未渲染（慢机器与高并发下常见；检查就绪契约或设 HYBRID_READY_SELECTOR）；"
+            f"(2) 弹层没打开（先确认上一步点击是否生效）；(3) 语义名过期（页面改版后要重跑 probe/generate）。"
             f"排查：加 --debug 看逐步截图（log/<run_id>/shots/）。"
         )
     el = _to_ref(it)
@@ -852,7 +852,7 @@ def _shot(page, tag):
         _SHOT_N += 1
         d = RUN_LOG_DIR / "shots" / _CURRENT_LOG.get("case_id", "run")
         d.mkdir(parents=True, exist_ok=True)
-        safe = _re2.sub(r"[^0-9A-Za-z一-鿿]+", "_", str(tag))[:40].strip("_") or "step"
+        safe = _re2.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "_", str(tag))[:40].strip("_") or "step"
         page.screenshot(path=str(d / f"{_SHOT_N:02d}_{safe}.png"))
     except Exception:
         pass
@@ -861,7 +861,7 @@ def _shot(page, tag):
 def _wait_after_action(page) -> None:
     """（P22 批 3）动作后若页面发生导航/重载，等它就绪。
 
-    ⚠️ **唯一实现在 `framework.tools.run.waits`** —— 这里只转发：生成物与框架二类脚本共用同一份
+    [!] **唯一实现在 `framework.tools.run.waits`** —— 这里只转发：生成物与框架二类脚本共用同一份
     逻辑，避免"两处各写一份、慢慢漂移"（本项目已因这类漂移栽过）。
     """
     from framework.tools.run.waits import wait_after_action
@@ -894,9 +894,9 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
             raise RuntimeError(f"确定性 locator 失效且无语义兜底: {action}")
         loc = _loc(semantic, page)
     if action == "click":
-        # P22 批 3：① force 只由**手写用例**显式声明（AI 链路被质量闸拦住）；
-        #            ② 点完等页面就绪 —— 「切换为订单管理员」是 location.reload()（auth.js:130），
-        #               旧实现只有 loc.click()、不等任何状态 ⇒ 下一步撞重载竞态（控件还在旧文档上）。
+        # P22 批 3：(1) force 只由**手写用例**显式声明（AI 链路被质量闸拦住）；
+        #            (2) 点完等页面就绪 —— 「切换为订单管理员」是 location.reload()（auth.js:130），
+        #               旧实现只有 loc.click()、不等任何状态 -> 下一步撞重载竞态（控件还在旧文档上）。
         loc.click(force=bool(force))
         # P22 批 4：记下「最近一次搜索点击」—— wait_text(refresh=research) 靠它每轮重新取数
         if semantic and _is_search_semantic(str(semantic)):
@@ -911,7 +911,7 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
             # demo 的 #sel-o-bu/#sel-o-mu/#sel-o-file/#sel-o-cust 第一个 option 是
             # `<option value="">请选择</option>`（order_new.html:45,51,57,69），而场景里
             # 「各选第一项」的人话意思显然是「选第一个**真**选项」—— 按字面选 index 0
-            # 会落进「请选择」⇒ 表单校验不过 ⇒ 订单建不出来（2026-09-30 实测卡了两轮）。
+            # 会落进「请选择」-> 表单校验不过 -> 订单建不出来（2026-09-30 实测卡了两轮）。
             _opts = loc.locator("option")
             _real = [i for i in range(_opts.count())
                      if (_opts.nth(i).get_attribute("value") or "").strip() != ""]
@@ -955,16 +955,16 @@ def _assert_text(page, text, desc=""):
     loc.first.wait_for(timeout=5000)
     from playwright.sync_api import expect
     expect(loc.first).to_be_visible()
-    line = f"[CHECK] ✓ 断言: {desc or text}"
+    line = f"[CHECK] v 断言: {desc or text}"
     print(line, flush=True)
     _append_log(_CURRENT_LOG.get("case_id", "run"), line)
     _shot(page, f"assert_{text}")                  # 调试模式：断言通过后也存一张
 
 
 # ---- 断言辅助（2026-09-13 D 项：断言类型从「只有文本」扩展到 11 种）----
-# 约定：全部 web-first（playwright expect 自动重试）；成功统一打印 [CHECK] ✓ 断言: …
+# 约定：全部 web-first（playwright expect 自动重试）；成功统一打印 [CHECK] v 断言: …
 #       并写逐用例日志（调试模式另存一张截图）。
-#       ❗ 缺字段 / 定位不到时，由**生成的脚本** pytest.fail（绝不静默少验一步 = 假绿）。
+#       [!] 缺字段 / 定位不到时，由**生成的脚本** pytest.fail（绝不静默少验一步 = 假绿）。
 
 
 # P22 批 4（2026-09-29）：等待式断言的"最后一次搜索"重放点（refresh=research 用）
@@ -980,7 +980,7 @@ def _is_search_semantic(name: str) -> bool:
 def _replay_last_search(page) -> bool:
     """重放**最近一次搜索点击**（P22 · refresh=research）。
 
-    为什么需要：demo 列表页不会自己刷新（无 setInterval）⇒ 「等状态流转」必须**重新取数**。
+    为什么需要：demo 列表页不会自己刷新（无 setInterval）-> 「等状态流转」必须**重新取数**。
     口径 = 用同一个语义名再点一次那次搜索按钮；没有记录就如实返回 False（不猜、不假装重放过了）。
     """
     if not _LAST_SEARCH:
@@ -993,7 +993,7 @@ def _replay_last_search(page) -> bool:
 
 
 def _assert_wait_text(page, text, timeout_ms=30000, refresh="none", desc="", selector=""):
-    """**等待式断言**：在有界时间内轮询，直到页面出现该文本（P22 批 4 · 缺口 ②）。
+    """**等待式断言**：在有界时间内轮询，直到页面出现该文本（P22 批 4 · 缺口 (2)）。
 
     与 `_assert_text` 的区别：
       · `_assert_text` 的等待硬编码 5s（只够等页面已渲染的东西）；
@@ -1038,7 +1038,7 @@ def _assert_wait_text(page, text, timeout_ms=30000, refresh="none", desc="", sel
 
 
 def _ok(page, desc, tag, detail=""):
-    line = f"[CHECK] ✓ 断言: {desc}" + (f"（{detail}）" if detail else "")
+    line = f"[CHECK] v 断言: {desc}" + (f"（{detail}）" if detail else "")
     print(line, flush=True)
     _append_log(_CURRENT_LOG.get("case_id", "run"), line)
     _shot(page, f"assert_{tag}")
@@ -1076,8 +1076,8 @@ def _resolve(page, primary, semantic=None, *, unique=True):
             #     实测把排查方向带偏。这里给出真实原因 + 下一步。
             raise RuntimeError(
                 f"断言主定位失效：等了 {_LOCATE_TIMEOUT_MS}ms 仍然是 0 个元素；该断言用的是 selector，没有语义兜底可走。"
-                f" 常见原因：① 刚做完 goto/点击，页面还在异步取数（给页面加就绪契约，或设 HYBRID_READY_SELECTOR）；"
-                f" ② 元素真的不在了（真 bug）；③ 结果行还没渲染出来。"
+                f" 常见原因：(1) 刚做完 goto/点击，页面还在异步取数（给页面加就绪契约，或设 HYBRID_READY_SELECTOR）；"
+                f" (2) 元素真的不在了（真 bug）；(3) 结果行还没渲染出来。"
                 f" 排查：加 --debug 看逐步截图（log/<run_id>/shots/）。"
             )
         loc = _loc(semantic, page)

@@ -1,14 +1,14 @@
-"""场景「前置动作」（`pages[].pre`）契约 —— P22 批 5 缺口 ④⑤（一类，不需浏览器）。
+"""场景「前置动作」（`pages[].pre`）契约 —— P22 批 5 缺口 (4)(5)（一类，不需浏览器）。
 
 为什么（真值 2026-09-30）：
-  · 合同列表页的「新建订单」是弹层，**不先选中合同**点它只会弹「请选择某个合同」⇒ 弹层不开、里面控件探不到；
-  · 订单详情页的行控件（数量/单位/行类型/收入）**只在「编辑」+「新增行」之后**才存在 ⇒ 探针一次都探不到。
+  · 合同列表页的「新建订单」是弹层，**不先选中合同**点它只会弹「请选择某个合同」-> 弹层不开、里面控件探不到；
+  · 订单详情页的行控件（数量/单位/行类型/收入）**只在「编辑」+「新增行」之后**才存在 -> 探针一次都探不到。
   两条都是同一类：**需要前置动作才能探到的控件**。解法定为「场景声明式 pre」，与 `auth:` 段同一口径。
 
 判据：
   J1 解析：`pages[].pre` 进 `ScenarioPage.pre`，`to_dict()` 带出；
-  J2 类型错 ⇒ ScenarioError（与别的字段同口径，不静默吞）；
-  J4 不声明 pre ⇒ 行为与今天一致（向后兼容；老场景不受影响）。
+  J2 类型错 -> ScenarioError（与别的字段同口径，不静默吞）；
+  J4 不声明 pre -> 行为与今天一致（向后兼容；老场景不受影响）。
 （探针执行顺序由二类真跑 verify_page_pre_actions.py 的 V1/V2 覆盖。）
 """
 from __future__ import annotations
@@ -67,13 +67,13 @@ def test_pre_is_parsed_and_exposed(tmp_path):
 
 
 def test_pre_wrong_type_fails_loud(tmp_path):
-    """J2：pre 写成字符串 ⇒ 明确报错（不许静默当空）。"""
+    """J2：pre 写成字符串 -> 明确报错（不许静默当空）。"""
     with pytest.raises(ScenarioError):
         _load(tmp_path, _YML_BAD)
 
 
 def test_no_pre_is_backward_compatible(tmp_path):
-    """J4：不声明 pre ⇒ 空列表，行为与今天完全一致。"""
+    """J4：不声明 pre -> 空列表，行为与今天完全一致。"""
     sc = _load(tmp_path, _YML_NO_PRE)
     page = sc.all_pages()[0]
     assert page.pre == []

@@ -79,7 +79,7 @@ def test_structural_errors_fail_loud(a, keyword):
 def test_render_covers_every_declared_kind():
     """_ASSERT_KINDS 里声明的每个 kind 都要真的被翻译（防「声明了但没实现」）。
 
-    ⚠️ 样例必须给全「该 kind 的必备字段」：first_row 用 row_field 定位第一行的某一列
+    [!] 样例必须给全「该 kind 的必备字段」：first_row 用 row_field 定位第一行的某一列
     （它不需要 selector/element），缺字段时会走 pytest.fail —— 那是**结构性错误**的正确行为，
     不能把它当成「没实现翻译」（2026-09-17 加 first_row 时就是这么红的）。
     """
@@ -109,9 +109,9 @@ def test_zero_count_expect_still_extracted():
 # 跨页重名「原始名」告警必须**按用例**判定（2026-09-18 实测的假红）
 #
 # 背景：`_DUP_PAGES` 是所有用例声明页面的并集 —— 订单场景带来「订单系统」页后，
-# 它和「列表页」都有 HT_1001…HT_1020 链接 ⇒ HT_1005 进并集；而手写跨页用例
+# 它和「列表页」都有 HT_1001…HT_1020 链接 -> HT_1005 进并集；而手写跨页用例
 # （列表页+详情页，如 cross_page_detail / ai_contracts_cross_page_011030）在自己的范围里
-# 根本不重名，却被全局名单判成「必须写 @页名」⇒ cli run 15 passed / 2 failed（假红）。
+# 根本不重名，却被全局名单判成「必须写 @页名」-> cli run 15 passed / 2 failed（假红）。
 # 判据：本用例声明的页 ∩ 该名字出现的页 ≥ 2。
 # ---------------------------------------------------------------------------
 

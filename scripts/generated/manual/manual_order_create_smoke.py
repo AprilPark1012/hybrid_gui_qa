@@ -12,7 +12,7 @@
 """
 from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
-                      # ⚠️ 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
+                      # [!] 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
                       _ds_params, _ds_ids,
                       _assert_text, _assert_url,
                       _assert_visible, _assert_hidden, _assert_count,
@@ -20,7 +20,7 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       _assert_checked, _assert_unchecked,
                       _assert_enabled, _assert_disabled,
                       # 2026-09-17 跨 tab / 行内定位 / 首行断言用的辅助
-                      # ⚠️ 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
+                      # [!] 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
                       _Tabs, _click_row_cell, _assert_first_row,
                       # P22 批 4/5：等待式断言（wait_text；批 5 起支持 selector 限定范围）
                       _assert_wait_text)
@@ -35,7 +35,7 @@ def test_manual_order_create_smoke(page, ctx):
 2. 切换为**订单管理员**角色（不切则保存按钮置灰）。
 3. 等价直达新建订单页并带入合同 HT-1001（点「新建订单」在 demo 里是 iframe 弹层，探测链路暂不覆盖）。
 4. 填写订单名称「手搓-{datetime}」，业务单元/管理单元/帐套/订单类型/客户/销售员各选第一行，保存。
-5. 进订单列表页，按订单名称搜索 ⇒ 列表首行必须出现这条订单。"""
+5. 进订单列表页，按订单名称搜索 -> 列表首行必须出现这条订单。"""
     _CURRENT_LOG["case_id"] = "manual_order_create_smoke"
     _goto(page, 'http://localhost:8000/login.html')
     _log(page, "场景开始", f"case=manual_order_create_smoke")

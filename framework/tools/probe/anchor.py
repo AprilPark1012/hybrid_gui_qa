@@ -2,7 +2,7 @@
 
 **为什么需要**（AprilPark1012 2026-09-22 现场口径）：真实系统一般只有**顶层元素**有 `data-testid`
 （表格 / 弹层 / 工具栏 / 区块），要操作的子元素（行、单元格、行内链接按钮）没有埋点。
-框架的 Tier1 第一级是 `data-testid`，而 demo 又几乎每个控件都埋了 ⇒ 这条"下钻"能力**从没被真实触发**。
+框架的 Tier1 第一级是 `data-testid`，而 demo 又几乎每个控件都埋了 -> 这条"下钻"能力**从没被真实触发**。
 本模块提供契约化的表达，供 probe 采集、locator_bridge 合成、generator 生成表达式、AI 提示词共用：
 
     anchor = {"kind": "table|dialog|form|region", "by": "test_id|aria_label|role|heading", "value": ...}
@@ -11,7 +11,7 @@
               {"axis": "target", "by": "role|text", "value": ...}]     # 目标元素自身语义
 
 **红线（与项目铁律一致）**：
-  · 锚不住 / 列找不到 ⇒ **None 或省略该步**，绝不编造、绝不默认"第 1 行 / 第 1 列"（那是假通过的源头）；
+  · 锚不住 / 列找不到 -> **None 或省略该步**，绝不编造、绝不默认"第 1 行 / 第 1 列"（那是假通过的源头）；
   · 本模块只产出"描述"，**不做定位**（唯一性校验与真实 locator 合成在 locator_bridge，必须有 `count()==1`）。
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ ANCHOR_SIGNALS = ("test_id", "aria_label", "role", "heading")
 
 
 def _container_kind(node: dict) -> str | None:
-    """这个祖先是不是「可作锚点的容器」？是 ⇒ 返回 kind，否 ⇒ None。"""
+    """这个祖先是不是「可作锚点的容器」？是 -> 返回 kind，否 -> None。"""
     tag = str(node.get("tag") or "").lower()
     role = str(node.get("role") or "").lower()
     cls = str(node.get("class") or "").lower()
@@ -43,7 +43,7 @@ def _container_kind(node: dict) -> str | None:
 
 
 def _anchor_of(node: dict) -> tuple[str, object] | None:
-    """容器上的可用锚点信号（按 ANCHOR_SIGNALS 取最强的一个）；都没有 ⇒ None。"""
+    """容器上的可用锚点信号（按 ANCHOR_SIGNALS 取最强的一个）；都没有 -> None。"""
     for key in ANCHOR_SIGNALS:
         val = node.get(key)
         if val not in (None, "", []):
@@ -55,7 +55,7 @@ def container_from_ancestors(ancestors: list[dict] | None) -> dict | None:
     """从祖先链（**由近到远**）里挑出最近的「可锚定容器」。
 
     返回 `{"kind","by","value"}`；`by`/`value` 可能同时为 None（有容器但没任何锚点信号 —— 如实标注，
-    由下游决定是否退化成"表头文本 + 列序"或全页语义定位）。**完全找不到容器 ⇒ None**。
+    由下游决定是否退化成"表头文本 + 列序"或全页语义定位）。**完全找不到容器 -> None**。
     """
     first_container: dict | None = None
     for node in (ancestors or []):
@@ -78,7 +78,7 @@ def path_for_table_row(row_text: str | None = None, cell_field: str | None = Non
 
     行锚优先级：`row_text`（**整表内唯一的最短单元格文本**，最稳；由 `pick_row_anchor` 选出，
     见 L18 修法 A）> `row_index`（**显式**行序；调用方明确给出才用）。
-    **两者都没有 ⇒ 不生成行步**（不许偷偷按第一行猜）。
+    **两者都没有 -> 不生成行步**（不许偷偷按第一行猜）。
     列优先级：`cell_field`（`td[data-field]`）> `col_header`（表头文本）> `col_index`（显式列序，1-based）。
     """
     steps: list[dict] = []
@@ -105,14 +105,14 @@ def pick_row_anchor(cells: list[str] | None, table_cells: list[list[str]] | None
     """为这一行挑一个**稳定**的行锚（纯函数 · 无浏览器 · P18 修法 A）。
 
     规则：只保留「在**整表**内恰好出现 1 次」的候选，取**最短**者（等长取列序最小）。
-    挑不到 ⇒ 返回 `None`（**绝不**退化猜整行文本 / 第一列 / 第一行）。
+    挑不到 -> 返回 `None`（**绝不**退化猜整行文本 / 第一列 / 第一行）。
 
     为什么这样选（P18 §四 实测依据）：demo 的随机字段（`mu`/`file`/`type`/`bu`）取值池只有 3~5 个
-    ⇒ 在 20~60 行里**必然重复** ⇒ 被唯一性过滤掉；而编号列（`HT-1005`）天然唯一且最短 ⇒ 稳定胜出。
-    ⇒ **不需要**事先判定"哪一列是业务键"（不依赖列名语义，纯数据驱动）。
+    -> 在 20~60 行里**必然重复** -> 被唯一性过滤掉；而编号列（`HT-1005`）天然唯一且最短 -> 稳定胜出。
+    -> **不需要**事先判定"哪一列是业务键"（不依赖列名语义，纯数据驱动）。
     取最短的额外好处：表达式更短更可读，顺带缓解 L13（行锚冗长）。
 
-    调用方口径（P18 §四 兜底 · 不许静默）：返回 `None` 时按"整表全自由文本"处理 ⇒ 保持整行文本
+    调用方口径（P18 §四 兜底 · 不许静默）：返回 `None` 时按"整表全自由文本"处理 -> 保持整行文本
     + **生成期显式告警**（"该行锚未取得稳定值，demo/数据变动后可能降级为语义兜底"）。
     """
     own = [str(c or "").strip() for c in (cells or [])]
@@ -124,7 +124,7 @@ def pick_row_anchor(cells: list[str] | None, table_cells: list[list[str]] | None
             t = str(c or "").strip()
             if t:
                 counts[t] = counts.get(t, 0) + 1
-    if not counts:                      # 整表没采到任何文本 ⇒ 无从判断唯一性，如实放弃
+    if not counts:                      # 整表没采到任何文本 -> 无从判断唯一性，如实放弃
         return None
     best: tuple[int, int, str] | None = None
     for idx, t in enumerate(own):
@@ -137,7 +137,7 @@ def pick_row_anchor(cells: list[str] | None, table_cells: list[list[str]] | None
 
 
 def header_index(headers: list[str] | None, text: str | None) -> int | None:
-    """表头文本 ⇒ **1-based** 列序（无 `data-field` 时的降级路径）。找不到 ⇒ None（不退化成第 1 列）。"""
+    """表头文本 -> **1-based** 列序（无 `data-field` 时的降级路径）。找不到 -> None（不退化成第 1 列）。"""
     if not headers or text in (None, ""):
         return None
     want = str(text).strip()
@@ -150,7 +150,7 @@ def header_index(headers: list[str] | None, text: str | None) -> int | None:
 def ancestors_from_dom(chain: list[dict] | None) -> list[dict]:
     """（预留）把 DOM 侧采集到的祖先信息规整成本模块认的字段名。
 
-    probe 采集端已按 `tag/role/class/test_id/aria_label/heading` 命名 ⇒ 这里只做一次字段兜底归一，
+    probe 采集端已按 `tag/role/class/test_id/aria_label/heading` 命名 -> 这里只做一次字段兜底归一，
     避免两个模块对字段名的理解漂移（本项目踩过"两处口径不一致"的坑）。
     """
     out: list[dict] = []

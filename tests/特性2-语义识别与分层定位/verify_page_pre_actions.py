@@ -1,13 +1,13 @@
-"""二类验证（真跑 demo）：`pages[].pre` 让探针探到「前置后才有」的控件（P22 批 5 缺口④⑤）。
+"""二类验证（真跑 demo）：`pages[].pre` 让探针探到「前置后才有」的控件（P22 批 5 缺口(4)(5)）。
 
 真值背景（2026-09-30）：
   订单详情页的行控件（数量/单位/行类型/收入）只在「编辑 + 新增行」之后才存在；
-  探针默认"打开页面就看一遍" ⇒ 33 个控件里没有它们 ⇒ AI 拿不到语义名、用例引用不了
-  ⇒ 行必填没填 ⇒ 保存无效 ⇒ 提交被拦（状态恒「已新建」）。
+  探针默认"打开页面就看一遍" -> 33 个控件里没有它们 -> AI 拿不到语义名、用例引用不了
+  -> 行必填没填 -> 保存无效 -> 提交被拦（状态恒「已新建」）。
 
 判据：
-  V1 声明 pre=[编辑, 新增行] ⇒ 清单里**出现** 数量/单位/行类型/收入；
-  V2 不声明 pre ⇒ 清单里**没有**它们（负向自证：证明 V1 确实来自前置动作）。
+  V1 声明 pre=[编辑, 新增行] -> 清单里**出现** 数量/单位/行类型/收入；
+  V2 不声明 pre -> 清单里**没有**它们（负向自证：证明 V1 确实来自前置动作）。
 """
 from __future__ import annotations
 
@@ -46,23 +46,23 @@ def main() -> int:
     url = f"{BASE}/order_detail.html?no=SO-1001"
 
     with_pre = _names(url, ["编辑", "新增行"])
-    print(f"V1 带 pre ⇒ 命中 {sorted(n for n in with_pre if any(w in n for w in WANT))}")
+    print(f"V1 带 pre -> 命中 {sorted(n for n in with_pre if any(w in n for w in WANT))}")
     missing = [w for w in WANT if not any(w in n for n in with_pre)]
     if missing:
         fails.append(f"带 pre 仍探不到：{missing}")
 
     without = _names(url, [])
     hit_wo = sorted(n for n in without if any(w in n for w in WANT))
-    print(f"V2 不带 pre ⇒ 命中 {hit_wo}（应为空）")
+    print(f"V2 不带 pre -> 命中 {hit_wo}（应为空）")
     if hit_wo:
-        print(f"   ℹ️ 注意：不带 pre 也探到了 —— 这些名字可能本来就可见：{hit_wo}")
+        print(f"   [info] 注意：不带 pre 也探到了 —— 这些名字可能本来就可见：{hit_wo}")
 
     if fails:
-        print("\n❌ FAIL")
+        print("\n[NG] FAIL")
         for f in fails:
             print("   -", f)
         return 1
-    print("\n✅ PASS")
+    print("\n[OK] PASS")
     return 0
 
 

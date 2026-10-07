@@ -5,7 +5,7 @@ AprilPark1012 2026-09-30 定：框架补能力要和场景解耦、不能写死�
 具体值（哪个订单号、哪个控件第几个）全部由场景/用例给。
 
 A 探测地址 `probe_url`：页面 url 里带运行时值（订单号之类）时，探测期该对象还不存在
-  ⇒ 场景另给一个"探测期用的地址"。缺省回落 url（老场景不受影响）。
+  -> 场景另给一个"探测期用的地址"。缺省回落 url（老场景不受影响）。
 B 实例序号 `occurrence`：同一语义名有多个实例（表单第 1/2 行的「数量」）时，用例用
   `occurrence: N` 表达"第 N 个"，框架翻成 `.nth(N-1)` —— 而不是把观测到的实例名（`数量_2`）写死。
 """
@@ -66,7 +66,7 @@ def test_probe_url_parsed_and_exposed(tmp_path):
 
 
 def test_probe_url_defaults_to_url(tmp_path):
-    """不声明 ⇒ 探测地址 == url（向后兼容，老场景行为不变）。"""
+    """不声明 -> 探测地址 == url（向后兼容，老场景行为不变）。"""
     page = _load(tmp_path, _YML_NO_PROBE).all_pages()[0]
     assert page.probe_url == ""
     assert page.probe_url_for() == page.url

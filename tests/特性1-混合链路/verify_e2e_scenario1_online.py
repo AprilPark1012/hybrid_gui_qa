@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# HYBRID_DAILY_SKIP: 真调 LLM，单场景 250s、整轮约 8~10 分钟 ⇒ 不进日常二类（D2 · 2026-09-24 项目负责人定）。
+# HYBRID_DAILY_SKIP: 真调 LLM，单场景 250s、整轮约 8~10 分钟 -> 不进日常二类（D2 · 2026-09-24 项目负责人定）。
 #   发版前 / 手工验真 AI 时跑：run_acceptance.py 会显式调用它；或 `--full` 让二类带上它。
 """E2E 场景1（真 AI 链路）—— AI 读 `scenarios/*.yml` 语义识别 → 生成 cases + 脚本 → 跑通。
 
@@ -9,19 +9,19 @@
   · **发版前**：`--full` —— 跑**全部**场景 + 把新生成的用例**执行一遍**（慢、花 token，只在发版前跑）。
 与场景3（录制回放 mock）的**区别**：场景3 证明「没网/没 key 的机器也能干活」，
 场景1 证明「**真 LLM 现在还能干活**」（模型/接口/额度变了、prompt 与场景写法漂了，只有它能发现）。
-两条链都可能坏、坏法不同 ⇒ 分开验收。
+两条链都可能坏、坏法不同 -> 分开验收。
 
 判据：
-  ① **前置**：得有 LLM key（`DEEPSEEK_API_KEY` 等，`config.py` 会从项目 .env / Hermes .env 加载）
-     —— 没有 ⇒ **SKIP（exit 3）并说清原因**（**不伪装成通过**，也不硬失败：本机本来就不该有 key）
-  ② **生成**：`explore --ai` 之后必须**新增** `cases/ai_*.json`（新增=真识别，不是复用旧产物）
-  ③ **可追溯**：新用例的 `scenario_id` 必须指向**真实存在**的场景文件（防场景改名后留下孤儿用例）
-  ④ **能产出脚本**：`framework.cli generate` exit 0（AI 用例能翻译成可执行脚本）
-  ⑤ **（--full）能执行**：新用例 `cli run --case <id>` exit 0
-  ⑥ **零残渣（L15 纪律）**：跑完把**本次新增**的用例归档 + 重跑 `generate` 复原产物
+  (1) **前置**：得有 LLM key（`DEEPSEEK_API_KEY` 等，`config.py` 会从项目 .env / Hermes .env 加载）
+     —— 没有 -> **SKIP（exit 3）并说清原因**（**不伪装成通过**，也不硬失败：本机本来就不该有 key）
+  (2) **生成**：`explore --ai` 之后必须**新增** `cases/ai_*.json`（新增=真识别，不是复用旧产物）
+  (3) **可追溯**：新用例的 `scenario_id` 必须指向**真实存在**的场景文件（防场景改名后留下孤儿用例）
+  (4) **能产出脚本**：`framework.cli generate` exit 0（AI 用例能翻译成可执行脚本）
+  (5) **（--full）能执行**：新用例 `cli run --case <id>` exit 0
+  (6) **零残渣（L15 纪律）**：跑完把**本次新增**的用例归档 + 重跑 `generate` 复原产物
      —— 这条是本脚本存在的前提：**它自己不许把仓库弄脏**
 
-⚠️ 本脚本会**真的调用 LLM**（花 token、联网）。默认 `--quick` 只跑一个场景。
+[!] 本脚本会**真的调用 LLM**（花 token、联网）。默认 `--quick` 只跑一个场景。
 """
 
 from __future__ import annotations
@@ -56,11 +56,11 @@ FAILS: list[str] = []
 
 
 def ok(m: str) -> None:
-    print(f"  ✅ {m}")
+    print(f"  [OK] {m}")
 
 
 def bad(m: str) -> None:
-    print(f"  ❌ {m}")
+    print(f"  [NG] {m}")
     FAILS.append(m)
 
 
@@ -130,13 +130,13 @@ def main() -> int:
     print(f" E2E 场景1（真 AI 链路）：{'--full（全部场景 + 执行）' if args.full else '--quick（一个场景，验证能生成）'}")
     print("=" * 66)
 
-    # ① 前置：key
+    # (1) 前置：key
     have, why = has_llm_key()
     if not have:
-        print(f"\n⚠️ SKIP：{why}")
-        print("   ⇒ 本机没有 LLM key，场景1（真 AI）无从验收。")
-        print("   ⇒ 这不是失败：**没网/没 key 的机器请用场景3（录制回放）**，那条链专门为它存在。")
-        print("   ⇒ 要跑场景1：在项目 .env 或 Hermes .env 里配 DEEPSEEK_API_KEY。")
+        print(f"\n[!] SKIP：{why}")
+        print("   -> 本机没有 LLM key，场景1（真 AI）无从验收。")
+        print("   -> 这不是失败：**没网/没 key 的机器请用场景3（录制回放）**，那条链专门为它存在。")
+        print("   -> 要跑场景1：在项目 .env 或 Hermes .env 里配 DEEPSEEK_API_KEY。")
         return 3
     info(f"LLM key 就绪：{why}（值不打印）")
 
@@ -145,7 +145,7 @@ def main() -> int:
     keep = args.keep_cases
     rc = 1
     try:
-        # ② 生成：真调 LLM
+        # (2) 生成：真调 LLM
         if args.full:
             cmd = [PY, "-m", "framework.cli", "explore", "--ai", "--scenario-dir", "scenarios/"]
         else:
@@ -154,14 +154,14 @@ def main() -> int:
                 return 1
             cmd = [PY, "-m", "framework.cli", "explore", "--ai",
                    "--scenario-file", str(QUICK_SCENARIO.relative_to(REPO))]
-        print(f"\n② 真 AI 语义识别：{' '.join(cmd[2:])}")
+        print(f"\n(2) 真 AI 语义识别：{' '.join(cmd[2:])}")
         t0 = time.time()
         r = run(cmd, timeout=1800)
         info(f"explore exit={r.returncode} · 耗时 {time.time()-t0:.0f}s")
         if r.returncode != 0:
             tail = "\n".join((r.stdout or "").splitlines()[-6:] + (r.stderr or "").splitlines()[-3:])
             if log_looks_like_auth_or_network(tail):
-                print(f"\n⚠️ SKIP：真 AI 调用失败，看着像 key/额度/网络问题（不伪装成通过）")
+                print(f"\n[!] SKIP：真 AI 调用失败，看着像 key/额度/网络问题（不伪装成通过）")
                 print(f"   {tail[-400:]}")
                 return 3
             bad(f"explore --ai 失败（exit {r.returncode}）")
@@ -169,11 +169,11 @@ def main() -> int:
 
         new_ids = ai_cases() - before_ids
         if not new_ids:
-            bad("explore --ai 之后没有新增任何 `cases/ai_*.json` ⇒ 语义识别没产出用例")
+            bad("explore --ai 之后没有新增任何 `cases/ai_*.json` -> 语义识别没产出用例")
         else:
             ok(f"新增 AI 用例 {len(new_ids)} 条：{sorted(new_ids)}")
 
-        # ③ 可追溯：scenario_id 必须指向真实场景
+        # (3) 可追溯：scenario_id 必须指向真实场景
         bads = []
         for cid in sorted(new_ids):
             d = json.loads((CASES / f"{cid}.json").read_text(encoding="utf-8", errors="replace"))
@@ -187,8 +187,8 @@ def main() -> int:
         elif new_ids:
             ok(f"场景可追溯：{len(new_ids)} 条新用例的 scenario_id 都指向真实场景")
 
-        # ④ 能产出脚本
-        print("\n④ generate：把 AI 用例翻译成可执行脚本")
+        # (4) 能产出脚本
+        print("\n(4) generate：把 AI 用例翻译成可执行脚本")
         g = run([PY, "-m", "framework.cli", "generate"], timeout=1800)
         if g.returncode != 0:
             bad(f"generate 失败（exit {g.returncode}）—— AI 用例没能变成脚本")
@@ -196,13 +196,13 @@ def main() -> int:
         else:
             ok("generate exit 0（AI 用例已生成脚本 + 数据分离）")
 
-        # ⑤ --full：执行新用例
+        # (5) --full：执行新用例
         if args.full and new_ids and not FAILS:
-            print(f"\n⑤ 执行新用例（{len(new_ids)} 条）")
+            print(f"\n(5) 执行新用例（{len(new_ids)} 条）")
             for cid in sorted(new_ids):
                 rr = run([PY, "-m", "framework.cli", "run", "--case", cid], timeout=1200)
                 if rr.returncode == 0:
-                    info(f"✅ {cid}")
+                    info(f"[OK] {cid}")
                 else:
                     bad(f"新用例执行失败：{cid}（exit {rr.returncode}）")
             if not FAILS:
@@ -210,12 +210,12 @@ def main() -> int:
 
         rc = 0 if not FAILS else 1
     finally:
-        # ⑥ 零残渣：归档本次新增 + 重跑 generate 复原产物（L15 纪律）
+        # (6) 零残渣：归档本次新增 + 重跑 generate 复原产物（L15 纪律）
         new_ids = ai_cases() - before_ids
         if keep:
-            print(f"\n⑥ 保留 {len(new_ids)} 条新用例（--keep-cases）")
+            print(f"\n(6) 保留 {len(new_ids)} 条新用例（--keep-cases）")
         else:
-            print("\n⑥ 零残渣：归档本次新增用例 + 重跑 generate 复原产物")
+            print("\n(6) 零残渣：归档本次新增用例 + 重跑 generate 复原产物")
             archive_new_cases(new_ids)
             g2 = run([PY, "-m", "framework.cli", "generate"], timeout=1800)
             info(f"复原 generate exit={g2.returncode}")
@@ -227,9 +227,9 @@ def main() -> int:
 
     print("\n" + "=" * 66)
     if rc == 0:
-        print(f"结论：✅ 通过（真 AI 链路：识别 → 生成{' → 执行' if args.full else ''}）")
+        print(f"结论：[OK] 通过（真 AI 链路：识别 → 生成{' → 执行' if args.full else ''}）")
     else:
-        print(f"结论：❌ 未通过（{len(FAILS)} 项）")
+        print(f"结论：[NG] 未通过（{len(FAILS)} 项）")
         for f in FAILS:
             print(f"   - {f}")
     return rc

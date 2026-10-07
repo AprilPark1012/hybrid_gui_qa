@@ -8,15 +8,15 @@
 行内定位只支持 click / click_new_tab，当前 op=check
 ```
 
-而「选哪一行」这件事**只能靠行锚表达**（订单号是服务端动态分配的，探测清单里没有它的语义名）⇒
+而「选哪一行」这件事**只能靠行锚表达**（订单号是服务端动态分配的，探测清单里没有它的语义名）->
 行内定位必须支持 `check`。同理，行内输入框也要能 `fill`（行内编辑场景非常常见）。
 
-⇒ 这不是某个用例的特例，是**行内定位能力的通用缺口** ⇒ 补能力，不改用例绕。
+-> 这不是某个用例的特例，是**行内定位能力的通用缺口** -> 补能力，不改用例绕。
 
 ## 判据口径
 
 - 行内定位的 op 白名单：click / click_new_tab / check / uncheck / fill（+ select 待需要时再加）。
-- 不在白名单 ⇒ **生成期明确失败**（不许渲染成"看着能跑"的存根）。
+- 不在白名单 -> **生成期明确失败**（不许渲染成"看着能跑"的存根）。
 - 既有 click / click_new_tab 的渲染形态**逐字符不变**（回归护栏）——生成物已存在，不能破坏。
 """
 
@@ -48,7 +48,7 @@ def test_row_cell_ops_whitelist():
 
 
 def test_check_is_rendered_not_failed():
-    """含 check 的行内步骤 ⇒ 渲染出实体调用，而不是 pytest.fail 存根。"""
+    """含 check 的行内步骤 -> 渲染出实体调用，而不是 pytest.fail 存根。"""
     # 断言渲染分支里，op 白名单是被用来判断"能不能渲染"的
     assert "_ROW_CELL_OPS" in GEN_SRC, "渲染分支必须引用白名单（否则改了这里没人守）"
     # 关键：不再用硬编码的 ("click", "click_new_tab") 元组判分支
@@ -71,7 +71,7 @@ def test_click_row_cell_keeps_backward_compatible_signature():
     前三个位置参数与 tabs 关键字名字都不能变（已有生成物是这么调的）。"""
     assert re.search(
         r"def _click_row_cell\(page, row_text, cell_field, tabs=None, op=\\?[\"']click", GEN_SRC), \
-        "运行期行内定位函数签名变了 ⇒ 既有生成物会 TypeError"
+        "运行期行内定位函数签名变了 -> 既有生成物会 TypeError"
 
 
 def test_runtime_supports_check():
@@ -79,5 +79,5 @@ def test_runtime_supports_check():
     m = re.search(r"def _click_row_cell\(.*?\n(?=\ndef |\nclass )", GEN_SRC, re.S)
     assert m, "找不到运行期实现"
     body = m.group(0)
-    assert '"check"' in body or "'check'" in body, "运行期没有 check 分支 ⇒ 渲染出来也是空跑"
+    assert '"check"' in body or "'check'" in body, "运行期没有 check 分支 -> 渲染出来也是空跑"
     assert "uncheck" in body, "运行期没有 uncheck 分支"

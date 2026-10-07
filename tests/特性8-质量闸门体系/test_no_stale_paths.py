@@ -2,21 +2,21 @@
 
 本文件回答一个问题：**「还有谁在指旧位置？」** —— 答案必须是这条判据的 grep 结果，
 而不是「我记得改过了」。搬家（改名 / 移动 / 分层 / 把内容移出仓库）之后跑它：
-- 活引用（会被执行、被照抄的：源码、脚本、测试提示语、活文档）留在旧路径上 ⇒ **红**；
-- 人工确认过的历史记录 / 对照示例 / 负向样例 ⇒ 用**豁免标记**显式声明，不算命中。
+- 活引用（会被执行、被照抄的：源码、脚本、测试提示语、活文档）留在旧路径上 -> **红**；
+- 人工确认过的历史记录 / 对照示例 / 负向样例 -> 用**豁免标记**显式声明，不算命中。
 
 三级豁免（每级都要写清理由；豁免区**不许扩大**到掩盖真问题）：
-  ① `EXEMPT_DIRS`  —— 历史交付记录目录（冻结历史，按 R9 口径原样保留、不回头改）
-  ② `EXEMPT_FILES` —— 生成物（其唯一来源文件已在同一判据下检查）
-  ③ 行内标记 —— `r9-legacy-ok`（该行 + 之后 MARK_WINDOW 行）、块标记
+  (1) `EXEMPT_DIRS`  —— 历史交付记录目录（冻结历史，按 R9 口径原样保留、不回头改）
+  (2) `EXEMPT_FILES` —— 生成物（其唯一来源文件已在同一判据下检查）
+  (3) 行内标记 —— `r9-legacy-ok`（该行 + 之后 MARK_WINDOW 行）、块标记
      `r9-legacy-block:begin` / `r9-legacy-block:end`（包裹整段历史区）
-     ⚠️ 标记一律写在**不会被渲染进对外产物**的位置：Python 注释 / Markdown 的 HTML 注释。
+     [!] 标记一律写在**不会被渲染进对外产物**的位置：Python 注释 / Markdown 的 HTML 注释。
      不要写进会渲染的字符串里（培训页是给团队看的对外文档，不能出现内部标记）。
 
 负向自证（R7：只跑正向不算验证过）：见文件尾部的 `test_negative_*` —— 在 tmp 假仓库里
 造 5 种旧路径形态，逐一断言「必须抓到」；再断言三级豁免各自「必须放行」。
 
-对应文档：skill `hybrid-gui-test-framework` 的作业协议 ⑥ R9（含两条实测踩坑实例）。
+对应文档：skill `hybrid-gui-test-framework` 的作业协议 (6) R9（含两条实测踩坑实例）。
 """
 from __future__ import annotations
 
@@ -33,24 +33,24 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_files  # noqa: E402
 
-# ---- 豁免 ①：历史交付记录（冻结历史，不随搬家修正）--------------------------
+# ---- 豁免 (1)：历史交付记录（冻结历史，不随搬家修正）--------------------------
 # 理由：releases/ 里是**当时发出的**发行说明与交付记录 —— 它们记录的是当时真实的路径，
 #       改掉就成了篡改历史（R9 口径：冻结的历史记录原样保留）。
 EXEMPT_DIRS = ("releases/",)
 
-# ---- 豁免 ②：生成物 ---------------------------------------------------------
+# ---- 豁免 (2)：生成物 ---------------------------------------------------------
 # 理由：training.html 由 build_tools/build_html.py 生成；**源头已在同一判据下检查**，
 #       生成物必然继承其版本史区（历史条目里的旧路径）。只豁免生成物本身，不豁免源头。
 EXEMPT_FILES = ("docs/training.html",)
 
-# ---- 豁免 ③：行内/块标记（写在注释里，渲染不可见）---------------------------
+# ---- 豁免 (3)：行内/块标记（写在注释里，渲染不可见）---------------------------
 MARKER_OK = "r9-legacy-ok"
 BLOCK_BEGIN = "r9-legacy-block:begin"
 BLOCK_END = "r9-legacy-block:end"
 MARK_WINDOW = 4          # 标记行之后多少行内算豁免
 
 # ---- 已废弃路径清单（旧 → 新）----------------------------------------------
-# ⚠️ 加新条目时**必须同时给「为什么旧、新在哪」**，否则后来人不知道该怎么修。
+# [!] 加新条目时**必须同时给「为什么旧、新在哪」**，否则后来人不知道该怎么修。
 FLAT_MODULES = ("config|text_io|limits|retention|browser|target_probe|probe|element_map|"
                 "locator_bridge|explorer|llm_cassette|generator|case_builder|scenario|"
                 "data_driven|runner|healer")   # V8.0 前的 17 个平铺模块
@@ -68,12 +68,12 @@ STALE = (
     (re.compile(r"python build_html\.py"),
      "旧命令写法（少了目录前缀，照抄会失败）",
      "改为 python build_tools/build_html.py"),
-    # ⚠️ 试过加一条「裸 tools/ 目录名」模式（匹配 `tools/` 独立出现），**实测误伤 14+ 处**：
+    # [!] 试过加一条「裸 tools/ 目录名」模式（匹配 `tools/` 独立出现），**实测误伤 14+ 处**：
     #    README 里的说明文字、`framework/tools/common/…` 的提及、注释里的历史叙述全中 ——
     #    按「假红与假绿一样会摧毁闸门」的口径**不启用**（一条会天天误报的判据最终会被人关掉）。
     #    这类「说明性文字里的旧目录名」的成本远低于「用户照抄旧命令」（后者已由上面两条
     # r9-legacy-ok（说明性引用：这里必须写出旧写法才能说清覆盖范围）
-    #    `tools/<脚本>.py` 与「缺目录前缀的 build_html 写法」两条覆盖）⇒ 作为**已知边界**记在这里，
+    #    `tools/<脚本>.py` 与「缺目录前缀的 build_html 写法」两条覆盖）-> 作为**已知边界**记在这里，
     #    靠人工审查兜（实例：build_tools/offline_explore_chain.py 的 docstring 曾写「住在仓库的 tools/」，
     #    2026-09-21 人工发现并修掉）。
     (re.compile(r"docs/P\d+-[^\s`<>)）]*\.md"),
@@ -88,13 +88,13 @@ STALE = (
 def iter_repo_text_files(repo: Path = REPO):
     """仓库里的文本文件：**已跟踪 + 未跟踪但不被忽略**（与打包脚本的收集口径一致）；二进制按 NUL 粗判跳过。
 
-    ⚠️ 为什么必须带「未跟踪」这一半（2026-09-21 实测踩到，属**假绿**，最坏的一种）：
-    本判据原先只走 `git ls-files`（仅已跟踪）⇒ **新写的文件在提交前根本不在扫描范围内** ——
+    [!] 为什么必须带「未跟踪」这一半（2026-09-21 实测踩到，属**假绿**，最坏的一种）：
+    本判据原先只走 `git ls-files`（仅已跟踪）-> **新写的文件在提交前根本不在扫描范围内** ——
     提交前全绿、刚提交就红。人看到「刚才跑过一遍是绿的」就以为查过了，实际漏的就是**新增文件**
     （而搬家/改名恰恰最爱在新文件里留下旧路径引用，比如新写的测试里照抄老命令）。
-    ⇒ 与打包脚本的收集口径对齐：文件一落到工作区（哪怕还没 add）就被查。
+    -> 与打包脚本的收集口径对齐：文件一落到工作区（哪怕还没 add）就被查。
 
-    ⚠️ 2026-09-22 再修一层：清单来源改走 `tests/_helpers/repo_files.py`（**git 优先、非 git 等效降级**）。
+    [!] 2026-09-22 再修一层：清单来源改走 `tests/_helpers/repo_files.py`（**git 优先、非 git 等效降级**）。
     老写法是直调 `git ls-files ... check=True` —— 而**交付包解压目录不是 git 仓库**，
     团队用户按 README 跑到这里直接 exit 128 报红；可本判据要判的事（「还有谁在指旧位置」）
     与有没有 `.git` 毫无关系（AprilPark1012 本地 Windows 验收实测）。降级后判据照常判，清单来源写进消息。
@@ -140,7 +140,7 @@ def scan_repo(repo: Path = REPO):
 
 
 def _fmt(hits):
-    lines = [f"  ❌ {r}:{n}  {why}\n       修法：{fix}\n       原文：{src}" for r, n, why, fix, src in hits]
+    lines = [f"  [NG] {r}:{n}  {why}\n       修法：{fix}\n       原文：{src}" for r, n, why, fix, src in hits]
     return "\n".join(lines)
 
 
@@ -160,9 +160,9 @@ def test_repo_has_no_stale_paths():
 def test_exempt_entries_still_exist():
     """豁免不许腐化：目录 / 文件豁免必须真的存在（删了就得从清单里摘掉）。"""
     for d in EXEMPT_DIRS:
-        assert (REPO / d).exists(), f"EXEMPT_DIRS 里的 {d} 已不存在 ⇒ 请从判据里摘掉"
+        assert (REPO / d).exists(), f"EXEMPT_DIRS 里的 {d} 已不存在 -> 请从判据里摘掉"
     for f in EXEMPT_FILES:
-        assert (REPO / f).exists(), f"EXEMPT_FILES 里的 {f} 已不存在 ⇒ 请从判据里摘掉"
+        assert (REPO / f).exists(), f"EXEMPT_FILES 里的 {f} 已不存在 -> 请从判据里摘掉"
 
 
 # ============================ 负向自证：必须抓得到 ============================
@@ -228,12 +228,12 @@ def test_exempt_dir_and_file_skipped(tmp_path):
     (tmp_path / "releases" / "RELEASE_NOTES_V1.md").write_text("python tools/pack_release.py\n", encoding="utf-8")
     (tmp_path / "note.md").write_text("python tools/pack_release.py\n", encoding="utf-8")
     files = [rel for rel, _ in iter_repo_text_files(tmp_path)] if _has_git(tmp_path) else []
-    # 未初始化 git 的临时目录拿不到跟踪清单 ⇒ 直接验证豁免判定函数本身
+    # 未初始化 git 的临时目录拿不到跟踪清单 -> 直接验证豁免判定函数本身
     assert all(not rel.startswith(EXEMPT_DIRS) for rel in files)
 def test_negative_untracked_file_is_scanned(tmp_path):
     """**未跟踪**（但未被忽略）的新文件必须在提交前就被扫到 —— 2026-09-21 实测的假绿盲点。
 
-    原先只扫 `git ls-files`（已跟踪）⇒ 新增文件在提交前不在扫描范围内：提交前全绿、一提交就红；
+    原先只扫 `git ls-files`（已跟踪）-> 新增文件在提交前不在扫描范围内：提交前全绿、一提交就红；
     更坏的是「我刚才跑过一遍是绿的」会让人以为已经查过了。本判据已与打包口径对齐
     （已跟踪 + 未跟踪但不被忽略）—— 本用例就是它的**负向自证**：造一个真 git 仓库，
     把旧路径写进**未跟踪**的新文件，断言必须被抓到。

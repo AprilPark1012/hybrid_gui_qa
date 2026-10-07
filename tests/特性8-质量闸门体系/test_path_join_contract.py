@@ -2,18 +2,18 @@
 
 **为什么要有它**（真实事故）：`tests/` 结构迁移时，`verify_element_ambiguity.py` 的夹具路径写成
 `BASE / "featureTest" / "fixtures" / …` —— 这是**第三种写法**（既不是 `REPO / "x"`，也不是
-`parents[N] / "x"`），我的两条批量替换规则都没覆盖 ⇒ 路径少了 `tests/` 容器层 ⇒
-`Page.goto: ERR_FILE_NOT_FOUND` ⇒ **只有跑完二类才暴露（45 分钟）**。
-同类错误会以任何「某变量 / 目录名字面量」的形式出现 ⇒ 按写法枚举替换必漏。
+`parents[N] / "x"`），我的两条批量替换规则都没覆盖 -> 路径少了 `tests/` 容器层 ->
+`Page.goto: ERR_FILE_NOT_FOUND` -> **只有跑完二类才暴露（45 分钟）**。
+同类错误会以任何「某变量 / 目录名字面量」的形式出现 -> 按写法枚举替换必漏。
 
 本判据改成按**结构**审计：源码里任何 `… / "<tests 下的目录名>"` 的拼接，
 其左侧必须已经包含 `tests` 这一层（或本身就是权威常量 `TESTS_DIR`）。
-⚠️ 2026-10-07：目录名**动态取自 `tests/`**（含 9 个特性夹 + `_helpers` + `_runner`）——
+[!] 2026-10-07：目录名**动态取自 `tests/`**（含 9 个特性夹 + `_helpers` + `_runner`）——
 写死旧名会让判据在结构变更后**恒过空转**（旧版写死 frameworkTest/featureTest 就踩了这个）。
 
 判据：
-  ① 全仓源码扫描：没有「拼接目录名却漏了 tests 容器层」的写法
-  ② 负向自证：给一个漏层的样例，检查函数必须报出来（否则判据等于没写）
+  (1) 全仓源码扫描：没有「拼接目录名却漏了 tests 容器层」的写法
+  (2) 负向自证：给一个漏层的样例，检查函数必须报出来（否则判据等于没写）
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def _current_dir_names() -> tuple[str, ...]:
 
 NAMES = _current_dir_names()
 SKIP_DIRS = {".git", ".venv", "__pycache__", "output", "node_modules", "log"}
-# 本文件自己的负向样例里就写着"漏层"的串 ⇒ 扫描时必须跳过它（否则判据自指、永远红）
+# 本文件自己的负向样例里就写着"漏层"的串 -> 扫描时必须跳过它（否则判据自指、永远红）
 SELF = Path(__file__).name
 
 # 形如：<左侧表达式> / "<tests 下的目录名>"
@@ -65,7 +65,7 @@ def test_no_join_misses_tests_container():
         for frag in scan_source(text):
             offenders.append(f"{p.relative_to(REPO)}: {frag}")
     assert not offenders, (
-        "这些路径拼接漏了 tests 容器层（2026-09-24 实测踩过：夹具指向 <仓库>/featureTest/… ⇒ 二类红）：\n  - "
+        "这些路径拼接漏了 tests 容器层（2026-09-24 实测踩过：夹具指向 <仓库>/featureTest/… -> 二类红）：\n  - "
         + "\n  - ".join(offenders))
 
 

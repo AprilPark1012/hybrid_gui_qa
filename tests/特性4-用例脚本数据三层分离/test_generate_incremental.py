@@ -1,12 +1,12 @@
 """P20 判据草稿 · 增量生成（**两个触发源**各测一次）。
 
 口径（项目负责人 2026-09-24 定）：
-  ① 场景变了 ⇒ 用例 + 脚本都要重新生成（"重新问 AI"由重录拦住 ✓）
-  ② 用例变了 ⇒ **只**重做脚本
-  ③ demo/页面变了 ⇒ 受影响范围内（逐页指纹 ⇒ 先打印清单）
+  (1) 场景变了 -> 用例 + 脚本都要重新生成（"重新问 AI"由重录拦住 v）
+  (2) 用例变了 -> **只**重做脚本
+  (3) demo/页面变了 -> 受影响范围内（逐页指纹 -> 先打印清单）
 
-测试手法：**函数级沙箱**（`generate_scripts(cases_dir=…, scripts_dir=…)` 支持传目录 ✓）
-⇒ 不碰仓库里的真产物（一类判据绝不允许改仓库 ✗ —— 这正是 verify_e2e_scenario3_replay 踩过的坑）。
+测试手法：**函数级沙箱**（`generate_scripts(cases_dir=…, scripts_dir=…)` 支持传目录 v）
+-> 不碰仓库里的真产物（一类判据绝不允许改仓库 X —— 这正是 verify_e2e_scenario3_replay 踩过的坑）。
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def _setup(tmp: Path):
 
 
 def test_incremental_rewrites_only_the_changed_case(tmp_path):
-    """★触发源②：改用例 ⇒ 只有它自己的脚本变，其余**逐字节不变**。"""
+    """★触发源(2)：改用例 -> 只有它自己的脚本变，其余**逐字节不变**。"""
     cases, scripts = _setup(tmp_path)
     generate_scripts(cases_dir=cases, scripts_dir=scripts)
     before = _hashes(scripts / "generated")
@@ -61,17 +61,17 @@ def test_incremental_rewrites_only_the_changed_case(tmp_path):
     diff = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
     touched = [k for k in diff if "ai_demo_000002" in k]
     others = [k for k in diff if "ai_demo_000002" not in k]
-    assert touched, "✗ 改过的用例脚本没变（增量没生效）⇒ 变化的文件：" + str(sorted(diff))
-    assert not others, "✗ 增量却动了别的脚本：" + str(sorted(others)) + "（应逐字节不变）"
+    assert touched, "X 改过的用例脚本没变（增量没生效）-> 变化的文件：" + str(sorted(diff))
+    assert not others, "X 增量却动了别的脚本：" + str(sorted(others)) + "（应逐字节不变）"
 
 
 def test_incremental_is_idempotent_when_nothing_changed(tmp_path):
-    """什么都没改 ⇒ changed_only 再跑一次应**零改动**（否则每次 generate 都在抖）。"""
+    """什么都没改 -> changed_only 再跑一次应**零改动**（否则每次 generate 都在抖）。"""
     cases, scripts = _setup(tmp_path)
     generate_scripts(cases_dir=cases, scripts_dir=scripts)
     before = _hashes(scripts / "generated")
     generate_scripts(cases_dir=cases, scripts_dir=scripts, changed_only=True)
-    assert _hashes(scripts / "generated") == before, "✗ 无变更时增量生成动了产物"
+    assert _hashes(scripts / "generated") == before, "X 无变更时增量生成动了产物"
 
 
 def test_index_is_written_and_covers_every_case(tmp_path):
@@ -79,6 +79,6 @@ def test_index_is_written_and_covers_every_case(tmp_path):
     cases, scripts = _setup(tmp_path)
     generate_scripts(cases_dir=cases, scripts_dir=scripts)
     idx_p = scripts / "generated" / "index.json"
-    assert idx_p.is_file(), "✗ 没产出 index.json"
+    assert idx_p.is_file(), "X 没产出 index.json"
     idx = json.loads(idx_p.read_text(encoding="utf-8"))
-    assert set(idx) == {"ai_demo_000001", "ai_demo_000002", "ai_demo_000003"}, "✗ index 覆盖不全：" + str(sorted(idx))
+    assert set(idx) == {"ai_demo_000001", "ai_demo_000002", "ai_demo_000003"}, "X index 覆盖不全：" + str(sorted(idx))

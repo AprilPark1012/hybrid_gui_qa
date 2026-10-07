@@ -4,11 +4,11 @@
 验证就在旧版本上跑 —— 用例**白跑**，还可能给出误导性结论。本判据保证「闸门本身」是可靠的：
 判定逻辑、进程启动时刻读取、以及「不新鲜必须拦」这三件事都要有负向自证（只跑正向不算验证过）。
 
-⚠️ 2026-09-22 扩了两块（AprilPark1012 本地 Windows 验收 5 条红驱动）：
-① **跨平台分支判据** —— 老实现只认 `/proc`，Windows 上整条闸门不可用。现在
+[!] 2026-09-22 扩了两块（AprilPark1012 本地 Windows 验收 5 条红驱动）：
+(1) **跨平台分支判据** —— 老实现只认 `/proc`，Windows 上整条闸门不可用。现在
    linux / windows / posix 三分支各自有判据，Windows/POSIX 分支用**注入假命令输出**验解析逻辑
    （本机是 Linux，跑不了真 PowerShell；真机验收必须由人在 Windows 上跑，见 skill 的 P14 方案）；
-② **unknown 状态** —— 「探测到 demo 进程但读不到启动时刻」必须如实报 unknown：既不许当 fresh
+(2) **unknown 状态** —— 「探测到 demo 进程但读不到启动时刻」必须如实报 unknown：既不许当 fresh
    （假绿），也不许当 no_process（会诱导重启一个其实在跑的 demo）。退出码 5。
 
 被测对象：`tests/_helpers/demo_freshness.py`。端到端用法见 `tests/_runner/run_verifications.sh`（跑二类前先 `--ensure`）。
@@ -115,7 +115,7 @@ def test_windows_branch_parses_start_epoch(monkeypatch):
 
 
 def test_windows_branch_garbage_or_missing_is_none(monkeypatch):
-    """★ 负向：PowerShell 被策略禁用 / 输出垃圾 ⇒ 必须 None（上层判 unknown），绝不猜。"""
+    """★ 负向：PowerShell 被策略禁用 / 输出垃圾 -> 必须 None（上层判 unknown），绝不猜。"""
     monkeypatch.setattr(df, "_platform_kind", lambda: "windows")
     monkeypatch.setattr(df, "_run", _fake_run({"Get-Process": "拒绝访问。\r\n"}))
     assert df.proc_start_epoch(1234) is None
@@ -144,7 +144,7 @@ def test_posix_branch_garbage_start_is_none(monkeypatch):
 # ---------------- unknown 状态（读不到启动时刻）----------------
 
 def test_unknown_state_never_reported_as_fresh_or_no_process(monkeypatch):
-    """★ 核心负向：进程在、但读不到启动时刻 ⇒ 必须 unknown（不许假绿、不许诱导重启）。"""
+    """★ 核心负向：进程在、但读不到启动时刻 -> 必须 unknown（不许假绿、不许诱导重启）。"""
     monkeypatch.setattr(df, "newest_src_mtime", lambda *a, **k: (time.time(), "app.py"))
     monkeypatch.setattr(df, "demo_pids", lambda: [4242])
     monkeypatch.setattr(df, "proc_start_epoch", lambda pid: None)
@@ -168,9 +168,9 @@ def test_proc_start_epoch_of_self_is_sane():
     started = df.proc_start_epoch(os.getpid())
     if started is None:
         if df._platform_kind() == "linux":
-            pytest.fail("Linux 上读不到自身启动时刻 ⇒ /proc 解析错了")
+            pytest.fail("Linux 上读不到自身启动时刻 -> /proc 解析错了")
         pytest.skip(f"平台 {df._platform_kind()}：本机拿不到进程启动时刻（外部命令不可用）"
-                    f"⇒ 闸门会如实报 unknown，不算通过")
+                    f"-> 闸门会如实报 unknown，不算通过")
     now = time.time()
     assert 0 < started <= now + 1, f"启动时刻不在合理范围：{started} vs now={now}"
     assert now - started < 24 * 3600, "启动时刻离谱（可能字段索引错）"
@@ -183,7 +183,7 @@ def test_proc_start_epoch_missing_pid_returns_none():
 def test_demo_pids_shape_without_demo():
     """没在跑也要能安全调用（返回列表，不抛异常）——别的脚本会在各种状态下调它。
 
-    ⚠️ Windows 上老实现这里直接 `FileNotFoundError: '\\\\proc'`（本地验收实测）。
+    [!] Windows 上老实现这里直接 `FileNotFoundError: '\\\\proc'`（本地验收实测）。
     """
     assert isinstance(df.demo_pids(), list)
 
@@ -202,10 +202,10 @@ def test_check_state_matches_verdict():
     if r["state"] in ("no_process", "unknown"):
         assert r["pid"] is None or r["state"] == "unknown"
     else:
-        # ⚠️ 必须把**同一套输入**喂给 verdict 才算「同口径」比对：
+        # [!] 必须把**同一套输入**喂给 verdict 才算「同口径」比对：
         # check() 在有快照时走**内容指纹**主口径（内容没变、只是 mtime 变新 —— 如 touch / git checkout /
         # 解压覆盖 —— 它就该判 fresh）；只喂 (started, mtime) 是在跑**降级 mtime 口径**，
-        # 两边口径不同 ⇒ 内容没变却假红（2026-09-28 实测踩过：复原写入只动了 mtime，判据报 fresh≠stale）。
+        # 两边口径不同 -> 内容没变却假红（2026-09-28 实测踩过：复原写入只动了 mtime，判据报 fresh≠stale）。
         snap = r["snapshot"] if r.get("snapshot_used") else None
         expect, _ = df.verdict(r["started_epoch"], r["newest_mtime"],
                                snapshot=snap, fingerprint=r["fingerprint"] if snap else None)
@@ -214,16 +214,16 @@ def test_check_state_matches_verdict():
 
 def test_verdict_two_tiers_do_not_mix_up():
     """两条口径各自的语义（纯函数，不依赖现场）：
-       无快照 ⇒ 降级 mtime 口径；有快照 ⇒ 内容指纹优先，mtime 更新也不许判 stale。"""
+       无快照 -> 降级 mtime 口径；有快照 -> 内容指纹优先，mtime 更新也不许判 stale。"""
     started = 1_700_000_000.0
-    assert df.verdict(started, started - 10)[0] == "fresh"          # 降级：源码更旧 ⇒ fresh
-    assert df.verdict(started, started + 10)[0] == "stale"          # 降级：源码更新 ⇒ stale
+    assert df.verdict(started, started - 10)[0] == "fresh"          # 降级：源码更旧 -> fresh
+    assert df.verdict(started, started + 10)[0] == "stale"          # 降级：源码更新 -> stale
     assert df.verdict(None, started)[0] == "no_process"             # 没进程
     snap = {"fingerprint": "abc"}
     assert df.verdict(started, started + 10, snapshot=snap, fingerprint="abc")[0] == "fresh", \
-        "内容指纹一致 ⇒ 即使 mtime 更新也必须 fresh（否则 touch/解压/checkout 会假红逼人重启）"
+        "内容指纹一致 -> 即使 mtime 更新也必须 fresh（否则 touch/解压/checkout 会假红逼人重启）"
     assert df.verdict(started, started - 10, snapshot=snap, fingerprint="xyz")[0] == "stale", \
-        "内容指纹不一致 ⇒ 即使 mtime 看着更旧也必须 stale（checkout 保留旧时间戳的漏判口）"
+        "内容指纹不一致 -> 即使 mtime 看着更旧也必须 stale（checkout 保留旧时间戳的漏判口）"
 
 
 # ---------------- CLI 退出码契约（给脚本调用方）----------------
@@ -242,15 +242,15 @@ def test_cli_json_is_machine_readable():
         f"退出码契约：0=fresh / 3=stale / 4=no_process / 5=unknown，实际 {r.returncode}\n{r.stderr}")
     assert '"state"' in r.stdout, f"--json 未输出 state 字段：{r.stdout!r}"
     # stale+ensure 时可能打两段 JSON；取**第一段完整对象**（用 raw_decode 而不是找第一个 '}' ——
-    # check() 的输出含嵌套对象 snapshot，按花括号切片会切到嵌套层 ⇒ 解析失败）
+    # check() 的输出含嵌套对象 snapshot，按花括号切片会切到嵌套层 -> 解析失败）
     first = json.JSONDecoder().raw_decode(r.stdout[r.stdout.index("{"):])[0]
     assert json.loads(json.dumps(first))["state"] in {"fresh", "stale", "no_process", "unknown"}
 
 
 # ================ 内容指纹（2026-09-22 新增 · AprilPark1012 拍 A 档 ================
 # 背景（他 2026-09-22 现场口径）：demo 是常驻进程，「测试开始确保最新、跑完按需停」这件事不能只靠 mtime：
-#   mtime 口径有两个漏判口 —— ① `git checkout` / 解压覆盖 / `cp -p` 会**保留旧 mtime** ⇒ 内容变了却判 fresh；
-#   ② 系统时钟回拨。⇒ 升级为「**demo 源码内容指纹**」，且**每轮都查**（不只在入口开头查一次）。
+#   mtime 口径有两个漏判口 —— (1) `git checkout` / 解压覆盖 / `cp -p` 会**保留旧 mtime** -> 内容变了却判 fresh；
+#   (2) 系统时钟回拨。-> 升级为「**demo 源码内容指纹**」，且**每轮都查**（不只在入口开头查一次）。
 # 快照口径：谁起/重启 demo，谁就把"启动那一刻的指纹 + 进程号"落盘；check() 只有在**快照进程号 == 当前在跑的
 # 进程号**时才采信快照（别人的快照一律不认，退回 mtime 口径 —— 保守优先）。
 
@@ -271,7 +271,7 @@ def test_fingerprint_changes_on_content_change(tmp_path):
 
 
 def test_fingerprint_immune_to_touch(tmp_path):
-    """★ 负向：只动 mtime（`touch`）**不算**改动 ⇒ 指纹必须不变（否则每次 touch 都白重启）。"""
+    """★ 负向：只动 mtime（`touch`）**不算**改动 -> 指纹必须不变（否则每次 touch 都白重启）。"""
     p = tmp_path / "a.html"
     p.write_text("x", encoding="utf-8")
     f1 = df.demo_fingerprint(tmp_path)["fingerprint"]
@@ -294,9 +294,9 @@ def test_fingerprint_ignores_pycache_and_non_source(tmp_path):
 
 
 def test_verdict_stale_when_content_differs_even_if_mtime_old():
-    """★★ 核心负向：**内容变了、但 mtime 比进程旧**（`git checkout` / 解压覆盖场景）⇒ 必须 stale。
+    """★★ 核心负向：**内容变了、但 mtime 比进程旧**（`git checkout` / 解压覆盖场景）-> 必须 stale。
 
-    这是 mtime 口径的漏判口：老口径会判 fresh ⇒ 二类验证跑在旧页面上 = 假绿。
+    这是 mtime 口径的漏判口：老口径会判 fresh -> 二类验证跑在旧页面上 = 假绿。
     """
     now = time.time()
     state, detail = df.verdict(now, now - 3600,
@@ -306,21 +306,21 @@ def test_verdict_stale_when_content_differs_even_if_mtime_old():
 
 
 def test_verdict_fresh_when_snapshot_matches_even_if_mtime_newer():
-    """对称场景：指纹一致（内容没变）⇒ fresh，哪怕 mtime 看着比进程新（时钟漂移/同秒）。"""
+    """对称场景：指纹一致（内容没变）-> fresh，哪怕 mtime 看着比进程新（时钟漂移/同秒）。"""
     now = time.time()
     assert df.verdict(now, now + 60,
                       snapshot={"fingerprint": "same", "pid": 1}, fingerprint="same")[0] == "fresh"
 
 
 def test_verdict_without_snapshot_keeps_old_mtime_semantics():
-    """没有快照（demo 不是你起的）⇒ 退回原 mtime 口径，老判据一条都不许变。"""
+    """没有快照（demo 不是你起的）-> 退回原 mtime 口径，老判据一条都不许变。"""
     now = time.time()
     assert df.verdict(now, now - 60)[0] == "fresh"
     assert df.verdict(now - 600, now)[0] == "stale"
 
 
 def test_check_ignores_snapshot_from_other_pid(monkeypatch):
-    """★ 负向：快照存在但**进程号不是当前在跑的那个** ⇒ 不许采信（否则会假 fresh）。"""
+    """★ 负向：快照存在但**进程号不是当前在跑的那个** -> 不许采信（否则会假 fresh）。"""
     fp = {"fingerprint": "cur", "files": 1, "newest_mtime": time.time(), "newest_file": "app.py"}
     monkeypatch.setattr(df, "demo_pids", lambda: [4242])
     monkeypatch.setattr(df, "proc_start_epoch", lambda pid: 100.0)
@@ -331,7 +331,7 @@ def test_check_ignores_snapshot_from_other_pid(monkeypatch):
 
 
 def test_check_uses_snapshot_of_same_pid(monkeypatch):
-    """快照属于当前进程且指纹一致 ⇒ fresh（即使 mtime 比进程新）。"""
+    """快照属于当前进程且指纹一致 -> fresh（即使 mtime 比进程新）。"""
     fp = {"fingerprint": "cur", "files": 1, "newest_mtime": time.time(), "newest_file": "app.py"}
     monkeypatch.setattr(df, "demo_pids", lambda: [4242])
     monkeypatch.setattr(df, "proc_start_epoch", lambda pid: 100.0)
@@ -359,7 +359,7 @@ def test_restart_writes_snapshot(monkeypatch):
 
 
 def test_ensure_fresh_restarts_when_stale(monkeypatch, tmp_path):
-    """每轮调用的封装：stale ⇒ 必须重启并复检，返回 (False, 原因) 表示"本轮一开始是不新鲜的"。"""
+    """每轮调用的封装：stale -> 必须重启并复检，返回 (False, 原因) 表示"本轮一开始是不新鲜的"。"""
     calls = {"restart": 0}
     states = iter([{"state": "stale", "detail": "内容变了", "pid": 1},
                    {"state": "fresh", "detail": "ok", "pid": 2}])
@@ -370,7 +370,7 @@ def test_ensure_fresh_restarts_when_stale(monkeypatch, tmp_path):
 
 
 def test_ensure_fresh_unknown_state_does_not_restart(monkeypatch):
-    """★ 负向：读不到启动时刻（unknown）⇒ **不许**擅自重启（重启是破坏性动作，交人工）。"""
+    """★ 负向：读不到启动时刻（unknown）-> **不许**擅自重启（重启是破坏性动作，交人工）。"""
     monkeypatch.setattr(df, "check", lambda *a, **k: {"state": "unknown", "detail": "读不到", "pid": 7})
     monkeypatch.setattr(df, "restart", lambda quiet=False: pytest.fail("unknown 时不许重启"))
     ok, note = df.ensure_fresh(quiet=True)
@@ -380,7 +380,7 @@ def test_ensure_fresh_unknown_state_does_not_restart(monkeypatch):
 def test_run_verifications_checks_gate_every_round():
     """契约：**每轮都查**（闸门调用必须在脚本循环体内，不能只在入口开头查一次）。
 
-    为什么（AprilPark1012 2026-09-22）：一轮里跑十几个脚本、期间有人改了 demo ⇒ 后面几个脚本就白跑了；
+    为什么（AprilPark1012 2026-09-22）：一轮里跑十几个脚本、期间有人改了 demo -> 后面几个脚本就白跑了；
     只在开头查挡不住这种中途污染。
     """
     src = (Path(__file__).resolve().parents[2] / "tests" / "_runner" / "run_verifications.py").read_text(encoding="utf-8")

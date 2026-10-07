@@ -1,14 +1,14 @@
 """目标可达性预检的回归测试（V7.5.1，G2）。
 
-背景（2026-09-15 实测）：demo 没起时 `cli probe` 直接 `page.goto()` ⇒ 一屏 Playwright traceback
+背景（2026-09-15 实测）：demo 没起时 `cli probe` 直接 `page.goto()` -> 一屏 Playwright traceback
 （`net::ERR_CONNECTION_REFUSED`）+ exit 1，现象像「框架坏了」，其实只是一句「demo 没启动」。
-同时旧 `probe_partitioned` 把「连不上」和「有响应但没声明分区」混成同一句『未声明』⇒ 归因错位。
+同时旧 `probe_partitioned` 把「连不上」和「有响应但没声明分区」混成同一句『未声明』-> 归因错位。
 
 判据：
-  ① 端口没人听 ⇒ 判不可达，且话里给出下一步（起 demo）
-  ② 目标活着（哪怕 /api/health 404） ⇒ 判可达（不能把「老目标」误判成死）
-  ③ 并发闸的归因要把两种情况分开
-  ④ `cli probe` 在不可达时 **exit 2 + 人话**，且**不启 Playwright**（测试里用假模块兜住）
+  (1) 端口没人听 -> 判不可达，且话里给出下一步（起 demo）
+  (2) 目标活着（哪怕 /api/health 404） -> 判可达（不能把「老目标」误判成死）
+  (3) 并发闸的归因要把两种情况分开
+  (4) `cli probe` 在不可达时 **exit 2 + 人话**，且**不启 Playwright**（测试里用假模块兜住）
 
 跑法（秒级，只起 stdlib 小服务，不启浏览器）：
     cd ~/hybrid_gui_qa && source .venv/bin/activate
@@ -81,7 +81,7 @@ def test_reachable_when_target_is_up():
 
 
 def test_unreachable_when_nothing_listens():
-    """★ 核心：端口没人听 ⇒ 判不可达，并且**话里带下一步动作**（不是一句「失败」）。"""
+    """★ 核心：端口没人听 -> 判不可达，并且**话里带下一步动作**（不是一句「失败」）。"""
     ok, why = reachability(f"http://127.0.0.1:{_free_port()}", timeout=2)
     assert ok is False
     assert "demo.app" in why, f"不可达时必须告诉用户先起 demo：{why}"

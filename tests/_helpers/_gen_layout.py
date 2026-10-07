@@ -5,7 +5,7 @@
 所以「按 case_id 跑一条用例」这件事不能再拼 `test_cases.py::test_<id>`，
 而要查 `scripts/generated/index.json`（case_id → script_path 的唯一权威来源）。
 
-⚠️ 只读、不改产物：本模块不做任何写操作（二类脚本的纪律：能不动产物就不动）。
+[!] 只读、不改产物：本模块不做任何写操作（二类脚本的纪律：能不动产物就不动）。
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def load_index() -> dict:
 
 
 def script_of(case_id: str) -> Path | None:
-    """case_id → 该用例的脚本绝对路径；查不到返回 None（**不猜路径** ✗）。"""
+    """case_id → 该用例的脚本绝对路径；查不到返回 None（**不猜路径** X）。"""
     meta = load_index().get(case_id)
     if not meta:
         return None

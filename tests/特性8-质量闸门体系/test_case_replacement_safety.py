@@ -3,14 +3,14 @@
 **事故**：D3 要求「同一场景只保留一条当前用例」，我实现成"写入时按 `scenario_id` 清掉同场景更早的用例"。
 但**临时/手搓用例往往会继承样板场景的 `scenario_id`** —— 例如此时 `verify_data_expand` 造的
 `cases/manual/zz_verify_data_expand_tmp.json` 就是从真用例复制来的，`case_id` 改了、`scenario_id` 没改。
-⇒ 于是写这条临时用例时，真用例 `ai_contracts_search_by_no_*.json` 被当成"旧件"**删掉了** ✗✗
-⇒ 后果：二类里 `verify_data_expand` / `verify_retention_runs` 同时红（找不到样例用例），
+-> 于是写这条临时用例时，真用例 `ai_contracts_search_by_no_*.json` 被当成"旧件"**删掉了** XX
+-> 后果：二类里 `verify_data_expand` / `verify_retention_runs` 同时红（找不到样例用例），
    而且这是**静默删数据** —— 没有报错，只有"文件不见了"。
 
-✅ 定死的边界：
+[OK] 定死的边界：
   1. **只有 AI 用例（`case_id` 形如 `ai_…`）写入时才做同场景清理**；
-  2. 临时/手搓用例（`zz_…` / 中文名 / 无 `ai_` 前缀）写入 ⇒ **一律不清理别人**；
-  3. AI 用例换代 ⇒ 旧 AI 用例与它的 dataset 该清（D3 的本意 ✓），但**不误伤**临时/手搓用例。
+  2. 临时/手搓用例（`zz_…` / 中文名 / 无 `ai_` 前缀）写入 -> **一律不清理别人**；
+  3. AI 用例换代 -> 旧 AI 用例与它的 dataset 该清（D3 的本意 v），但**不误伤**临时/手搓用例。
 """
 from __future__ import annotations
 
@@ -43,11 +43,11 @@ def test_temp_case_write_does_not_delete_ai_case(tmp_path):
 
     write_case(_case("zz_tmp_probe", "demo"), cases_dir=cases)     # 临时用例（继承 scenario_id）
     assert (cases / "demo" / "ai_demo_000001.json").exists(), (
-        "✗ 临时用例把真 AI 用例删掉了 —— 这就是 2026-09-24 的静默删数据事故")
+        "X 临时用例把真 AI 用例删掉了 —— 这就是 2026-09-24 的静默删数据事故")
 
 
 def test_ai_case_replacement_still_prunes_old_ai_case_and_dataset(tmp_path):
-    """D3 的本意仍要成立：AI 用例换代 ⇒ 旧 AI 用例与其 dataset 被清。"""
+    """D3 的本意仍要成立：AI 用例换代 -> 旧 AI 用例与其 dataset 被清。"""
     cases = _mk(tmp_path)
     ds = tmp_path / "scripts" / "datasets"
     write_case(_case("ai_demo_000001", "demo"), cases_dir=cases)
@@ -72,7 +72,7 @@ def test_ai_case_write_does_not_touch_temp_or_manual_cases(tmp_path):
 
 
 def test_write_case_without_scenario_id_never_prunes(tmp_path):
-    """没有 scenario_id 的用例（历史形态）写入 ⇒ 不做任何清理（向后兼容）。"""
+    """没有 scenario_id 的用例（历史形态）写入 -> 不做任何清理（向后兼容）。"""
     cases = _mk(tmp_path)
     write_case(_case("ai_demo_000001", "demo"), cases_dir=cases)
     write_case({"case_id": "ai_orphan_000009", "steps": [], "asserts": []}, cases_dir=cases)
@@ -82,24 +82,24 @@ def test_write_case_without_scenario_id_never_prunes(tmp_path):
 def test_ai_prefixed_temp_case_does_not_prune(tmp_path):
     """★第二版守卫被击穿的形态：`ai_` 前缀但**不是** AI 用例的合法命名（如 `ai_xxx_tmp` / `ai_xxx-2`）。
 
-    第一版守卫只看「是否以 ai_ 开头」⇒ 迟早被这类 id 绕过（真凶至今未定论，但这类 id 一定存在）
-    ⇒ 改成严格形态 `ai_<scenario_id>_<6位数字>` 之后，这些一律**不许触发清理**。
+    第一版守卫只看「是否以 ai_ 开头」-> 迟早被这类 id 绕过（真凶至今未定论，但这类 id 一定存在）
+    -> 改成严格形态 `ai_<scenario_id>_<6位数字>` 之后，这些一律**不许触发清理**。
     """
     cases = _mk(tmp_path)
     write_case(_case("ai_demo_000001", "demo"), cases_dir=cases)
     for bogus in ("ai_demo_000001_tmp", "ai_demo_tmp", "ai_demo_000001-2", "ai_demo_99"):
         write_case(_case(bogus, "demo"), cases_dir=cases)
-        assert (cases / "demo" / "ai_demo_000001.json").exists(), f"✗ {bogus} 触发了清理（守卫太宽松）"
+        assert (cases / "demo" / "ai_demo_000001.json").exists(), f"X {bogus} 触发了清理（守卫太宽松）"
     # 严格形态的**新 AI 用例**才允许清掉旧的
     write_case(_case("ai_demo_000002", "demo"), cases_dir=cases)
     assert not (cases / "demo" / "ai_demo_000001.json").exists(), "严格形态的新 AI 用例应清掉旧件（D3）"
 
 
 def test_prune_never_deletes_the_just_written_file_even_on_name_collision(tmp_path):
-    """重名落盘会变成 `xxx-2.json` ⇒ 老件绝不能被"按路径比对"误杀（改按 case_id 比对）。"""
+    """重名落盘会变成 `xxx-2.json` -> 老件绝不能被"按路径比对"误杀（改按 case_id 比对）。"""
     cases = _mk(tmp_path)
     write_case(_case("ai_demo_000001", "demo"), cases_dir=cases)
-    # 同 id 再写一次 ⇒ AI 用例**直接覆盖**（不落 -2）⇒ 既不丢原版、也不留孤儿
+    # 同 id 再写一次 -> AI 用例**直接覆盖**（不落 -2）-> 既不丢原版、也不留孤儿
     write_case(_case("ai_demo_000001", "demo"), cases_dir=cases)
-    assert (cases / "demo" / "ai_demo_000001.json").exists(), "✗ 同 id 重写把原版弄丢了"
-    assert not (cases / "demo" / "ai_demo_000001-2.json").exists(), "✗ AI 用例不该落成 -2（会引发误删原版）"
+    assert (cases / "demo" / "ai_demo_000001.json").exists(), "X 同 id 重写把原版弄丢了"
+    assert not (cases / "demo" / "ai_demo_000001-2.json").exists(), "X AI 用例不该落成 -2（会引发误删原版）"

@@ -2,29 +2,29 @@
 
 **政策口径（AprilPark1012 2026-09-22 拍板）**：
 真实项目的埋点一般只落在**顶层元素**上（页面级入口 / 容器：table、弹层、工具栏、分页条、状态区），
-要操作的**子元素**（行、单元格、行内链接/按钮）**没有**埋点 ⇒ 必须靠「从顶层锚点下钻」定位。
+要操作的**子元素**（行、单元格、行内链接/按钮）**没有**埋点 -> 必须靠「从顶层锚点下钻」定位。
 
 于是 demo 也必须长这样：
-  ✅ 允许：**页面级**容器/入口（`tbl-*` / `pager` / `status` / `total-*` / `page-info` / `link-orders` / `btn-back`）
+  [OK] 允许：**页面级**容器/入口（`tbl-*` / `pager` / `status` / `total-*` / `page-info` / `link-orders` / `btn-back`）
           + **页面级**顶层控件（`btn-search` / `tb-keyword` / `sel-*` / `inp-*` … —— 「口径 A：顶层保留」）
           + **弹层容器本身**（`modal-*`）
-  ❌ 禁止：行级 `tr` / 单元格 `td` / 行内 `a`·`button` 上的 `data-testid`
+  [NG] 禁止：行级 `tr` / 单元格 `td` / 行内 `a`·`button` 上的 `data-testid`
           （含 `<script>` 里逐行渲染出来的那些，如 `row-${c.no}` / `link-${c.no}` / `pick-${c.id}`）
-  ❌ 禁止（★2026-09-22 需求方收紧口径）：**弹层内部的一切**（除弹层容器本身）——
+  [NG] 禁止（★2026-09-22 需求方收紧口径）：**弹层内部的一切**（除弹层容器本身）——
           字段 `o-*` / `tb-o-*` / `nc-*`、弹层内按钮 `btn-pick-*` / `btn-*-cancel` / `btn-*-submit`、
           弹层内表格 `tbl-pick-*` …
           理由：**生产环境的弹层只有顶层挂埋点**，内层全靠「弹层锚点 + 相对路径」定位；
-          demo 若给内层留埋点，等于给框架一条生产里不存在的捷径 ⇒ 框架就练不出真本事。
+          demo 若给内层留埋点，等于给框架一条生产里不存在的捷径 -> 框架就练不出真本事。
 
 判定用**结构位置**（不看命名约定，改名也躲不过）：
-  ① 元素本身是 `tr`/`td`/`th`/`tbody`/`thead` ⇒ 违规
-  ② 元素的祖先里出现上述行/单元格 ⇒ 违规
-  ③ 元素位于 `<script>` 块内（前端模板，运行时逐行渲染） ⇒ 违规
-  ④ 值里含 `${...}`（动态占位） ⇒ 违规
-  ⑤ 元素的祖先里有**弹层容器**（`class` 含 `modal` / `data-testid` 以 `modal-` 开头 / `role="dialog"`），
-     而它自己不是那个容器 ⇒ 违规（弹层内部不留埋点，对齐生产）
+  (1) 元素本身是 `tr`/`td`/`th`/`tbody`/`thead` -> 违规
+  (2) 元素的祖先里出现上述行/单元格 -> 违规
+  (3) 元素位于 `<script>` 块内（前端模板，运行时逐行渲染） -> 违规
+  (4) 值里含 `${...}`（动态占位） -> 违规
+  (5) 元素的祖先里有**弹层容器**（`class` 含 `modal` / `data-testid` 以 `modal-` 开头 / `role="dialog"`），
+     而它自己不是那个容器 -> 违规（弹层内部不留埋点，对齐生产）
 
-⚠️ 为什么用规则而不是"名单"：名单只能挡住已知的 30 个，**改名/新增行内埋点就漏**；
+[!] 为什么用规则而不是"名单"：名单只能挡住已知的 30 个，**改名/新增行内埋点就漏**；
 规则拦的是**形态**。判据自身必须有负向自证（造违规 HTML 必须被抓、造合法 HTML 必须放行）。
 """
 from __future__ import annotations
@@ -47,12 +47,12 @@ _SCRIPT_RE = re.compile(r"<script.*?</script>", re.S)
 
 
 def scan_html(html: str) -> list[dict]:
-    """扫描一段 HTML ⇒ 违规清单 `[{line, tag, testid, reasons}]`（空 = 合规）。
+    """扫描一段 HTML -> 违规清单 `[{line, tag, testid, reasons}]`（空 = 合规）。
 
-    纯函数、无 IO ⇒ 一类判据可以拿它做正/负向自证。
+    纯函数、无 IO -> 一类判据可以拿它做正/负向自证。
     """
     out: list[dict] = []
-    stack: list[dict] = []          # [{tag, popup}] —— 带弹层标记，规则⑤ 需要
+    stack: list[dict] = []          # [{tag, popup}] —— 带弹层标记，规则(5) 需要
     script_spans = [(m.start(), m.end()) for m in _SCRIPT_RE.finditer(html)]
 
     for m in _TAG_RE.finditer(html):
@@ -80,11 +80,11 @@ def scan_html(html: str) -> list[dict]:
                 reasons.append("在 <script> 模板内（运行时逐行渲染）")
             if "${" in value:
                 reasons.append("值含动态占位 ${...}")
-            # ⑤ 弹层内部（容器本身除外）：生产环境弹层只有顶层挂埋点，内层必须靠「锚点 + 相对路径」
+            # (5) 弹层内部（容器本身除外）：生产环境弹层只有顶层挂埋点，内层必须靠「锚点 + 相对路径」
             if anc_in_popup and not is_popup:
                 reasons.append("在弹层内部（弹层只有顶层容器允许埋点，内层要对齐生产）")
-            # ⑥ 交互控件（页面级也一样）：埋点只允许落在**结构容器**上（table / 弹层 / pager / status…），
-            #    输入框/下拉/按钮/链接这些"会操作的东西"在生产里没有埋点 ⇒ 必须靠锚点 + 相对路径定位。
+            # (6) 交互控件（页面级也一样）：埋点只允许落在**结构容器**上（table / 弹层 / pager / status…），
+            #    输入框/下拉/按钮/链接这些"会操作的东西"在生产里没有埋点 -> 必须靠锚点 + 相对路径定位。
             if tag in CONTROL_TAGS and not is_popup:
                 reasons.append(f"埋点落在交互控件 <{tag}> 上（只有顶层容器允许埋点，页面级也一样）")
             if reasons:
@@ -97,7 +97,7 @@ def scan_html(html: str) -> list[dict]:
 
 
 def scan_dir(demo_dir: Path) -> dict[str, list[dict]]:
-    """扫 demo 目录下所有 .html ⇒ `{文件名: 违规清单}`（只列有违规的页面）。"""
+    """扫 demo 目录下所有 .html -> `{文件名: 违规清单}`（只列有违规的页面）。"""
     found: dict[str, list[dict]] = {}
     for p in sorted(Path(demo_dir).glob("*.html")):
         v = scan_html(p.read_text(encoding="utf-8"))

@@ -7,11 +7,11 @@
 
 **钉住的点（都是"拼错 = 假通过/静默走偏"的高危项）**：
   1. 四种锚点签名（`test_id` / `aria_label` / `heading` / `role`）各拼成什么表达式；
-  2. **`by=None`（有容器没埋点）** ⇒ 按 `kind` 取 tag 表达式（真实项目最常见的那种表格）；
+  2. **`by=None`（有容器没埋点）** -> 按 `kind` 取 tag 表达式（真实项目最常见的那种表格）；
   3. 三种列口径（`data-field` → 表头文本 → 显式列序）与**表头算不出列序时必须放弃**（绝不默认第 1 列）；
-  4. **不许凭空造行步**：路径里没有行锚 ⇒ 表达式里不许出现 `tbody tr`；
+  4. **不许凭空造行步**：路径里没有行锚 -> 表达式里不许出现 `tbody tr`；
   5. `row.nth` 必须**显式可辨**（"按显式行序定位"要出现在 strategy 里）；
-  6. 歧义理由文案必须含「歧义」+「唯一」——二类负向判据（③）靠它识别"如实失败"。
+  6. 歧义理由文案必须含「歧义」+「唯一」——二类负向判据（(3)）靠它识别"如实失败"。
 
 跑法（秒级）：
     cd ~/hybrid_gui_qa && .venv/bin/python -m pytest tests/特性2-语义识别与分层定位/test_scope_locate_expr.py -q
@@ -40,7 +40,7 @@ except Exception as e:                                                 # noqa: B
 
 
 def _req():
-    """取被测模块；未实现 ⇒ 如实失败（这就是批 3 的起点红态）。"""
+    """取被测模块；未实现 -> 如实失败（这就是批 3 的起点红态）。"""
     if _MOD is None:
         pytest.fail(f"P16 批 3 定位合成未实现（判据先行红态）：{_ERR}")
     return _MOD
@@ -66,7 +66,7 @@ def ambiguity_reason(*a, **k):
     return _req().ambiguity_reason(*a, **k)
 
 
-# ---------------- ① 四种锚点签名 ----------------
+# ---------------- (1) 四种锚点签名 ----------------
 
 def test_anchor_expr_test_id():
     assert anchor_expr({"kind": "table", "by": "test_id", "value": "tbl-contracts"}) == \
@@ -87,7 +87,7 @@ def test_anchor_expr_heading_declares_fallback():
 
 
 def test_anchor_expr_by_none_degrades_to_kind_tag():
-    """有容器、没埋点（零 testid 表格）⇒ 按 kind 取 tag；**必须标注要求唯一**。"""
+    """有容器、没埋点（零 testid 表格）-> 按 kind 取 tag；**必须标注要求唯一**。"""
     expr = anchor_expr({"kind": "table", "by": None, "value": None})
     assert expr.strip() == "page.locator(\"table\")", expr
     expr_dlg = anchor_expr({"kind": "dialog", "by": None, "value": None})
@@ -100,7 +100,7 @@ def test_anchor_expr_unknown_kind_raises_or_none():
     assert r is None, f"未知容器类型必须放弃，实得：{r!r}"
 
 
-# ---------------- ② 路径逐级拼接 ----------------
+# ---------------- (2) 路径逐级拼接 ----------------
 
 def test_step_expr_row_text():
     base = 'page.get_by_test_id("tbl-contracts")'
@@ -111,7 +111,7 @@ def test_step_expr_row_text():
 def test_step_expr_row_nth_is_explicit_and_zero_based():
     base = "page.locator(\"table\")"
     got = step_expr(base, {"axis": "row", "by": "nth", "value": 2})
-    assert got == base + '.locator("tbody tr").nth(1)', f"1-based 入参 ⇒ 0-based 表达式：{got}"
+    assert got == base + '.locator("tbody tr").nth(1)', f"1-based 入参 -> 0-based 表达式：{got}"
 
 
 def test_step_expr_col_field_and_index():
@@ -123,7 +123,7 @@ def test_step_expr_col_field_and_index():
 
 
 def test_step_expr_col_header_needs_runtime_index():
-    """表头文本 ⇒ 列序必须由运行时读 thead 得到；**没有列序 ⇒ 放弃，绝不默认第 1 列**。"""
+    """表头文本 -> 列序必须由运行时读 thead 得到；**没有列序 -> 放弃，绝不默认第 1 列**。"""
     base = 'page.get_by_test_id("tbl-contracts")'
     assert step_expr(base, {"axis": "col", "by": "header", "value": "链接"}) is None, \
         "没有运行时候算出的列序时必须返回 None（不许猜第 1 列）"
@@ -139,7 +139,7 @@ def test_step_expr_target_role_and_text():
         base + '.get_by_text("提交", exact=True)'
 
 
-# ---------------- ③ 整条路径：与方案 §4.4 的示例逐字一致 ----------------
+# ---------------- (3) 整条路径：与方案 §4.4 的示例逐字一致 ----------------
 
 def test_path_expr_full_chain_matches_spec_example():
     expr = path_expr(
@@ -165,7 +165,7 @@ def test_path_expr_empty_path_is_anchor_itself():
     assert expr == 'page.get_by_test_id("tbl-contracts")'
 
 
-# ---------------- ④ strategy 与歧义文案（二类负向判据的锚） ----------------
+# ---------------- (4) strategy 与歧义文案（二类负向判据的锚） ----------------
 
 def test_strategy_labels_axes():
     s = strategy_for([{"axis": "row", "by": "text", "value": "HT-1005"},
@@ -175,7 +175,7 @@ def test_strategy_labels_axes():
 
 
 def test_strategy_marks_explicit_row_order():
-    """`row.nth` 走的是"显式行序"，风险不同（表序变了就错）⇒ strategy 里必须一眼看出来。"""
+    """`row.nth` 走的是"显式行序"，风险不同（表序变了就错）-> strategy 里必须一眼看出来。"""
     s = strategy_for([{"axis": "row", "by": "nth", "value": 2}])
     assert "显式行序" in s, s
     s_text = strategy_for([{"axis": "row", "by": "text", "value": "X"}])
@@ -184,7 +184,7 @@ def test_strategy_marks_explicit_row_order():
 
 @pytest.mark.parametrize("axis", ["row", "col"])
 def test_ambiguity_reason_wording(axis):
-    """二类判据 ③ 断言 reason 含「歧义」或「唯一」⇒ 文案必须稳定带上这两个词之一。"""
+    """二类判据 (3) 断言 reason 含「歧义」或「唯一」-> 文案必须稳定带上这两个词之一。"""
     r = ambiguity_reason(axis, "选择", 2)
     assert ("歧义" in r or "唯一" in r), r
     assert "2" in r, f"要把实际命中数写出来（便于定位）：{r}"

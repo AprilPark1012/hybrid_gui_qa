@@ -1,12 +1,12 @@
 """场景「登录前置」声明（P22 批 5 · J6）—— 秒级，不需 demo / 浏览器。
 
-背景（真值 · P22 §十）：目标系统需要登录 ⇒ 探测与执行两侧都得"先登录"；而声明必须**由场景提供**
+背景（真值 · P22 §十）：目标系统需要登录 -> 探测与执行两侧都得"先登录"；而声明必须**由场景提供**
 （框架不该懂任何具体系统的登录表单）。本判据钉住四件事：
 
-  ① 场景能声明 `auth:` 段并被正确解析（含 `password_env` 形式 —— 真实系统不该把口令写进场景文件）；
-  ② 声明**不合法 ⇒ 当场报错**（静默忽略会变成"以为登录了、其实没登录"的假绿）；
-  ③ ⚠️ **凭据不许进 cases 产物**（`case_extra()` 不带 auth）—— `cases/` 是要入库、甚至要交付的；
-  ④ 登录实现本身：URL 拼接正确 + **密码为空必须抛**（绝不静默当成"已经登录过"）。
+  (1) 场景能声明 `auth:` 段并被正确解析（含 `password_env` 形式 —— 真实系统不该把口令写进场景文件）；
+  (2) 声明**不合法 -> 当场报错**（静默忽略会变成"以为登录了、其实没登录"的假绿）；
+  (3) [!] **凭据不许进 cases 产物**（`case_extra()` 不带 auth）—— `cases/` 是要入库、甚至要交付的；
+  (4) 登录实现本身：URL 拼接正确 + **密码为空必须抛**（绝不静默当成"已经登录过"）。
 
 跑法（秒级）：
     python -m pytest tests/特性2-语义识别与分层定位/test_scenario_auth_spec.py -q
@@ -113,11 +113,11 @@ def test_resolve_spec_url_join_and_env(monkeypatch):
     sp2 = L.resolve_spec("http://localhost:8000/",
                          {"login_api": "auth/login", "username": "u", "password": "x"})
     assert sp2["login_api"] == "http://localhost:8000/auth/login", sp2
-    assert L.resolve_spec("http://localhost:8000", {}) == {}, "没有 auth 声明 ⇒ 空 spec（不假装要登录）"
+    assert L.resolve_spec("http://localhost:8000", {}) == {}, "没有 auth 声明 -> 空 spec（不假装要登录）"
 
 
 def test_negative_empty_password_must_raise():
-    """判据 6（负向）：密码为空 ⇒ 必须抛（不许静默当成"已经登录过"）。"""
+    """判据 6（负向）：密码为空 -> 必须抛（不许静默当成"已经登录过"）。"""
     with pytest.raises(RuntimeError):
         L.login_token({"login_api": "http://127.0.0.1:9/api/login", "username": "u", "password": ""})
 
