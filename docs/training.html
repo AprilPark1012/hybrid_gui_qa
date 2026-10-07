@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup>★</sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.3.5 · 2026-10-07　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.3.5 · 2026-10-08　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1724,7 +1724,7 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.3.5</b>（2026-10-07）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.3.5</b>（2026-10-08）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
       <div class="cl-head"><span class="cl-ver">V8.3.5</span><span class="cl-date">2026-10-08</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>用例看门狗默认超时 120s 上调为 600s</b> —— 正常的长用例不该被当成「挂死」切掉</span></div>
       <p class="cl-sum">用户在本地跑 <code>run --debug</code>，手搓用例通过、<b>AI 全链路用例失败</b>，而日志形态是：<b>停在最后一个 <code>click</code>、没有任何报错、没有 FAILED 标记</b>。<br>根因：该用例最后要等「已签收后 <b>120 秒</b>自动关闭」，<b>整条实测 165 秒</b>，而 <code>HYBRID_CASE_TIMEOUT</code> <b>默认 120 秒</b> => 被看门狗<b>掐死</b>。看门狗的用途是防「挂死」，不该把<b>正常的长用例</b>也切掉；而且它掐死时的表现（无报错、无 FAILED）<b>极容易被误判成「用例坏了」</b>。</p>
@@ -2394,7 +2394,7 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.3.5</b>（2026-10-07）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.3.5</b>（2026-10-08）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
