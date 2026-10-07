@@ -1,0 +1,118 @@
+{
+  "case_id": "manual_order_create_smoke",
+  "name": "手搓最小闭环（场景 2 常驻样例）：\n1. 打开合同列表页（登录由场景级前置完成）。\n2. 切换为**订单管理员**角色（不切则保存按钮置灰）。\n3. 等价直达新建订单页并带入合同 HT-1001（点「新建订单」在 demo 里是 iframe 弹层，探测链路暂不覆盖）。\n4. 填写订单名称「手搓-{datetime}」，业务单元/管理单元/帐套/订单类型/客户/销售员各选第一行，保存。\n5. 进订单列表页，按订单名称搜索 ⇒ 列表首行必须出现这条订单。",
+  "base_url": "http://localhost:8000/login.html",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开合同列表页（登录由场景级登录前置完成，无需手工登录）",
+      "url": "http://localhost:8000/"
+    },
+    {
+      "op": "click",
+      "desc": "展开右上角角色切换入口",
+      "element": "超@合同列表页",
+      "by": "title"
+    },
+    {
+      "op": "click",
+      "desc": "切换为订单管理员角色",
+      "element": "切换为订单管理员@合同列表页"
+    },
+    {
+      "op": "goto",
+      "desc": "等价直达新建订单页并带入合同 HT-1001",
+      "url": "http://localhost:8000/order_new.html?contract_no=HT-1001"
+    },
+    {
+      "op": "fill",
+      "desc": "填写订单名称",
+      "element": "订单名称@新建订单页",
+      "value": "全链路-{datetime}"
+    },
+    {
+      "op": "select",
+      "desc": "业务单元选第一行",
+      "element": "业务单元@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "select",
+      "desc": "管理单元选第一行",
+      "element": "管理单元@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "select",
+      "desc": "帐套选第一行",
+      "element": "帐套@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "select",
+      "desc": "订单类型选第一项",
+      "element": "订单类型@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "select",
+      "desc": "客户选第一个",
+      "element": "客户@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "select",
+      "desc": "销售员选第一个",
+      "element": "销售员@新建订单页",
+      "value": "",
+      "index": 0
+    },
+    {
+      "op": "click",
+      "desc": "保存新建订单（id=btn-o-submit）",
+      "by": "css",
+      "by_value": "#btn-o-submit"
+    },
+    {
+      "op": "goto",
+      "desc": "进入订单列表页（带合同号查询条件，reload 后条件不丢）",
+      "url": "http://localhost:8000/orders.html?contract_no=HT-1001"
+    },
+    {
+      "op": "fill",
+      "desc": "在订单名称搜索框输入刚填的订单名称",
+      "element": "订单名称@订单列表页",
+      "value": "全链路-{datetime}"
+    },
+    {
+      "op": "click",
+      "desc": "搜索该订单",
+      "element": "搜索@订单列表页"
+    }
+  ],
+  "asserts": [
+    {
+      "desc": "确认进入订单列表页",
+      "expect": "订单系统",
+      "after_step": 13
+    },
+    {
+      "kind": "first_row",
+      "row_field": "orderName",
+      "desc": "列表首行出现刚创建的订单",
+      "expect": "全链路-{datetime}",
+      "after_step": 15
+    }
+  ],
+  "auth": {
+    "login_api": "/api/login",
+    "username": "super",
+    "password": "super@123",
+    "token_key": "demo_token"
+  }
+}

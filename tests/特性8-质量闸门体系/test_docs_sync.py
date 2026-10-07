@@ -164,9 +164,9 @@ def test_negative_undocumented_module_is_detected():
 _TREE_BLOCK = re.compile(r'<pre class="tree">(.*?)</pre>', re.S)
 _TREE_ENTRY = re.compile(r"^([\s│]*)(?:├──|└──)\s*(.+)$")
 
-# 只有一类才有的条目（属 tests/_helpers/）与只有二类才有的条目（属 tests/_runner/）
-_FRAMEWORK_ONLY = ("test_*.py", "demo_freshness.py", "repo_files.py", "testid_policy.py", "fixtures/")
-_FEATURE_ONLY = ("verify_*.py", "run_verifications.py", "run_acceptance.py")
+# 该住 `_helpers/`（公共模块）与该住 `_runner/`（入口与工具）的条目（2026-10-07 按 9 特性重组后）
+_HELPERS_ONLY = ("repo_files.py", "artifacts.py", "testid_policy.py", "demo_freshness.py", "_gen_layout.py")
+_RUNNER_ONLY = ("run_verifications.py", "run_acceptance.py", "rerecord_cassettes.py", "fixtures/")
 
 
 def tree_entries(html_text: str) -> list[tuple[int, str, str]]:
@@ -175,7 +175,10 @@ def tree_entries(html_text: str) -> list[tuple[int, str, str]]:
     只认 `├──` / `└──` 这一种画法 —— 换画法 ⇒ 解析不出 ⇒ 判据会红（有意的：目录树的结构必须机器可读，
     否则「谁挂在谁下面」这件事没法钉）。
     """
-    block = next((b for b in _TREE_BLOCK.findall(html_text) if "tests/_helpers/" in b), None)
+    # 2026-10-07：目录树改成 `tests/` → 特性夹 + `_helpers/` + `_runner/` 两级 ⇒
+    # 不能再找 "tests/_helpers/" 这一整串（重组后树里没这串），改判「同时含 _helpers/ 与特性夹」。
+    block = next((b for b in _TREE_BLOCK.findall(html_text)
+                  if "_helpers/" in b and "特性1-混合链路" in b), None)
     if block is None:
         return []
     text = html_mod.unescape(re.sub(r"<[^>]+>", "", block))
@@ -195,21 +198,40 @@ def tree_entries(html_text: str) -> list[tuple[int, str, str]]:
 
 
 def belonging_problems(entries: list[tuple[int, str, str]]) -> list[str]:
-    """一类条目不许挂在 featureTest 下、二类条目不许挂在 frameworkTest 下（判据与负向自证共用）。"""
-    fw = " · ".join(n for _, n, p in entries if "tests/_helpers/" in p)
-    ft = " · ".join(n for _, n, p in entries if "tests/_runner/" in p)
+    """口径（2026-10-07 按 9 个特性重组后 —— 判据与负向自证共用）：
+
+    · 一类 `test_*.py` 与二类 `verify_*.py` **都必须挂在特性夹下**（`tests/特性N-<名>/`），
+      **不许住** `_helpers/` / `_runner/`；
+    · `_helpers/` 只许放**公共模块**（repo_files / artifacts / testid_policy / demo_freshness / _gen_layout）；
+    · `_runner/` 只许放**入口与工具**（run_verifications / run_acceptance / rerecord_cassettes / fixtures）。
+
+    ⚠️ 旧版这条判据查的是「一类不挂 `_runner`、二类不挂 `_helpers`」—— 重组后两类都搬进特性夹，
+    那两个目录里**再也不会出现** test_/verify_ ⇒ 判据**恒真空转**（2026-10-07 审视时发现）。
+    """
+    # ⚠️ 只按目录名匹配：重组后目录树是 `tests/` → `_helpers/`/`_runner/` 两级，
+    # 父节点名里**没有** "tests/_helpers/" 这整串（旧版按它匹配 ⇒ 永远空 ⇒ 判据空转）。
+    helpers = [n for _, n, p in entries if "_helpers" in p]
+    runner = [n for _, n, p in entries if "_runner" in p]
     bad: list[str] = []
-    for name in _FRAMEWORK_ONLY:
-        if name in ft:
-            bad.append(f"{name} 挂在 tests/_runner/ 下 ⇒ 应挂 tests/_helpers/（一类自测）")
-    for name in _FEATURE_ONLY:
-        if name in fw:
-            bad.append(f"{name} 挂在 tests/_helpers/ 下 ⇒ 应挂 tests/_runner/（二类验证）")
+    for name in helpers + runner:
+        if name.startswith("test_") or name.startswith("verify_"):
+            bad.append(f"{name} 挂在 `_helpers/` 或 `_runner/` 下 ⇒ "
+                       f"一类/二类都**必须住特性夹**（`tests/特性N-<名>/`）")
+    for name in _RUNNER_ONLY:
+        if any(name in h for h in helpers):
+            bad.append(f"{name} 挂在 `tests/_helpers/` 下 ⇒ 入口/工具应住 `tests/_runner/`")
+    for name in _HELPERS_ONLY:
+        if any(name in r for r in runner):
+            bad.append(f"{name} 挂在 `_runner/` 下 ⇒ 公共模块应住 `_helpers/`")
+    for name in _HELPERS_ONLY:            # 同一模块名出现在两类清单里也不许（防清单漂移）
+        if any(name in h for h in helpers) and name in _RUNNER_ONLY:
+            bad.append(f"{name} 同时出现在两类清单里 ⇒ 清单漂移")
     return bad
 
 
 def test_training_tree_parent_child_belonging():
-    """第 2 章目录树里，一类条目必须在 frameworkTest 下、二类条目必须在 featureTest 下。"""
+    """第 2 章目录树里：一类 `test_*.py` / 二类 `verify_*.py` 都必须在**特性夹**下；
+    `_helpers/` 只放公共模块、`_runner/` 只放入口与工具。"""
     html_text = HTML.read_text(encoding="utf-8")
     entries = tree_entries(html_text)
     assert entries, "解析不出第 2 章目录树（树画法变了 ⇒ 本判据要同步）"
@@ -221,20 +243,26 @@ def test_training_tree_parent_child_belonging():
 
 _MISPLACED_TREE = """
 <b>hybrid_gui_qa/</b>
-├── <b>tests/_helpers/</b>             框架自验证：test_*（秒级、不需 demo/浏览器）
-├── <b>tests/_runner/</b>               特性自验证：verify_*（端到端、需 demo、含负向）
-│   ├── run_verifications.py         ★ 二类统一入口
-│   ├── test_*.py                    一类自测（← 故意错挂）
-│   └── demo_freshness.py            demo 新鲜度闸门（← 故意错挂）
+├── <b>tests/</b>                     测试根：一个特性一个文件夹
+│   ├── 特性1-混合链路/
+│   │   └── verify_*.py              二类验证（← 挂对了）
+│   ├── _helpers/                    公共模块
+│   │   └── run_verifications.py     ★ 二类统一入口（← 故意错挂：runner 工具应住 _runner/）
+│   └── _runner/                     入口与工具
+│       ├── test_*.py                一类判据（← 故意错挂：一类应住特性夹）
+│       └── demo_freshness.py        demo 新鲜度闸门（← 故意错挂：公共模块应住 _helpers/）
 """
 
 _CORRECT_TREE = """
 <b>hybrid_gui_qa/</b>
-├── <b>tests/_helpers/</b>             框架自验证：test_*（秒级、不需 demo/浏览器）
-│   ├── test_*.py                    一类判据
-│   └── demo_freshness.py            demo 新鲜度闸门
-├── <b>tests/_runner/</b>               特性自验证：verify_*（端到端、需 demo、含负向）
-│   └── run_verifications.py         ★ 二类统一入口
+├── <b>tests/</b>                     测试根：一个特性一个文件夹
+│   ├── 特性1-混合链路/
+│   │   ├── test_*.py                一类判据
+│   │   └── verify_*.py              二类验证
+│   ├── _helpers/                    公共模块
+│   │   └── demo_freshness.py        demo 新鲜度闸门
+│   └── _runner/                     入口与工具
+│       └── run_verifications.py     ★ 二类统一入口
 """
 
 

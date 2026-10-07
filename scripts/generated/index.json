@@ -6,5 +6,13 @@
     "scenario_id": "orders_invoice_full_lifecycle",
     "script_path": "scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_140528.py",
     "template_fingerprint": "06964fe1f10f66bb"
+  },
+  "manual_order_create_smoke": {
+    "case_fingerprint": "c5621d600e5b6b13",
+    "probe_fingerprint": "4d726378ed094a3e",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/manual_order_create_smoke.py",
+    "template_fingerprint": "06964fe1f10f66bb"
   }
 }

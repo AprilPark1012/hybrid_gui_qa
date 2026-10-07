@@ -20,6 +20,12 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path as _P
+
+# 2026-10-07：`_gen_layout` 是公共模块，住 tests/_helpers/ ⇒ 必须在 import 之前补好路径
+#（独立脚本不经过 conftest，也不能依赖 runner 主进程的 sys.path —— 子进程不继承）。
+_ROOT = _P(__file__).resolve().parents[2]
+sys.path.insert(0, str(_ROOT / "tests" / "_helpers"))
 
 from _gen_layout import (node_of as _node_of)  # noqa: E402  P20 布局助手
 import _gen_layout  # noqa: E402

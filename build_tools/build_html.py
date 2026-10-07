@@ -1902,17 +1902,13 @@ def build() -> str:
 │   ├── orders.html                  订单系统页(分页/新建订单弹层/跨 tab 入口)
 │   ├── order_detail.html            订单详情页
 │   └── todo.html                    旧版 Todo 演示页(保留)
-├── <b>tests/_helpers/</b>             框架自验证：test_*（秒级、不需 demo/浏览器）
-│   ├── test_*.py                    一类判据(秒级,不需 demo):CLI 契约/退出码/UTF-8/断言翻译/质量闸/打包/门禁解耦/README 结构
-│   ├── demo_freshness.py            demo 新鲜度闸门(改了 demo 必须重启,否则验证跑在旧页面上)
-│   ├── repo_files.py · artifacts.py 判据公共件:文件清单(非 git 环境降级) / 生成物读取(可行动诊断)
-│   ├── testid_policy.py             demo 埋点口径扫描器(只有顶层容器允许埋点,防回退)
-│   └── fixtures/*.html              夹具页(歧义页 / 零 testid 页)
-├── <b>tests/_runner/</b>               特性自验证：verify_*（端到端、需 demo、含负向）
-│   ├── run_verifications.py         ★ 二类(端到端特性验证)统一入口 — Python 唯一实现,Windows 通用
-│   ├── run_acceptance.py            ★ R7 四项验收一条命令(闸门→新鲜度→自测→E2E→特性)
-│   ├── run_verifications.sh         入口的 .sh 转发包装(Windows 无 bash ⇒ 退化壳,防两处逻辑漂移)
-│   └── verify_*.py                  二类验证(需 demo,含负向证伪):断言/跨页/弹层/订单/慢目标/录像/培训页同步
+├── <b>tests/</b>                     ★ 测试根：<b>一个特性一个文件夹</b>（一类 test_* 与二类 verify_* <b>同住一个夹</b>,靠前缀区分）
+│   ├── 特性1-混合链路/ … 特性9-CLI帮助契约/   9 个特性夹（名字取自第 7 章「框架的 9 个特性」,唯一命名来源）
+│   │   ├── test_*.py                一类判据(秒级,不需 demo/浏览器)
+│   │   └── verify_*.py              二类验证(端到端,需 demo,含负向证伪)
+│   ├── _helpers/                    公共模块(两类共用):repo_files · artifacts · testid_policy · demo_freshness · _gen_layout
+│   ├── _runner/                     runner:run_verifications.py(★二类统一入口,Windows 通用) · run_acceptance.py(★四项验收一条命令) · rerecord_cassettes.py · fixtures/
+│   └── conftest.py                  pytest 全局夹具(把 _helpers 补进 sys.path)
 ├── <b>build_tools/</b>               ★ 开发期工具(不属于被测应用,也不进运行链)
 │   ├── pack_release.py              交付打包器:组装 zip + 自检包内产物(不达标不出包；--with-cassettes 另打录像包)
 │   ├── build_html.py                生成 docs/training.html 培训页(**版本号单一来源**)
