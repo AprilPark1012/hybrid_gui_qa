@@ -1,7 +1,7 @@
 """元素歧义闸门 · 端到端复现（批次 2 · S1/S2 / 2026-09-18）。
 
 为什么单独一个脚本、不叫 test_*.py：它要开真浏览器（本机 1.87G / 无 swap，内存紧），
-跟主用例套件跑在一起会抢内存 —— 与 `verify_picker_layer.py` / `verify_slow_target.py` 同一口径。
+跟主用例套件跑在一起会抢内存 —— 与 `verify_slow_target.py` 同一口径。
 
 跑法（**不需要 demo**，用 tests/featureTest/fixtures/ambiguous_page.html 起一个自包含页面）：
     cd ~/hybrid_gui_qa && .venv/bin/python tests/featureTest/verify_element_ambiguity.py

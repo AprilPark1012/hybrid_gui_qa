@@ -242,14 +242,14 @@
         <tbody id="tbody-orders" :data-hybrid-rows="rows.length">
           <tr v-for="o in rows" :key="o.no" :class="{ picked: pickedOrders.includes(o.no) }">
             <td class="pick-cell">
-              <!-- 需求㚀：复选框（可勾 1 条或多条）。⚠️ id 仍保持 rd-<订单号>（二类 verify_invoice_gate.py 按它 check） -->
+              <!-- 需求㚀：复选框（可勾 1 条或多条）。⚠️ id 仍保持 rd-<订单号>（场景/用例按它 check） -->
               <input type="checkbox" class="ord-pick" name="pick-order" :id="'rd-' + o.no" :value="o.no"
                      v-model="pickedOrders" :title="'选择订单 ' + o.no" :aria-label="'选择订单 ' + o.no">
             </td>
             <td data-field="orderNo"><a :href="'/order_detail.html?no=' + o.no">{{ o.no }}</a></td>
             <!-- 需求⑥（2026-09-17）：新 tab 打开合同详情，URL 必须带 from=order
                  ⇒ 详情页按钮变「返回」、点了**关掉本 tab** 回到订单系统。
-                 ⚠️ 场景 / 用例 / verify_order_pages.py 都按「带 from=order」写死，别省这个参数 -->
+                 ⚠️ 场景 / 用例都按「带 from=order」写死，别省这个参数 -->
             <td data-field="contractNo"><a :href="'/contract_detail.html?no=' + o.contract_no" @click.prevent="openContract(o.contract_no)">{{ o.contract_no }}</a></td>
             <td data-field="orderName"><a :href="'/order_detail.html?no=' + o.no">{{ o.name }}</a></td>
             <td data-field="managementUnit">{{ o.mu }}</td>

@@ -1224,7 +1224,8 @@ E2E 三场景        场景1 自然语言→AI 链路（离线回放可证伪）
       <b>🧪 测试验证用例设计</b>
       <ul style="margin:6px 0 0 18px;line-height:1.75">
         <li><b>一类：</b><span class="code-inline">tests/frameworkTest/test_ready_and_locate.py</span>（13 条：ready 契约、_goto/_wait_ready 接线、误导性报错消失）· <span class="code-inline">tests/frameworkTest/test_element_ambiguity_gate.py</span>（15 条）· <span class="code-inline">tests/frameworkTest/test_name_alignment.py</span>（11 条：精确名优先 / 模糊命中留痕 / 歧义必须 fail loud / 严格模式拒绝近似）· <span class="code-inline">tests/frameworkTest/test_import_targets.py</span>（4 条：内部 import 都能解析）</li>
-        <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_picker_layer.py</span>（弹层 picker 链回归）· <span class="code-inline">tests/featureTest/verify_order_pages.py</span> / <span class="code-inline">tests/featureTest/verify_order_pick_create.py</span>（真开浏览器点、真读页面与服务端状态，<b>不看「代码里写了」</b>）</li>
+        <li><b>二类：</b><span class="code-inline">tests/featureTest/verify_cross_page.py</span>（跨页流程 + 质量闸：缺 url 断言告警 / 弱换页证据红线 / 负向无假绿）· <span class="code-inline">tests/featureTest/verify_wait_text.py</span> · <span class="code-inline">tests/featureTest/verify_expandable_menu.py</span>（真开浏览器点、真读页面与服务端状态，<b>不看「代码里写了」</b>）</li>
+        <li><b>⚠️ 2026-10-07 口径变更：</b>demo 需求侧验证（登录与角色 / 开票前置 / 新建订单三区域 / 订单详情编辑闭环 / 两个入口同构 / 弹层 picker 等 <b>8 个脚本</b>）<b>已整体删除</b> —— demo 是用 TDD 做出来的，做完即固化，除非有大变动不再改，留着只是浪费验证时间。框架能力侧的验证（上列）全部保留。</li>
         <li><b>⚠️ 待补缺口（如实标注）：</b>Tier1 意图复验阈值（0.15）与 Tier2 MINGAP（0.12）目前<b>没有直接判据</b>——只有闸门层与命名层判据。阈值改动可能静默退化，建议补两条（复验不符必须降级 / 评分差距不足必须失败）。</li>
       </ul>
     </div>

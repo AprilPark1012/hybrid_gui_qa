@@ -28,7 +28,7 @@ force_stdio()
 DEMO = os.environ.get("HYBRID_BASE_URL", "http://localhost:8000").rstrip("/")
 MIN_MEM_MB = 550
 # 角色菜单里的三个切换项（auth.js::mountTopbar 渲染的 nu-item 文案）——
-# 只断言「订单管理员」这条：本场景必需的那一个（其余两条存在性断言在 verify_auth_roles.py 已覆盖）
+# 只断言「订单管理员」这条：本场景必需的那一个（其余两条的存在性断言原在 demo 需求侧验证里覆盖，该批验证已按 2026-10-07 口径删除）
 WANT_MENU_ITEM = "切换为订单管理员"
 fails: list[str] = []
 

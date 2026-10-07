@@ -1,0 +1,39 @@
+{
+  "case_id": "neg_cross_raw_duplicate_name",
+  "name": "负向验证（跨页）：raw_duplicate_name",
+  "base_url": "http://localhost:8000/contracts.html?demo_role=contract_admin",
+  "pages": [
+    {
+      "name": "列表页",
+      "url": "http://localhost:8000/contracts.html?demo_role=contract_admin"
+    },
+    {
+      "name": "详情页",
+      "url": "http://localhost:8000/contract_detail.html?no=HT-1005&demo_role=contract_admin"
+    }
+  ],
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开列表页",
+      "url": "http://localhost:8000/contracts.html?demo_role=contract_admin"
+    },
+    {
+      "op": "fill",
+      "desc": "关键字 1005",
+      "element": "合同编号_名称_管理单元_合同类型_帐套",
+      "value": "1005"
+    },
+    {
+      "op": "click",
+      "desc": "用原始名点搜索（跨页重名）",
+      "element": "搜索"
+    }
+  ],
+  "asserts": [
+    {
+      "kind": "text",
+      "expect": "HT-1005"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "case_id": "neg_cross_weak_evidence_no_teeth",
+  "name": "负向验证（跨页）：weak_evidence_no_teeth",
+  "base_url": "http://localhost:8000/contracts.html?demo_role=contract_admin",
+  "pages": [
+    {
+      "name": "列表页",
+      "url": "http://localhost:8000/contracts.html?demo_role=contract_admin"
+    },
+    {
+      "name": "详情页",
+      "url": "http://localhost:8000/contract_detail.html?no=HT-1005&demo_role=contract_admin"
+    }
+  ],
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "直接打开详情页（不回到列表页）",
+      "url": "http://localhost:8000/contract_detail.html?no=HT-1005&demo_role=contract_admin"
+    }
+  ],
+  "asserts": [
+    {
+      "kind": "text",
+      "expect": "新建合同",
+      "desc": "列表页独有文案（详情页没有该文案）—— 没回到列表页时必须失败",
+      "after_step": 1
+    }
+  ]
+}
