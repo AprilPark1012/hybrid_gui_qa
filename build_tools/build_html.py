@@ -56,11 +56,80 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.3"
-VERSION_DATE = "2026-09-30"
+VERSION = "8.3.1"
+VERSION_DATE = "2026-10-07"
 CHANGELOG = [
     dict(
-        version="8.2.6", date="2026-09-28", tag="当前版本",
+        version="8.3.1", date="2026-10-07", tag="当前版本",
+        theme="<b>测试体系按框架 9 个特性重组 + 特性验证闭环（R7-g）</b> —— 验证从「两类目录」升级为「<b>逐特性可见</b>」",
+        summary="原先测试按「一类/二类」两目录组织，文件夹<b>不体现框架有多少特性</b> ⇒ 哪条特性在验证、哪条是空的，"
+                "只能靠人脑记。<br>本版把 <code>tests/</code> 按框架的 <b>9 个特性</b>分文件夹（一类 <code>test_*.py</code> "
+                "与二类 <code>verify_*.py</code> <b>同住一个特性夹</b>，靠文件名前缀区分），并新增："
+                "<b>①</b> 特性↔用例同步要求（R7-h）；<b>②</b> 日常版/发版版两种跑法（<b>都 ≤30 分钟</b>）；"
+                "<b>③</b> 每次交付邮件必须带「<b>特性 × 验证结果</b>」表；<b>④</b> 有实现、零判据的特性必须显式标 <code>UNVERIFIED.md</code>。",
+        added=[
+            "<b>tests/ 按 9 个特性分文件夹</b>：特性1-混合链路 … 特性9-CLI帮助契约；公共模块住 <code>tests/_helpers/</code>、"
+            "入口与工具住 <code>tests/_runner/</code>；新增 <code>tests/conftest.py</code> 统一补 <code>_helpers</code> 的 import 路径",
+            "<b>场景2 常驻样例</b>（手搓链路）：<code>cases/manual/manual_order_create_smoke.json</code> + 生成物；"
+            "配套 E2E 验证脚本 <code>tests/特性1-混合链路/verify_e2e_scenario2_handwritten.py</code>（7 条判据，"
+            "<b>离线可证伪</b>：LLM 端点强制指黑洞仍须跑通 = 证明这条链没碰 AI；含负向自证 + 零残留）",
+            "<b>「特性 × 验证结果」报告</b> <code>tests/_runner/feature_verification_report.py</code>："
+            "特性来源 = 特性夹目录名（不另立清单）；一类走 junitxml 分组、二类读 runner 日志；零判据特性标 ⏭️。"
+            "本版报告随包附上（<code>docs/feature_verification_report.md</code>）",
+        ],
+        changed=[
+            "<b>R7 刷新</b>：R7-a 目录分工（9 特性结构 + 「对不上特性的存量 test = 失效 test，要审视删/改」+ 零判据标 UNVERIFIED）· "
+            "R7-b 命令口径 · R7-e 三场景加「<b>双环境</b>」列（日常 = 场景2+3，两条都不碰外网 ⇒ 内网机器也能跑）· "
+            "R7-g <b>新增</b>「特性验证闭环」5 步 + 日常/发版两种跑法（都 ≤30 min）；"
+            "<b>R7-h 新增</b>「特性 ↔ test 用例同步」（新增/修改/删除特性各自必须做什么）",
+            "<b>跑 test 前必须先过 demo 新鲜度闸门</b>（R7-g 第 0 步）—— 避免 demo 改了没重启、验证跑在旧页面上（历史假绿同源）",
+            "<b>demo 一变，录像必须重录</b>：日常先跑一次场景1 并当场重录 LLM 录像，之后日常回到场景2+3"
+            "（录像键 = sha256(场景文案 + 控件骨架)，不重录则内网机器上场景3 直接跑不了）",
+            "培训页第 2 章目录树改为 9 特性结构；skill 内 15 处过期目录引用同步修正",
+        ],
+        fixed=[
+            "<b>4 条失效判据</b>（按「判据是否还在真验东西」审视抓出，均属<b>看着绿、实则空转</b>）："
+            "① <code>test_test_layout_contract.py</code> 断言写死旧目录名 ⇒ 按 9 特性结构重写；"
+            "② <code>test_docs_sync.py</code> 找的目录串重组后不存在 + 父节点匹配恒空 ⇒ 改按目录名匹配、负向样本改真实结构；"
+            "③ <code>test_path_join_contract.py</code> 的 <code>NAMES</code> 写死旧名 ⇒ 改动态取真实目录名"
+            "（修好后<b>立刻</b>又抓到真问题）；④ <code>test_utf8_io.py</code> 报新脚本缺 <code>encoding=</code>（Windows cp936 会炸）",
+            "<code>tests/特性2-语义识别与分层定位/verify_cross_page.py</code>：<code>_gen_layout</code> 归位到 "
+            "<code>_helpers/</code>，并在 import 之前补路径（独立脚本不经过 conftest，也不能依赖 runner 主进程的 sys.path）",
+        ],
+        notes=[
+            "<b>本版不含框架特性实现的变更</b> —— 是测试体系与验证机制的升级（9 特性重组 / 验证闭环 / 报告工具）。",
+            "<b>遗留</b>：特性5「自愈闭环 Healer」<b>零判据</b>（有实现 <code>framework/tools/run/healer.py</code>、"
+            "无任何行为判据）⇒ 已在 <code>tests/特性5-自愈闭环Healer/UNVERIFIED.md</code> 显式标记（对应遗留项 L11）；"
+            "L22（慢目标下行区就绪信号缺失）仍是 <code>verify_slow_target</code> 的唯一红。",
+            "<b>验证真值（本机实测）</b>：一类 <b>677 passed / 0 failed</b>（约 28s）· 二类 <b>15 通过 / 1 失败（L22）</b>"
+            "（约 11 min）· 场景2 E2E <b>6/6 通过</b> ⇒ 合计 <b>≈12 分钟</b>（上限 30 分钟 ✓）。",
+        ],
+    ),
+    dict(
+        version="8.3", date="2026-09-30", tag="上一版本",
+        theme="<b>demo 演示系统大轮 + 交付后收尾</b> —— 登录与角色权限 / 发票详情 / 一单一票 / 三段式新建订单 + 全局提示 + 数据保护",
+        summary="把 demo 从「静态演示页」推进到「<b>有权限、有状态流转、有数据保护</b>的准真实系统」：补上登录墙与角色权限"
+                "（业务页需真实登录会话，<code>?demo_role=</code> 只作只读直达）、发票详情与「一单一票」约束、"
+                "新建订单的三段式流程，以及全局提示与数据保护；随后按口径做交付后收尾。",
+        added=[
+            "demo 需求⑪~㉓：<b>登录与角色权限</b>（合同/订单/发票管理员 + 超管，切角色权限实时变化）· "
+            "<b>发票详情</b> · <b>一单一票</b> · <b>三段式新建订单</b> · <b>全局提示</b> · <b>数据保护</b>",
+            "配套二类验证与断言（在 <code>tests/</code> 各特性夹内）",
+        ],
+        changed=[
+            "<b>交付后收尾</b>：清理失效用例/脚本 + 补能力与修复 + 文档三同步（README / 培训页 / 目录树）",
+        ],
+        fixed=[
+            "<b>按口径删除 demo 需求侧二类验证</b>（8 个脚本）：demo 是 TDD 开发出来的，做完除非大改不会再动 ⇒ "
+            "为它长期养着需求侧用例是浪费时间；后续版本有新需求再加对应二类测试",
+        ],
+        notes=[
+            "本版交付包：<code>hybrid_gui_qa_V8.3_20260930.zip</code>（1.18 MB）。",
+            "<b>本 CHANGELOG 条目为 2026-10-07 补写</b> —— V8.3 交付时漏记，据提交历史回填（<code>a7a3543</code> + <code>a42043a</code> + <code>592f6c8</code>）。",
+        ],
+    ),
+    dict(
+        version="8.2.6", date="2026-09-28", tag="上一版本",
         theme="<b>行锚选取修复</b>：从「整行文本」改成「<b>整表内唯一的最短单元格文本</b>」—— 跨 demo 重启不再降级",
         summary="产物里的行锚原本是整行 <code>tr.textContent</code>（截 120 字符），而 demo 数据含随机字段"
                 "（<code>mu / file / type / bu</code>）⇒ <b>demo 每次重启，行锚必然失配</b>，生成脚本静默退到语义兜底"

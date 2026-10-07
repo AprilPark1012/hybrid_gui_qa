@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.3）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.3.1）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup>★</sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.3 · 2026-09-30　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.3.1 · 2026-10-07　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1723,9 +1723,51 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.3</b>（2026-09-30）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.3.1</b>（2026-10-07）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.2.6</span><span class="cl-date">2026-09-28</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>行锚选取修复</b>：从「整行文本」改成「<b>整表内唯一的最短单元格文本</b>」—— 跨 demo 重启不再降级</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.3.1</span><span class="cl-date">2026-10-07</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>测试体系按框架 9 个特性重组 + 特性验证闭环（R7-g）</b> —— 验证从「两类目录」升级为「<b>逐特性可见</b>」</span></div>
+      <p class="cl-sum">原先测试按「一类/二类」两目录组织，文件夹<b>不体现框架有多少特性</b> ⇒ 哪条特性在验证、哪条是空的，只能靠人脑记。<br>本版把 <code>tests/</code> 按框架的 <b>9 个特性</b>分文件夹（一类 <code>test_*.py</code> 与二类 <code>verify_*.py</code> <b>同住一个特性夹</b>，靠文件名前缀区分），并新增：<b>①</b> 特性↔用例同步要求（R7-h）；<b>②</b> 日常版/发版版两种跑法（<b>都 ≤30 分钟</b>）；<b>③</b> 每次交付邮件必须带「<b>特性 × 验证结果</b>」表；<b>④</b> 有实现、零判据的特性必须显式标 <code>UNVERIFIED.md</code>。</p>
+      <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
+        <li><b>tests/ 按 9 个特性分文件夹</b>：特性1-混合链路 … 特性9-CLI帮助契约；公共模块住 <code>tests/_helpers/</code>、入口与工具住 <code>tests/_runner/</code>；新增 <code>tests/conftest.py</code> 统一补 <code>_helpers</code> 的 import 路径</li>
+        <li><b>场景2 常驻样例</b>（手搓链路）：<code>cases/manual/manual_order_create_smoke.json</code> + 生成物；配套 E2E 验证脚本 <code>tests/特性1-混合链路/verify_e2e_scenario2_handwritten.py</code>（7 条判据，<b>离线可证伪</b>：LLM 端点强制指黑洞仍须跑通 = 证明这条链没碰 AI；含负向自证 + 零残留）</li>
+        <li><b>「特性 × 验证结果」报告</b> <code>tests/_runner/feature_verification_report.py</code>：特性来源 = 特性夹目录名（不另立清单）；一类走 junitxml 分组、二类读 runner 日志；零判据特性标 ⏭️。本版报告随包附上（<code>docs/feature_verification_report.md</code>）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
+        <li><b>R7 刷新</b>：R7-a 目录分工（9 特性结构 + 「对不上特性的存量 test = 失效 test，要审视删/改」+ 零判据标 UNVERIFIED）· R7-b 命令口径 · R7-e 三场景加「<b>双环境</b>」列（日常 = 场景2+3，两条都不碰外网 ⇒ 内网机器也能跑）· R7-g <b>新增</b>「特性验证闭环」5 步 + 日常/发版两种跑法（都 ≤30 min）；<b>R7-h 新增</b>「特性 ↔ test 用例同步」（新增/修改/删除特性各自必须做什么）</li>
+        <li><b>跑 test 前必须先过 demo 新鲜度闸门</b>（R7-g 第 0 步）—— 避免 demo 改了没重启、验证跑在旧页面上（历史假绿同源）</li>
+        <li><b>demo 一变，录像必须重录</b>：日常先跑一次场景1 并当场重录 LLM 录像，之后日常回到场景2+3（录像键 = sha256(场景文案 + 控件骨架)，不重录则内网机器上场景3 直接跑不了）</li>
+        <li>培训页第 2 章目录树改为 9 特性结构；skill 内 15 处过期目录引用同步修正</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
+        <li><b>4 条失效判据</b>（按「判据是否还在真验东西」审视抓出，均属<b>看着绿、实则空转</b>）：① <code>test_test_layout_contract.py</code> 断言写死旧目录名 ⇒ 按 9 特性结构重写；② <code>test_docs_sync.py</code> 找的目录串重组后不存在 + 父节点匹配恒空 ⇒ 改按目录名匹配、负向样本改真实结构；③ <code>test_path_join_contract.py</code> 的 <code>NAMES</code> 写死旧名 ⇒ 改动态取真实目录名（修好后<b>立刻</b>又抓到真问题）；④ <code>test_utf8_io.py</code> 报新脚本缺 <code>encoding=</code>（Windows cp936 会炸）</li>
+        <li><code>tests/特性2-语义识别与分层定位/verify_cross_page.py</code>：<code>_gen_layout</code> 归位到 <code>_helpers/</code>，并在 import 之前补路径（独立脚本不经过 conftest，也不能依赖 runner 主进程的 sys.path）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
+        <li><b>本版不含框架特性实现的变更</b> —— 是测试体系与验证机制的升级（9 特性重组 / 验证闭环 / 报告工具）。</li>
+        <li><b>遗留</b>：特性5「自愈闭环 Healer」<b>零判据</b>（有实现 <code>framework/tools/run/healer.py</code>、无任何行为判据）⇒ 已在 <code>tests/特性5-自愈闭环Healer/UNVERIFIED.md</code> 显式标记（对应遗留项 L11）；L22（慢目标下行区就绪信号缺失）仍是 <code>verify_slow_target</code> 的唯一红。</li>
+        <li><b>验证真值（本机实测）</b>：一类 <b>677 passed / 0 failed</b>（约 28s）· 二类 <b>15 通过 / 1 失败（L22）</b>（约 11 min）· 场景2 E2E <b>6/6 通过</b> ⇒ 合计 <b>≈12 分钟</b>（上限 30 分钟 ✓）。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.3</span><span class="cl-date">2026-09-30</span><span class="cl-tag">上一版本</span><span class="cl-theme"><b>demo 演示系统大轮 + 交付后收尾</b> —— 登录与角色权限 / 发票详情 / 一单一票 / 三段式新建订单 + 全局提示 + 数据保护</span></div>
+      <p class="cl-sum">把 demo 从「静态演示页」推进到「<b>有权限、有状态流转、有数据保护</b>的准真实系统」：补上登录墙与角色权限（业务页需真实登录会话，<code>?demo_role=</code> 只作只读直达）、发票详情与「一单一票」约束、新建订单的三段式流程，以及全局提示与数据保护；随后按口径做交付后收尾。</p>
+      <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
+        <li>demo 需求⑪~㉓：<b>登录与角色权限</b>（合同/订单/发票管理员 + 超管，切角色权限实时变化）· <b>发票详情</b> · <b>一单一票</b> · <b>三段式新建订单</b> · <b>全局提示</b> · <b>数据保护</b></li>
+        <li>配套二类验证与断言（在 <code>tests/</code> 各特性夹内）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">🔧 改进</span><ul>
+        <li><b>交付后收尾</b>：清理失效用例/脚本 + 补能力与修复 + 文档三同步（README / 培训页 / 目录树）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">🐞 修复</span><ul>
+        <li><b>按口径删除 demo 需求侧二类验证</b>（8 个脚本）：demo 是 TDD 开发出来的，做完除非大改不会再动 ⇒ 为它长期养着需求侧用例是浪费时间；后续版本有新需求再加对应二类测试</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">📌 说明</span><ul>
+        <li>本版交付包：<code>hybrid_gui_qa_V8.3_20260930.zip</code>（1.18 MB）。</li>
+        <li><b>本 CHANGELOG 条目为 2026-10-07 补写</b> —— V8.3 交付时漏记，据提交历史回填（<code>a7a3543</code> + <code>a42043a</code> + <code>592f6c8</code>）。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.2.6</span><span class="cl-date">2026-09-28</span><span class="cl-tag">上一版本</span><span class="cl-theme"><b>行锚选取修复</b>：从「整行文本」改成「<b>整表内唯一的最短单元格文本</b>」—— 跨 demo 重启不再降级</span></div>
       <p class="cl-sum">产物里的行锚原本是整行 <code>tr.textContent</code>（截 120 字符），而 demo 数据含随机字段（<code>mu / file / type / bu</code>）⇒ <b>demo 每次重启，行锚必然失配</b>，生成脚本静默退到语义兜底（用例照样 PASSED、每处白等 5 秒）—— 交付包到别人机器上 <b>100% 降级</b>，属「看着能下钻、实际没生效」的假绿。<br>本版把行锚改成「<b>整表内恰好出现 1 次</b>的最短单元格文本」：纯数据驱动、不猜哪列是业务键；取不到唯一候选就<b>保持现状</b>（绝不静默编锚）。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">🚀 新增</span><ul>
         <li><code>anchor.pick_row_anchor(cells, table_cells)</code>：唯一最短单元格的<b>纯函数</b>选取（无浏览器），含负向红线（整表无唯一值 ⇒ 返回 <code>None</code>，绝不猜整行 / 第一列）</li>
@@ -2286,7 +2328,7 @@ python -m framework.cli run --help             ← 单个子命令：用法 + �
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.3</b>（2026-09-30）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.3.1</b>（2026-10-07）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
