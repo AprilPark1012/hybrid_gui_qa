@@ -5,7 +5,7 @@ AprilPark1012 2026-09-22 刷新的 R7 四条：
 
 执行顺序（**拍板口径：便宜先跑 + fail fast；编号 ≠ 执行顺序**）：
 
-  [0] gate_selfcheck      闸门自检 `tests/特性8-质量闸门体系/verify_demo_freshness.py`（~1s；**红则停手**）
+  [0] gate_selfcheck      闸门自检 `tests/特性9-质量闸门体系/verify_demo_freshness.py`（~1s；**红则停手**）
                           —— 先验「闸门自己」：它若坏了，(3) 的「新鲜」结论毫无意义，后面全建在沙子上
   [1] demo_freshness      (3) `tests/_helpers/demo_freshness.py --ensure --start-if-missing`
   [2] framework_selftest  (1) `pytest tests/ -q`（~30s，**不依赖 demo** —— 一类自测刻意与 demo 解耦）
@@ -135,7 +135,7 @@ def _verdict(rc: int, allow_skip: bool = False) -> str:
 
 def step_gate_selfcheck(py: str) -> tuple[str, int, str]:
     """[0] 闸门自身的判据（先验闸门自己再验别人）。"""
-    rc, tail = _run(py, ["tests/特性8-质量闸门体系/verify_demo_freshness.py"], timeout=300)
+    rc, tail = _run(py, ["tests/特性9-质量闸门体系/verify_demo_freshness.py"], timeout=300)
     return _verdict(rc), rc, tail
 
 
@@ -163,7 +163,7 @@ def step_e2e(py: str, *, skip_ai: bool, with_record: bool = False) -> tuple[str,
     subs: list[tuple[str, int]] = []
     logs: list[str] = []
 
-    args3 = ["tests/特性7-离线回放/verify_e2e_scenario3_cassette.py"] + (["--with-record"] if with_record else [])
+    args3 = ["tests/特性8-离线回放/verify_e2e_scenario3_cassette.py"] + (["--with-record"] if with_record else [])
     # ★发版门 = 严格级（2026-09-24 定稿）：要发出去的东西，录像必须**逐字**对得上，
     #   不接受"结构像、数据不同"的结构键兜底（日常二类则相反：容忍 + 告警 v）。
     os.environ["HYBRID_CASSETTE_STRICT"] = "1"

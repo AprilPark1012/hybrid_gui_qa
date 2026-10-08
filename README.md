@@ -1,6 +1,6 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.3.5**（2026-10-08）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
+> 当前版本 **V8.3.6**（2026-10-08）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
 > · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/) · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
 
 **一句话**：把 **Browser Use（AI 智能探索）** 和 **Playwright（确定性执行）** 组合成一套混合测试框架 ——
@@ -143,7 +143,7 @@ build_tools/  开发期工具：打包 · 培训页 · 录像体检/重录 · �
 tests/_helpers/  框架自验证：test_*（秒级、不需 demo/浏览器）+ 共享辅助
 tests/_runner/    特性自验证：verify_*（端到端、需 demo）+ run_verifications.py / run_acceptance.py 两个入口
 releases/     发行说明 RELEASE_NOTES_V*.md（变更日志的家）+ 交付包（包不入库）
-docs/         training.html 培训页（仓库里唯一的对外文档）
+docs/         training.html 培训页（对外文档）· feature_map.md 特性/子特性/用例映射表（自动生成，别手改）
 output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 + report.html，可清理）
 ```
 

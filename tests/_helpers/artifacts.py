@@ -9,7 +9,7 @@
     产物不存在 / 0 字节 / 明显残缺 -> 直接给一句人话 + 建议命令（`python -m framework.cli generate`）；
     产物正常 -> 照常返回文本，后续契约判据各判各的（原来是真问题的，还是真问题）。
 
-判据（一类，秒级，不需要 demo）见 `tests/特性8-质量闸门体系/test_env_adaptation.py`。
+判据（一类，秒级，不需要 demo）见 `tests/特性9-质量闸门体系/test_env_adaptation.py`。
 """
 from __future__ import annotations
 

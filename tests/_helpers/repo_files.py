@@ -1,7 +1,7 @@
 """取「仓库文件清单」的唯一入口 —— git 优先，非 git 环境**等效降级**（2026-09-22）。
 
 为什么需要它（AprilPark1012 2026-09-22 本地 Windows 验收实测出来的真 bug）：
-R1 判据（`tests/特性8-质量闸门体系/test_no_gate_coupling.py`）与 R9 判据（`tests/特性8-质量闸门体系/test_no_stale_paths.py`）
+R1 判据（`tests/特性9-质量闸门体系/test_no_gate_coupling.py`）与 R9 判据（`tests/特性9-质量闸门体系/test_no_stale_paths.py`）
 原先各自直接调 `git ls-files`。而**交付包解压目录不是 git 仓库** -> 在那里
 `git ls-files` 要么 exit 128（`check=True` 直接 CalledProcessError），要么返回空清单
 （判据自报「测试前提不成立」）-> 两条判据必红。

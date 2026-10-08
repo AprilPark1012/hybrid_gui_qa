@@ -151,7 +151,7 @@ def record_one(scen: Path) -> bool:
 
 def verify_scenario3() -> bool:
     print("\n  [run] 重录后体检：跑场景3（录像 <-> 当前场景是否匹配）")
-    r = run([PY, "tests/特性7-离线回放/verify_e2e_scenario3_cassette.py"], timeout=1800)
+    r = run([PY, "tests/特性8-离线回放/verify_e2e_scenario3_cassette.py"], timeout=1800)
     tail = "\n".join((r.stdout or "").splitlines()[-8:])
     print("   " + tail.replace("\n", "\n   "))
     if r.returncode != 0:
@@ -208,7 +208,7 @@ def main(argv: list[str]) -> int:
         return 1
     print(f"结论：[OK] 重录完成（{len(targets)} 个场景）")
     if not args.verify:
-        print("   建议接着跑场景3 体检确认：python tests/特性7-离线回放/verify_e2e_scenario3_cassette.py")
+        print("   建议接着跑场景3 体检确认：python tests/特性8-离线回放/verify_e2e_scenario3_cassette.py")
     return 0
 
 

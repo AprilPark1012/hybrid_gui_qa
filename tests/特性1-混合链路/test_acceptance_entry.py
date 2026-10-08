@@ -25,7 +25,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 ENTRY = REPO / "tests" / "_runner" / "run_acceptance.py"
-SCEN1 = REPO / "tests" / "特性7-离线回放" / "verify_e2e_scenario3_replay.py"
+SCEN1 = REPO / "tests" / "特性8-离线回放" / "verify_e2e_scenario3_replay.py"
 
 # 四项的稳定标识 —— **顺序即执行顺序**：(3) 闸门 → (1) 框架自测 → (4) E2E → (2) 特性自测。
 # [!] 这不是按编号排的（编号 ≠ 执行顺序）：AprilPark1012 2026-09-22 拍板「便宜先跑 + fail fast」——

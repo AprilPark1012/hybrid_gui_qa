@@ -58,7 +58,7 @@ REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "fra
 #   framework/<模块>.py → framework/tools/<层>/<模块>.py （V8.0 业务流程分层重构）
 #   training.html → docs/training.html    （2026-09-19 归位 docs/）
 # [!] 只影响**必需项审计**：新包一定按当前仓库布局打包 ->「两个位置都没有」时照样报缺项，
-#    别名绝不会放过真缺项（负向判据见 tests/特性8-质量闸门体系/test_pack_release.py）。
+#    别名绝不会放过真缺项（负向判据见 tests/特性9-质量闸门体系/test_pack_release.py）。
 LEGACY_ALIASES = {
     # 键 = 当前 REQUIRED 路径；值 = 历史形态候选（结构变更前的包里可能是这些）
     "build_tools/build_html.py": ("tools/build_html.py", "build_html.py"),
@@ -87,7 +87,7 @@ def _required_hit(req: str, rel) -> tuple[bool, str | None]:
     return False, None
 
 
-# 生成物必须带的接线（与 tests/特性8-质量闸门体系/test_artifacts_health.py 同口径）
+# 生成物必须带的接线（与 tests/特性9-质量闸门体系/test_artifacts_health.py 同口径）
 REQUIRED_CONFTEST = ("_act", "_goto", "_reset_target_data", "_assert_text", "_assert_value")
 
 
