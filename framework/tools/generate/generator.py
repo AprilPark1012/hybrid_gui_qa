@@ -883,9 +883,32 @@ def _scenario_auth_of(rel_path: str) -> dict:
         return {}
 
 
+def _pages_to_probe(gaps: set[str],
+                    declared_pages: list[tuple[str, str]]) -> tuple[bool, list[tuple[str, str]]]:
+    """按「**真正缺的语义名**」推导现场探测的范围（V8.3.7 性能治理 C · 2026-10-08）。
+
+    为什么要有它：现场探测的入口只判一次缺口（`if live_probe or missing:`），可进去之后
+    原来把**所有**声明页都探一遍 —— 实测 7 页 260.9s，其中大量页面早被 element_map / probe
+    快照覆盖，**探了也是白探**（发票列表页一页就 132s，占一半）。这里把「该探哪几页」收敛成
+    一个**可测的纯函数**：口径一处定义，调用方不许自己 if 一遍。
+
+    语义名两种形态（与框架其它地方同口径）：
+      · 带页名后缀 `控件@页名` —— 由**声明页探测**补：缺哪个页名就只探哪个页；
+      · 不带后缀的裸名 —— 由**单页惯例探测**（TARGET_URL）补。
+
+    [!] 与场景解耦：本函数不认识任何具体页面名/语义名，只看 `@` 分隔与调用方给的声明列表。
+
+    返回 `(是否需要单页惯例探测, 需要探测的声明页)`；后者保持 declared_pages 的子序列顺序
+    （可复现）且天然去重。
+    """
+    need_single = any("@" not in g for g in gaps)
+    want = {g.rsplit("@", 1)[1] for g in gaps if "@" in g}
+    return need_single, [p for p in declared_pages if p[0] in want]
+
+
 def _probe_declared_pages(pages: list[tuple[str, str]],
-                          auth: dict | None = None) -> tuple[dict, set[str], dict[str, set[str]]]:
-    """按用例声明的页面逐页现场探测（P3 跨页补齐），返回 (loc_map, ambiguous_names, dup_pages)。
+                          auth: dict | None = None) -> tuple[dict, set[str], dict[str, set[str]], dict]:
+    """按用例声明的页面逐页现场探测（P3 跨页补齐），返回 (loc_map, ambiguous_names, dup_pages, it_map)。
 
     · 一个浏览器 + 一个 context 顺序 goto（本机 1.87G 无 swap，绝不为多页多开/并发）；
     · 每页做基础探测 + 弹窗补充（与单页老路径同一套逻辑）；
@@ -920,19 +943,23 @@ def _probe_declared_pages(pages: list[tuple[str, str]],
                 pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
             except Exception:                                      # noqa: BLE001
                 pg.wait_for_timeout(500)
-            items = probe_page(pg, page_name=pname or None)
-            # 2026-09-14：改用与 explore **同一套**弹窗/弹层探测（含嵌套 picker 层，探完会关掉）。
-            # 以前这里自己点一遍「新建」按钮、只探一层、而且**不关弹窗**：
-            #   (1) 「客户弹层里选一行」这类控件在 generate 的现场补齐里永远看不到
-            #      -> 手写用例报「元素未映射」（实测 2026-09-14 踩到）；
-            #   (2) 弹窗不关，下一页的探测是在"弹窗盖着"的状态下做的，结果不可信。
-            # 2026-09-18 批次 2（S1）：合并改走 `_merge_items`（合并后统一重命名），
-            # 与单页路径、explore 路径**同源** —— 否则同一页在两条路径上会产出两套名字。
-            from framework.tools.explore.explorer import _try_collect_modal_items, _merge_items
-            layer = _try_collect_modal_items(pg, items)
-            for it in layer:
-                it["page"] = pname or ""
-            merged_list = _merge_items(items, layer)
+            # V8.3.7（2026-10-08 事故修复）：**改走唯一入口** scan_page()。
+            # 原来这里手写「基础探测 + 弹窗/弹层」两步，**漏了「可展开容器」那一步**
+            # （而 explore 侧两条路径都有）—— 后果：干净环境下拿不到右上角角色菜单里的控件
+            # （如「切换为订单管理员@合同列表页」）-> 映射质量闸拒绝产出任何产物。
+            # 收敛成单一入口后，三条路径共享同一份「探测包含哪些步骤」的知识。
+            #
+            # 历史沿革（保留原因，别再退回手写）：
+            #   2026-09-14 改用与 explore 同一套弹窗/弹层探测（含嵌套 picker 层，探完会关掉）——
+            #     此前这里自己点一遍「新建」按钮、只探一层、且**不关弹窗**：
+            #     (1)「客户弹层里选一行」这类控件永远看不到 -> 手写用例报「元素未映射」；
+            #     (2) 弹窗不关，下一页的探测是在"弹窗盖着"的状态下做的，结果不可信。
+            #   2026-09-18 批次 2（S1）：合并改走 `_merge_items`（合并后统一重命名），
+            #     与单页路径、explore 路径**同源** —— 否则同一页在两条路径上会产出两套名字。
+            from framework.tools.probe.page_scan import scan_page
+            _sc = scan_page(pg, page_name=pname or None, tag_page=True)   # 基础+可展开容器+弹窗/弹层+合并
+            layer = _sc.modal_items
+            merged_list = _sc.items
             merged = {i["semantic_name"]: i for i in merged_list}
             print(f"[generate] 现场探测 [{pname or '页面1'}] {url} → {len(merged)} 个控件"
                   f"（含弹窗/弹层 {len(layer)} 个）")
@@ -1164,46 +1191,61 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
         print(f"[generate] [key] 场景声明了登录前置（{_decl_auth.get('username')}）-> 现场探测将带登录态")
     probe_error: str | None = None
     if live_probe or missing:
+        # C（V8.3.7 性能治理）：把「该探哪几页」由**真正缺的语义名**推导出来（口径见 `_pages_to_probe`）。
+        # `--live-probe` 是显式要求全量，照旧全探；否则只探缺口所属的页、且只在缺裸名时才走单页探测。
+        if live_probe:
+            _need_single, _pages_need = True, list(declared_pages)
+        else:
+            _need_single, _pages_need = _pages_to_probe(set(missing), declared_pages)
+        if not _need_single or len(_pages_need) < len(declared_pages):
+            print(f"[generate] [C] 缺口 {len(missing)} 项 -> 单页探测{'跑' if _need_single else '跳过'}，"
+                  f"声明页只探 {len(_pages_need)}/{len(declared_pages)} 页")
         try:
             live: dict[str, str] = {}
             _LIVE_IT.clear()                   # 见模块级注释：跨作用域传递
             live_it = _LIVE_IT                 # 同一对象：下面的 setdefault/update 都写进它
-            # (1) 单页惯例探测（TARGET_URL + 弹窗补充）—— **始终执行**，保证老用例的原始名不受跨页影响
-            with sync_playwright() as p:
-                b = p.chromium.launch(**launch_opts(headless=True))
-                ctx = b.new_context()
-                # P22 批 5：**登录前置**（与 explore / 产物侧同源）。
-                # 为什么必须：`TARGET_URL` 是根路径，demo 加了登录后它就是**登录页** ——
-                # 不登录 -> 这段"补缺口"探测只探到登录页的 7 个控件 -> 缺口照样映射不上
-                #（原先连 context 都没有，`b.new_page()` 根本无从注入 localStorage）。
-                _ensure_login_for(ctx, TARGET_URL, _decl_auth)   # P22 批 5：统一入口
-                pg = ctx.new_page()
-                pg.goto(TARGET_URL, wait_until="domcontentloaded")
-                # P22 批 3：**不用 networkidle** —— login.html 上它必超时 30s
-                #（页面 fetch 挂着永不 idle，实测），改用页面自己的就绪契约 + 有界缓冲。
-                try:
-                    pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
-                except Exception:                                  # noqa: BLE001
-                    pg.wait_for_timeout(500)
-                base_items = probe_page(pg)
-                # 弹窗/弹层补充：**与 explore 共用同一套探测**（_try_collect_modal_items —— 含嵌套
-                # picker 层、探完逐层关闭、无名「...」按钮也能识别）。
-                # [!] 2026-09-17 实测的坑：这里原来自己点一遍「新建」按钮、**只探一层**
-                # -> 弹层里逐行的「选择」（如 选择@<客户名>）永远补不上 -> 手写用例报「元素未映射」，
-                # 整个 generate 被映射质量闸拦下（订单场景一进来就把既有手写用例集体打红）。
-                # [!] 2026-09-18 批次 2（S1）：合并必须走 `_merge_items`（**合并后统一重命名**）——
-                # 旧写法「基础页一轮命名 + 弹层一轮命名，再按名字 setdefault 合并」会让
-                # 「某一轮里恰好唯一」的控件独占裸名 -> 用例引用裸名就落到**另一个**控件上（静默点错）。
-                from framework.tools.explore.explorer import _try_collect_modal_items, _merge_items
-                merged_items = _merge_items(base_items, _try_collect_modal_items(pg, base_items))
-                _record_conflict_bases(merged_items)
-                for it in merged_items:
-                    live.setdefault(it["semantic_name"], _semantic_to_locator_expr(it))
-                    live_it.setdefault(it["semantic_name"], it)
-                b.close()
+            # (1) 单页惯例探测（TARGET_URL + 弹窗补充）—— **只在缺口含裸名时**才跑。
+            # C（V8.3.7 性能治理）：缺口全是 `x@页名` 时裸名一个都不缺，这段纯属浪费
+            #（实测：大页上每页十几秒 = probe 全页重扫 + 逐候选点开弹窗）。
+            if _need_single:
+                with sync_playwright() as p:
+                    b = p.chromium.launch(**launch_opts(headless=True))
+                    ctx = b.new_context()
+                    # P22 批 5：**登录前置**（与 explore / 产物侧同源）。
+                    # 为什么必须：`TARGET_URL` 是根路径，demo 加了登录后它就是**登录页** ——
+                    # 不登录 -> 这段"补缺口"探测只探到登录页的 7 个控件 -> 缺口照样映射不上
+                    #（原先连 context 都没有，`b.new_page()` 根本无从注入 localStorage）。
+                    _ensure_login_for(ctx, TARGET_URL, _decl_auth)   # P22 批 5：统一入口
+                    pg = ctx.new_page()
+                    pg.goto(TARGET_URL, wait_until="domcontentloaded")
+                    # P22 批 3：**不用 networkidle** —— login.html 上它必超时 30s
+                    #（页面 fetch 挂着永不 idle，实测），改用页面自己的就绪契约 + 有界缓冲。
+                    try:
+                        pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
+                    except Exception:                                  # noqa: BLE001
+                        pg.wait_for_timeout(500)
+                    # 弹窗/弹层补充：**与 explore 共用同一套探测**（_try_collect_modal_items —— 含嵌套
+                    # picker 层、探完逐层关闭、无名「...」按钮也能识别）。
+                    # [!] 2026-09-17 实测的坑：这里原来自己点一遍「新建」按钮、**只探一层**
+                    # -> 弹层里逐行的「选择」（如 选择@<客户名>）永远补不上 -> 手写用例报「元素未映射」，
+                    # 整个 generate 被映射质量闸拦下（订单场景一进来就把既有手写用例集体打红）。
+                    # [!] 2026-09-18 批次 2（S1）：合并必须走 `_merge_items`（**合并后统一重命名**）——
+                    # 旧写法「基础页一轮命名 + 弹层一轮命名，再按名字 setdefault 合并」会让
+                    # 「某一轮里恰好唯一」的控件独占裸名 -> 用例引用裸名就落到**另一个**控件上（静默点错）。
+                    from framework.tools.probe.page_scan import scan_page
+                    # V8.3.7：走唯一入口（基础 + **可展开容器** + 弹窗/弹层 + 合并）。
+                    # 以前这里手写「基础 + 弹窗」两步、**漏了可展开容器** -> 每个页面上藏在隐藏菜单
+                    # 里的控件（如右上角「切换为XX管理员」）永远补不上，手写用例集体报「元素未映射」。
+                    _sc = scan_page(pg)
+                    merged_items = _sc.items
+                    _record_conflict_bases(merged_items)
+                    for it in merged_items:
+                        live.setdefault(it["semantic_name"], _semantic_to_locator_expr(it))
+                        live_it.setdefault(it["semantic_name"], it)
+                    b.close()
             # (2) 跨页用例：额外按声明的页面逐页探测（补 `原名@页名` 形式的跨页元素）
-            if declared_pages:
-                page_live, amb, dup_pages, _it_map = _probe_declared_pages(declared_pages, auth=_decl_auth)
+            if _pages_need:
+                page_live, amb, dup_pages, _it_map = _probe_declared_pages(_pages_need, auth=_decl_auth)
                 for k, v in page_live.items():
                     live.setdefault(k, v)
                 live_it.update(_it_map)
@@ -1216,12 +1258,12 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             if live_probe:
                 loc_map.update(live)
                 src_parts.append(f"现场probe(强制全量, {len(live)} 项)"
-                                 + (f"，跨页 {len(declared_pages)} 页" if declared_pages else ""))
+                                 + (f"，跨页 {len(_pages_need)}/{len(declared_pages)} 页" if declared_pages else ""))
             else:
                 filled = {k: v for k, v in live.items() if k in missing}
                 loc_map.update(filled)
                 src_parts.append(f"现场probe补齐 {len(filled)}/{len(missing)} 项"
-                                 + (f"，跨页 {len(declared_pages)} 页" if declared_pages else ""))
+                                 + (f"，跨页 {len(_pages_need)}/{len(declared_pages)} 页" if declared_pages else ""))
         except Exception as e:
             probe_error = f"{type(e).__name__}: {e}"
             src_parts.append(f"现场probe失败({type(e).__name__})")

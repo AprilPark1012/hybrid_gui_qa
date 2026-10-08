@@ -183,18 +183,16 @@ def cmd_probe():
         b = p.chromium.launch(**launch_opts(headless=True))
         pg = b.new_page()
         pg.goto(TARGET_URL)
-        items = probe_page(pg)
-        # P22（2026-09-29）：**可展开容器**（隐藏菜单/下拉）补探 —— 不点开就永远探不到里面的项
-        # （典型形态 = demo 右上角角色菜单 #nu-menu，初始 display:none -> 切角色步骤以前无控件可引用）。
-        # 点开后自动关掉：探测是**只读动作**，框架开的必须由框架关。
-        menu_items = expand_and_collect(pg, items)
-        for it in menu_items:
+        from framework.tools.probe.page_scan import scan_page   # V8.3.7：探测步骤唯一入口
+        _sc = scan_page(pg)          # 基础 + 可展开容器（隐藏菜单/下拉）+ 弹窗/弹层 + 合并
+        # 标记来源（产物里保留这个字段，供人工核对哪些项来自展开/弹层）：
+        #   menu_items / modal_items 与 items 里的项是同一批 dict（_merge_items 只做浅拷贝 + 统一重命名），
+        #   所以这里原地打标记，最终落到 output/element_maps/probe_*.json 里。
+        for it in _sc.menu_items:
             it["source"] = "menu"
-        items = _merge_items(items, menu_items)
-        layer_items = _try_collect_modal_items(pg, items)      # 弹窗 + 嵌套弹层
-        for it in layer_items:
+        for it in _sc.modal_items:
             it["source"] = "layer"
-        items = _merge_items(items, layer_items)
+        items = _sc.items
         b.close()
     out = config.ELEMENT_MAP_DIR / f"probe_{_now()}.json"
     out.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")

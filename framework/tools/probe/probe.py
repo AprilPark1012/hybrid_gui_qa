@@ -23,6 +23,40 @@ INTERACTIVE_SELECTOR = (
     "[role=menuitem], [role=tab]"
 )
 
+# ---- 增量探测用：一次 evaluate 拿回「可见交互元素的 key -> 索引」------------------------------
+# 为什么需要（V8.3.7 性能治理 D3）：`expand_and_collect` 的等待循环原先只要「信号变了」就整页
+# 重探一遍，而 `probe_page` 对**每个元素**要打 ~13 次 CDP 往返（实测 212 元素的页面 ≈ 60s）。
+# 点开一个菜单往往只新增 4 个控件，却付出整页重探的代价 -> expand 成为最大单项（118s/七页）。
+# 这里用**一次**往返拿到「索引对齐的 key 表」，循环据此算出**新出现的索引**，只探那一小撮。
+# [!] 索引口径：`document.querySelectorAll(INTERACTIVE_SELECTOR)` 与
+#     `page.locator(INTERACTIVE_SELECTOR).nth(i)` 顺序一致 —— 所以 JS 侧直接回传原始索引 i
+#     （跳过不可见的元素，但**保留原始 i**，绝不能压缩索引，否则两边错位）。
+_JS_KEY_MAP = """(sel) => {  /* KEY_MAP_ONLY: light index map for incremental probe */
+  const els = document.querySelectorAll(sel);
+  const out = {};
+  for (let i = 0; i < els.length; i++) {
+    const e = els[i];
+    const r = e.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) continue;
+    const txt = (e.innerText || e.value || e.getAttribute('aria-label') || '').trim().slice(0, 60);
+    out[[e.tagName, e.id || '', e.getAttribute('name') || '',
+         e.getAttribute('data-testid') || '', txt].join('|')] = i;
+  }
+  return out;
+}"""
+
+
+def visible_key_map(page: Page) -> dict[str, int]:
+    """一次 evaluate 拿回「可见交互元素的 稳定key -> 列表索引」。
+
+    用途见 `_JS_KEY_MAP` 上方注释（增量探测）。**取不到时返回空 dict**：调用方据此退化为
+    「照常全页探测」，绝不因为拿不到信号而漏探控件。
+    """
+    try:
+        return page.evaluate(_JS_KEY_MAP, INTERACTIVE_SELECTOR) or {}
+    except Exception:                                              # noqa: BLE001
+        return {}
+
 # P16：往上看几层祖先来找「可锚定容器」（表格/弹层/表单/区块）—— 8 层足够覆盖常见结构，
 # 再看更外面只会拿到 body/html（没有锚点价值），白花时间。
 ANCESTOR_MAX_DEPTH = 8
@@ -414,7 +448,8 @@ def assign_semantic_names(items: list[dict], max_len: int = 26) -> None:
         seen.add(name)
 
 
-def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -> list[dict]:
+def probe_page(page: Page, max_items: int = 200, page_name: str | None = None,
+               *, only_indexes: set[int] | None = None) -> list[dict]:
     """抓取当前页面的可交互元素语义清单。
 
     返回 [ {semantic_name, tag, role, name, placeholder, label, test_id, text,
@@ -438,6 +473,10 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None) -
     locators = page.locator(INTERACTIVE_SELECTOR)
     n = min(locators.count(), max_items)
     for i in range(n):
+        # D3（V8.3.7 性能治理）：只探指定索引 —— 增量重扫走这里，别把整页重探一遍。
+        # None = 全探（默认，与改造前逐字段一致）；空集合 = 一个都不探（调用方据此跳过）。
+        if only_indexes is not None and i not in only_indexes:
+            continue
         loc = locators.nth(i)
         if not _visible(page, loc):
             continue

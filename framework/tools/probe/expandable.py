@@ -25,6 +25,39 @@ _INTERACTIVE = ("button, input, select, textarea, a[href], "
                 "[role=button], [role=link], [role=checkbox], [role=radio], "
                 "[role=menuitem], [role=tab]")
 
+# 轻量信号：**只数**「当前可见的可交互元素」个数 —— 不取文本、不算锚点、不取行内路径，
+# 因此比 `probe_page` 便宜得多。用途见 `_light_signal` 的注释（2026-10-08 超时事故的修法）。
+_JS_COUNT = """() => {  /* COUNT_ONLY: light signal for expandable-wait */
+  const INTER = '%s';
+  let n = 0;
+  for (const el of document.querySelectorAll(INTER)) {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) n++;
+  }
+  return n;
+}""" % _INTERACTIVE
+
+# 展开后的轮询间隔（毫秒）。与 settle 的倍数关系决定最多轮询几次。
+_POLL_MS = 200
+
+
+def _light_signal(page) -> int:
+    """廉价信号：当前**可见**的可交互元素个数。
+
+    为什么要它（2026-10-08 实测事故）：展开的等待循环原先**每轮都调 `probe_page`**（全页重扫、
+    要取文本/算容器锚点/算行内相对路径）。对「点了没反应」的候选会跑满 `settle_s/0.2` 轮，
+    一页最多 3 个候选（`max_opens`）、跨页 7 页 -> `generate` 实测从 ~59s 涨到 **866s**。
+
+    修法：轮询只问这个**计数**；**只有计数变了**（说明页面上真有新东西出现，例如菜单从
+    `display:none` 变可见）才去做一次昂贵的全页重扫。取不到信号时返回 -1（调用方据此退化为原行为，
+    绝不因为"信号坏了"而漏探）。
+    """
+    try:
+        return int(page.evaluate(_JS_COUNT))
+    except Exception:                                                # noqa: BLE001
+        return -1
+
+
 # 一次 evaluate 扫全页：找「隐藏 + 内含交互控件」的容器，并把它的**兄弟节点**描述带回来。
 # 纯数据、不含任何 CSS selector（本项目铁律：不给 AI 猜 CSS 的机会；这里的定位由框架自己确定性地做）。
 _JS_SCAN = """() => {
@@ -123,7 +156,7 @@ def expand_and_collect(page: Page, base_items: list[dict], *, enabled: bool = Tr
     """
     if not enabled:
         return []
-    from framework.tools.probe.probe import probe_page
+    from framework.tools.probe.probe import probe_page, visible_key_map
 
     fresh: list[dict] = []
     seen = _names(base_items)
@@ -150,6 +183,18 @@ def expand_and_collect(page: Page, base_items: list[dict], *, enabled: bool = Tr
                   f"但触发器没有 id -> 本版不展开（不猜选择器，如实少一份清单）")
             continue
 
+        # ---- D3 的关键前提（2026-10-08 实测补正，血泪）----
+        # `base_items` 已经把「点开前可见的元素」完整探过一遍了 -> 首轮**绝不该**把整页当
+        # 「新元素」重探（那等于白付一次全页代价：实测发票列表页 212 元素 ≈ 60s，
+        # expand 单项 65.4s 几乎全是这笔钱）。
+        # [!] 基线必须在 **click 之前** 取！曾经把它放在 click 之后，结果：
+        #     基线 = 点开后的 key 集合 -> 差集恒为空 -> 循环一路 continue -> 超时走兜底全探，
+        #     白花的 13.7s 就是这么来的（探针插桩实测：14 次 key 表查询全是 78，一次全探）。
+        try:
+            before_keys = set(visible_key_map(page))
+        except Exception:                                            # noqa: BLE001
+            before_keys = set()
+
         loc = page.locator(f"#{opener_id}").first
         try:
             loc.click(timeout=3000)
@@ -159,17 +204,52 @@ def expand_and_collect(page: Page, base_items: list[dict], *, enabled: bool = Tr
             continue
 
         # ---- 有界等待：探到新控件就走（不固定 sleep）----
+        # 性能治理两刀（2026-10-08 实测 expand 118s/七页，最大单项）：
+        #   A：先把「整页重扫」用廉价信号挡一道（见下）；
+        #   D3：真要点扫的时候，**只探新出现的元素**（`only_indexes`）—— 点开一个菜单通常只新增
+        #       几个控件，原先却把整页（212 元素 ≈ 13 次往返/元素）重探一遍，代价被页面规模放大。
+        # 事故背景：原先每轮都 `probe_page`，对「点了没反应」的候选会跑满 settle_s/0.2 轮；
+        # 一页最多 3 个候选、跨页 7 页 -> generate 实测 866s（原 ~59s）。
         deadline = time.time() + settle_s
         got: list[dict] = []
+        seen_keys: set[str] = set(before_keys)
+        scanned_any = False
         while time.time() < deadline:
-            page.wait_for_timeout(200)
+            page.wait_for_timeout(_POLL_MS)
+            kmap = visible_key_map(page)          # 一次廉价往返；取不到 -> {} 退化为全页探测
+            if not kmap:
+                # 拿不到索引表（老页面/异常）-> 保守：照本轮全页探一次后收工，绝不满负荷空转
+                if scanned_any:
+                    break
+                scanned_any = True
+                try:
+                    items = probe_page(page)
+                except Exception:                                    # noqa: BLE001
+                    break
+                got = [it for it in items if (it.get("semantic_name") or "") not in seen]
+                if got:
+                    break
+                continue
+            new_keys = set(kmap) - seen_keys
+            if not new_keys:
+                continue                          # 没有新 key -> 这一轮不必探测（A 的门）
+            seen_keys |= set(kmap)
+            scanned_any = True
             try:
-                items = probe_page(page)
+                # D3：只探新出现的索引 —— 已探过的不再重复付 ~13 次往返/元素的代价
+                items = probe_page(page, only_indexes={kmap[k] for k in new_keys})
             except Exception:                                        # noqa: BLE001
                 break
             got = [it for it in items if (it.get("semantic_name") or "") not in seen]
             if got:
                 break
+        # 兜底：整段等待里一次都没扫过 -> 结束前补扫一次，绝不因优化而漏探。
+        if not scanned_any:
+            try:
+                items = probe_page(page)
+                got = [it for it in items if (it.get("semantic_name") or "") not in seen]
+            except Exception:                                        # noqa: BLE001
+                got = []
         if got:
             for it in got:
                 seen.add(it.get("semantic_name") or "")

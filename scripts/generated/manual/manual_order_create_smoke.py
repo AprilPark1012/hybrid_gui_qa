@@ -57,31 +57,31 @@ def test_manual_order_create_smoke(page, ctx):
     _log(page, "goto", f"等价直达新建订单页并带入合同 HT-1001")
 
     # step 5: 填写订单名称
-    _act(page, "fill", semantic='订单名称@新建订单页', primary=lambda p: p.get_by_role("textbox", name="订单名称"), value=_data('fill_0', ctx))
+    _act(page, "fill", semantic='订单名称@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*订单名称").locator("td").nth(1).get_by_role("textbox"), value=_data('fill_0', ctx))
     _log(page, "fill", f"填写订单名称")
 
     # step 6: 业务单元选第一行
-    _act(page, "select", semantic='业务单元@新建订单页', primary=lambda p: p.get_by_role("combobox", name="业务单元"), index=0)
+    _act(page, "select", semantic='业务单元@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*业务单元").locator("td").nth(1).get_by_role("combobox"), index=0)
     _log(page, "select", f"业务单元选第一行")
 
     # step 7: 管理单元选第一行
-    _act(page, "select", semantic='管理单元@新建订单页', primary=lambda p: p.get_by_role("combobox", name="管理单元"), index=0)
+    _act(page, "select", semantic='管理单元@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*管理单元").locator("td").nth(1).get_by_role("combobox"), index=0)
     _log(page, "select", f"管理单元选第一行")
 
     # step 8: 帐套选第一行
-    _act(page, "select", semantic='帐套@新建订单页', primary=lambda p: p.get_by_role("combobox", name="帐套"), index=0)
+    _act(page, "select", semantic='帐套@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*帐套").locator("td").nth(1).get_by_role("combobox"), index=0)
     _log(page, "select", f"帐套选第一行")
 
     # step 9: 订单类型选第一项
-    _act(page, "select", semantic='订单类型@新建订单页', primary=lambda p: p.get_by_role("combobox", name="订单类型"), index=0)
+    _act(page, "select", semantic='订单类型@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*订单类型").locator("td").nth(1).get_by_role("combobox"), index=0)
     _log(page, "select", f"订单类型选第一项")
 
     # step 10: 客户选第一个
-    _act(page, "select", semantic='客户@新建订单页', primary=lambda p: p.get_by_role("combobox", name="客户"), index=0)
+    _act(page, "select", semantic='客户@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*客户").locator("td").nth(1).get_by_role("combobox"), index=0)
     _log(page, "select", f"客户选第一个")
 
     # step 11: 销售员选第一个
-    _act(page, "select", semantic='销售员@新建订单页', primary=lambda p: p.get_by_role("combobox", name="销售员"), index=0)
+    _act(page, "select", semantic='销售员@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*销售员").locator("td").nth(1).get_by_role("combobox"), index=0)
     _log(page, "select", f"销售员选第一个")
 
     # step 12: 保存新建订单（id=btn-o-submit）

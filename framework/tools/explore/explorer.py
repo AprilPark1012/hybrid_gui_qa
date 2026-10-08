@@ -386,11 +386,11 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
                 pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
             except Exception:
                 pg.wait_for_timeout(500)
-            base = probe_page(pg)
-            from framework.tools.probe.expandable import expand_and_collect   # P22：可展开容器
-            menu_items = expand_and_collect(pg, base)            # 点开隐藏菜单再探一轮（自动关掉）
-            modal_items = _try_collect_modal_items(pg, base + menu_items)   # 点开弹窗补表单控件
-            page_items = _merge_items(_merge_items(base, menu_items), modal_items)
+            from framework.tools.probe.page_scan import scan_page   # V8.3.7：探测步骤唯一入口
+            _sc = scan_page(pg)                                  # 基础 + 可展开容器 + 弹窗/弹层 + 合并
+            menu_items = _sc.menu_items
+            modal_items = _sc.modal_items
+            page_items = _sc.items
             dom_ctx = _collect_dom_context(pg)                   # 富 DOM 上下文（索引/可见性/状态）
             row_fields = probe_row_fields(pg)                    # 行内列清单（供 AI 做「行内定位」）
             b.close()
@@ -479,15 +479,11 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                 # P22 批 5：该页声明的**前置动作**（弹层要先选合同、行控件要先点新增行）
                 # —— 不做前置，这些控件一次都探不到，AI 也就拿不到它们的语义名。
                 _run_pre_actions(pg, spec.get("pre"), spec.get("name", ""))
-                base = probe_page(pg, page_name=spec["name"])
-                from framework.tools.probe.expandable import expand_and_collect   # P22：可展开容器
-                menu_items = expand_and_collect(pg, base)     # 点开隐藏菜单再探一轮（自动关掉）
-                for it in menu_items:
-                    it["page"] = spec["name"]
-                modal_items = _try_collect_modal_items(pg, base + menu_items)
-                for it in modal_items:
-                    it["page"] = spec["name"]
-                merged_one = _merge_items(_merge_items(base, menu_items), modal_items)
+                from framework.tools.probe.page_scan import scan_page   # V8.3.7：探测步骤唯一入口
+                _sc = scan_page(pg, page_name=spec["name"], tag_page=True)   # 基础+可展开容器+弹窗/弹层+合并
+                menu_items = _sc.menu_items
+                modal_items = _sc.modal_items
+                merged_one = _sc.items
                 per_page.append((spec["name"], merged_one))
                 for d in _collect_dom_context(pg):
                     d["page"] = spec["name"]
