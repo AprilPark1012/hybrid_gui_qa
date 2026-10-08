@@ -9,7 +9,7 @@
 | 特性6-自愈闭环Healer | [skip] **零判据** | —（未提供日志） | [skip] **UNVERIFIED**（有实现、无判据） |
 | 特性7-并发与资源安全 | [OK] 27 | —（未提供日志） | [OK] |
 | 特性8-离线回放 | [OK] 42 | —（未提供日志） | [OK] |
-| 特性9-质量闸门体系 | [NG] 338 过 / **2 红** | —（未提供日志） | [NG] 有红 |
+| 特性9-质量闸门体系 | [OK] 340 | —（未提供日志） | [OK] |
 
-**一类合计**：688 passed / 2 failed（失败：test_version_matches_single_source, test_readme_points_to_release_notes）
+**一类合计**：690 passed / 0 failed
 **未验证特性（必须显式列出）**：特性6-自愈闭环Healer
