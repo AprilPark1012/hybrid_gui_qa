@@ -60,7 +60,7 @@ python -m demo.app         # http://localhost:8000：合同/订单列表页 + �
 ```bash
 python -m framework.cli all --workers 2       # probe → generate → run 一条龙（确定性，零 token）
 python -m framework.cli run --debug           # 调试开关：有屏幕弹浏览器；没屏幕录视频 + 逐步截图
-python -m framework.cli run --case ai_orders_invoice_full_lifecycle_140528   # 只跑指定用例（--case 可重复）
+python -m framework.cli run --case <case_id>          # 只跑指定用例（--case 可重复；case_id = cases/ 里的文件名）
 python -m framework.cli explore --ai --scenario "在搜索框输入'1005'点搜索，确认出现 HT-1005"
                                               # AI 链路：自然语言 → cases/<场景id>/ai_*.json（落盘后默认试跑）
 python -m framework.cli prune --dry-run       # 归档保留（log/ 与 output/verify/ 按 30 个 ∪ 7 天清理）
@@ -76,11 +76,11 @@ python tests/_runner/run_verifications.py             # ② 端到端特性验�
 python tests/_runner/run_acceptance.py                # ③ 四项验收一条命令（闸门 → 新鲜度 → 自测 → E2E → 特性）
 ```
 
-⚠️ **跑那条 AI 端到端用例（`ai_orders_invoice_full_lifecycle_140528`）必须带 `HYBRID_CASE_TIMEOUT=600`**：
+⚠️ **跑那条 AI 端到端用例（`ai_orders_invoice_full_lifecycle_<时间戳>`）必须带 `HYBRID_CASE_TIMEOUT=600`**：
 
 ```bash
 HYBRID_CASE_TIMEOUT=600 HYBRID_STRICT_LOCATE=1 \
-  python -m framework.cli run --case ai_orders_invoice_full_lifecycle_140528
+  python -m framework.cli run --case ai_orders_invoice_full_lifecycle_<时间戳>
 ```
 
 **为什么**：该用例含 **150 秒真等待**（等订单自动关闭并落库，是 demo 的真实状态流转，不是卡住）。

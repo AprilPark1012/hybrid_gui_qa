@@ -909,6 +909,149 @@ def _wait_after_action(page) -> None:
     return wait_after_action(page)
 
 
+# ===== 动作后置校验（post-condition）：动作"做了" != "生效了" =====================
+# 为什么需要（2026-10-10 实测踩到；代价 = 8 分钟 E2E 跑空 + 磁盘取证才定位）：
+#   demo 详情页有一道业务前置 —— 页面有未保存修改时点「提交」**不发请求、不报错**，
+#   只把原因写进状态行（order_detail.html: `if (this.dirty) { status='...'; return; }`）。
+#   而 `_act` 只记「动作执行了」=> 用例一路"成功"跑到下游断言才炸，表现成
+#   「等不到某个状态」，根因被埋了三层（先怀疑等待时长 -> 再怀疑取数方式 -> 才发现动作从未生效）。
+# 口径（与业务解耦，框架零业务词）：
+#   · 只对**业务动词**点击校验（提交/保存/删除/确认...）—— 表可配 `HYBRID_BIZ_VERBS` 追加；
+#   · 两条判据：R2 = 页面提示区出现**拒绝语义**文本（最强、最直接）；R1 = 无导航且无写请求；
+#   · 默认**只留痕**（打印信号 + **原样回读页面提示文本**，让根因一眼可见）；
+#     `HYBRID_STRICT_EFFECT=1` 时 **只让 R2 判失败**（R1 有误伤风险，遵循"宁漏不误伤"）；
+#   · 提示区选择器 / 拒绝词 / 业务动词 全部**可配置**，不写死任何具体 id 与业务名。
+_BIZ_VERBS = ("提交", "保存", "删除", "确认", "确定", "更新", "关闭", "启用", "禁用",
+              "submit", "save", "delete", "confirm", "update", "close", "apply")
+_REFUSE_HINTS = ("请先", "未保存", "不能", "无法", "不允许", "不足", "失败", "错误", "无效",
+                 "请选择", "请填写", "必填", "至少",
+                 "please save", "unsaved", "cannot", "not allowed", "invalid", "required")
+# [!] **class 与 id 都要覆盖**（2026-10-10 实测踩过）：demo 的拒绝文案落在 `#detail-status`
+#     （id），而第一版候选只有 `[class*=status]` -> count=0 -> 页面明明报了原因却抓不到。
+_HINT_SELECTORS = ("[role=alert]", "[role=status]", ".toast", "[data-status]", "[data-hint]",
+                   "[class*=status]", "[class*=tip]", "[class*=hint]", "[class*=msg]",
+                   "[class*=error]", "[class*=notice]",
+                   "[id*=status]", "[id*=tip]", "[id*=hint]", "[id*=msg]",
+                   "[id*=notice]", "[id*=error]")
+
+
+def _env_csv(name, sep=","):
+    return [x.strip() for x in (os.environ.get(name, "") or "").split(sep) if x.strip()]
+
+
+def _effect_enabled():
+    return (os.environ.get("HYBRID_EFFECT_CHECK", "1") or "1").strip() != "0"
+
+
+def _effect_strict():
+    return (os.environ.get("HYBRID_STRICT_EFFECT", "0") or "0").strip() == "1"
+
+
+def _biz_verbs():
+    return tuple(_BIZ_VERBS) + tuple(_env_csv("HYBRID_BIZ_VERBS"))
+
+
+def _refuse_hints():
+    return tuple(_REFUSE_HINTS) + tuple(x.lower() for x in _env_csv("HYBRID_REFUSE_HINTS"))
+
+
+def _hint_selectors():
+    return tuple(_HINT_SELECTORS) + tuple(_env_csv("HYBRID_HINT_SELECTORS", ";"))
+
+
+def _hint_text(page, limit=6):
+    """回读页面「提示区」文本（通用候选表；不写死任何具体 id）。"""
+    out = []
+    for sel in _hint_selectors():
+        try:
+            loc = page.locator(sel)
+            n = min(int(loc.count()), limit)
+        except Exception:
+            continue
+        for i in range(n):
+            try:
+                t = (loc.nth(i).inner_text() or "").strip()
+            except Exception:
+                continue
+            if t and t not in out:
+                out.append(t)
+    return out
+
+
+_WRITE_REQS = []
+_REQ_HOOKED = set()
+
+
+def _ensure_req_hook(page):
+    """装一次写请求监听（只认非 GET）—— 用于判「动作有没有真的落库」。"""
+    key = id(page)
+    if key in _REQ_HOOKED:
+        return
+    _REQ_HOOKED.add(key)
+
+    def _on_request(req):
+        try:
+            if str(getattr(req, "method", "")).upper() != "GET":
+                _WRITE_REQS.append(str(getattr(req, "url", "")))
+        except Exception:
+            pass
+
+    try:
+        page.on("request", _on_request)
+    except Exception:
+        pass
+
+
+def _write_count(page):
+    _ensure_req_hook(page)
+    return len(_WRITE_REQS)
+
+
+def _effect_snapshot(page, semantic):
+    """动作前快照；**不在校验范围就返回 None**（非业务动词 / 关掉了 / 采集失败 都当不校验）。"""
+    if not _effect_enabled() or not semantic:
+        return None
+    low = str(semantic).lower()
+    if not any(v and v.lower() in low for v in _biz_verbs()):
+        return None
+    try:
+        return {"url": page.url, "writes": _write_count(page), "hints": _hint_text(page)}
+    except Exception:
+        return None
+
+
+def _check_effect(page, pre, semantic):
+    """动作后置校验：判「动作是否真的生效」；默认留痕，严格模式只对"明确拒绝"失败。"""
+    if pre is None:
+        return
+    try:
+        url2 = page.url
+        writes2 = _write_count(page)
+        hints2 = _hint_text(page)
+    except Exception:
+        return
+    new_hints = [h for h in hints2 if h not in pre["hints"]]
+    hints_low = [h.lower() for h in new_hints]
+    refused = [h for h in new_hints
+               if any(x in h.lower() for x in _refuse_hints())]
+    navigated = url2 != pre["url"]
+    wrote = writes2 > pre["writes"]
+    sig = "导航=%s 写请求=%s" % ("有" if navigated else "无", "有" if wrote else "无")
+    if refused:
+        msg = ("[!] 动作后置校验：'%s' 之后页面**明确给出拒绝提示** -> %r（%s）"
+               "=> 该动作**很可能没有生效**，后面的断言会白给。"
+               % (semantic, refused[0][:90], sig))
+        if _effect_strict():
+            raise AssertionError(msg)
+        _log(page, "warn", msg)
+        return
+    if not navigated and not wrote:
+        extra = ("；提示区当前=%r" % (hints2[0][:90],)) if hints2 else ""
+        _log(page, "warn",
+             "[!] 动作后置校验：'%s' 之后无导航、无写请求、也没新提示%s"
+             "=> 该动作可能未生效（若为业务提交/保存类，请务必确认）" % (semantic, extra))
+
+
 def _act(page, action, semantic=None, primary=None, value=None, force=False, index=None):
     """执行动作：主用【确定性 locator】(零探测)；主失效才走语义定位/自愈兜底。
 
@@ -935,6 +1078,7 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
             raise RuntimeError(f"确定性 locator 失效且无语义兜底: {action}")
         loc = _loc(semantic, page)
     if action == "click":
+        _eff_pre = _effect_snapshot(page, semantic)
         # P22 批 3：(1) force 只由**手写用例**显式声明（AI 链路被质量闸拦住）；
         #            (2) 点完等页面就绪 —— 「切换为订单管理员」是 location.reload()（auth.js:130），
         #               旧实现只有 loc.click()、不等任何状态 -> 下一步撞重载竞态（控件还在旧文档上）。
@@ -944,6 +1088,7 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
             global _LAST_SEARCH
             _LAST_SEARCH = str(semantic)
         _wait_after_action(page)
+        _check_effect(page, _eff_pre, semantic)
     elif action == "fill":
         loc.fill(value if value is not None else "")
     elif action == "select":
@@ -1080,10 +1225,16 @@ def _assert_wait_text(page, text, timeout_ms=30000, refresh="none", desc="", sel
                         f"wait_text_{str(text)[:24]}", f"{text} @ {selector}")
                     return
             else:
+                # [!] L27b（2026-10-09）：**不能只看 `loc.first`** —— demo 的状态筛选 `<option>已关闭</option>`
+                #     在 DOM 里排在表格**前面**，`.first` 永远命中那个隐藏项 -> 即使表格里状态真的变了，
+                #     `loc.first.is_visible()` 仍为 False -> 轮询到超时也「等不到」。
+                #     P22 当初的绕法是**让用例给 selector** 缩小范围；这里从根上修：**只认可见的匹配**。
+                #     上界 40：只是可见性判定（不是全量枚举），成本可控。
                 loc = page.get_by_text(text)
-                if loc.count() >= 1 and loc.first.is_visible():
-                    _ok(page, desc or f"等到文本 {text}", f"wait_text_{str(text)[:24]}", str(text))
-                    return
+                for _i in range(min(loc.count(), 40)):
+                    if loc.nth(_i).is_visible():
+                        _ok(page, desc or f"等到文本 {text}", f"wait_text_{str(text)[:24]}", str(text))
+                        return
         except Exception as e:                                 # noqa: BLE001
             last_err = f"{type(e).__name__}: {str(e)[:80]}"
         if _t.time() >= deadline:

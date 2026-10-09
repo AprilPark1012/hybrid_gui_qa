@@ -1,0 +1,19 @@
+{
+  "fill_0": "全链路-{datetime}",
+  "fill_1": "全链路-{datetime}",
+  "row_text_2": "全链路-{datetime}",
+  "fill_3": "全链路-{datetime}",
+  "row_text_4": "全链路-{datetime}",
+  "fill_5": "全链路-{datetime}",
+  "expect_0": "合同管理系统",
+  "expect_1": "订单名称",
+  "expect_2": "订单系统",
+  "expect_3": "全链路-{datetime}",
+  "expect_4": "订单详情",
+  "expect_5": "订单系统",
+  "expect_6": "已关闭",
+  "expect_7": "应收发票创建",
+  "expect_8": "合同编号",
+  "expect_9": "应收发票列表",
+  "expect_10": "发票"
+}

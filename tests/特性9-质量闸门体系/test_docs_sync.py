@@ -143,7 +143,7 @@ def test_negative_changelog_area_is_excluded():
     """版本史附录里的旧文档引用（冻结历史）不该让判据变红。"""
     # 正文区的路径必须是**真实存在**的 —— 本判据只验「历史区被跳过」，
     # 不能因为样例文件被 R7-f 清掉而假红（2026-09-30：原用 search_mixed.json，已随三目录重建清除）。
-    body = '<h2>正文</h2><p>见 <code>cases/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_140528.json</code></p>'
+    body = '<h2>正文</h2><p>见 <code>cases/manual/manual_order_create_smoke.json</code></p>'
     hist = '<span class="n">A</span>版本与更新记录</h2><p>见 <code>docs/P4-慢目标与并发-修复方案.md</code></p>'
     assert missing_paths(live_body(body + hist)) == []
 # r9-legacy-block:end

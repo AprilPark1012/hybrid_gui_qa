@@ -2115,6 +2115,30 @@ def _clip_by_chars(entries: list, budget: int | None = None, project=None) -> tu
     return kept, len(entries or []) - len(kept)
 
 
+def _declared_wait_block(scenario: str) -> str:
+    """把**场景声明的业务等待时长**显式告诉 AI（L27）。
+
+    为什么必须说：AI 看不到框架的默认值，也不知道「这段业务要等多久」框架打算等多久 ——
+    不说的话它只能凭空猜（或干脆不提等待），而等待类断言**恰恰只能靠这个声明**。
+    口径：**框架按场景声明设置等待时长**（AI 不需要、也没有新字段来表达它）；
+    AI 要做的只是把「等什么、为什么值得等」写进 desc，别用固定 sleep。
+    """
+    from framework.tools.common.declared_wait import declared_wait_ms
+    ms = declared_wait_ms(scenario)
+    if not ms:
+        return ""
+    return (
+        "===== 本场景声明的业务等待时长（重要）=====\n"
+        f"本场景原文声明的业务等待是 **{ms}ms（约 {round(ms / 1000)} 秒）**"
+        "（例如「提交后 N 秒自动关闭」这类**按时间自动推进**的动作）。\n"
+        "=> 写这类「等它自己变」的断言时：\n"
+        "   1) desc 里写清**等什么、以及为什么值得等**（如「有界等待订单状态流转到已关闭」）；\n"
+        "   2) **等待时长由框架按本声明自动设置**（你不用猜、也不用给时长）；\n"
+        "   3) 绝不写固定 sleep 硬等，也绝不写成「只等几秒」——那必然失败。\n"
+        "\n"
+    )
+
+
 def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                          dom_ctx: list[dict] | None = None,
                          page_bg: str = "", guard: str = "",
@@ -2368,7 +2392,7 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         "    但 `HT-1001`、`SO-1011` 这种**字面编号**一律不许出现在任何字段里.\n"
         "  · 例外: 场景里**明确逐字给出了**该编号(如「输入合同编号 HT-1001 后搜索」)时可以照抄.\n"
     )
-    return _OUTPUT_CONTRACT + _required_fields_block() + prompt
+    return _OUTPUT_CONTRACT + _required_fields_block() + _declared_wait_block(scenario) + prompt
 
 
 def _parse_steps_text(text: str, items: list[dict]) -> list[TestStep]:

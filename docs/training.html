@@ -534,7 +534,7 @@ ls log/&lt;run_id&gt;/                          # 用例日志 / 报告 / trace
 python -m framework.cli probe
 
 # (2) 抄一个最像的现成用例改（样例：cases/orders_invoice_full_lifecycle/<case_id>.json）
-cp cases/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_140528.json cases/manual/&lt;你的用例id&gt;.json
+cp cases/orders_invoice_full_lifecycle/&lt;case_id&gt;.json cases/manual/&lt;你的用例id&gt;.json
 #    必改：case_id 与文件名一致 · name 给人看 · steps 换成你的动作 · asserts 换成你的判定
 
 # (3) 生成脚本（幂等，可反复跑）
@@ -550,7 +550,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <h4 style="margin:18px 0 4px">一个真实的手搓用例（节选，可当模板）</h4>
   <pre class="tree">{
-  "case_id": "ai_orders_invoice_full_lifecycle_140528",
+  "case_id": "&lt;case_id&gt;",
   "name": "手搓用例 · 回车触发搜索 + 客户右模糊筛选",
   "base_url": "http://localhost:8000",
   "steps": [
@@ -1604,8 +1604,8 @@ python -m framework.cli run --help             <- 单个子命令：用法 + 完
 <span class="prompt">$</span> python -m framework.cli run --workers 2 <span class="cmt"># (3) 并发执行 + 资源预检(内存不够自动降级)</span>
 
 <span class="prompt">$</span> python -m framework.cli run --debug  <span class="cmt"># (3)' 调试开关：有屏幕弹浏览器；没屏幕录视频(webm)+逐步截图</span>
-<span class="prompt">$</span> python -m framework.cli run --debug --case ai_orders_invoice_full_lifecycle_140528 <span class="cmt"># (3)'' 只调试一条（--case 可重复；不传=整包跑）</span>
-<span class="prompt">$</span> python -m framework.cli run --debug --slowmo 500 --case ai_orders_invoice_full_lifecycle_140528 <span class="cmt"># (3)''' 放慢 500ms/动作，肉眼跟步</span>
+<span class="prompt">$</span> python -m framework.cli run --debug --case &lt;case_id&gt; <span class="cmt"># (3)'' 只调试一条（--case 可重复；不传=整包跑）</span>
+<span class="prompt">$</span> python -m framework.cli run --debug --slowmo 500 --case &lt;case_id&gt; <span class="cmt"># (3)''' 放慢 500ms/动作，肉眼跟步</span>
 <span class="prompt">$</span> python -m framework.cli run --force-workers <span class="cmt"># (3)'' 无视资源预检(有 OOM 风险,慎用)</span>
 
 <span class="prompt">$</span> python -m framework.cli explore --ai --scenario "输入1005点搜索确认出现HT-1005"

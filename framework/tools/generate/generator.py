@@ -116,8 +116,9 @@ def _extract_data(case: dict) -> dict:
         if st.get("row_text"):
             data[f"row_text_{idx}"] = st["row_text"]
             idx += 1
+    _sctext = _scenario_text_of(str(case.get("source_scenario") or ""))   # L27：声明等待时长要用它
     for _a in case.get("asserts", []):
-        apply_kind_defaults(_a)          # V8.4.2：等语义 -> wait_text + 有限超时
+        apply_kind_defaults(_a, _sctext)     # V8.4.2：等语义 -> wait_text；L27：时长按场景声明
 
     for i, a in enumerate(case.get("asserts", [])):
         # 判据是「有没有 expect 字段」而不是「值是否为真」——0 / "" 都是合法期望值
@@ -166,7 +167,10 @@ _ASSERT_KINDS = {
 _ASSERT_NEED_EXPECT = {"text", "count", "attr", "value", "url", "first_row", "wait_text"}
 
 # P22 批 4：`wait_text` 口径常量
-_WAIT_TEXT_DEFAULT_MS = 30000                        # 有界默认（绝不无限等）
+# L27：这个**字面量只是最后兜底**；真正的取值走 `_wait_default_ms()`
+#（读 `HYBRID_WAIT_DEFAULT_MS`，已登记 cli config）；等待时长优先看**场景声明**。
+# 语义不变：无论怎么调，都是**有界**的（绝不无限等）。
+_WAIT_TEXT_DEFAULT_MS = 30000
 _WAIT_TEXT_REFRESH = {"none", "reload", "research"}   # 每轮重新取数的三种方式
 # 需要定位（selector 或 element→loc_map）的 kind
 #   [!] first_row 不在其中：它用 `row_field`（列名）定位第一行的那一列，不需要 element/selector
@@ -181,7 +185,7 @@ _ASSERT_NEED_LOC = {"visible", "hidden", "count", "attr", "value",
 _WAITING_RE = __import__("re").compile(
     r"(等待|等到|等出现|等候|wait\s*for|轮询|流转到|变成|变为|更新为)")
 # 默认超时：够「状态自己流转」这类异步过程，又不至于把用例拖成无限等
-_WAIT_DEFAULT_MS = 30000
+_WAIT_DEFAULT_MS = _WAIT_TEXT_DEFAULT_MS          # 同一旋钮（别让两处默认漂开）
 
 
 def infer_kind_for_assert(a: dict) -> str:
@@ -199,13 +203,34 @@ def infer_kind_for_assert(a: dict) -> str:
     return "wait_text" if _WAITING_RE.search(desc) else "text"
 
 
-def apply_kind_defaults(a: dict) -> dict:
-    """把推断结果**写回**断言 dict（含 wait_text 的有限默认超时）。原地改并返回。"""
+def apply_kind_defaults(a: dict, scenario_text: str = "") -> dict:
+    """把推断结果**写回**断言 dict（含 wait_text 的等待时长）。原地改并返回。
+
+    [!] L27（2026-10-09）：等待时长**不再写死** `_WAIT_DEFAULT_MS`，而是
+        **场景声明的业务时长优先**（`framework/tools/common/declared_wait.py` 是唯一解析入口）。
+        事故：场景里两处写着「提交后 150 秒自动关闭」，而框架默认 30s 把它们盖掉了 ——
+        失败现象是「页面始终没出现『已关闭』」，**看着像业务没流转，其实是框架等太短**。
+    """
     a["kind"] = infer_kind_for_assert(a)
     if a["kind"] == "wait_text":
-        tm = a.get("timeout_ms")
-        if not isinstance(tm, int) or tm <= 0:
-            a["timeout_ms"] = _WAIT_DEFAULT_MS
+        from framework.tools.common.declared_wait import effective_wait_ms, wait_shortfall
+        before = a.get("timeout_ms")
+        a["timeout_ms"] = effective_wait_ms(scenario_text, before, _wait_default_ms())
+        for why in wait_shortfall(scenario_text, before):     # 被抬起过 -> 高声留痕
+            print(f"[generate] [!] {why}（已按场景声明抬到 {a['timeout_ms']}ms）")
+        # L27b（2026-10-09）：**没给 refresh 且没有 selector 时补 `research`**。
+        #   为什么必须补：框架自己的注释写着「demo 列表页不会自己刷新（setInterval 命中 0 处）——>
+        #     『等它流转到已关闭』光靠轮询 DOM **永远等不到**」；调大超时也救不了。
+        #     而 AI 链路**表达不了** refresh（`expect_*` 步骤没有这个字段）=> 只能框架供给。
+        #   为什么补 `research` 而不是 `reload`：`_replay_last_search` 在没有可重放的搜索时
+        #     **如实返回 False（no-op）** => 没搜索过就等价于 none，不会引入新行为（也就不可能回归）；
+        #     而 `reload` 会把弹层/表单状态冲掉，那种场景（页面自己会更新）本来也不需要重取数。
+        #   为什么只补"无 selector"的：有 selector = 元素级自更新（如详情页 `#d-order-status`），
+        #     既有用例就在这么用，保持不动。
+        #   放这里而不是渲染器：渲染器的契约是"不写 refresh 就不出参数"（有判据守着），
+        #     "缺省补什么"属于**默认填充**，与 timeout 同一处，可追溯。
+        if not a.get("refresh") and not a.get("selector"):
+            a["refresh"] = "research"
     return a
 
 
@@ -276,7 +301,7 @@ def _render_assert(a: dict, loc_map: dict, cross_page: bool = False,
         # P22 批 5：`selector` 限定「在哪个范围内等这段文本」。不给就会全页 get_by_text，
         # 命中**隐藏**的下拉选项（demo 状态筛选的 <option value="已关闭">）-> 必超时。
         _wt_sel = repr(str(a.get("selector") or ""))
-        tm = a.get("timeout_ms", _WAIT_TEXT_DEFAULT_MS)
+        tm = a.get("timeout_ms", _wait_default_ms())   # L27：缺失时用可调默认；非法值照旧当场失败
         if isinstance(tm, bool) or not isinstance(tm, int) or tm <= 0:
             return [f"    pytest.fail('断言 kind=wait_text 的 timeout_ms 非法（须为正整数毫秒）：'"
                     f" + {str(a.get('timeout_ms'))!r}, pytrace=False)"]
@@ -549,6 +574,50 @@ def _brace_safe(text) -> str:
     return str(text).replace("{", "{{").replace("}", "}}")
 
 
+#: 装饰字符 -> ASCII 等价物。**只降级、不改语义**；表里没有的不可编字符一律剔除并出声。
+#: [!] 本表与注释一律用 U+XXXX 记法写不可编字符（源码禁字面量 —— 判据 test_utf8_io 守着）。
+#: U+26A0 / U+21D2 这类才列进来 —— 只列**GBK 编不了**的（`->`/`①`/`→`(U+2192) 这些能编的**不许动**，动了就是改语义）。
+_GBK_CHAR_FALLBACK = {
+    "\u26a0": "[!]",      # U+26A0 警告三角
+    "\ufe0f": "",         # 变体选择符（emoji 修饰；删掉不影响语义，留着反而成孤字符）
+    "\u21d2": "->",       # U+21D2 双箭头
+    "\u2705": "[OK]",     # U+2705 对勾
+    "\u274c": "[NG]",     # U+274C 叉
+    "\u2139": "[info]",   # U+2139 信息
+}
+
+
+def _gbk_safe(text: str) -> str:
+    """把文本压成 **GBK 可编码** —— 生成物是 `.py`，与源码同一条**跨平台铁律**。
+
+    为什么需要（V8.4.4 实测）：场景 yml 里合法地用着 U+26A0 / U+21D2 这类装饰字符（**它是数据，不是源码**，
+    而且改 yml 还会动场景指纹），而 AI 用例的 `name` 字段 = 场景原文整段 ->
+    渲染器把它抄进生成脚本的 docstring -> Windows 下 stdout 走 cp936 时 `print` 直接
+    UnicodeEncodeError，**整个入口挂掉**（不是少一行日志，是 exit 1）。
+    Linux(UTF-8) 下永远看不出来 —— 只有真去 Windows 跑才炸，所以必须在这里挡住。
+
+    口径：**能编的原样保留**（U+2192 箭头 / 带圈数字等一律不动）；U+26A0 / U+21D2 这类降级成 ASCII 等价物；
+    其余不可编且无等价物的剔除并**出声**（绝不静默改写语义）。
+    """
+    out: list[str] = []
+    dropped: list[str] = []
+    for ch in text or "":
+        try:
+            ch.encode("gbk")
+        except UnicodeEncodeError:
+            rep = _GBK_CHAR_FALLBACK.get(ch)
+            if rep is None:
+                dropped.append(ch)
+            else:
+                out.append(rep)
+            continue
+        out.append(ch)
+    if dropped:
+        print(f"[generate] [!] 生成物里有 {len(dropped)} 个不可编且无等价物的字符已剔除："
+              f"{[hex(ord(c)) for c in dropped[:6]]}")
+    return "".join(out)
+
+
 def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
                         it_map: dict | None = None) -> str:
     """把单个 cases 用例渲染成一个 pytest test 函数（locator 内联确定性定位）。
@@ -561,7 +630,9 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
     否则会静默落到另一页的 locator（就是 P3 要根治的坑）。
     """
     cid = case["case_id"]
-    name = (case.get("name") or cid).replace('"', '\\"')
+    # [!] 产物是 .py -> 必须 GBK 可编（跨平台铁律）。AI 用例的 name = 场景原文整段，
+    #     里面可能有 U+26A0/U+21D2（yml 合法）—— 抄进 docstring 前降级，别让产物违规。
+    name = _gbk_safe(case.get("name") or cid).replace('"', '\\"')
     steps = case.get("steps", [])
     asserts = case.get("asserts", [])
     is_cross_page = len(case.get("pages") or []) > 1
@@ -598,7 +669,7 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
     for i, st in enumerate(steps):
         op = st.get("op")
         desc = st.get("desc", "")
-        lines.append(f'    # step {i+1}: {desc}')
+        lines.append(f'    # step {i+1}: {_gbk_safe(desc)}')
         if op == "goto":
             _gref = st.get("_payload_ref")
             if _gref:
@@ -927,6 +998,39 @@ def _scenario_auth_of(rel_path: str) -> dict:
     except Exception as e:                                          # noqa: BLE001
         print(f"[generate] [!] 读场景 {rel} 的 auth 段失败：{type(e).__name__}: {e}")
         return {}
+
+
+def _scenario_text_of(rel_path: str) -> str:
+    """按 case 的 `source_scenario` 回读**场景原文**（L27：等待时长要从原文里读）。
+
+    与 `_scenario_auth_of` 同源同路径（一个读 auth 段、一个要全文）——
+    拆成两个函数而不是各写一份路径拼接，避免"挪目录只改一处"的老问题。
+    """
+    rel = (rel_path or "").strip()
+    if not rel:
+        return ""
+    try:
+        from framework.tools.common.config import SCENARIOS_DIR
+        p = SCENARIOS_DIR.resolve().parent / rel
+        return p.read_text(encoding="utf-8") if p.exists() else ""
+    except Exception as e:                                          # noqa: BLE001
+        print(f"[generate] [!] 读场景 {rel} 原文失败：{type(e).__name__}: {e}")
+        return ""
+
+
+def _wait_default_ms() -> int:
+    """等待时长的**有界默认**（场景没声明业务时长时才用）。
+
+    可调：`HYBRID_WAIT_DEFAULT_MS`（已登记 `cli config`）。为什么不写死：
+    默认值是框架的兜底猜测，不同项目/环境的合理兜底不一样；但**绝不无限等**（有界）。
+    """
+    import os as _os
+    raw = str(_os.environ.get("HYBRID_WAIT_DEFAULT_MS", "") or "").strip()
+    try:
+        v = int(raw)
+        return v if v > 0 else 30_000
+    except ValueError:
+        return 30_000
 
 
 def _pages_to_probe(gaps: set[str],
@@ -2531,6 +2635,149 @@ def _wait_after_action(page) -> None:
     return wait_after_action(page)
 
 
+# ===== 动作后置校验（post-condition）：动作"做了" != "生效了" =====================
+# 为什么需要（2026-10-10 实测踩到；代价 = 8 分钟 E2E 跑空 + 磁盘取证才定位）：
+#   demo 详情页有一道业务前置 —— 页面有未保存修改时点「提交」**不发请求、不报错**，
+#   只把原因写进状态行（order_detail.html: `if (this.dirty) { status='...'; return; }`）。
+#   而 `_act` 只记「动作执行了」=> 用例一路"成功"跑到下游断言才炸，表现成
+#   「等不到某个状态」，根因被埋了三层（先怀疑等待时长 -> 再怀疑取数方式 -> 才发现动作从未生效）。
+# 口径（与业务解耦，框架零业务词）：
+#   · 只对**业务动词**点击校验（提交/保存/删除/确认...）—— 表可配 `HYBRID_BIZ_VERBS` 追加；
+#   · 两条判据：R2 = 页面提示区出现**拒绝语义**文本（最强、最直接）；R1 = 无导航且无写请求；
+#   · 默认**只留痕**（打印信号 + **原样回读页面提示文本**，让根因一眼可见）；
+#     `HYBRID_STRICT_EFFECT=1` 时 **只让 R2 判失败**（R1 有误伤风险，遵循"宁漏不误伤"）；
+#   · 提示区选择器 / 拒绝词 / 业务动词 全部**可配置**，不写死任何具体 id 与业务名。
+_BIZ_VERBS = ("提交", "保存", "删除", "确认", "确定", "更新", "关闭", "启用", "禁用",
+              "submit", "save", "delete", "confirm", "update", "close", "apply")
+_REFUSE_HINTS = ("请先", "未保存", "不能", "无法", "不允许", "不足", "失败", "错误", "无效",
+                 "请选择", "请填写", "必填", "至少",
+                 "please save", "unsaved", "cannot", "not allowed", "invalid", "required")
+# [!] **class 与 id 都要覆盖**（2026-10-10 实测踩过）：demo 的拒绝文案落在 `#detail-status`
+#     （id），而第一版候选只有 `[class*=status]` -> count=0 -> 页面明明报了原因却抓不到。
+_HINT_SELECTORS = ("[role=alert]", "[role=status]", ".toast", "[data-status]", "[data-hint]",
+                   "[class*=status]", "[class*=tip]", "[class*=hint]", "[class*=msg]",
+                   "[class*=error]", "[class*=notice]",
+                   "[id*=status]", "[id*=tip]", "[id*=hint]", "[id*=msg]",
+                   "[id*=notice]", "[id*=error]")
+
+
+def _env_csv(name, sep=","):
+    return [x.strip() for x in (os.environ.get(name, "") or "").split(sep) if x.strip()]
+
+
+def _effect_enabled():
+    return (os.environ.get("HYBRID_EFFECT_CHECK", "1") or "1").strip() != "0"
+
+
+def _effect_strict():
+    return (os.environ.get("HYBRID_STRICT_EFFECT", "0") or "0").strip() == "1"
+
+
+def _biz_verbs():
+    return tuple(_BIZ_VERBS) + tuple(_env_csv("HYBRID_BIZ_VERBS"))
+
+
+def _refuse_hints():
+    return tuple(_REFUSE_HINTS) + tuple(x.lower() for x in _env_csv("HYBRID_REFUSE_HINTS"))
+
+
+def _hint_selectors():
+    return tuple(_HINT_SELECTORS) + tuple(_env_csv("HYBRID_HINT_SELECTORS", ";"))
+
+
+def _hint_text(page, limit=6):
+    """回读页面「提示区」文本（通用候选表；不写死任何具体 id）。"""
+    out = []
+    for sel in _hint_selectors():
+        try:
+            loc = page.locator(sel)
+            n = min(int(loc.count()), limit)
+        except Exception:
+            continue
+        for i in range(n):
+            try:
+                t = (loc.nth(i).inner_text() or "").strip()
+            except Exception:
+                continue
+            if t and t not in out:
+                out.append(t)
+    return out
+
+
+_WRITE_REQS = []
+_REQ_HOOKED = set()
+
+
+def _ensure_req_hook(page):
+    """装一次写请求监听（只认非 GET）—— 用于判「动作有没有真的落库」。"""
+    key = id(page)
+    if key in _REQ_HOOKED:
+        return
+    _REQ_HOOKED.add(key)
+
+    def _on_request(req):
+        try:
+            if str(getattr(req, "method", "")).upper() != "GET":
+                _WRITE_REQS.append(str(getattr(req, "url", "")))
+        except Exception:
+            pass
+
+    try:
+        page.on("request", _on_request)
+    except Exception:
+        pass
+
+
+def _write_count(page):
+    _ensure_req_hook(page)
+    return len(_WRITE_REQS)
+
+
+def _effect_snapshot(page, semantic):
+    """动作前快照；**不在校验范围就返回 None**（非业务动词 / 关掉了 / 采集失败 都当不校验）。"""
+    if not _effect_enabled() or not semantic:
+        return None
+    low = str(semantic).lower()
+    if not any(v and v.lower() in low for v in _biz_verbs()):
+        return None
+    try:
+        return {"url": page.url, "writes": _write_count(page), "hints": _hint_text(page)}
+    except Exception:
+        return None
+
+
+def _check_effect(page, pre, semantic):
+    """动作后置校验：判「动作是否真的生效」；默认留痕，严格模式只对"明确拒绝"失败。"""
+    if pre is None:
+        return
+    try:
+        url2 = page.url
+        writes2 = _write_count(page)
+        hints2 = _hint_text(page)
+    except Exception:
+        return
+    new_hints = [h for h in hints2 if h not in pre["hints"]]
+    hints_low = [h.lower() for h in new_hints]
+    refused = [h for h in new_hints
+               if any(x in h.lower() for x in _refuse_hints())]
+    navigated = url2 != pre["url"]
+    wrote = writes2 > pre["writes"]
+    sig = "导航=%s 写请求=%s" % ("有" if navigated else "无", "有" if wrote else "无")
+    if refused:
+        msg = ("[!] 动作后置校验：'%s' 之后页面**明确给出拒绝提示** -> %r（%s）"
+               "=> 该动作**很可能没有生效**，后面的断言会白给。"
+               % (semantic, refused[0][:90], sig))
+        if _effect_strict():
+            raise AssertionError(msg)
+        _log(page, "warn", msg)
+        return
+    if not navigated and not wrote:
+        extra = ("；提示区当前=%r" % (hints2[0][:90],)) if hints2 else ""
+        _log(page, "warn",
+             "[!] 动作后置校验：'%s' 之后无导航、无写请求、也没新提示%s"
+             "=> 该动作可能未生效（若为业务提交/保存类，请务必确认）" % (semantic, extra))
+
+
 def _act(page, action, semantic=None, primary=None, value=None, force=False, index=None):
     """执行动作：主用【确定性 locator】(零探测)；主失效才走语义定位/自愈兜底。
 
@@ -2557,6 +2804,7 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
             raise RuntimeError(f"确定性 locator 失效且无语义兜底: {action}")
         loc = _loc(semantic, page)
     if action == "click":
+        _eff_pre = _effect_snapshot(page, semantic)
         # P22 批 3：(1) force 只由**手写用例**显式声明（AI 链路被质量闸拦住）；
         #            (2) 点完等页面就绪 —— 「切换为订单管理员」是 location.reload()（auth.js:130），
         #               旧实现只有 loc.click()、不等任何状态 -> 下一步撞重载竞态（控件还在旧文档上）。
@@ -2566,6 +2814,7 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
             global _LAST_SEARCH
             _LAST_SEARCH = str(semantic)
         _wait_after_action(page)
+        _check_effect(page, _eff_pre, semantic)
     elif action == "fill":
         loc.fill(value if value is not None else "")
     elif action == "select":
@@ -2702,10 +2951,16 @@ def _assert_wait_text(page, text, timeout_ms=30000, refresh="none", desc="", sel
                         f"wait_text_{str(text)[:24]}", f"{text} @ {selector}")
                     return
             else:
+                # [!] L27b（2026-10-09）：**不能只看 `loc.first`** —— demo 的状态筛选 `<option>已关闭</option>`
+                #     在 DOM 里排在表格**前面**，`.first` 永远命中那个隐藏项 -> 即使表格里状态真的变了，
+                #     `loc.first.is_visible()` 仍为 False -> 轮询到超时也「等不到」。
+                #     P22 当初的绕法是**让用例给 selector** 缩小范围；这里从根上修：**只认可见的匹配**。
+                #     上界 40：只是可见性判定（不是全量枚举），成本可控。
                 loc = page.get_by_text(text)
-                if loc.count() >= 1 and loc.first.is_visible():
-                    _ok(page, desc or f"等到文本 {text}", f"wait_text_{str(text)[:24]}", str(text))
-                    return
+                for _i in range(min(loc.count(), 40)):
+                    if loc.nth(_i).is_visible():
+                        _ok(page, desc or f"等到文本 {text}", f"wait_text_{str(text)[:24]}", str(text))
+                        return
         except Exception as e:                                 # noqa: BLE001
             last_err = f"{type(e).__name__}: {str(e)[:80]}"
         if _t.time() >= deadline:
