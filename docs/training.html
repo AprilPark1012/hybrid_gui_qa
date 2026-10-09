@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.3.6）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.4）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.3.6 · 2026-10-08　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.4 · 2026-10-09　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1726,9 +1726,13 @@ python -m framework.cli run --help             <- 单个子命令：用法 + 完
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.3.6</b>（2026-10-08）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.4</b>（2026-10-09）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.3.6</span><span class="cl-date">2026-10-08</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>特性清单细化到子特性</b> —— 特性2 一分为二 + 全特性子特性化 + 「规格与用例」双向强校验</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.4</span><span class="cl-date">2026-10-09</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>AI 链路产出校验 + 自动重试闭环</b> —— 让 AI 链路真正成为主推路径，并修掉 6 个真实缺陷</span></div>
+      <p class="cl-sum">干净环境端到端（模拟用户本地：删掉 output/ scripts/ cases/ 后跑 cli all）连跑 6 轮，<b>每轮都逼出一个真实缺陷</b>，全部修掉并补判据：<br><b>[AI 编排侧]</b> ① AI 无视场景声明的登录前置、自编登录流程并<b>幻觉密码</b> -> 提示词加 auth 感知硬约束 + 生成后登录步骤闸门（单点收口）；② AI 猜下拉选项的 value -> 提示词改为优先 index；③ AI 拿 host 片段当换页证据（假绿）-> <b>产出校验 + 自动重试闭环</b>（L0 静态 + L1 实跑，有界、同因不重试、录像回放跳过、不弱化质量闸）。<br><b>[框架自身缺陷]</b> ④ select 没给值时会传空串 -> 30s 超时（缺「选第一项」能力）-> 修在模板层 + 同族实现统一口径；⑤ generate 失败（AI 产出不完整）不触发重试、还 exit 0 假绿 -> 区分 AI 产出侧与环境侧；⑥ 「同因不重试」被校验日志路径的时间戳骗过 -> 归一化后再比。<br><b>[其他]</b> 可选字段渲染健壮性（修 KeyError）；文档与培训页改为 AI 链路主推、手搓降级为调试辅助；新增 <b>6 个常用 CLI 参数</b> + <code>cli config</code> 一键查看全部可调项。<br><b>教训</b>：④⑤⑥ 都是被真实端到端逼出来的 —— <b>判据全绿时它们活得好好的，判据不等于实测</b>。</p>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.3.6</span><span class="cl-date">2026-10-08</span><span class="cl-tag"></span><span class="cl-theme"><b>特性清单细化到子特性</b> —— 特性2 一分为二 + 全特性子特性化 + 「规格与用例」双向强校验</span></div>
       <p class="cl-sum">原先只有 9 个大特性，其中<b>特性2「语义识别与分层定位」是个大混合物</b>（95 条用例 / 17 个文件），而且「哪条特性由哪些用例守着」只能靠人脑记。<br>本版按 <b>目标不同</b>把特性2 一分为二：<b>语义识别与步骤编排</b>（面向「生成」，对人/机器友好）、<b>分层定位与控件识别</b>（面向「执行」，撑生产系统复杂页面）；其后顺延，全框架变成 <b>10 个大特性 / 43 个子特性</b>。<br>更关键的是把关系<b>从「靠人记」变成「机器守」</b>：规格落在 <code>feature_spec.py</code>（单一来源），文档自动生成，<b>8 条判据双向校验</b>（规格里列的文件必须在、磁盘上的用例必须有归属、编号规范、目录不漂移、文档与规格同步）。</p>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">[tool] 改进</span><ul>
         <li><b>特性2 一分为二</b>：特性2 语义识别与步骤编排 / 特性3 分层定位与控件识别；原 3~9 顺延为 4~10</li>
@@ -2416,7 +2420,7 @@ python -m framework.cli run --help             <- 单个子命令：用法 + 完
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.3.6</b>（2026-10-08）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.4</b>（2026-10-09）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
