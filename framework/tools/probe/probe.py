@@ -613,14 +613,37 @@ def probe_row_fields(page: Page, max_tables: int = 5) -> list[dict]:
         try:
             tname = (tbl.get_attribute("data-testid") or tbl.get_attribute("id") or f"table{ti}").strip()
             headers = tbl.locator("thead th").all_inner_texts()
-            cells = tbl.locator("tbody tr").first.locator("td[data-field]")
-            m = cells.count()
+            # V8.4.3：按**真实列位置**遍历**全部 td**（不再只挑 td[data-field]）。
+            #   为什么必须这样（Windows 实测追到这一层）：
+            #     (1) 「勾选列」是 `<td><input type=checkbox></td>`，**没有 data-field**
+            #         -> 原实现直接跳过它 -> 清单里根本没这一列 -> 提示词又写着
+            #         「cell_field 只能取清单里的 field，禁止自造」-> AI 无处可写，
+            #         只能违约束自造一个假 field（实测它填了 cell_field="pick"）。
+            #     (2) `header = headers[ci]` 里的 ci 原本是 **data-field 单元格的序号**，
+            #         不是真实列号 -> 列 = [勾选, 合同编号] 时 ci=0 拿到表头「勾选」，
+            #         **表头错位**（拿到的是别列的表头）。
+            #   现在每列都给：index(真实列号,从 1 起，与生成器 cell_index 同口径) /
+            #   field(可能为空串) / header(按真实列号对齐) / kind(无 field 时标注控件种类)。
+            tds = tbl.locator("tbody tr").first.locator("td")
+            m = tds.count()
             for ci in range(m):
-                field = (cells.nth(ci).get_attribute("data-field") or "").strip()
-                if not field:
-                    continue
+                td = tds.nth(ci)
+                field = (td.get_attribute("data-field") or "").strip()
                 header = headers[ci].strip() if ci < len(headers) else ""
-                out.append({"table": tname, "field": field, "header": header})
+                kind = ""
+                if not field:
+                    # 没有 data-field 的列：标出里面是什么，AI 才知道「这列是勾选框」
+                    try:
+                        if td.locator("input[type=checkbox]").count():
+                            kind = "checkbox"
+                        elif td.locator("input[type=radio]").count():
+                            kind = "radio"
+                        elif td.locator("button, a").count():
+                            kind = "action"
+                    except Exception:
+                        kind = ""
+                out.append({"table": tname, "index": ci + 1, "field": field,
+                            "header": header, "kind": kind})
         except Exception:
             continue
     return out

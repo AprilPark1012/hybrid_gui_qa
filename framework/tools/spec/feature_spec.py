@@ -52,7 +52,7 @@ FEATURES = [
         dir="特性3-分层定位与控件识别",
         subs=[
             dict(no="3.1", name="顶层锚点加容器内下钻", goal="真实系统只有顶层元素有 testid；子元素靠「锚点 + 容器内相对语义路径」定位",
-                 class1=["test_element_anchor_path.py"],
+                 class1=["test_element_anchor_path.py", "test_row_fields_cover_all_columns.py"],
                  class2=["verify_scope_locate.py"]),
             dict(no="3.2", name="多层嵌套容器", goal="容器套容器（区域内表格、表单里分组）时路径仍能唯一",
                  class1=["test_element_anchor_path.py"],

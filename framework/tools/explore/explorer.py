@@ -1654,7 +1654,13 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
     if row_fields:
         prompt += (
             "表格行内列清单（**行内定位**用：row_text 取那一行里的唯一锚文本，"
-            "cell_field 只能取下面这些 field，禁止自造）:\n"
+            "列用下面这些**真实列**指定，禁止自造 field）：\n"
+            "  每条含 index（**真实列号，从 1 起**）/ field（有 data-field 才有，可能为空）/ "
+            "header（表头文案）/ kind（该列里的控件种类）。\n"
+            "  · 列**有** field -> 用 `cell_field=<field>`；\n"
+            "  · 列**没有** field（field 为空，如 kind=checkbox 的勾选列）-> **不要自造 field、"
+            "也不要拿这行里别的元素顶替**，改用 `cell_by=index` + `cell_index=<该列的 index>`；\n"
+            "  · 或列有表头文案时用 `cell_by=header` + `cell_field=<表头文案>`。\n"
             f"{json.dumps(row_fields[:80], ensure_ascii=False, indent=1)}\n\n"
         )
     # 场景文件带来的两块增量（内联模式下为空，行为与从前完全一致）
