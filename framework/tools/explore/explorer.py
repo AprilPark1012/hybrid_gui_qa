@@ -45,6 +45,12 @@ class _StepModel(BaseModel):
     # AI 只能「行锚文本（刚填的名称）+ 列字段」定位；cell_field 的合法值来自探针的 probe_row_fields。
     row_text: str | None = Field(default=None, description="行内定位：行锚文本（该行里唯一的文本，如刚填的订单名称）")
     cell_field: str | None = Field(default=None, description="行内定位/首行断言：列字段（row 清单里的 field，如 orderName/contractNo）")
+    # V8.4.3：**没有 data-field 的列**（最典型 = 表格最左的勾选列 `<input type=checkbox>`）
+    #   之前 schema 里只有 cell_field，AI 表达不了这种列 -> 实测表现为「check 步骤 element 留空」
+    #   或「把行里的 HT-1001 链接当 checkbox」（Not a checkbox or radio button）。
+    #   框架本来就支持这两种列指定方式（generator._row_col_step 白名单），只是没告诉 AI。
+    cell_by: str | None = Field(default=None, description="行内定位的列指定方式：field(默认,按 data-field) / header(按表头文案) / index(按第几列,从1起)")
+    cell_index: int | None = Field(default=None, description="cell_by=index 时的列序号（**从 1 起**，第 1 列 = 表格最左的勾选列）")
     description: str = Field(default="", description="一句话说明")
 
 
@@ -259,6 +265,8 @@ def _plan_to_steps(plan, items: list[dict]) -> list[TestStep]:
             order=s.order or i + 1, action=s.action, element=el,
             value=s.value, assertion=s.assertion, description=s.description,
             row_text=getattr(s, "row_text", None), cell_field=getattr(s, "cell_field", None),
+            # V8.4.3：列指定方式也要落盘 —— 否则 AI 写了 cell_by/cell_index 也在这一步被丢掉
+            cell_by=getattr(s, "cell_by", None), cell_index=getattr(s, "cell_index", None),
         ))
 
     if unmatched:
@@ -1700,7 +1708,8 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         f"3. fill 需给 value；断言类步骤用 expect_text + assertion\n"
         f"3a. **弹层/弹窗里逐行的「选择」按钮已经有了语义名**（形如 `选择@HT-1001`、"
         f"`选择@北京华信科技有限公司`、`选择@bu_a`）-> 要「选某一行」就用**该语义名 + action=click**，"
-        f"**不要**用 row_text/cell_field 去点它（行内定位点的是那一列里的链接/文本，不是「选择」按钮）；"
+        f"**不要**用行内定位去点它（**这条只针对弹层/弹窗里的「选择」按钮** —— 那种按钮本身就有语义名；"
+        f"行内定位点的是那一列里的链接/文本，不是「选择」按钮）；"
         f"弹层/弹窗的**打开按钮**同样有名字（如 `选择合同`、`选择业务单元`——「...」按钮的名字取自它的 title），"
         f"先 click 打开、再 click 行内的「选择」；\n"
         f"3b. **行内定位**（`row_text` + `cell_field`）**只用于主列表里那一行是运行时新建出来的**"
@@ -1710,6 +1719,14 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         f"（如 orderName / contractNo），**禁止自造**；\n"
         f"   例：「点这一行的合同编号（会开新 tab）」-> action=click_new_tab, row_text=<刚填的名称>, "
         f"cell_field=contractNo；「点这一行的编号（当前页跳转）」-> action=click, row_text=…, cell_field=…\n"
+        f"3b-2. **列没有 data-field 时**（最典型 = 表格最左的**勾选列** `<input type=checkbox>`，"
+        f"探针的【行内列清单】里当然找不到它，这不是缺陷）-> **不要留空、也不要拿这一行里的其它"
+        f"元素（如合同编号链接 `HT-1001`）顶替**，改用 `cell_by` 指定列：\n"
+        f"   · `cell_by=index` + `cell_index=<第几列，**从 1 起**>`（勾选列通常是**第 1 列**）\n"
+        f"   · 或 `cell_by=header` + `cell_field=<表头文案>`（列有表头文案时）\n"
+        f"   · 有 data-field 的列仍用 `cell_field=<field>`（等价于 cell_by 缺省/field）\n"
+        f"   例：勾选刚建的那一行 -> action=check, row_text=<刚填的名称>, cell_by=index, cell_index=1，"
+        f"**不要**给 semantic_name（行内定位步骤一律不给语义名）；\n"
         f"3c. 新建成功后要验「**列表第一条就是刚建的那条**」-> 用 action=expect_first_row + "
         f"cell_field=<列> + value=<你刚填的同一个值>。这是**唯一**允许「期望值 = 输入值」的场合"
         f"（它验的是「新记录确实落在第一行」，text 断言证明不了位置）；\n"

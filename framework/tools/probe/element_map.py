@@ -54,6 +54,11 @@ class TestStep:
     # cell_field 同时用于 expect_first_row 断言（要验第一行的哪一列）。
     row_text: str | None = None
     cell_field: str | None = None
+    # V8.4.3：列指定方式（field / header / index）与序号 —— 给**没有 data-field 的列**用
+    # （最典型 = 表格最左的勾选列）。生成器早就在读这两个键（_row_col_step 白名单），
+    # 但 AI 产出这一侧一路都没接上，导致 AI 想表达也只能丢掉。
+    cell_by: str | None = None
+    cell_index: int | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -65,6 +70,8 @@ class TestStep:
             "description": self.description,
             "row_text": self.row_text,
             "cell_field": self.cell_field,
+            "cell_by": self.cell_by,
+            "cell_index": self.cell_index,
         }
 
     @classmethod
@@ -75,6 +82,7 @@ class TestStep:
             value=d.get("value"), assertion=d.get("assertion"),
             description=d.get("description", ""),
             row_text=d.get("row_text"), cell_field=d.get("cell_field"),
+            cell_by=d.get("cell_by"), cell_index=d.get("cell_index"),
         )
 
 
