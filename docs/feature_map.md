@@ -6,19 +6,19 @@
 ## 总览
 
 - 大特性 **10** 个 · 子特性 **45** 条
-- 一类用例文件 **86** 个 / 用例函数 **688** 条
+- 一类用例文件 **90** 个 / 用例函数 **713** 条
 - 二类验证文件 **21** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
 | 1 | 混合链路 | 3 | 4 | 3 |
-| 2 | 语义识别与步骤编排 | 4 | 15 | 4 |
+| 2 | 语义识别与步骤编排 | 4 | 16 | 4 |
 | 3 | 分层定位与控件识别 | 7 | 10 | 5 |
 | 4 | 选错控件兜底 | 4 | 3 | 2 |
-| 5 | 用例脚本数据三层分离 | 5 | 6 | 0 |
+| 5 | 用例脚本数据三层分离 | 5 | 7 | 0 |
 | 6 | 自愈闭环 Healer | 1 | 0 | 0 |
 | 7 | 并发与资源安全 | 4 | 3 | 1 |
-| 8 | 离线回放 | 4 | 4 | 3 |
+| 8 | 离线回放 | 4 | 6 | 3 |
 | 9 | 质量闸门体系 | 8 | 35 | 4 |
 | 10 | CLI 帮助契约 | 5 | 6 | 0 |
 
@@ -43,7 +43,7 @@
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
 | 2.1 | 语义名生成与对齐 | AI 产出的语义名能落到真实控件上；宁可不映射（大声告警）也不许错映射（静默点错） | `test_name_alignment.py`(11) | - |
-| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_ai_retry_loop.py`(10)、`test_ai_incomplete_output_retries.py`(3)、`test_ai_retry_same_cause.py`(5)、`test_ai_no_hardcoded_row_values.py`(5)、`test_semantic_mismatch_blocks.py`(3)、`test_llm_tool_choice_unsupported.py`(3) | `verify_role_switch_click.py` |
+| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_ai_retry_loop.py`(10)、`test_ai_incomplete_output_retries.py`(3)、`test_ai_retry_same_cause.py`(5)、`test_ai_no_hardcoded_row_values.py`(5)、`test_semantic_mismatch_blocks.py`(3)、`test_llm_tool_choice_unsupported.py`(3)、`test_production_defects_gate_l1.py`(3) | `verify_role_switch_click.py` |
 | 2.3 | 步骤到定位的合成 | 步骤里的语义名/属性如何合成可执行定位表达式 | `test_scope_locate_expr.py`(17)、`test_locate_by_title.py`(8) | `verify_scope_locate.py` |
 | 2.4 | 场景声明契约 | 人写的那部分：pages / pre / auth / data / probe_url —— 声明必须由场景提供，框架不懂具体系统 | `test_scenario_auth_spec.py`(8)、`test_page_pre_actions.py`(3)、`test_probe_url_and_occurrence.py`(6)、`test_login_priming_coverage.py`(4) | `verify_login_priming.py`、`verify_page_pre_actions.py` |
 
@@ -84,7 +84,7 @@
 
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
-| 5.1 | 三层职责边界 | 同一场景多组数据 -> 产出多条独立用例，报告独立一行、失败可定位 | `test_data_expand.py`(12) | - |
+| 5.1 | 三层职责边界 | 同一场景多组数据 -> 产出多条独立用例，报告独立一行、失败可定位 | `test_data_expand.py`(12)、`test_waiting_semantics_maps_to_wait_text.py`(4) | - |
 | 5.2 | 数据驱动不静默退化 | 占位符没被替换时必须报错，不许把 `{占位符}` 原样当字面量跑 | `test_data_driven_placeholders.py`(4)、`test_goto_url_parameterization.py`(3) | - |
 | 5.3 | 生成物转义安全 | 数据里的换行/引号等特殊字符不能破坏生成的 Python 源码 | `test_generator_escaping.py`(4) | - |
 | 5.4 | 增量生成 | 场景变了要重新生成；两个触发源都要认 | `test_generate_incremental.py`(3) | - |
@@ -121,7 +121,7 @@
 
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
-| 8.1 | 录像键两级策略 | 严格级（逐字一致）+ 宽松级的匹配分工 | `test_cassette_strict_policy.py`(3) | - |
+| 8.1 | 录像键两级策略 | 严格级（逐字一致）+ 宽松级的匹配分工 | `test_cassette_strict_policy.py`(3)、`test_cassette_key_stability.py`(9)、`test_cassette_fuzzy_fallback.py`(9) | - |
 | 8.2 | 录像体检 | 场景段抠取 + 覆盖判定；缺录像要能报出来 | `test_check_cassettes_block.py`(6) | - |
 | 8.3 | 录制与回放契约 | 录像能录、能放、放得对（不联网、不要 key） | `test_llm_cassette.py`(30) | `verify_e2e_scenario3_cassette.py`、`verify_e2e_scenario3_replay.py` |
 | 8.4 | LLM 抖动重试 | LLM 偶发失败要退避重试，不许把抖动当失败 | `test_llm_retry.py`(3) | `verify_offline_chain_deps.py` |

@@ -724,13 +724,16 @@ async def _ai_explore_async(
     # (1) 离线回放（--llm-cassette）：命中即用 —— **刻意放在 llm_from_env() 之前**，
     #    因为离线机器常常连 .env 都没配（回放不需要 key，也不联网）。
     if llm_cassette is not None and llm_cassette.is_replay:
-        from framework.tools.explore.llm_cassette import struct_key, struct_key_legacy
+        from framework.tools.explore.llm_cassette import (struct_key, struct_key_prev,
+                                                          struct_key_legacy)
         # [!] **两把结构键都试**（2026-09-22）：新算法（值归一化 -> 换数据/参数化不再失效）
         #    + 旧算法（兼容此前录的录像 —— 它们的 key_struct 是按旧算法算的，
         #    不做这层兼容，升级就会让所有旧录像集体失效 = 逼用户把所有场景重录一遍）
         return _replay_from_cassette(
             llm_cassette, prompt, page_items, first_url, scenario, pages=pages,
+            #   V8.4.2：三把键都试 —— 新（基础名集合）/ 上一版（含 @页名·_N）/ 最旧（场景不归一化）
             struct_key_value=[struct_key(scenario, page_items, pages, _PLANNER_SYSTEM),
+                              struct_key_prev(scenario, page_items, pages, _PLANNER_SYSTEM),
                               struct_key_legacy(scenario, page_items, pages, _PLANNER_SYSTEM)],
             strict_only=cassette_strict)
 

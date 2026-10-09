@@ -34,7 +34,7 @@ FEATURES = [
                  class2=[]),
             dict(no="2.2", name="自然语言步骤编排", goal="场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单",
                  class1=["test_step_direct_locator.py", "test_ai_scenario_preconditions.py", "test_ai_retry_loop.py", "test_ai_incomplete_output_retries.py", "test_ai_retry_same_cause.py", "test_ai_no_hardcoded_row_values.py",
-                          "test_semantic_mismatch_blocks.py", "test_llm_tool_choice_unsupported.py"],
+                          "test_semantic_mismatch_blocks.py", "test_llm_tool_choice_unsupported.py", "test_production_defects_gate_l1.py"],
                  class2=["verify_role_switch_click.py"]),
             dict(no="2.3", name="步骤到定位的合成", goal="步骤里的语义名/属性如何合成可执行定位表达式",
                  class1=["test_scope_locate_expr.py", "test_locate_by_title.py"],
@@ -101,7 +101,7 @@ FEATURES = [
         dir="特性5-用例脚本数据三层分离",
         subs=[
             dict(no="5.1", name="三层职责边界", goal="同一场景多组数据 -> 产出多条独立用例，报告独立一行、失败可定位",
-                 class1=["test_data_expand.py"],
+                 class1=["test_data_expand.py", "test_waiting_semantics_maps_to_wait_text.py"],
                  class2=[]),
             dict(no="5.2", name="数据驱动不静默退化", goal="占位符没被替换时必须报错，不许把 `{占位符}` 原样当字面量跑",
                  class1=["test_data_driven_placeholders.py", "test_goto_url_parameterization.py"],
@@ -151,7 +151,7 @@ FEATURES = [
         dir="特性8-离线回放",
         subs=[
             dict(no="8.1", name="录像键两级策略", goal="严格级（逐字一致）+ 宽松级的匹配分工",
-                 class1=["test_cassette_strict_policy.py"], class2=[]),
+                 class1=["test_cassette_strict_policy.py", "test_cassette_key_stability.py", "test_cassette_fuzzy_fallback.py"], class2=[]),
             dict(no="8.2", name="录像体检", goal="场景段抠取 + 覆盖判定；缺录像要能报出来",
                  class1=["test_check_cassettes_block.py"], class2=[]),
             dict(no="8.3", name="录制与回放契约", goal="录像能录、能放、放得对（不联网、不要 key）",

@@ -34,6 +34,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -41,7 +42,9 @@ from typing import Any
 from framework.tools.common import config
 
 __all__ = ["Cassette", "CassetteError", "MODE_LIVE", "MODE_RECORD", "MODE_REPLAY",
-           "cassette_key", "struct_key", "default_dir", "render_miss_help"]
+           "cassette_key", "struct_key", "struct_key_prev", "struct_key_legacy",
+           "strip_qualifier", "element_fingerprint", "normalize_values", "_extract_scenario",
+           "default_dir", "render_miss_help"]
 
 MODE_LIVE = "live"
 MODE_RECORD = "record"
@@ -81,6 +84,46 @@ def cassette_key(prompt: str, system: str = "") -> str:
     return h.hexdigest()[:16]
 
 
+def strip_qualifier(semantic_name: str) -> str:
+    """把「探测当时的观测限定」从控件名上剥掉，只留**基础名**（V8.4.2）。
+
+    要剥的两类（都是**探测当时的观测**，不是页面结构本身）：
+      · `@页名` 后缀 —— 同一名字在多页出现时被唯一化成 `HT_1001@发票列表页`；
+        它取决于「这次恰好探到几页」，而 demo 的运行期数据会变（跑过测试后多了记录）。
+      · `_N` 序号 —— 同页内重名控件被编号成 `删除_2`；取决于探测顺序与数量。
+
+    为什么必须剥（2026-10-09 实测）：42 份录像里有 36 个互不相同的结构键，
+    同一场景、同一页面结构只因「多出现在一页」就整份不命中 —— 离线回放等于不可靠。
+    把观测拌进结构键，就是拿实测值当地基。
+    """
+    if not semantic_name:
+        return ""
+    # [!] 只剥 `@页名`，**不剥** `_N`：
+    #     实测 `HT_1001` 这种业务编号本身就含 `_1001`，用 `_\d+$` 会把它剥成 `HT`
+    #     —— 把不同合同全折成同一个控件名，那比"不命中"更糟（会命中错的控件）。
+    #     `_N` 序号的稳定性改由 `element_fingerprint` 的**数字归一化**承担。
+    return str(semantic_name).split("@", 1)[0].strip()
+
+
+def element_fingerprint(semantic_name: str) -> str:
+    """控件指纹：`@页名` 剥掉 + **数字串折成 `<NUM>`**（V8.4.2）。
+
+    为什么折数字：
+      · `删除_2` / `删除_3` —— 同页重名控件被编号，取决于探测顺序与数量。
+      · `HT_1001` / `HT_1002` / `HT_1030` —— 同一类表格行控件，行数变了就换名字。
+    两者都属**探测当时的观测**，不该进结构键。折成 `<NUM>` 后它们同键，
+    而「冒出一个**新的、不带数字的**控件名」仍然能区分开（红线不变）。
+    """
+    if not semantic_name:
+        return ""
+    b = re.sub(r"\d+", "<NUM>", strip_qualifier(semantic_name))
+    # 只剥**带分隔符的尾部序号**：`删除_2` -> `删除`；`HT_1001` -> `HT`。
+    # [!] **不剥**紧贴字母的数字（`搜索按钮2` 可能是**真不同的控件**，
+    #     而 `搜索按钮` 与 `搜索按钮2` 同时存在时把它们折成同一个是错的）。
+    b = re.sub(r"[_\-\s]+<NUM>$", "", b)
+    return b or "<NUM>"
+
+
 def struct_key(scenario: str, items: list[dict] | None, pages: list[dict] | None = None,
                system: str = "") -> str:
     """**结构键**：只看「场景 + 页面结构 + 控件语义骨架」，**不看业务数据的值**。
@@ -102,11 +145,23 @@ def struct_key(scenario: str, items: list[dict] | None, pages: list[dict] | None
     parts = [system or "", normalize_values((scenario or "").strip())]
     for pg in (pages or []):
         parts.append(f"PAGE|{pg.get('name', '')}|{pg.get('url', '')}")
-    for it in sorted(items or [], key=lambda x: (str(x.get("page") or ""),
-                                                 str(x.get("semantic_name") or ""))):
-        parts.append("EL|" + "|".join(
-            str(it.get(k) or "") for k in ("page", "semantic_name", "role", "name", "label",
-                                           "placeholder", "test_id", "opens_new_tab")))
+    # V8.4.2：**基础名集合**（去重 + 排序）。
+    #   · 去重 => 控件**数量**变化（demo 多了行）不影响（数量是运行期观测）
+    #   · 用 element_fingerprint 剥掉 @页名 + 折数字（否则「多出现一页/多一行」就变键）
+    #   · 仍然**保留**「冒出全新控件名」的影响 => 真改了页面结构就该不命中（红线不变）
+    seen: set[str] = set()
+    for it in (items or []):
+        base = element_fingerprint(it.get("semantic_name") or "")
+        if not base:
+            continue
+        attrs = []
+        for k in ("role", "name", "label", "placeholder", "test_id", "opens_new_tab"):
+            v = str(it.get(k) or "")
+            # name/label 常与 semantic_name 同源（含 @页名 与序号）-> 同口径归一
+            attrs.append(element_fingerprint(v) if k in ("name", "label") else normalize_values(v))
+        seen.add("EL|" + "|".join([base] + attrs))
+    for line in sorted(seen):
+        parts.append(line)
     return _h.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
@@ -132,9 +187,28 @@ def normalize_values(text: str) -> str:
                   VAL_TOKEN, t)
 
 
+def struct_key_prev(scenario: str, items: list[dict] | None, pages: list[dict] | None = None,
+                    system: str = "") -> str:
+    """**上一版算法**（含 @页名/_N、按控件逐条入键）—— 兼容 2026-09-22~2026-10-09 录的录像。
+
+    V8.4.2 换成基础名集合后，这些录像按新算法算不出同样的键 => 查询时把它们一起传进
+    `Cassette.lookup`（多把键都试），避免升级即失效。
+    """
+    import hashlib as _h
+    parts = [system or "", normalize_values((scenario or "").strip())]
+    for pg in (pages or []):
+        parts.append(f"PAGE|{pg.get('name', '')}|{pg.get('url', '')}")
+    for it in sorted(items or [], key=lambda x: (str(x.get("page") or ""),
+                                                 str(x.get("semantic_name") or ""))):
+        parts.append("EL|" + "|".join(
+            str(it.get(k) or "") for k in ("page", "semantic_name", "role", "name", "label",
+                                           "placeholder", "test_id", "opens_new_tab")))
+    return _h.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
+
+
 def struct_key_legacy(scenario: str, items: list[dict] | None, pages: list[dict] | None = None,
                       system: str = "") -> str:
-    """**旧算法**（场景文案不归一化）—— 只为兼容 2026-09-22 之前录的录像。
+    """**最旧算法**（场景文案不归一化）—— 只为兼容 2026-09-22 之前录的录像。
 
     那些录像的 `key_struct` 是按这个算法算的；若不做兼容，升级后它们会**集体失效**
     （等于逼用户把所有场景重录一遍）。口径：新录的用新算法（录像里记 `key_struct_algo`），
@@ -166,6 +240,21 @@ def _framework_version() -> str:
         return m.group(1) if m else "unknown"
     except Exception:
         return "unknown"
+
+
+# [!] 只认**中文**闭合符（`」` / `”`）当结束。
+#     实测踩过：把西文单引号也放进结束符里，场景 `在搜索框输入 '1005'` 会在 `'1005'` 处
+#     提前闭合 -> 提取到的"场景"只有半句，fuzzy 的相似度算出来完全不对。
+_SCEN_RE = re.compile(r"自然语言测试场景[:：]\s*[「“](.*?)[」”]", re.S)
+
+
+def _extract_scenario(prompt: str) -> str:
+    """从 prompt 里抠出**场景文案**那一节（fuzzy 只比它）。
+
+    抓不到就返回空串 -> 调用方不做 fuzzy（宁报「没有这一份」，也不拿不相干的录像套）。
+    """
+    m = _SCEN_RE.search(prompt or "")
+    return (m.group(1) or "").strip() if m else ""
 
 
 def _first_diff_line(old: str, new: str) -> tuple[int, str, str, int]:
@@ -310,6 +399,11 @@ class Cassette:
 
         if strict_only or not struct_key_value:
             return None
+        # 第三级（V8.4.2）：**相似度匹配**。严格键与结构键都不中时，若目录里有一份
+        #   prompt 与现在**几乎逐字相同**（差异行占比低于阈值），说明只是「同一场景、
+        #   数据/页面轻微变动」而结构键没兜住（历史上就是这么漏的：42 份里有 36 个
+        #   互不相同的结构键）。这一级**必须大声说明**，绝不静默降级 ——
+        #   步骤是录制当时针对那批数据做的判断，换了数据要人核对。
         # [!] 支持**多把结构键**（2026-09-22）：新算法（值归一化）与旧算法（兼容旧录像）都试
         _keys = [struct_key_value] if isinstance(struct_key_value, str) else list(struct_key_value)
         for f in sorted(self.root.glob("*.json")):      # 扫描时跳过坏文件：一个坏文件不该毁掉整次回放
@@ -322,6 +416,55 @@ class Cassette:
                 self.last_key = rec.get("key") or key
                 self.last_match = "struct"
                 return dict(rec, _match="struct")
+
+        # ---- 第三级：相似度匹配（默认开；HYBRID_CASSETTE_FUZZY=0 可关）----
+        import os as _os
+        if _os.environ.get("HYBRID_CASSETTE_FUZZY", "1").strip() in ("0", "off", "false"):
+            return None
+        # [!] 用**相似度**（difflib 最长公共子序列），不是「差异行数 / 总行数」。
+        #     实测踩过：往提示词中间插十几行，后面所有行整体错位 -> 按行号比对算出
+        #     「1355 行不同」（其实内容 95% 相同）=> 真正该救的场景反而被判成"没有这一份"。
+        #     SequenceMatcher 对插入/删除天然免疫，这才是这里要的性质。
+        import difflib as _difflib
+        min_ratio = float(_os.environ.get("HYBRID_CASSETTE_FUZZY_RATIO", "0.90"))
+        # [!] 只比**场景文案**，不比整个 prompt。
+        #     实测踩过：提示词模板占 prompt 的绝大部分行，两个**完全不同的场景**
+        #     整 prompt 相似度也能到 0.9+ => 红线「不许拿旧结论套新场景」会被 fuzzy 破掉。
+        #     场景文案相同 = 真是同一个场景（数据/页面轻微变动），这才是该救的情形。
+        _cur_scen = _extract_scenario(prompt)
+        best = None                                   # (相似度, 文件, 记录)
+        for f in sorted(self.root.glob("*.json")):
+            try:
+                rec = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not rec.get("responses"):
+                continue
+            old_p = rec.get("prompt") or ""
+            if not old_p:
+                continue
+            if not _cur_scen:                          # 提取不出场景文案 -> 不做 fuzzy（宁缺勿滥）
+                continue
+            old_scen = _extract_scenario(old_p)
+            if not old_scen:
+                continue
+            r = _difflib.SequenceMatcher(None, old_scen, _cur_scen).quick_ratio()
+            if r < min_ratio:                          # quick_ratio 是上界，先廉价筛掉
+                continue
+            r = _difflib.SequenceMatcher(None, old_scen, _cur_scen).ratio()
+            if r >= min_ratio and (best is None or r > best[0]):
+                best = (r, f, rec)
+        if best:
+            r, f, rec = best
+            self.hits += 1
+            self.last_key = rec.get("key") or key
+            self.last_match = "fuzzy"
+            print(f"      [cassette] [!] 用的是**相似度匹配**的录像 {f.name}"
+                  f"（相似度 {r*100:.2f}%；不是逐字相同）")
+            print(f"      [cassette] [!] 该录像录于 {rec.get('created_at','?')}"
+                  f"（框架 {rec.get('framework_version','?')}）—— 步骤是**当时那批数据**下做的判断，"
+                  f"换了数据请人工核对产物。")
+            return dict(rec, _match="fuzzy", _fuzzy_similarity=r)
         return None
 
     def store(self, prompt: str, model: str, system: str, responses: list[dict],

@@ -115,6 +115,9 @@ def _extract_data(case: dict) -> dict:
         if st.get("row_text"):
             data[f"row_text_{idx}"] = st["row_text"]
             idx += 1
+    for _a in case.get("asserts", []):
+        apply_kind_defaults(_a)          # V8.4.2：等语义 -> wait_text + 有限超时
+
     for i, a in enumerate(case.get("asserts", [])):
         # 判据是「有没有 expect 字段」而不是「值是否为真」——0 / "" 都是合法期望值
         # （count 期望 0 行、value 期望空串=被清空），用真值判断会把它们吞掉，断言就静默变形了。
@@ -170,6 +173,41 @@ _ASSERT_NEED_LOC = {"visible", "hidden", "count", "attr", "value",
                     "checked", "unchecked", "enabled", "disabled"}
 
 
+# V8.4.2：AI 的「**等待**」语义要落到 `wait_text`（有界轮询），不是一次性断言。
+# 事故：断言 desc 写着「有界等待订单状态自动流转到已关闭」，但 AI 没给 kind
+#   -> 兜底成 "text" -> 一次性 wait_for(5s) -> 等状态流转必然超时。
+#   框架早有 wait_text（_assert_wait_text：有界轮询 + 探到就走），缺的只是这层映射。
+_WAITING_RE = __import__("re").compile(
+    r"(等待|等到|等出现|等候|wait\s*for|轮询|流转到|变成|变为|更新为)")
+# 默认超时：够「状态自己流转」这类异步过程，又不至于把用例拖成无限等
+_WAIT_DEFAULT_MS = 30000
+
+
+def infer_kind_for_assert(a: dict) -> str:
+    """推断一条断言的 kind。
+
+    规则（顺序即优先级）：
+      1. AI **显式**给了 kind -> 原样尊重（不许覆盖模型的明确决定）。
+      2. 没给，但 `desc` 里有**明确的等待语义** -> `wait_text`（有界轮询）。
+      3. 其余 -> `text`（与历史行为逐字一致）。
+    """
+    explicit = str(a.get("kind") or "").strip()
+    if explicit:
+        return explicit
+    desc = str(a.get("desc") or "")
+    return "wait_text" if _WAITING_RE.search(desc) else "text"
+
+
+def apply_kind_defaults(a: dict) -> dict:
+    """把推断结果**写回**断言 dict（含 wait_text 的有限默认超时）。原地改并返回。"""
+    a["kind"] = infer_kind_for_assert(a)
+    if a["kind"] == "wait_text":
+        tm = a.get("timeout_ms")
+        if not isinstance(tm, int) or tm <= 0:
+            a["timeout_ms"] = _WAIT_DEFAULT_MS
+    return a
+
+
 def _render_assert(a: dict, loc_map: dict, cross_page: bool = False,
                    dup_raw: set[str] | None = None) -> list[str]:
     """把一条断言（cases 的 asserts[i]）翻译成生成脚本里的调用行。
@@ -180,7 +218,8 @@ def _render_assert(a: dict, loc_map: dict, cross_page: bool = False,
     dup_raw：**本用例口径**的跨页重名集合（见 `_dup_raw_names_for_case`）；None 时才退到全局名单。
     """
     dup = _DUP_RAW_NAMES if dup_raw is None else dup_raw
-    kind = str(a.get("kind") or "text").strip()
+    # V8.4.2：AI 没给 kind 时按**语义**推断（等待 -> wait_text），别再无条件兜底成 text
+    kind = infer_kind_for_assert(a)
     desc = a.get("desc", "")
     elem = a.get("element")
     sel = a.get("selector")

@@ -753,6 +753,32 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
     reasons: list[str] = []
     if not entries:
         return None, ""
+    # V8.4.2：**先看 explore 侧收集到的产出缺陷**（写死行数据 / 严重误选控件）。
+    #   之前这两个清单只收集没人读 -> 等于白收集：这类用例**注定换个环境就崩或选错控件**，
+    #   试跑它纯属浪费（而且跑过了也只证明"在这批数据上侥幸能过"）。
+    #   处置：直接带原因返回 False，让重试闭环让 AI 重生成（不跑 generate / 不试跑）。
+    try:
+        from framework.tools.explore import explorer as _exp
+        _prod: list[str] = []
+        if getattr(_exp, "_HARDCODED_NOTES", None):
+            _prod.append("产出里把**表格行数据的具体值写死**了"
+                         "（换数据/换排序就会崩，必须改成行锚 / 首行断言 / {占位符}）：")
+            _prod += ["  · " + x for x in _exp._HARDCODED_NOTES[:5]]
+        if getattr(_exp, "SEMANTIC_MISMATCH_NOTES", None):
+            _prod.append("产出里选中的控件与步骤描述**几乎无关**"
+                         "（语义校准判为严重误选，实跑必然报「元素语义未找到」）：")
+            _prod += ["  · " + x for x in _exp.SEMANTIC_MISMATCH_NOTES[:5]]
+        if _prod:
+            print("  [NG] 校验不合格：AI 产出有**结构性缺陷** -> 不试跑，直接带原因重生成")
+            for line in _prod:
+                print(f"     {line[:170]}")
+            print("  要求：① 行数据一律用声明式定位（row_text / expect_first_row / cell_field），"
+                  "字面编号只允许出现在场景里逐字给出的情形；")
+            print("        ② 每个步骤选的控件必须与步骤描述语义相符（不许拿业务数据当控件名）。")
+            return False, "\n".join(_prod)
+    except Exception as _e:      # 收集/读取出问题不该毁掉校验本身
+        print(f"  [!] 产出缺陷清单读取失败（不影响校验）：{type(_e).__name__}: {_e}")
+
     gen_dir = SCRIPTS_DIR / "generated"
     print(f"[explore] --verify：先 generate 一次，再逐条试跑 {len(entries)} 条新用例…")
     # [!] 必须用 run_capture（显式 UTF-8 解码）：以前是裸 `subprocess.run(..., text=True)`，
