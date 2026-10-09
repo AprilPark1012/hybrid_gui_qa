@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 # 模块级绑定（供 monkeypatch 与判据替换；不要改成函数内 import）
 from framework.tools.probe.probe import probe_page
 from framework.tools.probe.expandable import expand_and_collect
+from framework.tools.probe.editable import enter_editable_and_collect
 from framework.tools.explore.explorer import _try_collect_modal_items, _merge_items
 
 __all__ = ["ScanResult", "scan_page"]
@@ -78,6 +79,7 @@ def scan_page(
     tag_page: bool = False,
     with_expand: bool = True,
     with_modal: bool = True,
+    with_editable: bool = True,
     settle_s: float = 2.5,
 ) -> ScanResult:
     """在**已就绪**的页面上做完一套标准探测。
@@ -87,6 +89,7 @@ def scan_page(
       tag_page   : 给每一项打上 `page=<page_name>` 标签（跨页路径需要）。
       with_expand: 是否做「可展开容器」补充（隐藏菜单里的控件靠它才拿得到）。
       with_modal : 是否做「弹窗/弹层」补充。
+      with_editable: 是否做「编辑态/动态新增」补充（点「编辑」「新增」各一次再重采，探完复原）。
       settle_s   : 展开后等待新控件出现的最长时间（有界轮询，不是固定 sleep）。
 
     返回 `ScanResult`。
@@ -104,15 +107,27 @@ def scan_page(
     if with_modal:
         modal = _try_collect_modal_items(page, base + menu)
 
+    # 3.5) 编辑态 / 动态新增（点「编辑」「新增」各一次再重采，探完**复原**）
+    #      为什么需要：有些控件**只在编辑态/动态新增之后才存在** —— demo 订单详情的行内字段是
+    #      `<div :readonly="!editing" v-model="ln.material">`（无 id/name，编辑态才成输入框），
+    #      静态探测与可展开容器补探都拿不到 -> AI 绑不到 element -> 映射质量闸拦下整条用例。
+    #      与可展开容器**同一条纪律**：框架开的必须由框架关（取不到取消触发器就 reload）。
+    #      关掉：HYBRID_EDITABLE_PROBE=0。
+    edit_items: list[dict] = []
+    if with_editable:
+        edit_items = enter_editable_and_collect(page, base + menu + modal, settle_s=settle_s)
+
     # 4) 打页名标签（跨页路径要求每一项都带 page）
     if tag_page and page_name:
         for it in menu:
             it["page"] = page_name
         for it in modal:
             it["page"] = page_name
+        for it in edit_items:
+            it["page"] = page_name
 
     # 5) 合并成一份清单（与 explore 侧同源的合并语义）
-    merged = _merge_items(_merge_items(base, menu), modal)
+    merged = _merge_items(_merge_items(_merge_items(base, menu), modal), edit_items)
 
     return ScanResult(
         items=merged,

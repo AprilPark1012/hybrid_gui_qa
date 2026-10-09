@@ -59,10 +59,14 @@ FEATURES = [
             dict(no="3.2", name="多层嵌套容器", goal="容器套容器（区域内表格、表单里分组）时路径仍能唯一",
                  class1=["test_element_anchor_path.py"],
                  class2=[]),
-            dict(no="3.3", name="弹出层与可展开容器", goal="藏在 display:none 菜单里、或点开才出现的弹层控件能被探到并用起来",
+            dict(no="3.3", name="弹出层与可展开容器", goal="藏在 display:none 菜单里、点开才出现的弹层控件、"
+                                                     "以及**只在编辑态/动态新增之后才存在**的控件都能被探到并用起来"
+                                                     "（框架开的必须由框架关）",
                  class1=["test_expandable_menu_discovery.py", "test_probe_single_entry.py",
-                         "test_probe_page_scope.py", "test_probe_incremental.py"],
-                 class2=["verify_expandable_menu.py", "verify_probe_path_parity.py"]),
+                         "test_probe_page_scope.py", "test_probe_incremental.py",
+                         "test_editable_state_probe.py"],
+                 class2=["verify_expandable_menu.py", "verify_probe_path_parity.py",
+                         "verify_editable_state_probe.py"]),
             dict(no="3.4", name="跨页面元素", goal="多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧",
                  class1=["test_runtime_name_source_is_explore_snapshot.py"],
                  class2=["verify_cross_page.py"]),

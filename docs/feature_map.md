@@ -6,14 +6,14 @@
 ## 总览
 
 - 大特性 **10** 个 · 子特性 **45** 条
-- 一类用例文件 **103** 个 / 用例函数 **843** 条
-- 二类验证文件 **22** 个
+- 一类用例文件 **104** 个 / 用例函数 **854** 条
+- 二类验证文件 **23** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
 | 1 | 混合链路 | 3 | 4 | 3 |
 | 2 | 语义识别与步骤编排 | 4 | 21 | 4 |
-| 3 | 分层定位与控件识别 | 7 | 13 | 5 |
+| 3 | 分层定位与控件识别 | 7 | 14 | 6 |
 | 4 | 选错控件兜底 | 4 | 4 | 2 |
 | 5 | 用例脚本数据三层分离 | 5 | 8 | 0 |
 | 6 | 自愈闭环 Healer | 1 | 0 | 0 |
@@ -57,7 +57,7 @@
 |---|---|---|---|---|
 | 3.1 | 顶层锚点加容器内下钻 | 真实系统只有顶层元素有 testid；子元素靠「锚点 + 容器内相对语义路径」定位 | `test_element_anchor_path.py`(17)、`test_row_fields_cover_all_columns.py`(5)、`test_row_columns_are_named_items.py`(4) | `verify_scope_locate.py` |
 | 3.2 | 多层嵌套容器 | 容器套容器（区域内表格、表单里分组）时路径仍能唯一 | `test_element_anchor_path.py`(17) | - |
-| 3.3 | 弹出层与可展开容器 | 藏在 display:none 菜单里、或点开才出现的弹层控件能被探到并用起来 | `test_expandable_menu_discovery.py`(6)、`test_probe_single_entry.py`(13)、`test_probe_page_scope.py`(8)、`test_probe_incremental.py`(7) | `verify_expandable_menu.py`、`verify_probe_path_parity.py` |
+| 3.3 | 弹出层与可展开容器 | 藏在 display:none 菜单里、点开才出现的弹层控件、以及**只在编辑态/动态新增之后才存在**的控件都能被探到并用起来（框架开的必须由框架关） | `test_expandable_menu_discovery.py`(6)、`test_probe_single_entry.py`(13)、`test_probe_page_scope.py`(8)、`test_probe_incremental.py`(7)、`test_editable_state_probe.py`(11) | `verify_expandable_menu.py`、`verify_probe_path_parity.py`、`verify_editable_state_probe.py` |
 | 3.4 | 跨页面元素 | 多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧 | `test_runtime_name_source_is_explore_snapshot.py`(12) | `verify_cross_page.py` |
 | 3.5 | 属性直定位 | 探测清单兜不住时，用属性（by+value）直接定位；select 的 index 语义 = 第 N 个非空选项（跳过 placeholder） | `test_select_by_index.py`(3)、`test_select_without_value.py`(3)、`test_text_assert_prefers_visible.py`(3) | `verify_select_index_skips_placeholder.py` |
 | 3.6 `[未实现]` | iframe 内控件 | [!] 未实现（缺口）：iframe 内以及跨 iframe 的控件识别与操作 | - | - |
