@@ -5,22 +5,22 @@
 
 ## 总览
 
-- 大特性 **10** 个 · 子特性 **43** 条
-- 一类用例文件 **74** 个 / 用例函数 **628** 条
+- 大特性 **10** 个 · 子特性 **45** 条
+- 一类用例文件 **82** 个 / 用例函数 **674** 条
 - 二类验证文件 **21** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
 | 1 | 混合链路 | 3 | 4 | 3 |
-| 2 | 语义识别与步骤编排 | 4 | 8 | 4 |
-| 3 | 分层定位与控件识别 | 7 | 8 | 5 |
+| 2 | 语义识别与步骤编排 | 4 | 12 | 4 |
+| 3 | 分层定位与控件识别 | 7 | 9 | 5 |
 | 4 | 选错控件兜底 | 4 | 3 | 2 |
-| 5 | 用例脚本数据三层分离 | 4 | 5 | 0 |
+| 5 | 用例脚本数据三层分离 | 5 | 6 | 0 |
 | 6 | 自愈闭环 Healer | 1 | 0 | 0 |
 | 7 | 并发与资源安全 | 4 | 3 | 1 |
 | 8 | 离线回放 | 4 | 4 | 3 |
 | 9 | 质量闸门体系 | 8 | 35 | 4 |
-| 10 | CLI 帮助契约 | 4 | 4 | 0 |
+| 10 | CLI 帮助契约 | 5 | 6 | 0 |
 
 ## 特性 1 · 混合链路
 
@@ -43,7 +43,7 @@
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
 | 2.1 | 语义名生成与对齐 | AI 产出的语义名能落到真实控件上；宁可不映射（大声告警）也不许错映射（静默点错） | `test_name_alignment.py`(11) | - |
-| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单 | `test_step_direct_locator.py`(15) | `verify_role_switch_click.py` |
+| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_ai_retry_loop.py`(10)、`test_ai_incomplete_output_retries.py`(3)、`test_ai_retry_same_cause.py`(5) | `verify_role_switch_click.py` |
 | 2.3 | 步骤到定位的合成 | 步骤里的语义名/属性如何合成可执行定位表达式 | `test_scope_locate_expr.py`(17)、`test_locate_by_title.py`(8) | `verify_scope_locate.py` |
 | 2.4 | 场景声明契约 | 人写的那部分：pages / pre / auth / data / probe_url —— 声明必须由场景提供，框架不懂具体系统 | `test_scenario_auth_spec.py`(8)、`test_page_pre_actions.py`(3)、`test_probe_url_and_occurrence.py`(6)、`test_login_priming_coverage.py`(4) | `verify_login_priming.py`、`verify_page_pre_actions.py` |
 
@@ -59,7 +59,7 @@
 | 3.2 | 多层嵌套容器 | 容器套容器（区域内表格、表单里分组）时路径仍能唯一 | `test_element_anchor_path.py`(17) | - |
 | 3.3 | 弹出层与可展开容器 | 藏在 display:none 菜单里、或点开才出现的弹层控件能被探到并用起来 | `test_expandable_menu_discovery.py`(6)、`test_probe_single_entry.py`(13)、`test_probe_page_scope.py`(8)、`test_probe_incremental.py`(7) | `verify_expandable_menu.py`、`verify_probe_path_parity.py` |
 | 3.4 | 跨页面元素 | 多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧 | - | `verify_cross_page.py` |
-| 3.5 | 属性直定位 | 探测清单兜不住时，用属性（by+value）直接定位；select 的 index 语义 = 第 N 个非空选项（跳过 placeholder） | `test_select_by_index.py`(3) | `verify_select_index_skips_placeholder.py` |
+| 3.5 | 属性直定位 | 探测清单兜不住时，用属性（by+value）直接定位；select 的 index 语义 = 第 N 个非空选项（跳过 placeholder） | `test_select_by_index.py`(3)、`test_select_without_value.py`(3) | `verify_select_index_skips_placeholder.py` |
 | 3.6 `[未实现]` | iframe 内控件 | [!] 未实现（缺口）：iframe 内以及跨 iframe 的控件识别与操作 | - | - |
 | 3.7 | 行内单元格定位 | 行锚 + 单元格：列的指定方式（多列 by）与支持的 op（不只 click） | `test_row_cell_col_by.py`(12)、`test_row_cell_ops.py`(5) | - |
 
@@ -88,6 +88,7 @@
 | 5.2 | 数据驱动不静默退化 | 占位符没被替换时必须报错，不许把 `{占位符}` 原样当字面量跑 | `test_data_driven_placeholders.py`(4)、`test_goto_url_parameterization.py`(3) | - |
 | 5.3 | 生成物转义安全 | 数据里的换行/引号等特殊字符不能破坏生成的 Python 源码 | `test_generator_escaping.py`(4) | - |
 | 5.4 | 增量生成 | 场景变了要重新生成；两个触发源都要认 | `test_generate_incremental.py`(3) | - |
+| 5.5 | 可选字段的渲染健壮性 | 步骤缺可选字段（如 select 不给 value）时脚本照样生成，绝不因单个字段缺失崩掉整批 | `test_render_step_without_value.py`(3) | - |
 
 ## 特性 6 · 自愈闭环 Healer `[规划中（零判据）]`
 
@@ -154,4 +155,5 @@
 | 10.2 | 参数契约 | 未知/错位参数一律报错 + 非 0 退出，绝不静默忽略 | `test_cli_flags.py`(10) | - |
 | 10.3 | 帮助自动覆盖 | 新增子命令/参数必须自动出现在 --help 总览里 | `test_cli_help_coverage.py`(8) | - |
 | 10.4 | setup 与分发采纳 | `setup --check` 退出码能区分环境好坏 | `test_cli_setup.py`(10) | - |
+| 10.5 | 推荐路径口径 | 文档/提示/培训页的主推路径 = AI 链路；手搓用例降级为调试与回归辅助（历史版本记录不改） | `test_ai_first_docs.py`(6)、`test_tunables_exposed_as_flags.py`(6) | - |
 

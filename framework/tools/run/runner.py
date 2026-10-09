@@ -77,7 +77,19 @@ def _run_step(page, t: TestStep, log, healer: Healer):
     elif a == "fill":
         loc.fill(t.value or "")
     elif a == "select":
-        loc.select_option(t.value or "")
+        # V8.4：口径与生成物 `_harness._act` **完全一致**（同一能力不许有两个语义）：
+        #   · 给了值 -> 按值选；
+        #   · 没给值 -> 选第一个**真**选项（跳过 `<option value="">请选择</option>` 这类空占位）。
+        #     以前 `t.value or ""` 会传空串 -> Playwright 找 value="" 的选项 -> 找不到即超时。
+        if t.value is not None and str(t.value).strip():
+            loc.select_option(str(t.value))
+        else:
+            _opts = loc.locator("option")
+            _real = [i for i in range(_opts.count())
+                     if (_opts.nth(i).get_attribute("value") or "").strip() != ""]
+            if not _real:
+                raise AssertionError("select 没有可选项（全是空占位？）")
+            loc.select_option(index=_real[0])
     elif a == "check":
         loc.check()
     elif a == "press_enter":

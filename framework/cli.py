@@ -258,6 +258,89 @@ def _report_data_sets(e) -> NoReturn:
     raise SystemExit(2)
 
 
+# ---------------- AI 产出的「校验 -> 自动重试」闭环（V8.4 · 用户 2026-10-08 选 B）----------
+# 为什么需要：AI 编排是**非确定性**的，同一场景逐轮暴露不同缺陷（编登录流程/编密码 ->
+#   猜 select 的 value -> 拿 host 当换页证据）。提示词逐条堵能堵住每一条，但堵不完；
+#   工程上是承认「一次生成就对」不可靠 —— 用**已有**的校验能力接成有界重试。
+_AI_RETRY_MAX_CAP = 5     # 上界：防手滑写成 999 把 token 烧光
+
+
+def _ai_retry_limit(env: dict | None = None) -> int:
+    """读 `HYBRID_AI_RETRY`（默认 2，0 = 关闭重试退回旧行为）。
+
+    [!] 脏值**回落到默认**而不是抛异常：这是人手敲的环境变量，敲错了不该让整条链路崩。
+    [!] 必须有上界：一次 `explore` 最多 N 次 LLM 调用 + N 次实跑，写大了会很贵。
+    """
+    import os
+    e = env if env is not None else os.environ
+    raw = str(e.get("HYBRID_AI_RETRY", "")).strip()
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return 2
+    return max(0, min(n, _AI_RETRY_MAX_CAP))
+
+
+def _retry_reason_fingerprint(text: str) -> str:
+    """把失败原因归一化成**可比对的指纹** —— 供「同因不重试」用。
+
+    [!] 为什么要归一化（2026-10-09 干净环境 E2E 实测教训）：
+        原因文本里**必然**带每轮都不同的东西 —— 校验日志路径自带时间戳：
+            …/verify/ai_xxx_20261009_073944.log
+            …/verify/ai_xxx_20261009_074246.log
+        逐字比较 -> **永远判「不同因」** -> 永远重试 -> 白烧一轮 LLM + 一轮实跑。
+        实测：三轮失败点其实是同一个（`get_by_text("订单系统")` 幻觉），却跑到第 3 轮才停。
+
+    只抹掉**每轮必然变化**的部分（日志路径、时间戳、耗时、绝对路径前缀），
+    **不碰真正的失败描述** —— 否则该重试的也不试了（判据里有反向自证守着这条）。
+    """
+    import re
+    t = str(text or "")
+    t = re.sub(r"[^\s]*[/\\][\w./\\-]*\.log\b", "<LOG>", t)      # 校验日志路径
+    t = re.sub(r"\b\d{8}[_\-]\d{6}\b", "<TS>", t)                  # 20261009_073944
+    t = re.sub(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[\w:.]*", "<TS>", t)
+    t = re.sub(r"\b\d+(\.\d+)?\s*(ms|s)\b", "<DUR>", t)            # 5000ms / 1.5s
+    t = re.sub(r"/tmp/[\w.-]+", "<TMP>", t)                          # 环境相关的临时目录
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _should_retry_again(*, prev: str, new: str, attempt: int, limit: int) -> bool:
+    """还要不要再试一次？三条口径（任意一条不满足就停）。
+
+    1. 次数没用尽（`attempt < limit`）；
+    2. 这一轮**确实**产生了失败原因（`new` 非空）；
+    3. **原因和上一轮不同** —— 原因没变说明再问也是同一个答案，白烧 token。
+       （实测就是这个场景：假绿红线报了「换页证据用 index」，重试若还给同样产出，原因一模一样。）
+       [!] 比较用 `_retry_reason_fingerprint` 归一化后的指纹 —— 见该函数的说明。
+    """
+    if attempt >= limit:
+        return False
+    if not new:
+        return False
+    if prev and _retry_reason_fingerprint(prev) == _retry_reason_fingerprint(new):
+        return False
+    return True
+
+
+def _case_quality_reasons(e) -> str:
+    """把假绿红线的失败原因**文本化** —— 两用：① 打印给人看；② 喂给 AI 做重试修正。
+
+    [!] V8.4 拆出来的原因：以前 `_report_case_quality` 直接 `raise SystemExit(2)`，
+        想重试都没机会。现在这里只负责「说清楚错在哪」，由调用方决定 exit 还是带着它重试。
+    """
+    lines = [f"假绿红线拦下：{len(e.entries)} 条用例、共 {e.total} 处"]
+    for cid, errs in e.entries:
+        for m in errs:
+            lines.append(f"[{cid}] {m}")
+    lines.append("真因：换页证据（kind=url 的 expect）若在多个页面的 URL 里都出现，"
+                 "换页前后都能通过 -> 用例照样绿，但「确实换页了」这件事根本没被验到。")
+    lines.append("改法：(1) 换成只出现在目标页的片段（详情页 -> contract_detail）；"
+                 "(2) 目标页没有独有 URL 片段（列表页就是根路径 /）-> 改对该页独有文案做 text 断言；"
+                 "(3) 确认用例的页面清单 pages[].url 填全了。")
+    return "\n".join(lines)
+
+
 def _report_case_quality(e) -> NoReturn:
     """假绿红线触发时的交代：哪条用例 / 什么证据没牙 / 怎么改 —— **绝不落产物**，exit 2。"""
     print(f"\n[质量闸] [NG] 假绿红线拦下：{len(e.entries)} 条用例、共 {e.total} 处 → 拒绝产出任何产物")
@@ -333,8 +416,9 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
     # 0 个用例 = 什么都没生成（2026-09-13 修）：以前照打一行"生成 0 个用例"就 exit 0，
     # 脚本/CI 会把空用例集当成功 -> 明确失败并给下一步动作。
     if res["count"] == 0:
-        print("[generate] [NG] cases/ 里一个用例都没有 → 没有生成任何可执行测试。"
-              "先写 cases/*.json，或用 explore --ai 让 AI 出题")
+        print("[generate] [NG] cases/ 里一个用例都没有 -> 没有生成任何可执行测试。"
+              "推荐先跑 explore --ai --scenario-file <场景.yml> 让 AI 按场景生成用例（主推路径）；"
+              "也可手写 cases/*.json（仅用于调试/回归辅助）")
         raise SystemExit(2)
 
 
@@ -369,8 +453,11 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
                  case_id: str | None = None, extra: dict | None = None,
                  to_cases: bool = True, mock_fallback: bool = False,
                  pages: list[dict] | None = None, cassette=None, cassette_strict: bool = False,
-                 auth: dict | None = None):
-    """跑一次 AI 语义识别（+ 可选落 cases/）。返回 (emap, case_path | None, warns)。
+                 auth: dict | None = None, retry_feedback: str = ""):
+    """跑一次 AI 语义识别（+ 可选落 cases/）。返回 (emap, case_path | None, warns, qerr)。
+
+    qerr（V8.4）：假绿红线拦下时的失败原因**文本**，通过= None。
+      以前这里直接 exit 2；现在交给调用方 —— 它能决定「汇报退出」还是「带原因让 AI 重生成」。
 
     pages（P3 跨页）：[{"name","url","page"}, ...]；给了 ≥2 页就按跨页模式探测与规划，
     `url` 此时应为第一页地址（explore 的 goto 起点）。
@@ -382,7 +469,7 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
     # 第二次探测失败，叠加 ai_explore 里的静默兜底 -> AI 只能看到基础控件（弹窗字段全丢）。
     emap = ai_explore(scenario_text, [], url, allow_mock_fallback=mock_fallback,
                       page_bg=page_bg, guard=guard_text, pages=pages, llm_cassette=cassette,
-                      cassette_strict=cassette_strict, auth=auth)
+                      cassette_strict=cassette_strict, auth=auth, retry_feedback=retry_feedback)
     print(f"{prefix}[explore] 生成 ElementMap: {len(emap.steps)} 步")
     for st in emap.steps:
         el = st.element
@@ -399,6 +486,7 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
 
     cpath = None
     warns: list[str] = []
+    qerr = None          # 假绿红线原因（V8.4）：非 None 表示这次产出不合格
     if cassette is not None:
         # 溯源：把「这条用例是录像回放出来的、还是当场问的 AI」写进用例文件 ——
         # 复核的人不用回忆当时敲了什么命令（回放 ≠ 实时 AI，必须看得见）。
@@ -410,11 +498,12 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
             cpath, warns = elementmap_to_cases_file(emap, case_id=case_id, extra=extra, guard=guard_spec)
         except _CaseQE as e:
             # 假绿红线（如换页证据只写 localhost）-> 拒绝落盘，绝不产出「看着绿、其实没验」的用例
-            _report_case_quality(e)
-        print(f"          → 用例: {cpath}  （AI 用例，ai_ 前缀）")
-        for w in warns:
-            print(f"          [!] 质量警告: {w}")
-    return emap, cpath, warns
+            qerr = _case_quality_reasons(e)      # 不再直接 exit：调用方可能带它重试（V8.4）
+        if qerr is None:
+            print(f"          → 用例: {cpath}  （AI 用例，ai_ 前缀）")
+            for w in warns:
+                print(f"          [!] 质量警告: {w}")
+    return emap, cpath, warns, qerr
 
 
 def cmd_explore(rest: list[str] = None):
@@ -554,53 +643,116 @@ def cmd_explore(rest: list[str] = None):
     from framework.tools.explore.explorer import AiExploreError
     done: list[tuple[str, str]] = []
     last_emap = None
-    for idx, job in enumerate(jobs, 1):
-        if len(jobs) > 1:
-            print(f"\n[explore] === 场景 {idx}/{len(jobs)}：{job['label']} ===")
-        try:
-            emap, cpath, _ = _explore_one(
-                job["text"], job["url"], label=job["label"], page_bg=job["page_bg"],
-                guard_text=job["guard_text"], guard_spec=job["guard_spec"],
-                case_id=job["case_id"], extra=job["extra"],
-                to_cases=to_cases, mock_fallback=mock_fallback, pages=job.get("pages"),
-                cassette=cassette, cassette_strict=cassette_strict, auth=job.get("auth"))
-        except AiExploreError as e:
-            print(f"[explore] [NG] 【{job['label'] or '内联'}】{e}")
-            raise SystemExit(2) from None
-        last_emap = emap
-        if cpath:
-            done.append((job["label"], cpath.stem))
-        if mock_fallback:
-            print("          [!] mock 兜底产物 → 按约定【不落 cases/】（避免假 AI 用例污染用例库）")
+    # ---------- V8.4：校验不合格 -> 带原因让 AI 重生成（有界）----------
+    retry_limit = _ai_retry_limit()
+    replay = bool(cassette is not None and getattr(cassette, "is_replay", False))
+    if retry_limit:
+        print(f"[explore] 产出校验不合格时最多重试 {retry_limit} 次"
+              f"（HYBRID_AI_RETRY=0 可关闭）")
+    # ---------- V8.4：L1 实跑校验失败 -> 带原因重跑整轮（有界）----------
+    # 为什么 L1 只能在外层：实跑要先 generate（需要整轮产物齐了）才能跑，
+    # 所以「生成所有 job -> verify -> 不合格就整轮重生成」是唯一顺序。
+    l1_feedback = ""        # 实跑失败原因 -> 带给下一轮生成
+    l1_attempt = 0
+    while True:
+        done = []           # 每轮重新收集（重跑时旧产物不该混进来）
+        for idx, job in enumerate(jobs, 1):
+            if len(jobs) > 1:
+                print(f"\n[explore] === 场景 {idx}/{len(jobs)}：{job['label']} ===")
+            emap = cpath = None
+            qerr = None
+            feedback = ""          # 本轮要带给 AI 的「上一轮失败原因」
+            prev_reason = ""
+            attempt = 0
+            while True:
+                try:
+                    emap, cpath, _, qerr = _explore_one(
+                        job["text"], job["url"], label=job["label"], page_bg=job["page_bg"],
+                        guard_text=job["guard_text"], guard_spec=job["guard_spec"],
+                        case_id=job["case_id"], extra=job["extra"],
+                        to_cases=to_cases, mock_fallback=mock_fallback, pages=job.get("pages"),
+                        cassette=cassette, cassette_strict=cassette_strict, auth=job.get("auth"),
+                        retry_feedback=feedback)
+                except AiExploreError as e:
+                    print(f"[explore] [NG] 【{job['label'] or '内联'}】{e}")
+                    raise SystemExit(2) from None
+                if qerr is None:
+                    break                       # 合格 -> 收工
+                print(f"[explore] [!] 第 {attempt + 1} 次产出**校验不合格**")
+                if replay:
+                    # 回放的是同一份录像，转 N 圈还是同一个坏产出 -> 不浪费轮次
+                    print("[explore] [!] 录像回放模式：重试无意义（回放的是同一份录像）-> 直接汇报")
+                    break
+                if not _should_retry_again(prev=prev_reason, new=qerr,
+                                           attempt=attempt, limit=retry_limit):
+                    if prev_reason and prev_reason.strip() == qerr.strip():
+                        print("[explore] [!] 失败原因与上一轮**相同** -> 停止重试"
+                              "（再问也是同一个答案，不白烧 token）")
+                    break
+                prev_reason = qerr
+                feedback = qerr
+                attempt += 1
+                print(f"[explore] -> 带着失败原因让 AI 重新生成"
+                      f"（第 {attempt + 1}/{retry_limit + 1} 次尝试）")
+            if qerr is not None:
+                print(f"\n[explore] [NG] 重试用尽仍不合格（已尝试 {attempt + 1} 次 · "
+                      f"上限 HYBRID_AI_RETRY={retry_limit}）→ 拒绝产出任何产物")
+                print("[explore]    下面是框架校验给出的**具体失败原因**：")
+                print(qerr)
+                raise SystemExit(2)
+            last_emap = emap
+            if cpath:
+                done.append((job["label"], cpath.stem))
+            if mock_fallback:
+                print("          [!] mock 兜底产物 → 按约定【不落 cases/】（避免假 AI 用例污染用例库）")
 
-    prune_snapshots(quiet_if_none=True)          # 归档保留策略：快照各留最近 N 个
-    auto_prune_runs(quiet_if_none=True)          # 归档保留策略：run 目录（L5）
-
-    if cassette is not None and cassette.is_replay:
-        print(f"[explore] [!] 本次 AI 判断来自**录像回放**（{cassette.root}）："
-              f"是录制那一刻问出来的，不是现在实时问的 —— 用例里的 llm_source 字段已标注来源")
-
-    if done and do_verify:
-        if _verify_cases(done) is False:
-            print("[explore] [NG] 有 AI 用例【实测未通过】→ 不可当可用用例（请修正场景/断言后重来；"
-                  "坏用例仍在 cases/ 里，确认后可删）")
+        # ---- L1：实跑校验（便宜的先跑已在 _explore_one 内做完 L0）----
+        if not (done and do_verify):
+            break
+        ok, reasons = _verify_cases_detailed(done)
+        if ok is not False:
+            break                       # 全通过（或环境问题没跑成，不判死刑）
+        if replay:
+            print("[explore] [!] 录像回放模式：重试无意义（回放的是同一份录像）-> 直接汇报")
             raise SystemExit(3)
-    elif done:
-        print("          [info] 按 --no-verify 跳过试跑校验（这些用例未经实测验证）")
+        if not _should_retry_again(prev=l1_feedback, new=reasons,
+                                   attempt=l1_attempt, limit=retry_limit):
+            print("[explore] [NG] 有 AI 用例【实测未通过】-> 不可当可用用例"
+                  "（请修正场景/断言后重来；坏用例仍在 cases/ 里，确认后可删）")
+            if reasons:
+                print("[explore]    实跑给出的具体失败原因：")
+                print(reasons)
+            raise SystemExit(3)
+        l1_attempt += 1
+        l1_feedback = reasons
+        print(f"[explore] -> 带着**实跑失败原因**让 AI 重新生成"
+              f"（第 {l1_attempt + 1}/{retry_limit + 1} 轮）")
 
+    if done and not do_verify:
+        print("          [info] 按 --no-verify 跳过试跑校验（这些用例未经实测验证）")
     return last_emap
 
 
 def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
+    """新用例试跑校验（薄封装，保留原有调用形状）。"""
+    ok, _ = _verify_cases_detailed(entries)
+    return ok
+
+
+def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None, str]:
     """新用例试跑校验：generate 一次 + 逐条 pytest 单跑（explore 的「交付即验证」闸门）。
 
     entries: [(label, case_name)] —— label 用于批量时标明是哪条场景。
-    返回 True=全部实测通过 / False=有失败 / None=校验没能执行（环境问题，不判死刑）。
+    返回 `(ok, reasons)`：
+      · `ok` = True 全部通过 / False 有失败 / None 校验没能执行（环境问题，不判死刑）；
+      · `reasons`（V8.4）= **给 AI 看的失败原因文本**（通过时为空串）。
+        为什么要它：重试若只说「失败了」AI 无从改起 —— 必须带上**具体哪条断言/哪一步炸了**。
     """
     from framework.tools.common.config import SCRIPTS_DIR
 
+    reasons: list[str] = []
     if not entries:
-        return None
+        return None, ""
     gen_dir = SCRIPTS_DIR / "generated"
     print(f"[explore] --verify：先 generate 一次，再逐条试跑 {len(entries)} 条新用例…")
     # [!] 必须用 run_capture（显式 UTF-8 解码）：以前是裸 `subprocess.run(..., text=True)`，
@@ -608,11 +760,36 @@ def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
     # `UnicodeDecodeError: 'gbk' codec can't decode byte 0xbb in position 13`（2026-09-13 AprilPark1012实测）。
     gen = run_capture([sys.executable, "-m", "framework.cli", "generate"], cwd=str(config.BASE))
     if gen.returncode != 0:
-        print("  [!] 校验未执行：generate 失败（多半是「映射质量闸」拦下：目标没起 / 探测不可用）"
+        tail = ((gen.stdout or "") + (gen.stderr or ""))[-2000:]
+        # V8.4：**必须区分两类 generate 失败** —— 以前一律 `return None, ""`（当「未执行」），
+        # 于是「AI 产出不完整」被当成「环境问题」溜过去，`explore` 还 exit=0（假绿）。
+        # 实测事故：AI 有 4 步**只写 desc 没绑 element** -> 映射质量闸正确拦下 ->
+        # 但 explore 报「校验未执行」-> exit=0，而 cases/ 里躺着一条根本生成不了脚本的产出。
+        #   · 产出侧问题（映射不上 / 没给 element）-> **AI 能改** -> return False（触发重试）；
+        #   · 环境侧问题（目标没起 / 探测不可用）-> AI 改不了 -> return None（重试纯属浪费）。
+        _ai_fault = any(k in tail for k in (
+            "映射不上", "映射质量闸", "没有 element", "allow-unmapped",
+        ))
+        if _ai_fault:
+            print("  [NG] 校验不合格：AI 产出不完整 -> generate 拒绝产出脚本"
+                  "（映射质量闸拦下，不是环境问题；带原因让 AI 重新生成）")
+            reasons.append("AI 产出的用例没能生成脚本（generate 被映射质量闸拦下）：")
+            for line in tail.splitlines():
+                t = line.strip()
+                if t.startswith("[generate]") or "没有 element" in t or "映射不上" in t:
+                    print(f"     {t[:160]}")
+                    break
+            for line in tail.splitlines():
+                t = line.strip()
+                if "缺失项" in t or "没有 element" in t:
+                    reasons.append("  " + t[:400])
+            reasons.append("  要求：**每个 click/fill/select/check 步骤都必须给出 element**"
+                           "（必须是探测清单里真实存在的语义名，不许自造，也不许留空）。")
+            return False, "\n".join(reasons)
+        print("  [!] 校验未执行：generate 失败（目标没起 / 探测不可用这类环境问题）"
               "→ scripts/ **未更新**，新用例【未经实测验证】，别把它当成已验证")
-        tail = ((gen.stdout or "") + (gen.stderr or ""))[-400:]
         print("  " + tail.replace("\n", "\n  "))
-        return None
+        return None, ""
 
     vdir = config.OUTPUT_DIR / "verify"
     vdir.mkdir(parents=True, exist_ok=True)
@@ -637,11 +814,14 @@ def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
         else:
             all_ok = False
             print(f"  [NG] {tag}校验失败：该用例实测 FAILED（断言是猜的？页面结构变了？）校验日志 {log}")
+            reasons.append(f"用例 {name} 实跑 FAILED（校验日志 {log}）：")
             for line in text.splitlines():
                 s = line.strip()
                 if s.startswith("E ") or "TimeoutError" in s or "not found" in s:
                     print(f"     {s[:160]}")
-    return all_ok
+                    if len(reasons) < 40:                 # 有界：别把整份日志塞进提示词
+                        reasons.append("  " + s[:200])
+    return all_ok, "\n".join(reasons)
 
 
 def _verify_case(case_name: str) -> bool | None:
@@ -902,27 +1082,149 @@ FLAG_SPECS: dict[str, str | None] = {
     # L5 归档保留（2026-09-22）：run / verify 目录
     "--all": None, "--runs": None,
     "--keep-runs": "value", "--keep-days": "value", "--max-delete": "value",
+    # V8.4：常用可调项开成 CLI 参数（用户 2026-10-08 定「方案 2」）——
+    # 起因：41 个 HYBRID_* 环境变量全靠「翻源码才知道」，.env.example 里一个都没有，
+    # 而项目 .env 不入库、现状压根不存在 -> 用户根本没处发现它们。
+    "--ai-retry": "value", "--shots": None, "--video": None,
+    "--timeout": "value", "--base-url": "value", "--strict-locate": None,
     }
 # 对 run/all 生效的通用参数（main 统一解析）
 _COMMON_FLAGS = {"--workers", "--debug", "--headed", "--force-workers", "--isolated-target",
                 "--case", "--slowmo"}
 CMD_FLAGS: dict[str, set[str]] = {
-    "probe": set(),
+    "probe": {"--base-url"},
     "generate": {"--element-map", "--live-probe", "--allow-unmapped",
-                  "--only", "--changed", "--force"},
+                  "--only", "--changed", "--force", "--base-url"},
     "explore": {"--ai", "--mock-fallback", "--no-cases", "--no-verify", "--verify",
                 "--scenario", "--scenario-file", "--scenario-dir", "--tag", "--limit",
-                "--llm-cassette", "--llm-record", "--llm-cassette-strict"},
-    "run": set(_COMMON_FLAGS),
-    "all": set(_COMMON_FLAGS) | {"--allow-unmapped"},
+                "--llm-cassette", "--llm-record", "--llm-cassette-strict", "--ai-retry"},
+    "run": set(_COMMON_FLAGS) | {"--shots", "--video", "--timeout", "--base-url",
+                                 "--strict-locate"},
+    "all": set(_COMMON_FLAGS) | {"--allow-unmapped", "--shots", "--video", "--timeout",
+                                 "--base-url", "--strict-locate"},
     "prune": {"--keep", "--dry-run", "--all", "--runs",
               "--keep-runs", "--keep-days", "--max-delete"},
     "setup": {"--check", "--force-browser", "--with-ai"},
+    "config": set(),
 }
 # 已移除的参数：给"为什么没了 + 该用什么"，而不是笼统的"不认识"
 REMOVED_FLAGS = {
     "--to-cases": "落 cases/ai_*.json 已是默认行为；要关掉用 --no-cases",
 }
+
+
+#: 全部可调项清单（V8.4 `cli config` 用它展示）。
+# 起因：41 个 HYBRID_* 全靠翻源码才能发现；`cli config` 让「有哪些旋钮、当前多少、从哪来的」
+# 一屏可见。字段：(环境变量, 默认值, 一句话说明)。
+# [!] 只登记**用户可能需要动**的项。框架运行期自设的（RUN_ID / PARTITION / W / CASSETTE_STRICT,
+#     以及测试专用的 BAD_PY / DAILY_SKIP）**刻意不列** —— 列出来只会让用户误以为该去调它。
+TUNABLE_CATALOG: list[tuple[str, str, str]] = [
+    ("HYBRID_AI_RETRY", "2", "AI 产出校验不合格时的重试次数（0=关闭 · 上界 5）"),
+    ("HYBRID_BASE_URL", "http://localhost:8000", "被测应用地址（旧名 TARGET_URL 也认，它优先）"),
+    ("HYBRID_CASE_TIMEOUT", "600", "单条用例超时秒数（0/off = 不限）"),
+    ("HYBRID_LOCATE_TIMEOUT", "5000", "单次定位等待毫秒（慢目标可调大）"),
+    ("HYBRID_READY_TIMEOUT", "15000", "等页面就绪标记的毫秒上限"),
+    ("HYBRID_READY_SELECTOR", "(空)", "自定义「页面就绪」选择器"),
+    ("HYBRID_READY_REQUIRED", "0", "1=没等到就绪标记即判失败"),
+    ("HYBRID_WAIT_READY", "1", "0=不等待就绪标记"),
+    ("HYBRID_SELF_HEAL", "1", "0=关掉自愈（定位失败时不再走语义兜底，失败即报）"),
+    ("HYBRID_STRICT_LOCATE", "(空)", "1=禁用模糊兜底（CI 语义：失败即报）"),
+    ("HYBRID_HEADED", "(空)", "1=有头跑（肉眼看步骤；xdist worker 下强制无头）"),
+    ("HYBRID_SLOWMO", "(空)", "每个动作放慢的毫秒数（配 --headed 看慢动作）"),
+    ("HYBRID_SHOTS", "(空)", "1=每步存一张 PNG 截图"),
+    ("HYBRID_VIDEO", "(空)", "1=整个用例录成 webm"),
+    ("HYBRID_DEBUG", "(空)", "1=调试输出"),
+    ("HYBRID_RESET_URL", "(空)", "用例间复位被测应用的接口；off/none = 不复位"),
+    ("HYBRID_LAYER_CLICKS", "8", "探测时每层最多展开几个 picker（页面复杂可调大）"),
+    ("HYBRID_LAYER_TRIES", "8", "探测时每层最多尝试几个候选"),
+    ("HYBRID_LAYER_ROUNDS", "4", "探测时最多往下钻几层"),
+    ("HYBRID_LLM_ATTEMPTS", "(内置)", "LLM 上游限流时的重试次数"),
+    ("HYBRID_TAB_TIMEOUT", "8000", "等新 tab 出现的毫秒上限"),
+    ("HYBRID_TAB_CLOSE_STRICT", "1", "关 tab 的严格校验"),
+    ("HYBRID_JS_HEAP_MB", "(内置)", "Chromium JS 堆上限（内存吃紧时下调）"),
+    ("HYBRID_MB_PER_WORKER", "550", "每个 worker 的内存预算（并发调度用）"),
+    ("HYBRID_RESERVE_MB", "450", "留给网关与 OS 的内存余量"),
+    ("HYBRID_MAX_FREE_MB", "(内置)", "内存低于此值就不再开新 worker"),
+    ("HYBRID_KEEP_RUNS", "(内置)", "run 目录保留最近几个"),
+    ("HYBRID_KEEP_RUN_DAYS", "(内置)", "run 目录保留几天"),
+    ("HYBRID_KEEP_SNAPSHOTS", "(内置)", "快照保留最近几个"),
+    ("HYBRID_MAX_DELETE_PER_PRUNE", "(内置)", "单次清理最多删几个"),
+    ("HYBRID_NO_AUTO_PRUNE", "(空)", "1=关掉 run 结束后的自动清理"),
+    ("HYBRID_SKIP_BROWSER_CHECK", "(空)", "1=跳过启动前的浏览器预检"),
+    ("HYBRID_ISOLATED_TARGET", "(空)", "1=跑隔离目标（独立分区）"),
+    ("HYBRID_PYTHON", "(内置)", "显式指定解释器（缺依赖时停手报错，不偷换）"),
+]
+
+
+def cmd_config(rest: list[str] = None) -> None:
+    """列出全部可调项：**当前值 + 来源 + 怎么在命令行上调**（V8.4）。
+
+    起因（用户 2026-10-08 提问引出）：框架有 41 个 `HYBRID_*`，但 `.env.example` 里一个都没有，
+    项目 `.env` 又不入库、现状压根不存在 -> 用户**没处发现它们**，只能翻源码。
+    本命令就是那个「一屏可见」的入口 —— **不引入第二套配置文件**（避免与 env 并存造成双入口）。
+    """
+    import os
+    print("\n[config] 可调项一览（优先级：CLI 参数 > 环境变量 > 默认值）")
+    print("[config] 用法：python -m framework.cli <子命令> <CLI参数> [值]")
+    print("[config] 例：  python -m framework.cli explore --ai --scenario-file x.yml --ai-retry 3")
+    print()
+    print(f"  {'可调项':36s} {'当前值':22s} {'来源':10s} CLI 参数")
+    print("  " + "-" * 104)
+    for env, default, desc in TUNABLE_CATALOG:
+        raw = os.environ.get(env)
+        if raw is None or raw == "":
+            cur, src = default, "默认"
+        else:
+            cur, src = raw, "环境变量"
+        cur = (cur[:19] + "…") if len(cur) > 20 else cur
+        flag = ENV_TO_FLAG.get(env, "—")
+        print(f"  {env:36s} {cur:22s} {src:10s} {flag}")
+        print(f"  {'':36s} {desc}")
+    print()
+    n_cli = len(ENV_TO_FLAG)
+    print(f"[config] 共 {len(TUNABLE_CATALOG)} 项 · 其中 {n_cli} 项可直接用 CLI 参数给"
+          f"（见上表最后一列）")
+    print("[config] 框架运行期自设的变量（RUN_ID / PARTITION / W 等）刻意不列："
+          "那些不该由用户去调")
+
+
+#: 环境变量 -> CLI 参数 的映射（V8.4）。
+# 用途：① `cli config` 告诉用户「这一项怎么在命令行上调」；② CLI 参数落地成环境变量。
+# [!] 只登记「用户会调」的项 —— 框架运行期自设的（RUN_ID / PARTITION / W）**刻意不在此表**：
+#     暴露给用户=误导（设了只会把链路搞乱）。判据 test_internal_only_vars_have_no_cli_flag 守着这条。
+# [!] 一个环境变量只许映射一个参数（项目铁律：同一能力收敛成唯一入口）。
+ENV_TO_FLAG: dict[str, str] = {
+    "HYBRID_AI_RETRY": "--ai-retry",
+    "HYBRID_SHOTS": "--shots",
+    "HYBRID_VIDEO": "--video",
+    "HYBRID_CASE_TIMEOUT": "--timeout",
+    "HYBRID_BASE_URL": "--base-url",
+    "HYBRID_STRICT_LOCATE": "--strict-locate",
+    "HYBRID_HEADED": "--headed",
+    "HYBRID_SLOWMO": "--slowmo",
+}
+#: 纯开关类参数：出现即设 `1`（不许写 "1"/"true" 折腾用户）
+_SWITCH_FLAGS = {"--shots", "--video", "--strict-locate", "--headed"}
+
+
+def _apply_flag_as_env(flag: str, value: str | None, rest: list[str]) -> None:
+    """把 CLI 给的可调项**落到环境变量**（V8.4）。
+
+    为什么用环境变量当落地层而不改各调用点：这些值最终由**生成物/子进程**读取
+    （harness 在 pytest 进程里读 `HYBRID_*`），环境变量是天然能跨进程传递的唯一载体；
+    而且优先级天然正确 —— 我们在起子进程**之前**设，覆盖掉 shell/`.env` 里的同项。
+    优先级链条：**CLI 参数 > 环境变量 > 默认值**。
+    """
+    import os
+    env = next((k for k, v in ENV_TO_FLAG.items() if v == flag), None)
+    if env is None:
+        return
+    if flag in _SWITCH_FLAGS:
+        os.environ[env] = "1"
+    else:
+        v = _arg_value(rest, flag)
+        if v:
+            os.environ[env] = v
 
 
 def _usage(cmd: str) -> str:
@@ -1046,6 +1348,13 @@ def main():
         _print_help(cmd); return
     _validate_args(cmd, rest)
 
+    # ★ V8.4：把命令行给的可调项落到环境变量（**优先级：CLI > env > 默认**）。
+    #   必须在这里做：早于任何子进程（pytest 生成物读的是环境变量），
+    #   且在 _validate_args 之后（参数合法性已经查过，不会把脏值写进 env）。
+    for _f in ENV_TO_FLAG.values():
+        if _f in rest or any(a.startswith(_f + "=") for a in rest):
+            _apply_flag_as_env(_f, None, rest)
+
     workers = _worker_from(rest)
     headed = _debug_from(rest)
     force_workers = _force_from(rest)
@@ -1087,6 +1396,8 @@ def main():
         rc = cmd_setup(rest)
     elif cmd == "prune":
         rc = cmd_prune(rest)
+    elif cmd == "config":
+        rc = cmd_config(rest)
     if isinstance(rc, int) and rc != 0:
         raise SystemExit(rc)
 
@@ -1288,7 +1599,8 @@ def _browser_state() -> tuple[bool, str]:
 
 
 _CMD_FUNCS = {"probe": cmd_probe, "generate": cmd_generate, "explore": cmd_explore,
-              "run": cmd_run, "all": cmd_all, "prune": cmd_prune, "setup": cmd_setup}
+              "run": cmd_run, "all": cmd_all, "prune": cmd_prune, "setup": cmd_setup,
+              "config": cmd_config}
 
 
 if __name__ == "__main__":

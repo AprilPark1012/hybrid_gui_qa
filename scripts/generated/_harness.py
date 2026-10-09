@@ -909,6 +909,14 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
     elif action == "fill":
         loc.fill(value if value is not None else "")
     elif action == "select":
+        # V8.4：**既没给 value 也没给 index** -> 视为「选第一项」。
+        # 为什么（2026-10-09 干净环境 E2E 实测）：AI 按新约束产出「select 只给 element」，
+        # 人话语义就是「选第一项」；但旧实现落到 else 分支的 `select_option("")`，
+        # Playwright 去找 `value=""` 的选项 -> did not find some options -> 30s 超时，
+        # 重试闭环连跑 3 轮都被这同一处挡住。
+        # 与下面 `index=N` 分支**同一口径**：跳过空占位，选第 N 个**真**选项。
+        if index is None and not (value is not None and str(value).strip()):
+            index = 0
         if index is not None:
             # P22 批 5：index = 第 N 个**非空**选项（0 基）。语义为什么这么定：
             # demo 的 #sel-o-bu/#sel-o-mu/#sel-o-file/#sel-o-cust 第一个 option 是
@@ -924,7 +932,7 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
                     f"去掉空占位后只有 {len(_real)} 个）")
             loc.select_option(index=_real[int(index)])
         else:
-            loc.select_option(value if value is not None else "")
+            loc.select_option(str(value))
     elif action == "check":
         loc.check()
     elif action == "press_enter":

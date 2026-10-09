@@ -510,6 +510,7 @@ def ai_explore(
     scenario: str, items: list[dict], url: str, allow_mock_fallback: bool = False,
     page_bg: str = "", guard: str = "", pages: list[dict] | None = None,
     llm_cassette=None, cassette_strict: bool = False, auth: dict | None = None,
+    retry_feedback: str = "",
 ) -> ElementMap:
     """【LLM 语义识别】理解意图、规划步骤、挑元素（ChatDeepSeek 直连编排，非 Agent）。
 
@@ -546,7 +547,8 @@ def ai_explore(
         _ai_explore_async(scenario, page_items, url, dom_ctx=dom_ctx,
                           allow_mock_fallback=allow_mock_fallback, page_bg=page_bg, guard=guard,
                           pages=pages, collisions=collisions, row_fields=row_fields,
-                          llm_cassette=llm_cassette, cassette_strict=cassette_strict)
+                          llm_cassette=llm_cassette, cassette_strict=cassette_strict,
+                          auth=auth, retry_feedback=retry_feedback)
     )
 
 
@@ -705,6 +707,7 @@ async def _ai_explore_async(
     allow_mock_fallback: bool = False, page_bg: str = "", guard: str = "",
     pages: list[dict] | None = None, collisions: list[dict] | None = None,
     row_fields: list[dict] | None = None, llm_cassette=None, cassette_strict: bool = False,
+    auth: dict | None = None, retry_feedback: str = "",
 ) -> ElementMap:
     """【异步阶段】只做 LLM 语义识别：读场景 + 控件清单 + DOM 上下文 → 步骤。
 
@@ -714,7 +717,8 @@ async def _ai_explore_async(
     from framework.tools.common.config import llm_from_env
 
     prompt = _build_planner_prompt(scenario, page_items, url, dom_ctx, page_bg=page_bg, guard=guard,
-                                   pages=pages, collisions=collisions, row_fields=row_fields)
+                                   pages=pages, collisions=collisions, row_fields=row_fields,
+                                   auth=auth, retry_feedback=retry_feedback)
     first_url = (pages[0]["url"] if pages else url)
 
     # (1) 离线回放（--llm-cassette）：命中即用 —— **刻意放在 llm_from_env() 之前**，
@@ -894,6 +898,64 @@ async def _get_llm_text_async(obj, prompt: str) -> str:
     return (resp.choices[0].message.content or "") if resp.choices else ""
 
 
+# ---- 登录流程识别（V8.4：AI 不许自己编登录步骤）------------------------------------------
+# 为什么需要：场景 yml 声明 `auth:` 后**框架会自动登录**，但 AI 有时仍自己编一套登录流程
+#（2026-10-08 实测：它写 `fill 密码 = 123456`，而场景文本里真值是 `super@123`）-> 登录失败 -> 全崩。
+_LOGIN_URL_HINTS = ("login", "signin", "sign-in", "登录")
+_LOGIN_FIELD_HINTS = ("账号", "密码", "用户名", "登录名", "password", "username", "account")
+
+
+def _step_view(s) -> tuple[str, str, str]:
+    """把一步统一成 `(action, semantic_name, value)` —— 兼容 dict（AI 原始产出）与 TestStep。"""
+    if isinstance(s, dict):
+        el = s.get("element")
+        sn = s.get("semantic_name") or (el.get("semantic_name") if isinstance(el, dict) else "") or ""
+        return (str(s.get("op") or s.get("action") or ""), str(sn), str(s.get("value") or ""))
+    el = getattr(s, "element", None)
+    sn = getattr(el, "semantic_name", None) or getattr(s, "semantic_name", None) or ""
+    return (str(getattr(s, "action", "") or ""), str(sn), str(getattr(s, "value", "") or ""))
+
+
+def _looks_like_login_step(s) -> str:
+    """判定单步是不是「登录流程」的一部分；是则返回理由，否则空串（V8.4）。
+
+    口径（刻意保守，**宁漏不误伤**——误拦会逼用户绕过闸门）：
+      · `goto` 且目标 URL 带登录页特征（login / signin / 登录）；
+      · 操作的控件名是**登录专用短名**（账号/密码/用户名/登录名/password/username/account，长度 ≤4）。
+        [!] 为什么加「短名」限制：业务控件也可能叫「账号名称」「客户账号」，那是正常业务步骤，
+            不该被误判。实测事故里 AI 写的正是 `账号` / `密码` 这种登录专用短名。
+    """
+    op, sn, value = _step_view(s)
+    if op.lower() == "goto":
+        low = value.lower()
+        if low and any(h in low for h in _LOGIN_URL_HINTS):
+            return f"goto 的目标是登录页（{value}）"
+    if sn:
+        low = sn.lower()
+        if len(sn) <= 4 and any(h in low for h in _LOGIN_FIELD_HINTS):
+            return f"操作的是登录专用字段（semantic_name={sn!r}）"
+    return ""
+
+
+def _reject_login_steps(steps: list[TestStep]) -> None:
+    """闸门：AI 产出的步骤里**不许夹带登录流程**（V8.4）。
+
+    为什么必须拦（2026-10-08 干净环境 E2E 实录）：
+      场景 yml 声明了 `auth:` -> 框架**已经自动登录**。AI 再自己编一遍不仅多余，还会因为
+      **编造凭据**（实测它写 `fill 密码 = 123456`，而场景文本里真值是 `super@123`）导致整个用例
+      崩在第一步：登录失败 -> 停在登录页 -> 后面那条断言（写法本身完全正确）等不到元素 -> FAILED。
+    处置：抛 `AiExploreError`（与「拒绝产出假 AI 用例」同一套口径）—— **不许落盘**。
+    """
+    bad = [(i + 1, why) for i, s in enumerate(steps) if (why := _looks_like_login_step(s))]
+    if bad:
+        detail = "；".join(f"第 {n} 步：{why}" for n, why in bad)
+        raise AiExploreError(
+            f"AI 产出里夹带了登录步骤（{detail}）。场景已声明登录前置（auth:）时框架会自动登录，"
+            "生成登录步骤不仅多余，还会因编造凭据而使整个用例失败。"
+            "请让 AI 从**登录之后**的页面开始规划。"
+        )
+
+
 def _finalize_map(url: str, scenario: str, steps: list[TestStep],
                   pages: list[dict] | None = None) -> ElementMap:
     """补 goto + 构造 ElementMap。
@@ -901,6 +963,10 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
     跨页（P3）：首步 goto 指向**第一页**的 URL（描述带页名）；ElementMap.url 记第一页，
     下游 generate 用它当 base_url。单页时与改造前完全一致。
     """
+    # V8.4 单点收口：**所有**产出路径都经过这里（实测有 3 处调用），所以登录闸门放这一处即可。
+    # 无条件执行的理由：AI 自己编的登录步骤**必然失败**（它拿不到真实凭据，只会编一个 ——
+    # 实测写了 123456 而真值是 super@123）。真需要登录的场景应该用场景级 `auth:` 声明。
+    _reject_login_steps(steps)
     first = pages[0] if pages else None
     first_url = first["url"] if first else url
     if steps and steps[0].action != "goto":
@@ -1406,7 +1472,9 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                          page_bg: str = "", guard: str = "",
                          pages: list[dict] | None = None,
                          collisions: list[dict] | None = None,
-                         row_fields: list[dict] | None = None) -> str:
+                         row_fields: list[dict] | None = None,
+                         auth: dict | None = None,
+                         retry_feedback: str = "") -> str:
     """构造给 LLM 的规划提示：自然语言场景 + probe 语义清单 + 富 DOM 上下文，要求产出轻量步骤 JSON。
 
     page_bg / guard：来自 scenario 文件（见 framework/tools/generate/scenario.py）——
@@ -1583,6 +1651,41 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         f"   你无法算出正确数字，写进 assertion 就是猜，会直接导致用例失败或假绿\n"
         f"8. assertion 里的关键文本（如记录编号/名称）必须能在上面的控件清单或 DOM 上下文中找到依据，\n"
         f"   找不到依据就不要写断言，宁可不写 expect_text 步骤\n"
+    )
+
+    # ---- V8.4：场景级前置声明 + 数据接地（两条硬约束，专治实测事故）--------------------
+    # [!] 为什么必须加（2026-10-08 干净环境 E2E 实录）：AI 无视场景已声明的 `auth:` 前置，
+    #     自己编了一套登录流程并**编造凭据**（写 `密码=123456`，真值在场景文本里是 `super@123`）
+    #     -> 登录失败 -> 停在登录页 -> 后续断言等不到元素 -> 整个用例崩在第一步。
+    if auth:
+        prompt += (
+            "【登录前置】（**必须遵守**，优先级高于上面所有通用规则）：\n"
+            "  · 本场景**已声明登录前置**，框架会在执行用例之前**自动完成登录**（含凭据与登录态）；\n"
+            "  · 因此你规划的步骤**必须从登录之后的页面开始** —— **禁止生成任何登录步骤**：\n"
+            "    不要 goto 登录页、不要填写账号/密码、不要点击登录按钮；\n"
+            "  · 也**禁止**在任何 value 里编造账号或密码 —— 真实凭据由场景持有，不属于你的规划范围。\n\n"
+        )
+    if retry_feedback:
+        # V8.4：把**上一轮被拦下的具体原因**告诉 AI —— 重试不带原因等于再掷一次骰子。
+        prompt += (
+            "【上一轮你产出的用例被拦下了】（**必须针对这些原因修正，其它部分保持正确**）：\n"
+            + "".join(f"  · {ln}\n" for ln in str(retry_feedback).splitlines() if ln.strip())
+            + "  [!] 上面是框架校验给出的**具体失败原因**，不是建议：请逐条改掉再输出，\n"
+              "      不要重复同样的错误（同样的原因会再次被拦）。\n\n"
+        )
+    prompt += (
+        "【下拉选择（select）的值从哪来】（**必须遵守**）：\n"
+        "  · **优先用 index**：场景说「选第一项 / 第一行 / 第一个」时，用 `index=0`（第 N 项 = N-1），\n"
+        "    **不要**给 value —— 你**看不到**选项的真实 value，猜一个必然失败；\n"
+        "  · 只有在场景/清单里**逐字出现**过该选项的可见文本时，才用 `value` 照抄那个文本（一个字都不许改）；\n"
+        "  · **永远不要**拿「看起来像编号的值」（1 / 001 / A1 …）去赌选项的 value。\n\n"
+    )
+    prompt += (
+        "【数据接地】（**必须遵守**）：\n"
+        "  · 所有 value 只能**取自本提示里真实出现过的内容**（自然语言场景 / 控件清单 / DOM 上下文）；\n"
+        "  · **不许编造**任何业务数据（账号、密码、编号、名称、金额…）；\n"
+        "  · 场景没给具体值时，优先用清单里真实存在的文案，或留空交由框架数据层处理；\n"
+        "  · 凭经验臆造一个「看起来合理」的值 = 幻觉，会直接让用例失败。\n\n"
     )
     return prompt
 
