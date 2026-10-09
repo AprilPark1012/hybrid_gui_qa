@@ -497,7 +497,9 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                 for d in _collect_dom_context(pg):
                     d["page"] = spec["name"]
                     dom_ctx.append(d)
-                for rf in probe_row_fields(pg):         # 行内列清单（按页标记，供 AI 做行内定位）
+                _page_rf = probe_row_fields(pg)         # 行内列清单（按页标记，供 AI 做行内定位）
+                _LAST_ROW_FIELDS.clear(); _LAST_ROW_FIELDS.extend(_page_rf)   # V8.4.3 兜底用
+                for rf in _page_rf:
                     rf["page"] = spec["name"]
                     row_fields.append(rf)
                 print(f"      [explore] 跨页探测: [{spec['name']}] {spec['url']} → "
@@ -1063,6 +1065,10 @@ def _fill_missing_row_column(steps: list, row_fields: list | None) -> list[str]:
             except Exception:
                 continue
     cands = sorted(set(cands))
+    # 候选判定：cands 是**列号集合**。跨页场景里每张列表都有勾选列且都在第 1 列
+    #   -> cands == {1} -> 唯一解，对每一张表都成立，安全。
+    #   若勾选列散布在不同列号（如 1 和 5）-> 集合不止一个元素 -> 无法确定 -> 不补，
+    #   交给质量闸报出来让 AI 重生成（诚实降级，绝不猜）。
     if len(cands) != 1:
         return notes
     for st in steps:
@@ -1607,6 +1613,29 @@ def _collect_dom_context(pg) -> list[dict]:
         return []
 
 
+
+# [!] V8.4.3：输出契约（格式示例 + 行内定位三选一）—— **必须拼在 prompt 最前**。
+#   为什么：真实 prompt 里 DOM 上下文占 71%（31K/44K），这块原本排在 @37,900，
+#   AI 读到那儿早被冲掉了 -> 实测它不写 cell_by；而同一个规则放进短 prompt 它就照做。
+_OUTPUT_CONTRACT = (
+    "请把场景规划成【JSON 步骤】，格式（字段名严格按此，不要发明新字段名）:\n"
+    '{"steps": [{"order":1,"action":"fill","semantic_name":"<清单里的semantic_name>",'
+    '"value":"填的值","assertion":"断言文本","description":"一句话说明"}]}\n'
+    "  · 上面是最**小**形态，只有 order/action/semantic_name/value/assertion/description 六个键。\n"
+    "  · **要操作「表格里某一行」时，必须再补行内定位字段**（缺了它这条步骤无法定位）：\n"
+    "      行锚 `row_text` = 那一行里唯一的文本（通常是你刚填的名称/编号）；\n"
+    "      列指定 **三选一**（**只要写了 row_text 就必须给其中一个**）：\n"
+    '        a) 列有 data-field  -> `"cell_field":"orderName"`\n'
+    '        b) 列没 data-field（**勾选列就是这种**）-> `"cell_by":"index","cell_index":1`'
+    "（1 = 真实列号，从 1 起；勾选列通常是第 1 列）\n"
+    '        c) 列有表头文案      -> `"cell_by":"header","cell_field":"订单编号"`\n'
+    '      完整例子（勾选刚建的那一行）：{"order":36,"action":"check","row_text":"全链路-20260101",'
+    '"cell_by":"index","cell_index":1,"description":"勾选该订单行"}\n'
+    "  · **不许发明字段名**（`cell_selector`、`pick`、`checkbox` 这类自造名一律无效，"
+    "框架不认、会被当成没给列）；用不着的字段**整个键省略**，不要写空串。\n\n"
+)
+
+
 def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                          dom_ctx: list[dict] | None = None,
                          page_bg: str = "", guard: str = "",
@@ -1728,21 +1757,6 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
             f"{json.dumps(dom_ctx[:80], ensure_ascii=False, indent=1)}\n\n"
         )
     prompt += (
-        f"请把场景规划成【JSON 步骤】，格式（字段名严格按此，不要发明新字段名）:\n"
-        f'{{"steps": [{{"order":1,"action":"fill","semantic_name":"<清单里的semantic_name>",'
-        f'"value":"填的值","assertion":"断言文本","description":"一句话说明"}}]}}\n'
-        f"  · 上面是最**小**形态，只有 order/action/semantic_name/value/assertion/description 六个键。\n"
-        f"  · **要操作「表格里某一行」时，必须再补行内定位字段**（缺了它这条步骤无法定位）：\n"
-        f"      行锚 `row_text` = 那一行里唯一的文本（通常是你刚填的名称/编号）；\n"
-        f"      列指定 **三选一**（**只要写了 row_text 就必须给其中一个**）：\n"
-        f'        a) 列有 data-field  -> `"cell_field":"orderName"`\n'
-        f'        b) 列没 data-field（**勾选列就是这种**）-> `"cell_by":"index","cell_index":1`'
-        f"（1 = 真实列号，从 1 起；勾选列通常是第 1 列）\n"
-        f'        c) 列有表头文案      -> `"cell_by":"header","cell_field":"订单编号"`\n'
-        f'      完整例子（勾选刚建的那一行）：{{"order":36,"action":"check","row_text":"全链路-20260101",'
-        f'"cell_by":"index","cell_index":1,"description":"勾选该订单行"}}\n'
-        f"  · **不许发明字段名**（`cell_selector`、`pick`、`checkbox` 这类自造名一律无效，"
-        f"框架不认、会被当成没给列）；用不着的字段**整个键省略**，不要写空串。\n\n"
         f"规则:\n"
         f"1. action 只允许: goto / click / fill / check / select / expect_text / expect_url / press_enter / "
         f"click_new_tab / close_tab / expect_first_row\n"
@@ -1869,7 +1883,7 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         "    但 `HT-1001`、`SO-1011` 这种**字面编号**一律不许出现在任何字段里.\n"
         "  · 例外: 场景里**明确逐字给出了**该编号(如「输入合同编号 HT-1001 后搜索」)时可以照抄.\n"
     )
-    return prompt
+    return _OUTPUT_CONTRACT + prompt
 
 
 def _parse_steps_text(text: str, items: list[dict]) -> list[TestStep]:
