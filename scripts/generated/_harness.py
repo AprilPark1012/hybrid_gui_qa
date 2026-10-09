@@ -962,7 +962,22 @@ def _press_enter(page, hint):
     return _act(page, "press_enter", semantic=hint)
 
 def _assert_text(page, text, desc=""):
-    loc = page.get_by_text(text)
+    # V8.4.1 (Windows 实测): **优先命中有可见性的候选**.
+    # 事故: 用例想「等订单状态流转到已关闭」(在**表格行**里), 同页「已关闭」也出现在筛选
+    # 下拉的 `<option>` 里(hidden) -- `get_by_text(...).first` 命中那个 hidden option,
+    # 于是永远等不到 visible、白等 5s 超时(14 次重试全打在 <option> 上).
+    # 真实系统里「同一个词既在下拉选项里、又在结果行里」极常见(状态 / 类型 / 币种 ...).
+    # 口径: 候选里**优先取可见的**; 全不可见时退回第一个(让断言如实失败, 不掩盖问题).
+    _cand = page.get_by_text(text)
+    loc = _cand
+    for _i in range(_cand.count()):
+        _el = _cand.nth(_i)
+        try:
+            if _el.is_visible():
+                loc = _el
+                break
+        except Exception:
+            continue
     loc.first.wait_for(timeout=5000)
     from playwright.sync_api import expect
     expect(loc.first).to_be_visible()

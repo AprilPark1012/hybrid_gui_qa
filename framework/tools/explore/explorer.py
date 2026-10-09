@@ -763,6 +763,10 @@ async def _ai_explore_async(
     # （同一 prompt 第 1 次成功、第 2 次报 ModelProviderError: Extra data: line 1 column 550），
     # 属上游不稳 -> 带退避重试（HYBRID_LLM_ATTEMPTS 可调），不能一次发抖就判死刑。
     n_attempts = max(1, int(os.environ.get("HYBRID_LLM_ATTEMPTS", "3")))
+    # V8.4.1 (Windows 实测): 上游**能力差异**(不是抖动) -- DeepSeek thinking mode 会直接
+    #   400 `Thinking mode does not support this tool_choice`; 实测每轮白试一次结构化路径.
+    #   处置: 识别到就**本会话禁用结构化路径**、只走纯文本, 日志降为 [info](抖动才该重试).
+    _no_structured = False
     errs: list[str] = []          # 累积每次失败的原因（**不再后写覆盖先写** —— 见函数尾部注释）
     raw_plan = raw_text = None    # 录制用：本次真正拿到的原始回答
 
@@ -771,7 +775,7 @@ async def _ai_explore_async(
             steps: list[TestStep] = []
 
             # 路径1：ainvoke(output_format) —— ChatDeepSeek 原生 function calling，最稳
-            if hasattr(obj, "ainvoke"):
+            if hasattr(obj, "ainvoke") and not _no_structured:
                 try:
                     from browser_use.llm.messages import SystemMessage, UserMessage
                     msgs = [
@@ -785,8 +789,16 @@ async def _ai_explore_async(
                         _note_err(errs, "结构化输出解析不出步骤")
                 except Exception as e:
                     raw_plan = None
-                    _note_err(errs, f"结构化输出路径 {type(e).__name__}: {str(e)[:160]}")
-                    print(f"      [explore] 第 {attempt}/{n_attempts} 次结构化输出失败 → {errs[-1]}")
+                    _msg = f"{type(e).__name__}: {str(e)[:160]}"
+                    _low = _msg.lower()
+                    if "tool_choice" in _low or "thinking mode" in _low:
+                        # 能力差异(非抖动): 记住并**后续直接走纯文本**, 不再每轮白试
+                        _no_structured = True
+                        print(f"      [explore] [info] 上游不支持结构化输出({_msg[:70]})"
+                              f" -> 改用纯文本路径(不影响识别, 只少了这层约束)")
+                    else:
+                        _note_err(errs, f"结构化输出路径 {_msg}")
+                        print(f"      [explore] 第 {attempt}/{n_attempts} 次结构化输出失败 -> {errs[-1]}")
 
             # 路径2：纯文本 + 宽松解析（兼容无 output_format 的 provider；必须用 async 版，
             # 不能再走 asyncio.run 的 _get_llm_text —— 在事件循环里调它会直接 RuntimeError）
@@ -956,6 +968,62 @@ def _reject_login_steps(steps: list[TestStep]) -> None:
         )
 
 
+# ---- P0-1 (V8.4.1, Windows 实测): AI 不许把**表格行数据的具体值**写死 ----
+# 事故: 场景说「选中第一行合同」, AI 写成 `contract_no=HT-1001` / `选择合同_HT_1001`
+#       -- 现在能过只因当前 demo 第一行恰好是它; 换数据/换排序立刻崩.
+# 违反「不许把观测到的具体值当地基」(框架层零业务词, 产出与数据解耦).
+_HARDCODED_NOTES: list[str] = []   # 最近一次 _finalize_map 收集到的写死项(供校验/重试读)
+# [!] 不能用 `\b`: 中文是 \w, `选择合同_HT_1001` 里「同」与「H」之间**没有词边界**
+#     -> 漏检(实测第一版就漏了这条, 被自己的判据抓出来). 改用「前面不是 ASCII 字母」.
+_HARDCODE_ID_RE = re.compile(
+    r"(?<![A-Za-z])(?:HT|SO|INV|PO|BU)[-_]?\d{2,}(?!\d)",   # HT-1001 / SO_1011 / 选择合同_HT_1001
+    re.IGNORECASE,
+)
+# 明显是「占位/声明式」的写法, 不许误判(宁漏不误伤)
+_HARDCODE_EXEMPT = ("xxxx", "yyyy", "zzzz", "{", "}", "...", "占位")
+
+
+def looks_like_hardcoded_row_value(value) -> bool:
+    """这个值是不是「写死的表格行数据」(编号类具体值)?
+
+    [!] 只认**编号形态**(前缀+数字), 不认业务名词 -- 业务控件名/页面名是合法的.
+    [!] 占位符与示例形态(`{合同编号}` / `SO-xxxx`)一律放行.
+    """
+    if value is None:
+        return False
+    v = str(value)
+    if not v.strip():
+        return False
+    low = v.lower()
+    if any(x in low for x in _HARDCODE_EXEMPT):
+        return False
+    return bool(_HARDCODE_ID_RE.search(v))
+
+
+def reject_hardcoded_row_values(steps: list) -> list[str]:
+    """闸门(**收集式**, 不抛异常): 挑出写了死行数据的步骤, 交给重试闭环当失败原因.
+
+    为什么不抛异常(与登录闸门不同): 登录步骤**必然失败**(编的凭据), 而写死行数据
+    **在本机恰好能过** -- 它是「换个环境就崩」的隐患, 更适合**带原因让 AI 重生成**
+    (重试用尽仍不合格 -> 走已有的「如实报错」路径).
+    """
+    bad: list[str] = []
+    for st in steps:
+        hits = []
+        for field in ("value", "url"):
+            v = getattr(st, field, None)
+            if looks_like_hardcoded_row_value(v):
+                hits.append(f"{field}={v!r}")
+        el = getattr(st, "element", None)
+        sn = getattr(el, "semantic_name", None) if el else None
+        if sn and looks_like_hardcoded_row_value(sn):
+            hits.append(f"element={sn!r}")
+        if hits:
+            bad.append(f"第 {getattr(st, 'order', '?')} 步({getattr(st, 'description', '')[:28]}): "
+                       + "、".join(hits))
+    return bad
+
+
 def _finalize_map(url: str, scenario: str, steps: list[TestStep],
                   pages: list[dict] | None = None) -> ElementMap:
     """补 goto + 构造 ElementMap。
@@ -967,6 +1035,15 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
     # 无条件执行的理由：AI 自己编的登录步骤**必然失败**（它拿不到真实凭据，只会编一个 ——
     # 实测写了 123456 而真值是 super@123）。真需要登录的场景应该用场景级 `auth:` 声明。
     _reject_login_steps(steps)
+    # P0-1: 写死行数据 -- **收集式**闸门(不抛), 把原因记下来供 L1/重试闭环使用.
+    hard = reject_hardcoded_row_values(steps)
+    if hard:
+        print(f"      [explore] [!] 有 {len(hard)} 步把**表格行数据的具体值写死**了"
+              f"(换数据/换排序就会崩):")
+        for h in hard[:4]:
+            print(f"        - {h}")
+        _HARDCODED_NOTES.clear()
+        _HARDCODED_NOTES.extend(hard)
     first = pages[0] if pages else None
     first_url = first["url"] if first else url
     if steps and steps[0].action != "goto":
@@ -1687,6 +1764,21 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         "  · 场景没给具体值时，优先用清单里真实存在的文案，或留空交由框架数据层处理；\n"
         "  · 凭经验臆造一个「看起来合理」的值 = 幻觉，会直接让用例失败。\n\n"
     )
+    # ---- V8.4.1 (Windows 实测): **禁止把表格行数据的具体值写死** -------------------
+    prompt += (
+        "\n\n【行数据: 禁止写死具体值】(**必须遵守**, 优先级高于上面所有通用规则):\n"
+        "  · 表格/列表里的**行数据**(合同编号 HT-1001、订单号 SO-1011、发票号 ...)是**运行期数据**,\n"
+        "    它们会随数据批次、排序、环境而变; 把它们写进 value / url / element 名, 就等于\n"
+        "    **拿当前这一次的观测值当地基** -- 换一批数据立刻崩, 而用例看起来完全正常.\n"
+        "  · 场景说「第一行 / 某一行 / 刚创建的那条」时, 一律用**声明式定位**表达, 不要具体化:\n"
+        "      - 选中某行          -> 用 `row_text`(行锚: 按该行的某个已知字段值锚定该行)\n"
+        "      - 断言首行就是目标   -> 用 `expect_first_row`(首行断言, 值可用 {占位符})\n"
+        "      - 读某行某列        -> 用 `cell_field`(列按 data-field / 表头文案 / index 指定)\n"
+        "      - 跳转带参          -> 参数值只能来自场景 data 的 **{占位符}**, 不许自己填具体编号\n"
+        "  · 占位符({合同编号} / {订单名称})与示例形态(SO-xxxx)**可以**用;\n"
+        "    但 `HT-1001`、`SO-1011` 这种**字面编号**一律不许出现在任何字段里.\n"
+        "  · 例外: 场景里**明确逐字给出了**该编号(如「输入合同编号 HT-1001 后搜索」)时可以照抄.\n"
+    )
     return prompt
 
 
@@ -1754,7 +1846,13 @@ def _parse_steps_text(text: str, items: list[dict]) -> list[TestStep]:
 
 
 # 方向(1)语义校准：AI 的 description 是否和它选中的元素语义一致
-SEMANTIC_MIN_SIM = 0.3   # 低于此重叠度 → 判"AI 可能选错控件"，降 conf + 打警告
+SEMANTIC_MIN_SIM = 0.3   # 低于此重叠度 -> 判"AI 可能选错控件", 降 conf + 打警告
+# V8.4.1 (Windows 实测): **硬拦档位**. 0.00 不是"可能选错", 是"一定选错" --
+#   实测事故: AI 给「点右上角头像展开角色菜单」选了控件 `超@合同列表页`(`超` 是登录用户名),
+#   重叠度 0.00, 框架只警告不拦 -> 第 2 轮实跑崩在「元素语义未找到: 超@合同列表页」.
+#   口径: **宁漏不误伤** -- 阈值贴着 0, 只拦"完全不沾边", 正常步骤("点搜索" vs "搜索")放行.
+SEMANTIC_HARD_SIM = 0.02
+SEMANTIC_MISMATCH_NOTES: list[str] = []   # 最近一次校准收集到的严重误选(供 L1/重试闭环读)
 # desc 侧要剔的"纯动作动词"（这些是'做了什么'，不是控件名；元素语义侧不剔，
 # 因为元素语义里的"提交/搜索/选择"正是控件名，剔了会误伤）。
 _ACTION_WORDS_STRIP = ("输入", "点击", "选择", "查看", "打开", "填写", "按下", "回车",
@@ -1814,6 +1912,12 @@ def _apply_semantic_calibration(steps: list[TestStep], items: list[dict]) -> lis
         if it is None:
             continue
         sim = _semantic_sim(st.description, _element_semantics_blob(it))
+        if sim < SEMANTIC_HARD_SIM:
+            # 严重误选: 完全不沾边 -> 收集起来(不抛, 交给重试闭环带原因重生成)
+            SEMANTIC_MISMATCH_NOTES.append(
+                f"第 {st.order} 步「{st.description[:30]}」选的控件「{st.element.semantic_name}」"
+                f"与描述重叠度 {sim:.2f}(几乎无关, 一定是选错了)"
+            )
         if sim < SEMANTIC_MIN_SIM:
             st.element.notes = (
                 f"[语义校准警告] AI 描述《{st.description}》与所选控件语义重叠度仅 {sim:.2f}"
