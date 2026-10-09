@@ -101,7 +101,7 @@ FEATURES = [
         dir="特性5-用例脚本数据三层分离",
         subs=[
             dict(no="5.1", name="三层职责边界", goal="同一场景多组数据 -> 产出多条独立用例，报告独立一行、失败可定位",
-                 class1=["test_data_expand.py", "test_waiting_semantics_maps_to_wait_text.py"],
+                 class1=["test_data_expand.py", "test_waiting_semantics_maps_to_wait_text.py", "test_row_column_carried_through.py"],
                  class2=[]),
             dict(no="5.2", name="数据驱动不静默退化", goal="占位符没被替换时必须报错，不许把 `{占位符}` 原样当字面量跑",
                  class1=["test_data_driven_placeholders.py", "test_goto_url_parameterization.py"],

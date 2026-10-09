@@ -1218,6 +1218,11 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
     # P0-1: 写死行数据 -- **收集式**闸门(不抛), 把原因记下来供 L1/重试闭环使用.
     hard = reject_hardcoded_row_values(steps)
     # 确定性兜底：row_text 有但列缺失（AI 对「没有 data-field 的列」不写列）
+    if __import__("os").environ.get("HYBRID_DBG_FALLBACK"):
+        _c = [r for r in _LAST_ROW_FIELDS]
+        print(f"      [DBG-FB] _LAST_ROW_FIELDS={len(_c)} 条；"
+              f"checkbox 列号={sorted({int(r.get('index')) for r in _c if str(r.get('kind'))=='checkbox' if str(r.get('index','')).isdigit()})}；"
+              f"有 row_text 的步骤={[ (getattr(x,'order',None), getattr(x,'row_text',None), getattr(x,'cell_field',None), getattr(x,'cell_by',None)) for x in steps if getattr(x,'row_text',None) ]}")
     _filled = _fill_missing_row_column(steps, _LAST_ROW_FIELDS or None)
     if _filled:
         print(f"      [explore] [!] 有 {len(_filled)} 步行内定位缺列 -> 已按唯一解补全（不是猜，候选唯一）：")

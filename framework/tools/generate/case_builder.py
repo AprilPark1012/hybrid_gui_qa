@@ -141,6 +141,14 @@ def elementmap_to_case(m: ElementMap, case_id: str | None = None,
             item["row_text"] = st.row_text
         if st.cell_field:
             item["cell_field"] = st.cell_field
+        # [!] V8.4.3：**列指定方式也必须透传**。
+        #   原来只转 row_text/cell_field -> 用 `cell_by=index`（没有 data-field 的列，如勾选列）
+        #   表达的步骤在这里被**静默丢掉**：AI 明明写了 cell_by，落盘却只剩 row_text，
+        #   下游既定位不到、又被判「element 为空」。实测这是整条链路最后断的一环。
+        if getattr(st, "cell_by", None):
+            item["cell_by"] = st.cell_by
+            if getattr(st, "cell_index", None) is not None:
+                item["cell_index"] = st.cell_index
         steps.append(item)
 
     case = {
@@ -371,9 +379,20 @@ def case_warnings(case: dict, guard: dict | None = None) -> list[str]:
                 warns.append(f"断言命中了本场景禁止项 {f!r}（assert_guard.forbidden）→ 该断言不是可靠期望值")
 
     ops_need_el = {"click", "fill", "select", "check", "press_enter", "click_new_tab", "close_tab"}
-    # 行内定位步骤不需要 element（它用 row_text + cell_field 定位）-> 不算「没绑元素」
+    # 行内定位步骤不需要 element（它用 row_text + 列指定定位）-> 不算「没绑元素」
+    #   [!] V8.4.3：列指定有两种合法形态，判定必须都认：
+    #       · cell_field            —— 列有 data-field
+    #       · cell_by=index + cell_index —— 列**没有** data-field（最典型=表格最左的勾选列）
+    #   原来只认前者 -> 用 `cell_by=index` 表达的勾选步骤被判「element 为空」，
+    #   进而在 L1 被当成结构性缺陷反复重生成（实测就是这个死循环）。
+    def _has_row_column(s: dict) -> bool:
+        if s.get("cell_field"):
+            return True
+        if str(s.get("cell_by") or "") == "index" and s.get("cell_index") is not None:
+            return True
+        return bool(s.get("cell_by"))
     naked = [s for s in steps if s.get("op") in ops_need_el and not s.get("element")
-             and not (s.get("row_text") and s.get("cell_field"))]
+             and not (s.get("row_text") and _has_row_column(s))]
     if naked:
         detail = "；".join(f"{s.get('op')}（{s.get('desc') or '无描述'}）" for s in naked[:4])
         warns.append(
