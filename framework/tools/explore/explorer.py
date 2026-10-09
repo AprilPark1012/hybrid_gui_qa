@@ -1179,10 +1179,19 @@ def _fill_missing_row_column(steps: list, row_fields: list | None) -> list[str]:
     #   交给质量闸报出来让 AI 重生成（诚实降级，绝不猜）。
     if len(cands) != 1:
         return notes
+    # 探针清单里的合法 field 名（用来判定 AI 给的 cell_field 是否**无效**）
+    _valid_fields = {str(rf.get("field") or "").strip() for rf in row_fields}
+    _valid_fields.discard("")
     for st in steps:
         if not getattr(st, "row_text", None):
             continue
-        if getattr(st, "cell_field", None) or getattr(st, "cell_by", None):
+        _cf = str(getattr(st, "cell_field", None) or "").strip()
+        # [!] 关键：AI 常自造一个**根本不存在的** cell_field（实测它写过 `pick`）。
+        #     旧条件「cell_field 非空就跳过」会被这种无效值绕过 -> 兜底永不触发（实测多轮白跑）。
+        #     现在只在「列指定**有效**」时才跳过：cell_by 有值，或 cell_field 在探针清单里。
+        if getattr(st, "cell_by", None):
+            continue
+        if _cf and _cf in _valid_fields:
             continue
         act = str(getattr(st, "action", "") or "").lower()
         desc = str(getattr(st, "description", "") or "")
@@ -1749,6 +1758,15 @@ _OUTPUT_CONTRACT = (
     "框架不认、会被当成没给列）；用不着的字段**整个键省略**，不要写空串。\n\n"
 )
 
+
+
+# [!] V8.4.3：把「输出契约」也挂到 **system** 上。
+#   实测（同一条场景、同一份清单）：
+#     · prompt 9,640 字符   -> AI 正确写出 cell_by + 引用「_当前行」控件
+#     · prompt 142,736 字符 -> **两者都不写**（DOM 上下文占绝大多数）
+#   把契约放在 user prompt 第 0 位仍然会被 14 万字符稀释（lost in the middle）。
+#   system 是"常驻角色指令"，模型当成必须遵守的人设 -> 抗力最强；user 侧保留作双保险。
+_PLANNER_SYSTEM = _PLANNER_SYSTEM + "\n\n===== 输出契约（必须遵守，优先级最高）=====\n" + _OUTPUT_CONTRACT
 
 def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                          dom_ctx: list[dict] | None = None,
