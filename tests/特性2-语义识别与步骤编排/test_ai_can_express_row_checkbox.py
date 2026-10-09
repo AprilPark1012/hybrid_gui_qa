@@ -169,7 +169,7 @@ def test_output_format_example_lists_row_locator_fields():
         => AI 只能靠猜（实测它硬塞了 `cell_field="pick"`，那是个不存在的 field 名）。
     """
     i = SRC.index("请把场景规划成")
-    seg = SRC[i: i + 700]
+    seg = SRC[i: i + 2200]   # 行内定位说明紧随格式示例之后
     for key in ("row_text", "cell_field", "cell_by", "cell_index"):
         assert f'"{key}"' in seg, (
             f"输出格式示例里没有 {key} -> AI 受「严格按此」约束不会写它 "
@@ -180,7 +180,48 @@ def test_output_format_example_lists_row_locator_fields():
 def test_output_format_forbids_inventing_key_names():
     """格式说明要明确「不许发明键名」——否则 AI 会自造 `pick` 这种名字。"""
     i = SRC.index("请把场景规划成")
-    seg = SRC[i: i + 700]
+    seg = SRC[i: i + 2200]   # 行内定位说明紧随格式示例之后
     assert "不许发明" in seg or "不要发明" in seg or "禁止" in seg, (
         "没写「不许发明字段名」-> AI 自造 `pick` 这类无效键"
     )
+
+
+# ---------------------------------------------------------------- 确定性兜底
+
+def test_fill_missing_row_column_fills_unique_checkbox():
+    """`row_text` 有、列缺失，且表里**只有一个**勾选列 -> 补上（唯一解，不是猜）。"""
+    from framework.tools.probe.element_map import TestStep
+
+    steps = [TestStep(order=36, action="check", description="勾选该订单行",
+                      row_text="全链路-{datetime}")]
+    fields = [{"table": "tbl-orders", "index": 1, "field": "", "header": "", "kind": "checkbox"},
+              {"table": "tbl-orders", "index": 2, "field": "orderNo", "header": "订单编号", "kind": ""}]
+    notes = explorer._fill_missing_row_column(steps, fields)
+    assert steps[0].cell_by == "index" and steps[0].cell_index == 1, (
+        "唯一解没补上 -> AI 给的 row_text 步骤仍是「既非合法行内定位、也没 element」"
+    )
+    assert notes, "补了就要出声（不许静默改产物）"
+
+
+def test_fill_missing_row_column_refuses_when_ambiguous():
+    """**反向自证**：有**多个**勾选列候选 -> **不许**补（诚实降级，交给重试）。"""
+    from framework.tools.probe.element_map import TestStep
+
+    steps = [TestStep(order=36, action="check", description="勾选该订单行",
+                      row_text="全链路-{datetime}")]
+    fields = [{"index": 1, "field": "", "kind": "checkbox"},
+              {"index": 5, "field": "", "kind": "checkbox"}]
+    explorer._fill_missing_row_column(steps, fields)
+    assert steps[0].cell_by is None, "候选不唯一却补了 -> 等于猜，可能勾错列"
+
+
+def test_fill_missing_row_column_leaves_normal_steps_alone():
+    """普通步骤（没有 row_text / 不是勾选语义）**不许动**。"""
+    from framework.tools.probe.element_map import TestStep
+
+    steps = [TestStep(order=3, action="click", description="点击搜索", row_text=None),
+             TestStep(order=9, action="click", description="点该行订单名称",
+                      row_text="全链路-{datetime}", cell_field="orderName")]
+    fields = [{"index": 1, "field": "", "kind": "checkbox"}]
+    explorer._fill_missing_row_column(steps, fields)
+    assert steps[0].cell_by is None and steps[1].cell_by is None, "动了不该动的步骤"

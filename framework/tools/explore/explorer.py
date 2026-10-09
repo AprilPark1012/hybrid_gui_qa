@@ -401,6 +401,7 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
             page_items = _sc.items
             dom_ctx = _collect_dom_context(pg)                   # 富 DOM 上下文（索引/可见性/状态）
             row_fields = probe_row_fields(pg)                    # 行内列清单（供 AI 做「行内定位」）
+            _LAST_ROW_FIELDS.clear(); _LAST_ROW_FIELDS.extend(row_fields)   # V8.4.3 兜底用
             b.close()
         return page_items, dom_ctx, "", [], row_fields
     except Exception as e:
@@ -983,6 +984,9 @@ def _reject_login_steps(steps: list[TestStep]) -> None:
 # 事故: 场景说「选中第一行合同」, AI 写成 `contract_no=HT-1001` / `选择合同_HT_1001`
 #       -- 现在能过只因当前 demo 第一行恰好是它; 换数据/换排序立刻崩.
 # 违反「不许把观测到的具体值当地基」(框架层零业务词, 产出与数据解耦).
+# V8.4.3：最近一次探测到的「行内列清单」—— 供 `_finalize_map` 的确定性兜底读
+#   （勾选列没有 data-field，AI 常常不给列指定；候选唯一时可以安全补全）
+_LAST_ROW_FIELDS: list[dict] = []
 _HARDCODED_NOTES: list[str] = []   # 最近一次 _finalize_map 收集到的写死项(供校验/重试读)
 # [!] 不能用 `\b`: 中文是 \w, `选择合同_HT_1001` 里「同」与「H」之间**没有词边界**
 #     -> 漏检(实测第一版就漏了这条, 被自己的判据抓出来). 改用「前面不是 ASCII 字母」.
@@ -1035,6 +1039,48 @@ def reject_hardcoded_row_values(steps: list) -> list[str]:
     return bad
 
 
+def _fill_missing_row_column(steps: list, row_fields: list | None) -> list[str]:
+    """**确定性兜底**（V8.4.3）：`row_text` 给了但**列缺失**的行内步骤，若解**唯一**就补上。
+
+    为什么需要它（实测）：AI 会在 `row_text` 上很熟练（勾选某行、点某行的名称），
+    但**列没有 data-field 时它就不写列**（而不是改用 cell_by=index）——
+    于是该步骤既不是合法行内定位、也没有 element -> 被质量闸判「element 为空」。
+    实测三轮都栽在这里，`cell_by` 一次都没出现过。
+
+    口径（**只补唯一解，绝不猜**）：
+      · 仅当该步骤的列**完全缺失**、且实锤是「勾选/选择」语义（action=check，或 desc 含勾选/选中/选择）；
+      · 且探针列清单里该表**恰好只有一个** kind=checkbox 的列 -> 唯一解 -> 补 `cell_by=index`;
+      · 多于一个候选 / 没有候选 -> **不补**，原样返回由质量闸报出来让 AI 重生成（诚实降级）。
+    """
+    notes: list[str] = []
+    if not row_fields:
+        return notes
+    cands: list[int] = []
+    for rf in row_fields:
+        if str(rf.get("kind") or "").lower() == "checkbox":
+            try:
+                cands.append(int(rf.get("index")))
+            except Exception:
+                continue
+    cands = sorted(set(cands))
+    if len(cands) != 1:
+        return notes
+    for st in steps:
+        if not getattr(st, "row_text", None):
+            continue
+        if getattr(st, "cell_field", None) or getattr(st, "cell_by", None):
+            continue
+        act = str(getattr(st, "action", "") or "").lower()
+        desc = str(getattr(st, "description", "") or "")
+        if act != "check" and not any(k in desc for k in ("勾选", "选中", "选择")):
+            continue
+        st.cell_by = "index"
+        st.cell_index = int(cands[0])
+        notes.append(f"第 {getattr(st, 'order', '?')} 步（{desc[:24]}）列缺失 -> "
+                     f"按探测清单里唯一的勾选列补 cell_by=index, cell_index={cands[0]}")
+    return notes
+
+
 def _finalize_map(url: str, scenario: str, steps: list[TestStep],
                   pages: list[dict] | None = None) -> ElementMap:
     """补 goto + 构造 ElementMap。
@@ -1048,6 +1094,12 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
     _reject_login_steps(steps)
     # P0-1: 写死行数据 -- **收集式**闸门(不抛), 把原因记下来供 L1/重试闭环使用.
     hard = reject_hardcoded_row_values(steps)
+    # 确定性兜底：row_text 有但列缺失（AI 对「没有 data-field 的列」不写列）
+    _filled = _fill_missing_row_column(steps, _LAST_ROW_FIELDS or None)
+    if _filled:
+        print(f"      [explore] [!] 有 {len(_filled)} 步行内定位缺列 -> 已按唯一解补全（不是猜，候选唯一）：")
+        for x in _filled[:4]:
+            print(f"        - {x}")
     if hard:
         print(f"      [explore] [!] 有 {len(hard)} 步把**表格行数据的具体值写死**了"
               f"(换数据/换排序就会崩):")
@@ -1678,14 +1730,19 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
     prompt += (
         f"请把场景规划成【JSON 步骤】，格式（字段名严格按此，不要发明新字段名）:\n"
         f'{{"steps": [{{"order":1,"action":"fill","semantic_name":"<清单里的semantic_name>",'
-        f'"value":"填的值","assertion":"断言文本","description":"一句话说明",'
-        f'"row_text":"","cell_field":"","cell_by":"","cell_index":0}}]}}\n'
-        f"  上面这 9 个键就是**全部可用字段**。只用得着的写，用不着的**整个键省略**（不要写空串/0）；"
-        f"**但绝不许发明别的键名**（例如 `cell_selector`、`pick` 这类自造名一律无效）。\n"
-        f"  行内定位三件套（当且仅当要操作「表格里某一行」时用，详见规则 3b/3b-2）："
-        f"`row_text`（行锚文本）+ 列指定 —— `cell_field`（有 data-field 时）/ "
-        f"`cell_by=index`+`cell_index`（没有 data-field 的列，如勾选列）/ "
-        f"`cell_by=header`+`cell_field`（按表头文案）。\n\n"
+        f'"value":"填的值","assertion":"断言文本","description":"一句话说明"}}]}}\n'
+        f"  · 上面是最**小**形态，只有 order/action/semantic_name/value/assertion/description 六个键。\n"
+        f"  · **要操作「表格里某一行」时，必须再补行内定位字段**（缺了它这条步骤无法定位）：\n"
+        f"      行锚 `row_text` = 那一行里唯一的文本（通常是你刚填的名称/编号）；\n"
+        f"      列指定 **三选一**（**只要写了 row_text 就必须给其中一个**）：\n"
+        f'        a) 列有 data-field  -> `"cell_field":"orderName"`\n'
+        f'        b) 列没 data-field（**勾选列就是这种**）-> `"cell_by":"index","cell_index":1`'
+        f"（1 = 真实列号，从 1 起；勾选列通常是第 1 列）\n"
+        f'        c) 列有表头文案      -> `"cell_by":"header","cell_field":"订单编号"`\n'
+        f'      完整例子（勾选刚建的那一行）：{{"order":36,"action":"check","row_text":"全链路-20260101",'
+        f'"cell_by":"index","cell_index":1,"description":"勾选该订单行"}}\n'
+        f"  · **不许发明字段名**（`cell_selector`、`pick`、`checkbox` 这类自造名一律无效，"
+        f"框架不认、会被当成没给列）；用不着的字段**整个键省略**，不要写空串。\n\n"
         f"规则:\n"
         f"1. action 只允许: goto / click / fill / check / select / expect_text / expect_url / press_enter / "
         f"click_new_tab / close_tab / expect_first_row\n"
