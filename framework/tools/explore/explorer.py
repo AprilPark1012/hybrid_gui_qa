@@ -234,6 +234,51 @@ def _match_item(sn: str, items: list[dict]) -> tuple[dict | None, str]:
     return None, "未命中"
 
 
+def _row_columns_to_items(page_name: str, row_fields: list[dict]) -> list[dict]:
+    """把「**没有 data-field 的行内列**」转成**有名字的控件条目**（V8.4.3 · A 方案）。
+
+    为什么走这条路（Windows 实测追了 7 个提交才收敛）：
+      勾选列 `<td><input type=checkbox></td>` 没有 data-field，用 `cell_field` 表达不了。
+      我把 `cell_by`/`cell_index` 一路补进 Schema、提示词、格式示例、prompt 首位，
+      **AI 仍然不填** —— 真实链路走**结构化输出**，而模型对 Schema 里新加的可选字段
+      倾向**最小填充**（它把 `semantic_name` 这类旧字段用得滚瓜烂熟，新字段一律省略）。
+      => 与其让 AI 学新字段，不如**让这个勾选框成为一个真实存在的控件**：
+         AI 用它**已经会**的 `semantic_name` 引用它，由框架翻译成 cell_by=index/cell_index。
+      这样与「AI 填不填新字段 / 结构化还是纯文本 / 探针时序」**全部解耦**。
+
+    只转**没有 field** 的列：
+      · 有 field 的列本来就靠 `cell_field` 表达（AI 对它很熟）—— 多造条目会污染控件清单、
+        改变同名唯一化结果、并让 42 份录像的结构键漂移；
+      · 无 field 的列才是「语言表达不了」的那一类（勾选列/操作列…）。
+    """
+    out: list[dict] = []
+    seen: set[tuple[str, int]] = set()
+    for rf in row_fields or []:
+        if str(rf.get("field") or "").strip():
+            continue                      # 有 field -> 交给 cell_field，不造条目
+        kind = str(rf.get("kind") or "").strip()
+        try:
+            idx = int(rf.get("index"))
+        except (TypeError, ValueError):
+            continue
+        key = (str(rf.get("table") or ""), idx)
+        if key in seen:
+            continue
+        seen.add(key)
+        label = {"checkbox": "勾选列", "radio": "选择列"}.get(kind, "列")
+        out.append({
+            "semantic_name": f"{label}{idx}",
+            "role": "checkbox" if kind == "checkbox" else "cell",
+            "page": page_name,
+            # 框架据此把「引用了这个控件」翻译成行内定位：
+            "row_table": rf.get("table"),
+            "row_column_index": idx,
+            "row_column_kind": kind,
+            "nearby_text": f"{page_name} 表格第{idx}列（{label}，无 data-field）",
+        })
+    return out
+
+
 def _plan_to_steps(plan, items: list[dict]) -> list[TestStep]:
     """把 ChatDeepSeek 结构化输出(_PlanModel)转成 TestStep 列表。
 
@@ -261,12 +306,23 @@ def _plan_to_steps(plan, items: list[dict]) -> list[TestStep]:
                 container_heading=it.get("container_heading"),
                 help_text=it.get("help_text"),
             )
+        # V8.4.3 · A 方案：AI 引用的若是**行内列控件**（勾选列这种没有 data-field 的列），
+        #   由**框架**翻译成 cell_by=index + cell_index —— AI 不必学新字段
+        #   （实测结构化输出下它对新增可选字段一律省略，教了 4 层提示词也不填）。
+        cb = getattr(s, "cell_by", None)
+        ci = getattr(s, "cell_index", None)
+        if not cb and not getattr(s, "cell_field", None) and it is not None:
+            _rci = it.get("row_column_index")
+            if _rci is not None:
+                cb, ci = "index", int(_rci)
+                print(f"      [explore] [i] 第 {s.order or i + 1} 步引用了行内列控件"
+                      f"「{it.get('semantic_name')}」-> 自动补 cell_by=index, cell_index={_rci}")
         steps.append(TestStep(
             order=s.order or i + 1, action=s.action, element=el,
             value=s.value, assertion=s.assertion, description=s.description,
             row_text=getattr(s, "row_text", None), cell_field=getattr(s, "cell_field", None),
             # V8.4.3：列指定方式也要落盘 —— 否则 AI 写了 cell_by/cell_index 也在这一步被丢掉
-            cell_by=getattr(s, "cell_by", None), cell_index=getattr(s, "cell_index", None),
+            cell_by=cb, cell_index=ci,
         ))
 
     if unmatched:
@@ -401,6 +457,11 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
             page_items = _sc.items
             dom_ctx = _collect_dom_context(pg)                   # 富 DOM 上下文（索引/可见性/状态）
             row_fields = probe_row_fields(pg)                    # 行内列清单（供 AI 做「行内定位」）
+            # V8.4.3 · A 方案：无 data-field 的列（勾选列）转成**有名字的控件**并进清单，
+            #   这样 AI 用它会写的 semantic_name 就能表达，无需学 cell_by（实测它不学）。
+            _rc_items = _row_columns_to_items(page_name or "", row_fields)
+            if _rc_items:
+                items.extend(_rc_items)
             _LAST_ROW_FIELDS.clear(); _LAST_ROW_FIELDS.extend(row_fields)   # V8.4.3 兜底用
             b.close()
         return page_items, dom_ctx, "", [], row_fields
@@ -502,6 +563,11 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                 #   [!] 曾经写成 `clear(); extend(本页)` -> 循环跑完只剩**最后一页**的列；
                 #   本场景最后一页是发票列表页，勾选列候选因此丢失 -> 兜底恒不触发（实测两次白跑）。
                 _LAST_ROW_FIELDS.extend(_page_rf)
+                # V8.4.3 · A 方案：无 data-field 的列（勾选列）转成**有名字的控件**并进本页清单，
+                #   AI 用它会写的 semantic_name 就能引用，无需学 cell_by（实测结构输出下它不学）。
+                _rc_items = _row_columns_to_items(spec["name"], _page_rf)
+                if _rc_items:
+                    merged_one.extend(_rc_items)
                 for rf in _page_rf:
                     rf["page"] = spec["name"]
                     row_fields.append(rf)

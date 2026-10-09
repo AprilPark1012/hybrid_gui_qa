@@ -6,14 +6,14 @@
 ## 总览
 
 - 大特性 **10** 个 · 子特性 **45** 条
-- 一类用例文件 **92** 个 / 用例函数 **732** 条
+- 一类用例文件 **93** 个 / 用例函数 **736** 条
 - 二类验证文件 **21** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
 | 1 | 混合链路 | 3 | 4 | 3 |
 | 2 | 语义识别与步骤编排 | 4 | 17 | 4 |
-| 3 | 分层定位与控件识别 | 7 | 11 | 5 |
+| 3 | 分层定位与控件识别 | 7 | 12 | 5 |
 | 4 | 选错控件兜底 | 4 | 3 | 2 |
 | 5 | 用例脚本数据三层分离 | 5 | 7 | 0 |
 | 6 | 自愈闭环 Healer | 1 | 0 | 0 |
@@ -55,7 +55,7 @@
 
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
-| 3.1 | 顶层锚点加容器内下钻 | 真实系统只有顶层元素有 testid；子元素靠「锚点 + 容器内相对语义路径」定位 | `test_element_anchor_path.py`(17)、`test_row_fields_cover_all_columns.py`(5) | `verify_scope_locate.py` |
+| 3.1 | 顶层锚点加容器内下钻 | 真实系统只有顶层元素有 testid；子元素靠「锚点 + 容器内相对语义路径」定位 | `test_element_anchor_path.py`(17)、`test_row_fields_cover_all_columns.py`(5)、`test_row_columns_are_named_items.py`(4) | `verify_scope_locate.py` |
 | 3.2 | 多层嵌套容器 | 容器套容器（区域内表格、表单里分组）时路径仍能唯一 | `test_element_anchor_path.py`(17) | - |
 | 3.3 | 弹出层与可展开容器 | 藏在 display:none 菜单里、或点开才出现的弹层控件能被探到并用起来 | `test_expandable_menu_discovery.py`(6)、`test_probe_single_entry.py`(13)、`test_probe_page_scope.py`(8)、`test_probe_incremental.py`(7) | `verify_expandable_menu.py`、`verify_probe_path_parity.py` |
 | 3.4 | 跨页面元素 | 多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧 | - | `verify_cross_page.py` |

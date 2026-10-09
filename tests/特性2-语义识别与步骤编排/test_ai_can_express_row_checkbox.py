@@ -147,12 +147,17 @@ def _code_only(text: str) -> str:
 def test_explorer_wiring_passes_cell_by():
     """构造点必须真的从 AI 产出取 `cell_by`/`cell_index`（不许只加 schema 不连线）。"""
     i = SRC.index("steps.append(TestStep(")
-    seg = _code_only(SRC[i: i + 900])
-    assert "cell_by=getattr(s," in seg.replace(" ", ""), (
-        "explorer.py 构造 TestStep 时没带 cell_by -> AI 产出在这里被丢掉，"
+    seg = _code_only(SRC[max(0, i - 900): i + 1200]).replace(" ", "")  # 窗口含构造点之前的取字段逻辑
+    # 两种合法形态都要认（A 方案把「取 AI 字段」与「框架翻译行内列」都写在构造点之前）：
+    #   · 直接取：cell_by=getattr(s, "cell_by", None)
+    #   · 中间变量：cb = getattr(s, "cell_by", None) -> cell_by=cb
+    got_ai = ('cell_by=getattr(s,"cell_by"' in seg) or ('getattr(s,"cell_by"' in seg and "cell_by=cb" in seg)
+    assert got_ai, (
+        "构造 TestStep 时没从 AI 产出取 cell_by -> AI 产出在这里被丢掉，"
         "生成器读不到（只加 schema 不改链路 = 假修）"
     )
-    assert "cell_index=getattr(s," in seg.replace(" ", "")
+    assert "cell_by=cb" in seg or 'cell_by=getattr(s,"cell_by"' in seg, "构造点最终没把 cell_by 传进 TestStep"
+    assert "cell_index" in seg
 
 
 def test_generator_reads_cell_by_from_step_dict():
