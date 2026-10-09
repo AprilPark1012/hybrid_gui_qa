@@ -145,18 +145,17 @@ def _code_only(text: str) -> str:
 
 
 def test_explorer_wiring_passes_cell_by():
-    """构造点必须真的从 AI 产出取 `cell_by`/`cell_index`（不许只加 schema 不连线）。"""
-    i = SRC.index("steps.append(TestStep(")
-    seg = _code_only(SRC[max(0, i - 900): i + 1200]).replace(" ", "")  # 窗口含构造点之前的取字段逻辑
-    # 两种合法形态都要认（A 方案把「取 AI 字段」与「框架翻译行内列」都写在构造点之前）：
-    #   · 直接取：cell_by=getattr(s, "cell_by", None)
-    #   · 中间变量：cb = getattr(s, "cell_by", None) -> cell_by=cb
-    got_ai = ('cell_by=getattr(s,"cell_by"' in seg) or ('getattr(s,"cell_by"' in seg and "cell_by=cb" in seg)
-    assert got_ai, (
-        "构造 TestStep 时没从 AI 产出取 cell_by -> AI 产出在这里被丢掉，"
-        "生成器读不到（只加 schema 不改链路 = 假修）"
+    """构造点必须真的把 `cell_by`/`cell_index` 传进 `TestStep`（不许只加 schema 不连线）。"""
+    fi = SRC.index("def _plan_to_steps(")
+    fj = SRC.find("\ndef ", fi + 1)
+    body = (SRC[fi: fj if fj > 0 else len(SRC)]).replace(" ", "")
+    assert "steps.append(TestStep(" in body, "结构变了？判据需复核"
+    # 取构造点前后一段（含「从 AI 产出取字段」与「框架翻译行内列」两段逻辑）
+    seg = body[max(0, body.index("steps.append(TestStep(") - 2600): body.index("steps.append(TestStep(") + 700]
+    assert 'getattr(s,"cell_by"' in seg, (
+        "构造点没从 AI 产出取 cell_by -> AI 写了也会被丢掉（只加 schema 不改链路 = 假修）"
     )
-    assert "cell_by=cb" in seg or 'cell_by=getattr(s,"cell_by"' in seg, "构造点最终没把 cell_by 传进 TestStep"
+    assert ("cell_by=cb" in seg) or ('cell_by=getattr(s,"cell_by"' in seg), "最终没把 cell_by 传进 TestStep"
     assert "cell_index" in seg
 
 
