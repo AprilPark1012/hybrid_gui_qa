@@ -159,3 +159,28 @@ def test_generator_reads_cell_by_from_step_dict():
     """**反向自证**：生成器那一侧本来就在读（框架早支持），别退化。"""
     gsrc = (ROOT / "framework/tools/generate/generator.py").read_text(encoding="utf-8")
     assert "cell_by" in gsrc and "cell_index" in gsrc, "生成器丢了 cell_by 读取？框架本来就支持它"
+
+
+def test_output_format_example_lists_row_locator_fields():
+    """**最终根因判据**：输出格式示例里必须列出 `row_text`/`cell_field`/`cell_by`/`cell_index`。
+
+    [!] 这是追了四层才见底的那一层：schema 有字段、提示词有教学，
+        但「JSON 步骤格式」示例里**没有这几个键**、还写着「严格按此，不要多余字段」
+        => AI 只能靠猜（实测它硬塞了 `cell_field="pick"`，那是个不存在的 field 名）。
+    """
+    i = SRC.index("请把场景规划成")
+    seg = SRC[i: i + 700]
+    for key in ("row_text", "cell_field", "cell_by", "cell_index"):
+        assert f'"{key}"' in seg, (
+            f"输出格式示例里没有 {key} -> AI 受「严格按此」约束不会写它 "
+            f"（实测：勾选列只能自造一个假 field 名）"
+        )
+
+
+def test_output_format_forbids_inventing_key_names():
+    """格式说明要明确「不许发明键名」——否则 AI 会自造 `pick` 这种名字。"""
+    i = SRC.index("请把场景规划成")
+    seg = SRC[i: i + 700]
+    assert "不许发明" in seg or "不要发明" in seg or "禁止" in seg, (
+        "没写「不许发明字段名」-> AI 自造 `pick` 这类无效键"
+    )

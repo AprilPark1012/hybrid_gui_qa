@@ -1676,9 +1676,16 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
             f"{json.dumps(dom_ctx[:80], ensure_ascii=False, indent=1)}\n\n"
         )
     prompt += (
-        f"请把场景规划成【JSON 步骤】，格式（严格按此，不要多余字段）:\n"
+        f"请把场景规划成【JSON 步骤】，格式（字段名严格按此，不要发明新字段名）:\n"
         f'{{"steps": [{{"order":1,"action":"fill","semantic_name":"<清单里的semantic_name>",'
-        f'"value":"填的值","assertion":"断言文本","description":"一句话说明"}}]}}\n\n'
+        f'"value":"填的值","assertion":"断言文本","description":"一句话说明",'
+        f'"row_text":"","cell_field":"","cell_by":"","cell_index":0}}]}}\n'
+        f"  上面这 9 个键就是**全部可用字段**。只用得着的写，用不着的**整个键省略**（不要写空串/0）；"
+        f"**但绝不许发明别的键名**（例如 `cell_selector`、`pick` 这类自造名一律无效）。\n"
+        f"  行内定位三件套（当且仅当要操作「表格里某一行」时用，详见规则 3b/3b-2）："
+        f"`row_text`（行锚文本）+ 列指定 —— `cell_field`（有 data-field 时）/ "
+        f"`cell_by=index`+`cell_index`（没有 data-field 的列，如勾选列）/ "
+        f"`cell_by=header`+`cell_field`（按表头文案）。\n\n"
         f"规则:\n"
         f"1. action 只允许: goto / click / fill / check / select / expect_text / expect_url / press_enter / "
         f"click_new_tab / close_tab / expect_first_row\n"
