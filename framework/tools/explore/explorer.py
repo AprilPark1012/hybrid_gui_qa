@@ -234,7 +234,8 @@ def _match_item(sn: str, items: list[dict]) -> tuple[dict | None, str]:
     return None, "未命中"
 
 
-def _row_columns_to_items(page_name: str, row_fields: list[dict]) -> list[dict]:
+def _row_columns_to_items(page_name: str, row_fields: list[dict],
+                          page_items: list[dict] | None = None) -> list[dict]:
     """把「**没有 data-field 的行内列**」转成**有名字的控件条目**（V8.4.3 · A 方案）。
 
     为什么走这条路（Windows 实测追了 7 个提交才收敛）：
@@ -253,6 +254,16 @@ def _row_columns_to_items(page_name: str, row_fields: list[dict]) -> list[dict]:
     """
     out: list[dict] = []
     seen: set[tuple[str, int]] = set()
+    # 推断「行控件前缀」：该页 role=checkbox 的已有控件里，取 `前缀_后缀` 的公共前缀
+    #   （实测：选择订单_SO_2301 / 选择订单_SO_1001 -> 前缀 = 选择订单）
+    _row_prefix = ""
+    _names = [str(i.get("semantic_name") or "") for i in (page_items or [])
+              if str(i.get("role")) in ("checkbox", "radio")]
+    _pre = [n.split("_")[0] for n in _names if "_" in n]
+    if _pre:
+        cand = min(_pre, key=len)
+        if all(p.startswith(cand) for p in _pre):
+            _row_prefix = cand.strip()
     for rf in row_fields or []:
         if str(rf.get("field") or "").strip():
             continue                      # 有 field -> 交给 cell_field，不造条目
@@ -265,9 +276,14 @@ def _row_columns_to_items(page_name: str, row_fields: list[dict]) -> list[dict]:
         if key in seen:
             continue
         seen.add(key)
+        # 命名要**贴合这一页已有的行控件语义模式**：
+        #   实测该页每一行的勾选框都叫「选择订单_SO_2301」这种（前缀 + 行标识），
+        #   而新建的那一行探测时还不存在 -> AI 手上没有它的名字。
+        #   所以行内列控件要叫「<同前缀>_当前行」，AI 才会把它当作「选当前这一行」。
         label = {"checkbox": "勾选列", "radio": "选择列"}.get(kind, "列")
+        _prefix = _row_prefix or label
         out.append({
-            "semantic_name": f"{label}{idx}",
+            "semantic_name": f"{_prefix}_当前行" if kind == "checkbox" else f"{label}{idx}",
             "role": "checkbox" if kind == "checkbox" else "cell",
             "page": page_name,
             # 框架据此把「引用了这个控件」翻译成行内定位：
@@ -311,6 +327,24 @@ def _plan_to_steps(plan, items: list[dict]) -> list[TestStep]:
         #   （实测结构化输出下它对新增可选字段一律省略，教了 4 层提示词也不填）。
         cb = getattr(s, "cell_by", None)
         ci = getattr(s, "cell_index", None)
+        # V8.4.3 · A 方案之二：AI 若引用「<行控件前缀>_<某个值>」（如
+        #   `选择订单_全链路-2026xxxx`）—— 那正是「选某一行的勾选框」的写法，
+        #   而后缀就是行锚文本。框架据此翻译成 row_text + cell_by=index，
+        #   不需要 AI 学任何新字段（它本来就在用这种命名）。
+        if it is None and sn and "_" in sn and not getattr(s, "row_text", None):
+            _pfx, _, _suffix = sn.partition("_")
+            _row_pfx = ""
+            for _nm in [str(x.get("semantic_name") or "") for x in items
+                        if str(x.get("role")) in ("checkbox", "radio")]:
+                _p = _nm.split("_")[0]
+                if _p and (not _row_pfx or len(_p) < len(_row_pfx)):
+                    _row_pfx = _p
+            if _row_pfx and _pfx == _row_pfx and _suffix:
+                _rc = next((x for x in items if x.get("row_column_index")), None)
+                if _rc is not None:
+                    s.row_text = _suffix
+                    print(f"      [explore] [i] 第 {s.order or i + 1} 步引用「{sn}」"
+                          f"-> 识别为行内选择，行锚={_suffix!r}，列=index")
         if not cb and not getattr(s, "cell_field", None) and it is not None:
             _rci = it.get("row_column_index")
             if _rci is not None:
@@ -459,7 +493,7 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
             row_fields = probe_row_fields(pg)                    # 行内列清单（供 AI 做「行内定位」）
             # V8.4.3 · A 方案：无 data-field 的列（勾选列）转成**有名字的控件**并进清单，
             #   这样 AI 用它会写的 semantic_name 就能表达，无需学 cell_by（实测它不学）。
-            _rc_items = _row_columns_to_items(page_name or "", row_fields)
+            _rc_items = _row_columns_to_items(page_name or "", row_fields, items)
             if _rc_items:
                 items.extend(_rc_items)
             _LAST_ROW_FIELDS.clear(); _LAST_ROW_FIELDS.extend(row_fields)   # V8.4.3 兜底用
@@ -565,7 +599,7 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                 _LAST_ROW_FIELDS.extend(_page_rf)
                 # V8.4.3 · A 方案：无 data-field 的列（勾选列）转成**有名字的控件**并进本页清单，
                 #   AI 用它会写的 semantic_name 就能引用，无需学 cell_by（实测结构输出下它不学）。
-                _rc_items = _row_columns_to_items(spec["name"], _page_rf)
+                _rc_items = _row_columns_to_items(spec["name"], _page_rf, merged_one)
                 if _rc_items:
                     merged_one.extend(_rc_items)
                 for rf in _page_rf:
@@ -1698,6 +1732,12 @@ _OUTPUT_CONTRACT = (
     '        b) 列没 data-field（**勾选列就是这种**）-> `"cell_by":"index","cell_index":1`'
     "（1 = 真实列号，从 1 起；勾选列通常是第 1 列）\n"
     '        c) 列有表头文案      -> `"cell_by":"header","cell_field":"订单编号"`\n'
+    "  · 表里要操作「**某一行**」（尤其刚创建、探测时还不存在的那一行）时，"
+    "控件清单里有一个以 `_当前行` 结尾的**行内控件**（如 `选择订单_当前行`）："
+    "**引用它 + 用 `row_text` 指明是哪一行**即可；\n"
+    '      {"order":36,"action":"check","semantic_name":"选择订单_当前行",'
+    '"row_text":"全链路-20260101","description":"勾选该订单行"}\n'
+    "      不要用探测时就存在的那些行的名字（如 `选择订单_SO_2301`）—— 新行探测时还没有名字。\n"
     '      完整例子（勾选刚建的那一行）：{"order":36,"action":"check","row_text":"全链路-20260101",'
     '"cell_by":"index","cell_index":1,"description":"勾选该订单行"}\n'
     "  · **不许发明字段名**（`cell_selector`、`pick`、`checkbox` 这类自造名一律无效，"
