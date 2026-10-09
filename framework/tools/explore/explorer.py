@@ -1125,28 +1125,66 @@ def looks_like_hardcoded_row_value(value) -> bool:
     return bool(_HARDCODE_ID_RE.search(v))
 
 
-def reject_hardcoded_row_values(steps: list) -> list[str]:
-    """闸门(**收集式**, 不抛异常): 挑出写了死行数据的步骤, 交给重试闭环当失败原因.
+def reject_hardcoded_row_values(steps: list, scenario_text: str | None = None) -> list[str]:
+    """闸门(**收集式**, 不抛异常): 挑出写了死行数据的步骤, 交给重试闭环当失败原因。
 
     为什么不抛异常(与登录闸门不同): 登录步骤**必然失败**(编的凭据), 而写死行数据
     **在本机恰好能过** -- 它是「换个环境就崩」的隐患, 更适合**带原因让 AI 重生成**
-    (重试用尽仍不合格 -> 走已有的「如实报错」路径).
+    (重试用尽仍不合格 -> 走已有的「如实报错」路径)。
+
+    [!] V8.4.3 修正(**误伤**, Windows 实测): 闸门的规矩本来就是「字面编号只允许出现在
+        **场景里逐字给出的情形**」, 但原实现**从不对照场景原文**, 于是把场景里明写的值
+        也一并拦下 —— 本 demo 场景原话是「选中一条合同（第一行，HT-1001）。
+        ...故本条走**等价直达**：打开新建订单页并把该合同带进去
+        （`order_new.html?contract_no=HT-1001`）」, AI 照抄该 URL 完全正确,
+        却被判「写死表格行数据」-> 三轮重试全部卡死在这里。
+        修法: 传 `scenario_text` 时, 值里出现的**每个**编号都要在场景原文里能找到才放行;
+        任何一个编号不在场景里 -> 仍判写死(不放过真问题)。
     """
     bad: list[str] = []
+    hay = (scenario_text or "")
     for st in steps:
         hits = []
         for field in ("value", "url"):
             v = getattr(st, field, None)
-            if looks_like_hardcoded_row_value(v):
+            if looks_like_hardcoded_row_value(v) and not _ids_all_declared_in_scenario(v, hay):
                 hits.append(f"{field}={v!r}")
         el = getattr(st, "element", None)
         sn = getattr(el, "semantic_name", None) if el else None
-        if sn and looks_like_hardcoded_row_value(sn):
+        if sn and looks_like_hardcoded_row_value(sn) and not _ids_all_declared_in_scenario(sn, hay):
             hits.append(f"element={sn!r}")
         if hits:
             bad.append(f"第 {getattr(st, 'order', '?')} 步({getattr(st, 'description', '')[:28]}): "
                        + "、".join(hits))
     return bad
+
+
+def _ids_all_declared_in_scenario(value, scenario_text: str) -> bool:
+    """值里出现的**所有**编号, 是否都能在场景原文里逐字找到?
+
+    能 -> 这是「场景里逐字给出」的合法字面值, 放行(闸门自己的规矩);
+    不能 -> 至少有一个编号是 AI 自己从页面观测来的 -> 判写死。
+
+    口径与 `looks_like_hardcoded_row_value` 一致: 只认编号形态, 且占位/示例形态本身就不算写死。
+    """
+    if not scenario_text:
+        return False          # 拿不到场景原文 -> 不做豁免(宁错杀, 也不放过真问题)
+    v = "" if value is None else str(value)
+    ids = _HARDCODE_ID_RE.findall(v)
+    if not ids:
+        return False
+    # 规范化后比对（去分隔符 + 大写）: 值里 `HT-1001` / 场景里 `HT_1001` / `HT1001` 视为同一编号
+    hay = {_norm_id(x) for x in _HARDCODE_ID_RE.findall(scenario_text)}
+    return all(_norm_id(i) in hay for i in ids)
+
+
+def _norm_id(token: str) -> str:
+    """编号的规范化形式: 去分隔符 + 大写。`HT-1001` / `HT_1001` / `HT1001` -> `HT1001`。
+
+    为什么要规范化而不是枚举变体: 枚举方向容易想反（从「值」生成变体去场景里找，
+    就漏掉了「值没分隔、场景有分隔」这一侧）。规范化一个键、两边同规则，才对称。
+    """
+    return re.sub(r"[-_\s]", "", str(token)).upper()
 
 
 def _fill_missing_row_column(steps: list, row_fields: list | None) -> list[str]:
@@ -1216,7 +1254,7 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
     # 实测写了 123456 而真值是 super@123）。真需要登录的场景应该用场景级 `auth:` 声明。
     _reject_login_steps(steps)
     # P0-1: 写死行数据 -- **收集式**闸门(不抛), 把原因记下来供 L1/重试闭环使用.
-    hard = reject_hardcoded_row_values(steps)
+    hard = reject_hardcoded_row_values(steps, scenario_text=scenario)
     # 确定性兜底：row_text 有但列缺失（AI 对「没有 data-field 的列」不写列）
     if __import__("os").environ.get("HYBRID_DBG_FALLBACK"):
         _c = [r for r in _LAST_ROW_FIELDS]
@@ -2126,7 +2164,16 @@ def _to_char_set(text: str, strip_actions: bool = False) -> set[str]:
 
 
 def _element_semantics_blob(it: dict) -> str:
-    """把元素字典的关键语义拼成一个串，供与 AI 比对。"""
+    """把元素字典的关键语义拼成一个串，供与 AI 比对。
+
+    [!] V8.4.3 修正(**误伤**, Windows 实测): 原实现**漏了 `help_text`** —— 而它恰恰是
+        控件作者写的**权威用途说明**。实测事故: 右上角头像按钮 `name="超"`（登录用户名）、
+        `help_text="点击切换角色 / 退出登录"`, AI 给「展开角色切换菜单」选它是**完全正确**的
+        （紧接着第 4 步就点「切换为订单管理员」）, 却因字符串重叠 0.00 被判「一定选错」
+        -> 重试闭环反复带这条原因重生成, 三轮全卡死。
+        实测数值: 不含 help_text = 0.00(误杀) / 含 help_text = 0.50(放行);
+        同时真误选（拿合同号/订单名当控件）仍为 0.00 -> 不放过真问题。
+    """
     return " ".join(x for x in [
         it.get("placeholder") or "",
         it.get("text") or "",
@@ -2135,6 +2182,7 @@ def _element_semantics_blob(it: dict) -> str:
         it.get("label") or "",
         it.get("nearby_text") or "",
         it.get("container_heading") or "",
+        it.get("help_text") or "",          # V8.4.3: 权威用途说明（如「点击切换角色」）
     ] if x)
 
 

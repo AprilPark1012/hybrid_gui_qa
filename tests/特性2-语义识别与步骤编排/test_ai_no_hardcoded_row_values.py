@@ -47,7 +47,9 @@ def _namespace(path: Path = EXPLORER):
     # 注意：这些符号在 explorer.py 里是**模块级**的；本函数把它们摘出来单独 exec。
     # 依赖顺序：常量 -> 函数（函数体里引用常量）。
     wanted = {"_HARDCODE_ID_RE", "_HARDCODE_EXEMPT",
-              "looks_like_hardcoded_row_value", "reject_hardcoded_row_values"}
+              "looks_like_hardcoded_row_value", "reject_hardcoded_row_values",
+              # V8.4.3：写死检测新增「对照场景原文」豁免（编号规范化比较）
+              "_norm_id", "_ids_all_declared_in_scenario"}
     ns: dict = {"re": re}
     found = set()
     for node in ast.walk(ast.parse(src)):
