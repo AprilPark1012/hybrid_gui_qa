@@ -495,7 +495,11 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
             #   这样 AI 用它会写的 semantic_name 就能表达，无需学 cell_by（实测它不学）。
             _rc_items = _row_columns_to_items(page_name or "", row_fields, items)
             if _rc_items:
-                items.extend(_rc_items)
+                # [!] 必须**插到最前**：提示词里控件清单有 `items[:60]` 上限，而本页有 100+ 个
+                #     控件 -> 追加到末尾等于**没给 AI 看**（实测 AI 因此一直不知道有这个控件，
+                #     所以它「知道要选某一行、却不给列」）。行内控件是行内定位的唯一入口，
+                #     优先级最高，放最前。
+                items[:0] = _rc_items
             _LAST_ROW_FIELDS.clear(); _LAST_ROW_FIELDS.extend(row_fields)   # V8.4.3 兜底用
             b.close()
         return page_items, dom_ctx, "", [], row_fields
@@ -601,7 +605,8 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                 #   AI 用它会写的 semantic_name 就能引用，无需学 cell_by（实测结构输出下它不学）。
                 _rc_items = _row_columns_to_items(spec["name"], _page_rf, merged_one)
                 if _rc_items:
-                    merged_one.extend(_rc_items)
+                    # 同上：必须插到本页清单最前，否则会被 `items[:60]` 截掉 = AI 看不到
+                    merged_one[:0] = _rc_items
                 for rf in _page_rf:
                     rf["page"] = spec["name"]
                     row_fields.append(rf)
