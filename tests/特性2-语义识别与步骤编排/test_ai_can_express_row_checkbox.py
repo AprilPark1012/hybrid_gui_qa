@@ -225,3 +225,28 @@ def test_fill_missing_row_column_leaves_normal_steps_alone():
     fields = [{"index": 1, "field": "", "kind": "checkbox"}]
     explorer._fill_missing_row_column(steps, fields)
     assert steps[0].cell_by is None and steps[1].cell_by is None, "动了不该动的步骤"
+
+
+def test_row_field_cache_written_on_cross_page_path():
+    """**兜底必须拿得到清单**：跨页路径（本场景实际走的路径）也要写 `_LAST_ROW_FIELDS`。
+
+    [!] 这是兜底「从未触发」的真因：缓存只在**单页**分支写过，而 `explore --ai` 走的是
+        **跨页**分支 -> 缓存恒为空 -> `_fill_missing_row_column` 直接返回 -> 全链路白修。
+        判据要同时盯住「两处分支都有写」，否则以后加页面又会漏。
+    """
+    src = SRC.replace(" ", "")
+    n_calls = src.count("probe_row_fields(pg)")
+    # 同步方式：单页 `clear(); extend(...)` 或跨页 `extend(...)` 都算「同步了缓存」
+    n_sync = src.count("_LAST_ROW_FIELDS.clear()") + src.count("_LAST_ROW_FIELDS.extend(")
+    assert n_calls >= 2, "probe_row_fields 的调用点少于 2 处（结构变了？判据需复核）"
+    assert n_sync >= n_calls, (
+        f"probe_row_fields 有 {n_calls} 处调用，但只有 {n_sync} 处同步了兜底缓存 "
+        f"-> 未同步的那条路径兜底不生效（实测就是这么漏的：跨页分支没写，兜底恒不触发）"
+    )
+    # 跨页分支**不许**在循环里 clear：否则跑完只剩最后一页的列（实测勾选列候选因此丢失）
+    i = src.index("_LAST_ROW_FIELDS.extend(_page_rf)")
+    seg = src[i - 200: i]
+    assert "_LAST_ROW_FIELDS.clear()" not in seg.replace(" ", ""), (
+        "跨页循环内在 extend 之前 clear -> 每页都把前面的列冲掉，循环结束只剩最后一页 "
+        "-> 勾选列候选丢失，兜底不触发（实测两次白跑）"
+    )

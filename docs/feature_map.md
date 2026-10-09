@@ -6,7 +6,7 @@
 ## 总览
 
 - 大特性 **10** 个 · 子特性 **45** 条
-- 一类用例文件 **92** 个 / 用例函数 **731** 条
+- 一类用例文件 **92** 个 / 用例函数 **732** 条
 - 二类验证文件 **21** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
@@ -43,7 +43,7 @@
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
 | 2.1 | 语义名生成与对齐 | AI 产出的语义名能落到真实控件上；宁可不映射（大声告警）也不许错映射（静默点错） | `test_name_alignment.py`(11) | - |
-| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_ai_retry_loop.py`(10)、`test_ai_incomplete_output_retries.py`(3)、`test_ai_retry_same_cause.py`(5)、`test_ai_no_hardcoded_row_values.py`(5)、`test_semantic_mismatch_blocks.py`(3)、`test_llm_tool_choice_unsupported.py`(3)、`test_production_defects_gate_l1.py`(3)、`test_ai_can_express_row_checkbox.py`(13) | `verify_role_switch_click.py` |
+| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_ai_retry_loop.py`(10)、`test_ai_incomplete_output_retries.py`(3)、`test_ai_retry_same_cause.py`(5)、`test_ai_no_hardcoded_row_values.py`(5)、`test_semantic_mismatch_blocks.py`(3)、`test_llm_tool_choice_unsupported.py`(3)、`test_production_defects_gate_l1.py`(3)、`test_ai_can_express_row_checkbox.py`(14) | `verify_role_switch_click.py` |
 | 2.3 | 步骤到定位的合成 | 步骤里的语义名/属性如何合成可执行定位表达式 | `test_scope_locate_expr.py`(17)、`test_locate_by_title.py`(8) | `verify_scope_locate.py` |
 | 2.4 | 场景声明契约 | 人写的那部分：pages / pre / auth / data / probe_url —— 声明必须由场景提供，框架不懂具体系统 | `test_scenario_auth_spec.py`(8)、`test_page_pre_actions.py`(3)、`test_probe_url_and_occurrence.py`(6)、`test_login_priming_coverage.py`(4) | `verify_login_priming.py`、`verify_page_pre_actions.py` |
 

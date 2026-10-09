@@ -498,7 +498,10 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                     d["page"] = spec["name"]
                     dom_ctx.append(d)
                 _page_rf = probe_row_fields(pg)         # 行内列清单（按页标记，供 AI 做行内定位）
-                _LAST_ROW_FIELDS.clear(); _LAST_ROW_FIELDS.extend(_page_rf)   # V8.4.3 兜底用
+                # V8.4.3 兜底用：跨页必须**累积**。
+                #   [!] 曾经写成 `clear(); extend(本页)` -> 循环跑完只剩**最后一页**的列；
+                #   本场景最后一页是发票列表页，勾选列候选因此丢失 -> 兜底恒不触发（实测两次白跑）。
+                _LAST_ROW_FIELDS.extend(_page_rf)
                 for rf in _page_rf:
                     rf["page"] = spec["name"]
                     row_fields.append(rf)
