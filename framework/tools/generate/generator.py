@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 
 from framework.tools.common.config import BASE, CASES_DIR, SCRIPTS_DIR
+from framework.tools.generate import probe_snapshot   # explore 快照的唯一读写入口（V8.4.3+）
 from framework.tools.common.browser import CHROMIUM_ARGS
 from framework.tools.generate.case_builder import CaseQualityError, case_errors
 
@@ -1197,6 +1198,8 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     loc_map: dict[str, str] = {}
     src_parts: list[str] = []
 
+    _src_file: Path | None = None        # V8.4.3+：本次用的定位来源（落快照用）
+    _src_kind = ""
     if not live_probe:
         candidates: list[tuple[str, Path, str]] = []
         if element_map_path:
@@ -1217,6 +1220,7 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             if hit:
                 loc_map.update(hit)
                 src_parts.append(f"{label} 命中 {len(hit)}/{len(needed)}")
+                _src_file, _src_kind = f, kind      # V8.4.3+：记下来源，用于落 explore 快照
                 break
 
     missing = needed - set(loc_map)
@@ -1394,6 +1398,27 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             raise ValueError(f"--only 指定的用例不存在：{_unknown}（当前共 {len(_known)} 条）")
 
     # 2-a) 共享运行时 + 转发 conftest：内容只由代码版本决定 -> 内容比对决定要不要重写
+    # --- V8.4.3+：落 **explore 探测快照**（运行时的唯一名字来源）---------------------
+    # 为什么必须落：运行时若靠现场单页重探建索引，命名口径与 explore 不同（`@页名` vs `@容器`），
+    #   同一个控件两个名字 -> AI 照它看到的写、运行时找不到 -> 报「语义名歧义」直接失败
+    #   （实测：`保存@订单详情页` vs `保存`/`保存@订单详情`）。详见 probe_snapshot 模块说明。
+    try:
+        _snap_items: list[dict] = []
+        if _src_file is not None and _src_file.exists():
+            _raw = json.loads(_src_file.read_text(encoding="utf-8"))
+            _snap_items = (probe_snapshot.items_from_element_map(_raw) if _src_kind == "element"
+                           else probe_snapshot.items_from_probe_snapshot(_raw))
+        _snap_items += [v for v in _LIVE_IT.values() if isinstance(v, dict)]   # 现场补探的也进快照
+        _snap_path = probe_snapshot.write_snapshot(gen_dir, _snap_items)
+        _n_names = len(probe_snapshot.index_from_items(_snap_items))
+        if _snap_path:
+            print(f"[generate] [OK] 已落 explore 快照 {_n_names} 个语义名 -> {_snap_path.name}"
+                  f"（运行时以它为准，重探只补缺）")
+        else:
+            print("[generate] [!] 没有可用条目 -> 未落 explore 快照（运行时将退回现场探测）")
+    except Exception as _e:
+        print(f"[generate] [!] 落 explore 快照失败（{type(_e).__name__}: {_e}）-> 运行时退回现场探测")
+
     _harness_txt = _render_harness()
     _conftest_txt = _render_generated_conftest()
     _shared_rewritten: list[str] = []
@@ -2331,17 +2356,50 @@ def _append_log(case_id, line):
         pass
 
 _INDEX: dict = {}
+_SNAPSHOT_LOADED = False
+
+
+def _seed_index_from_snapshot() -> None:
+    """先把 **explore 探测快照**灌进索引 —— 它是"AI 看到的那份清单"，唯一权威（V8.4.3+）。
+
+    [!] 为什么必须优先于现场探测：探测有**两条链路，命名规则不同** ——
+        explore 跨页合并用 `原名@页名`（AI 看到的就是它），
+        运行时单页重探用 `原名@容器`；同一个控件因此有两个名字，
+        AI 照它看到的写、运行时却找不到 -> 模糊兜底见多候选 -> 报「语义名歧义」直接失败。
+        实测：`保存@订单详情页`（快照）vs `保存` / `保存@订单详情`（重探）。
+        这不是某场景特例：**凡跨页重名控件（保存/取消/返回/编辑）都会踩**。
+        口径：快照唯一权威；现场重探只补快照里没有的（如弹层打开后才出现的控件），且必须出声。
+    """
+    global _SNAPSHOT_LOADED
+    if _SNAPSHOT_LOADED:
+        return
+    _SNAPSHOT_LOADED = True
+    try:
+        from pathlib import Path as _P
+        from framework.tools.generate.probe_snapshot import load_snapshot
+        snap = load_snapshot(_P(__file__).resolve().parent)
+        for _k, _v in (snap or {}).items():
+            _INDEX.setdefault(_k, _v)
+        if snap:
+            _log(None, "snapshot", f"已装载 explore 快照 {len(snap)} 个语义名（运行时以此为准）")
+    except Exception as _e:
+        _log(None, "snapshot", f"[!] 读不到 explore 快照（{type(_e).__name__}: {_e}）-> 退回现场探测")
 
 
 def _item_for(hint, page):
-    """semantic_name → probe 控件项。缓存优先；未命中才重探一次（兼容弹窗后出现的控件）。
+    """semantic_name -> probe 控件项。**快照优先**；未命中才重探一次（兼容弹窗后出现的控件）。
 
     改造前每个动作都全页 probe（并发下页面时序不稳会超时）；现在只在首次/未命中时探。
     [!] 2026-09-18 批次 2 S3：逐字名不存在时不再「随便挑一个」—— 见 `_fuzzy_lookup`。
+    [!] V8.4.3+：先读 explore 快照（`_seed_index_from_snapshot`）—— 见那里的说明。
     """
     from framework.tools.probe.probe import probe_page
+    _seed_index_from_snapshot()
     it = _INDEX.get(hint)
     if it is None:
+        _log(None, "locate",
+             f"[!] 名字不在 explore 快照里: {hint!r} -> 现场重探"
+             f"（重探的命名口径可能与快照不同，同名多候选时会报歧义）")
         for x in probe_page(page):
             _INDEX.setdefault(x.get("semantic_name"), x)
         it = _INDEX.get(hint)
@@ -2400,6 +2458,11 @@ def _to_ref(it):
         text=it.get("text"),
         label=it.get("label"),
         nearby_text=it.get("nearby_text"),
+        # [!] V8.4.3+：容器/帮助文本必须透传 —— 它们是「同名控件消歧」的**唯一线索**。
+        #     实测事故：订单详情页两个按钮都叫「保存」，探针采到了 container_heading='详细信息'
+        #     却在这里被丢掉 -> 运行时无权收窄 -> 报「定位失败」。少传一个字段 = 丢一条能力。
+        container_heading=it.get("container_heading"),
+        help_text=it.get("help_text"),
     )
 
 

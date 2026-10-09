@@ -768,13 +768,20 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
             _prod.append("产出里选中的控件与步骤描述**几乎无关**"
                          "（语义校准判为严重误选，实跑必然报「元素语义未找到」）：")
             _prod += ["  · " + x for x in _exp.SEMANTIC_MISMATCH_NOTES[:5]]
+        # V8.4.3+：场景明写的**必填项** AI 漏编排 -> 保存会被前端校验拦下（实跑才炸）
+        if getattr(_exp, "_REQUIRED_COVERAGE_NOTES", None):
+            _prod.append("产出里**漏了场景要求填的必填项**"
+                         "（页面标 * 的必填控件；不填就保存不了，后面的断言必然失败）：")
+            _prod += ["  · " + x for x in _exp._REQUIRED_COVERAGE_NOTES[:5]]
         if _prod:
             print("  [NG] 校验不合格：AI 产出有**结构性缺陷** -> 不试跑，直接带原因重生成")
             for line in _prod:
                 print(f"     {line[:170]}")
             print("  要求：① 行数据一律用声明式定位（row_text / expect_first_row / cell_field），"
                   "字面编号只允许出现在场景里逐字给出的情形；")
-            print("        ② 每个步骤选的控件必须与步骤描述语义相符（不许拿业务数据当控件名）。")
+            print("        ② 每个步骤选的控件必须与步骤描述语义相符（不许拿业务数据当控件名）；")
+            print("        ③ 场景里**逐字列出的每一个要填的字段**（尤其页面标 * 的必填项）都要有对应步骤，"
+                  "一项都不许漏 —— 漏一项保存就会被前端拦下，后面的断言全部白给。")
             return False, "\n".join(_prod)
     except Exception as _e:      # 收集/读取出问题不该毁掉校验本身
         print(f"  [!] 产出缺陷清单读取失败（不影响校验）：{type(_e).__name__}: {_e}")
@@ -1146,6 +1153,8 @@ REMOVED_FLAGS = {
 #     以及测试专用的 BAD_PY / DAILY_SKIP）**刻意不列** —— 列出来只会让用户误以为该去调它。
 TUNABLE_CATALOG: list[tuple[str, str, str]] = [
     ("HYBRID_AI_RETRY", "2", "AI 产出校验不合格时的重试次数（0=关闭 · 上界 5）"),
+    ("HYBRID_PROMPT_LIST_CHARS", "90000",
+     "喂给 AI 的**每条清单**（控件/行内列/DOM）的字符预算；超了按「场景提到+必填 全给，其余页间轮转」裁剪并明示条数"),
     ("HYBRID_BASE_URL", "http://localhost:8000", "被测应用地址（旧名 TARGET_URL 也认，它优先）"),
     ("HYBRID_CASE_TIMEOUT", "600", "单条用例超时秒数（0/off = 不限）"),
     ("HYBRID_LOCATE_TIMEOUT", "5000", "单次定位等待毫秒（慢目标可调大）"),

@@ -28,6 +28,20 @@ from framework.tools.generate.generator import UnmappedElementsError, generate_s
 CASES = REPO / "cases"
 
 
+@pytest.fixture(autouse=True)
+def _isolate_element_map_residue(monkeypatch, tmp_path):
+    """把 `ELEMENT_MAP_DIR` 指到**空目录** —— 判据不许依赖仓库 `output/` 的残留。
+
+    [!] 为什么必须隔离（2026-10-09 实测）：`generate_scripts` 不带 `--element-map` 时会挑
+        `output/element_maps/` 里**最新**的快照当定位来源。于是"本机跑过一次 explore/probe"
+        就会改变这几条判据的行为：**有残留 -> 3 红；把 output/ 清空 -> 4 绿**（HEAD 原代码同样如此）。
+        判据随环境飘 = 红灯会被当成噪音、**大家学会忽略它** —— 那比红灯本身更危险。
+    （`generate_scripts` 是函数内 import，patch `config` 源模块即生效。）
+    """
+    monkeypatch.setattr("framework.tools.common.config.ELEMENT_MAP_DIR",
+                        tmp_path / "_isolated_element_maps")
+
+
 @pytest.fixture
 def probe_down(monkeypatch):
     """把 `playwright.sync_api` 换成「一调 `sync_playwright()` 就抛」的假模块 -> 现场 probe 必失败。"""
@@ -156,3 +170,16 @@ def _element_map_json(names) -> str:
         {"steps": [{"element": {"semantic_name": n, "role": "button", "name": n}}
                    for n in sorted(names)]},
         ensure_ascii=False)
+
+def test_element_map_dir_is_isolated_from_repo_residue():
+    """守卫：本模块必须把 `ELEMENT_MAP_DIR` 隔离到空目录。
+
+    不加这条，将来有人删掉 fixture（或新增判据忘了 autouse 覆盖）就会悄悄退回
+    「结果随仓库 output/ 残留漂」——本机实测表现就是 3 红/4 绿两种结果。
+    """
+    from framework.tools.common.config import ELEMENT_MAP_DIR
+    real = sorted(ELEMENT_MAP_DIR.glob("element_map_*.json")) + sorted(ELEMENT_MAP_DIR.glob("probe_*.json"))
+    assert not real, (
+        f"判据没隔离 ELEMENT_MAP_DIR -> 会随仓库 output/ 残留漂（现在看到 {len(real)} 份快照）；"
+        f"目录 = {ELEMENT_MAP_DIR}"
+    )

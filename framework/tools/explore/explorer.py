@@ -493,6 +493,7 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
             row_fields = probe_row_fields(pg)                    # 行内列清单（供 AI 做「行内定位」）
             # V8.4.3 · A 方案：无 data-field 的列（勾选列）转成**有名字的控件**并进清单，
             #   这样 AI 用它会写的 semantic_name 就能表达，无需学 cell_by（实测它不学）。
+            _remember_required_fields(page_items, page_name or "")   # 必填项覆盖校验的输入（唯一入口）
             _rc_items = _row_columns_to_items(page_name or "", row_fields, items)
             if _rc_items:
                 # [!] 必须**插到最前**：提示词里控件清单有 `items[:60]` 上限，而本页有 100+ 个
@@ -562,6 +563,10 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
       同名会让两页元素争抢同一个键（过去是静默丢后者 = 悄悄用错页面的 locator）。
     返回 (merged_items, dom_ctx, err_for_ai, collisions)。
     """
+    # [!] 每次调用都重置：探测结果**跨轮累积**过（实测 3 轮重试 -> 同一个 list 里
+    #     7 页 × 3 = 21 页 / 1432 个控件，AI 看到的清单被前几轮的旧控件挤爆）。
+    items.clear()
+
     from playwright.sync_api import sync_playwright
     from framework.tools.probe.probe import probe_page, probe_row_fields, uniquify_across_pages
     try:
@@ -592,6 +597,7 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                 menu_items = _sc.menu_items
                 modal_items = _sc.modal_items
                 merged_one = _sc.items
+                _remember_required_fields(merged_one, spec["name"])   # 必填项覆盖校验（唯一入口）
                 per_page.append((spec["name"], merged_one))
                 for d in _collect_dom_context(pg):
                     d["page"] = spec["name"]
@@ -652,6 +658,11 @@ def ai_explore(
     # 必须在事件循环【之外】做 —— Playwright Sync API 不能在 asyncio loop 里跑。
     # P22 批 5：登录前置声明由**调用方**传进来（`scenario` 参数是字符串，拿不到对象上的 auth_spec
     # —— 实测踩过：这里 getattr 永远是 None -> 跨页探测全落登录页 -> AI 31 步元素全空）。
+    # 缓存重置（**同一进程多次 explore / 多轮重试**都要干净）：这两个清单在探测阶段累积，
+    # 不重置会跨轮串味（清单越滚越长 -> 校验失真）。
+    _LAST_REQUIRED_FIELDS.clear()
+    _LAST_ROW_FIELDS.clear()
+    globals()["_CURRENT_SCENARIO"] = scenario or ""
     ctx = _collect_page_context(items, url, pages=pages, auth=auth or {})
     page_items, dom_ctx, err = ctx[0], ctx[1], ctx[2]
     collisions = ctx[3] if len(ctx) > 3 else []
@@ -1098,6 +1109,11 @@ def _reject_login_steps(steps: list[TestStep]) -> None:
 #   （勾选列没有 data-field，AI 常常不给列指定；候选唯一时可以安全补全）
 _LAST_ROW_FIELDS: list[dict] = []
 _HARDCODED_NOTES: list[str] = []   # 最近一次 _finalize_map 收集到的写死项(供校验/重试读)
+# V8.4.3+：探测到的「页面必填控件」清单（跨页累积）—— 供「必填项覆盖校验」读。
+#   信号来源：探针的 `ctx_token`（必填控件形如 `*客户`），**不写死任何业务词**。
+_LAST_REQUIRED_FIELDS: list[dict] = []
+_CURRENT_SCENARIO: str = ""   # 本次 explore 的场景原文（清单块与覆盖校验共用口径）
+_REQUIRED_COVERAGE_NOTES: list[str] = []   # 场景提到但 AI 没编排的必填项(供重试闭环读)
 # [!] 不能用 `\b`: 中文是 \w, `选择合同_HT_1001` 里「同」与「H」之间**没有词边界**
 #     -> 漏检(实测第一版就漏了这条, 被自己的判据抓出来). 改用「前面不是 ASCII 字母」.
 _HARDCODE_ID_RE = re.compile(
@@ -1187,6 +1203,81 @@ def _norm_id(token: str) -> str:
     return re.sub(r"[-_\s]", "", str(token)).upper()
 
 
+# ---- V8.4.3+ (Windows 实测): 「必填项覆盖校验」----------------------------------
+# 现场: 场景第 4 步一句话列了 9 项要填（订单名称/合同/业务单元/管理单元/帐套/订单类型/
+#       **客户/销售员**/订单备注），AI 只编排了前 5 项 -> 保存被前端必填校验拦下 ->
+#       订单根本没建成 -> 列表搜索无结果 -> expect_first_row 断言失败（实跑才暴露）。
+#       查过它拿到的依据: 控件**全在**清单里（title/ctx_token 都清楚）-> AI 漏读长句枚举。
+# 口径（**不写死业务词、不猜**）:
+#   候选 = 页面标了必填（探针 `ctx_token` 以 `*` 开头）**且**场景原文里逐字提到它名字的控件。
+#   再加一条: AI 的步骤里**没有任何一步**操作它 -> 才算缺失。
+# 只报「场景明确要求 + 页面明确必填 + AI 明确漏掉」三者同时成立 —— 宁漏不误伤。
+def _remember_required_fields(page_items: list | None, page_name: str = "") -> None:
+    """记下这一页的**必填**控件（探针 `ctx_token` 形如 `*客户`）。
+
+    [!] 必须**单一入口**：探测有「单页」和「跨页」两条路径，两边都要调本函数 ——
+        实测教训：只在单页路径写缓存 -> 跨页场景下清单永远是空的 -> 校验静默失效
+        （和 `_LAST_ROW_FIELDS` 当年踩的是同一个坑，第二次犯了，所以这次收口成函数）。
+    [!] 跨页要**累积**，不许每页 clear（否则只剩最后一页）。
+    """
+    for it in (page_items or []):
+        tok = str(it.get("ctx_token") or "")
+        if tok.startswith("*"):
+            _LAST_REQUIRED_FIELDS.append({
+                "name": it.get("base_name") or it.get("name"),
+                "page": page_name or "",
+                "token": tok,
+            })
+
+
+def scenario_required_fields(required: list[dict],
+                             scenario_text: str | None = None) -> list[tuple]:
+    """**单一入口**：场景原文里逐字提到、且页面标了必填的控件（去重，保序）。
+
+    两个用途共用它（口径必须一致，否则「清单里说要填」和「校验说漏了」会打架）：
+      1. `_build_planner_prompt` 生成「必填字段硬清单」放到 prompt 最前（防 AI 漏读长清单）；
+      2. `check_required_field_coverage` 判 AI 有没有漏编排。
+
+    判定口径：控件名在场景里**逐字出现** + 探针 `ctx_token` 以 `*` 开头（页面标的必填）。
+    """
+    if not required or not scenario_text:
+        return []
+    out, seen = [], set()
+    for r in required:
+        nm = str(r.get("name") or "").strip()
+        if not nm or nm in seen:
+            continue
+        # 只认「标了必填」的（探针 ctx_token 形如 `*客户`）。上游已过滤一次，这里再判一次 ——
+        # 免得别的调用方把可选项塞进来，凭空要求 AI 去填。
+        tok = str(r.get("token") or "")
+        if tok and not tok.startswith("*"):
+            continue
+        if nm in scenario_text:
+            seen.add(nm)
+            out.append((nm, r.get("page") or ""))
+    return out
+
+
+def check_required_field_coverage(steps: list, required: list[dict],
+                                  scenario_text: str | None = None) -> list[str]:
+    """场景里逐字要求填、页面也标了必填、但 AI 一步都没碰的控件。"""
+    mentioned = scenario_required_fields(required, scenario_text)
+    if not mentioned:
+        return []
+    # AI 步骤的「可读文本」：语义名 + 描述（控件名通常出现在描述里，如「客户与销售员各选第一个」）
+    blob = " ".join(
+        f"{getattr(getattr(st, 'element', None), 'semantic_name', '') or ''} "
+        f"{getattr(st, 'description', '') or ''} "
+        f"{getattr(st, 'value', '') or ''}"
+        for st in steps
+    )
+    missing = []
+    for nm, page in mentioned:
+        if nm not in blob:
+            missing.append(f"场景要求填「{nm}」{'（' + page + '）' if page else ''}，但产出里没有任何一步操作它")
+    return missing
+
+
 def _fill_missing_row_column(steps: list, row_fields: list | None) -> list[str]:
     """**确定性兜底**（V8.4.3）：`row_text` 给了但**列缺失**的行内步骤，若解**唯一**就补上。
 
@@ -1266,12 +1357,24 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
         print(f"      [explore] [!] 有 {len(_filled)} 步行内定位缺列 -> 已按唯一解补全（不是猜，候选唯一）：")
         for x in _filled[:4]:
             print(f"        - {x}")
+    # 必填项覆盖校验（AI 漏编排场景里明写的必填项 -> 保存会被前端拦下，实跑才炸）
+    _miss = check_required_field_coverage(steps, _LAST_REQUIRED_FIELDS, scenario)
+    # [!] 必须**无条件清空**：只在"有缺失"时清 -> 上一轮的缺失记账会留到本轮，
+    #     本轮明明补好了还被拦（实测：AI 第 2 轮已补上「客户/销售员」，
+    #     读到的却是第 1 轮的旧账 -> 白挨两轮重试，最后报错收场）。
+    _REQUIRED_COVERAGE_NOTES.clear()
+    if _miss:
+        print(f"      [explore] [!] 场景要求填的**必填项**有 {len(_miss)} 个 AI 没编排"
+              f"（保存会被前端校验拦下，实跑必然失败）:")
+        for m in _miss[:5]:
+            print(f"        - {m}")
+        _REQUIRED_COVERAGE_NOTES.extend(_miss)
+    _HARDCODED_NOTES.clear()   # [!] 无条件清（理由同上面的必填项 notes：会留旧账）
     if hard:
         print(f"      [explore] [!] 有 {len(hard)} 步把**表格行数据的具体值写死**了"
               f"(换数据/换排序就会崩):")
         for h in hard[:4]:
             print(f"        - {h}")
-        _HARDCODED_NOTES.clear()
         _HARDCODED_NOTES.extend(hard)
     first = pages[0] if pages else None
     first_url = first["url"] if first else url
@@ -1811,6 +1914,207 @@ _OUTPUT_CONTRACT = (
 #   system 是"常驻角色指令"，模型当成必须遵守的人设 -> 抗力最强；user 侧保留作双保险。
 _PLANNER_SYSTEM = _PLANNER_SYSTEM + "\n\n===== 输出契约（必须遵守，优先级最高）=====\n" + _OUTPUT_CONTRACT
 
+def _required_fields_block() -> str:
+    """把「本场景必须操作的必填字段」做成硬清单，挂在 prompt **最前**。
+
+    为什么（实测）：跨页 prompt 里控件清单是按页分组的（7 页 × 每页 8 个），
+    新建订单页有 17 个控件 -> 「客户」「销售员」虽在清单里（实测位置 ~5230 字符处），
+    但混在几十行 JSON 里，AI **三轮都没编排它们**（场景原文一句话枚举了 9 个字段）。
+    处置：框架已经掌握确定性信息（页面标 * 的必填 ∩ 场景原文提到的），
+    就不再指望 AI 自己从长清单里数全 —— 把它提成 prompt 第 0 位的硬约束。
+    与 `check_required_field_coverage` 共用 `scenario_required_fields`，口径一致。
+    """
+    req = scenario_required_fields(_LAST_REQUIRED_FIELDS, _CURRENT_SCENARIO)
+    if not req:
+        return ""
+    out = ["===== 本场景必须操作的必填字段（框架已比对：页面标 * 的必填控件 ∩ 场景原文逐字提到）=====",
+           "[!] 下面每一项都**必须**在 steps 里有对应的操作步骤 —— 漏一项，保存就会被前端校验拦下，",
+           "    后面所有断言全部白给（实测事故：漏「客户」「销售员」-> 保存没反应 -> 列表搜不到单 -> 断言失败）。"]
+    for i, (nm, page) in enumerate(req, 1):
+        out.append(f"  {i}. {nm}" + (f"（{page}）" if page else ""))
+    out.append("（清单是**硬约束**；不在上面的字段可以不填。）")
+    return "\n".join(out) + "\n\n"
+
+
+
+# ============ 喂给 AI 的清单裁剪：**唯一入口** ================================
+# 演进史（三次同一形态的事故，都是「按条数切」害的）：
+#   1) `items[:60]`            —— 跨页时第 3 页往后全被截掉（新建订单页的「客户」「销售员」看不见）
+#   2) `max(8, 60 // 页数)`     —— 页数一多每页只剩 8 个（同一事故的另一面）
+#   3) `max(24, 120 // 页数)`   —— 只是把魔数改大，**复杂页面照样超**（被指出）
+# 结论：问题不在"数字多大"，在"**用条数当预算**"这件事本身 —— 条数既不对应真实成本，
+#       也不对应重要性，任何静态数字都会在某类页面上失效。
+#
+# 现在的口径（与页面/控件数量解耦，不写死）：
+#   ① **压表示优先于截断**：条目里大半字段与语义名重复，压成最小字段集后单条 ~300 -> ~90 字符，
+#      同样篇幅能多放 3 倍控件（复杂页面因此很少真的被截）。
+#   ② **必给层不参与预算**：场景原文逐字提到的 + 探针标了必填(`*`) 的 —— 这类漏一个就必然失败，
+#      **无条件全给**。于是"够不够 N 个"这个问题本身消失。
+#   ③ 其余按 **字符预算**（真实成本）填充，顺序 = **页间轮转**：每页轮流取一条，取完的页退出。
+#      页控件多自然多拿、少也不少拿 —— **不存在"每页几个"的魔数**。
+#   ④ 被裁剪**必须明示**（"另有 N 个未列出"）：静默给残缺清单 = AI 在残缺依据上推理（铁律 10 的根源）。
+# 预算来源：环境变量（`HYBRID_PROMPT_LIST_CHARS`，已登记进 `cli config`，可查可调）。
+_DEFAULT_LIST_CHARS = 90000
+
+
+def _list_char_budget() -> int:
+    """每条清单（控件 / 行内列 / DOM 上下文）喂给 AI 的**字符**预算（可不写死，可调）。"""
+    import os
+    raw = str(os.environ.get("HYBRID_PROMPT_LIST_CHARS") or "").strip()
+    if not raw:
+        return _DEFAULT_LIST_CHARS
+    try:
+        return max(4000, int(raw))
+    except ValueError:
+        return _DEFAULT_LIST_CHARS
+
+
+# 消歧字段：提示词里明确让 AI 用它们分辨「同名控件分属不同区域」
+#   （"多个同名控件时用 nearby_text / visible / container_heading / label 区分"）
+# -> 压缩表示时**不能一刀切丢掉**，否则那句指导失效。做法：只对**真的同名**的控件保留，
+#   其余不保留（精确，且正常页面不为此多付篇幅）。
+_AMBIGUITY_FIELDS = ("nearby_text", "visible", "container_heading", "label")
+
+
+def _base_identity(it: dict) -> str:
+    """条目「字段名」身份（去掉必填 `*` 前缀与 `@页名` 后缀）—— 判同名用。"""
+    nm = str(it.get("ctx_token") or it.get("base_name") or it.get("name") or "")
+    nm = nm.lstrip("*").strip()
+    return nm.split("@")[0].strip()
+
+
+def ambiguous_base_names(items: list[dict]) -> set[str]:
+    """在整份清单里**出现不止一次**的字段名（同名控件的那批）→ 需要保留消歧字段。"""
+    seen: dict[str, int] = {}
+    for it in items or []:
+        k = _base_identity(it)
+        if k:
+            seen[k] = seen.get(k, 0) + 1
+    return {k for k, n in seen.items() if n > 1}
+
+
+def _compact_item(it: dict, ambiguous: set[str] | None = None) -> dict:
+    """把探针条目压成 **AI 真正需要**的最小字段集（压表示优先于截断）。
+
+    保留：`semantic_name`（AI 要原样填进 element）、`role`/`tag`（决定用哪个 op）、
+          `placeholder`（文本框辨识线索）、`ctx_token`（带 `*` = 页面标了必填）、
+          `opens_new_tab`（决定要不要 click_new_tab）；
+          **同名控件**额外保留消歧字段（见 `_AMBIGUITY_FIELDS`，与提示词的指导对齐）。
+    丢弃：与语义名重复的 `name`/`text`/`base_name`/`nearby_text`、空值字段、
+          仅框架内部使用的 `name_source`/`base_conflict`、以及语义名已含 `@页名` 时的 `page`。
+    实测压缩比：单条 ~300 字符 -> ~45-90 字符（同篇幅多放 3~6 倍控件）。
+    """
+    out: dict = {"semantic_name": it.get("semantic_name") or it.get("name") or ""}
+    role = it.get("role") or it.get("tag")
+    if role:
+        out["role"] = role
+    if it.get("placeholder"):
+        out["placeholder"] = it["placeholder"]
+    if it.get("ctx_token"):
+        out["ctx_token"] = it["ctx_token"]
+    if it.get("opens_new_tab"):
+        out["opens_new_tab"] = True
+    if it.get("page") and "@" not in str(out["semantic_name"]):
+        out["page"] = it["page"]
+    if ambiguous and _base_identity(it) in ambiguous:
+        for f in _AMBIGUITY_FIELDS:
+            v = it.get(f)
+            if v not in (None, "", False):
+                out[f] = v
+    return out
+
+
+def _must_include_control(it: dict, scenario: str) -> bool:
+    """**必给层**判定：场景原文逐字提到、或页面标了必填(`*`) —— 不许因预算被裁。"""
+    if str(it.get("ctx_token") or "").startswith("*"):
+        return True
+    nm = str(it.get("ctx_token") or it.get("base_name") or it.get("name") or "").lstrip("*").strip()
+    return bool(scenario) and len(nm) >= 2 and nm in scenario
+
+
+def select_controls_for_prompt(items: list[dict], pages: list[dict] | None,
+                               scenario: str = "") -> list[tuple]:
+    """给每页挑要喂给 AI 的控件 → [(页名, 选中条目, 被裁条数)]。
+
+    规则见本节开头口径 ①②③④。**单页与跨页共用本函数**（唯一入口）——
+    过去两条路径各写一段，于是同一个 bug 在两边轮流复发。
+    """
+    # 分组：跨页按声明页名分组（没落进任何页名的也不丢）；单页视为一组
+    groups: list[tuple[str, list[dict]]] = []
+    if pages and len(pages) > 1:
+        by_page: dict[str, list[dict]] = {}
+        for it in items:
+            by_page.setdefault(it.get("page") or "", []).append(it)
+        for pg in pages:
+            groups.append((pg["name"], list(by_page.pop(pg["name"], []) or [])))
+        for nm, grp in by_page.items():          # 未声明页名的兜底，别静默丢
+            if grp:
+                groups.append((nm, grp))
+    else:
+        groups = [("", list(items))]
+    if not groups:
+        return []
+
+    budget = _list_char_budget()
+    must: dict[str, list[dict]] = {}
+    rest: dict[str, list[dict]] = {}
+    for nm, grp in groups:
+        m, r = [], []
+        for it in grp:
+            (m if _must_include_control(it, scenario) else r).append(it)
+        must[nm], rest[nm] = m, r
+
+    chosen: dict[str, list[dict]] = {nm: [] for nm, _ in groups}
+    amb = ambiguous_base_names(items)            # 同名控件才保留消歧字段（与提示词指导对齐）
+    cost_of = lambda x: len(json.dumps(_compact_item(x, amb), ensure_ascii=False))
+    used = 0
+    # ② 必给层：不参与预算（漏一个就必然失败的那类，永远优先；极端情况全给并如实告警）
+    for nm, _ in groups:
+        for it in must[nm]:
+            chosen[nm].append(it)
+            used += cost_of(it)
+    over = used > budget
+    # ③ 预算层：页间轮转（每页轮流取一条，取完的页退出）
+    cursor = {nm: 0 for nm, _ in groups}
+    while True:
+        progressed = False
+        for nm, _ in groups:
+            i = cursor[nm]
+            if i >= len(rest[nm]):
+                continue
+            if used + cost_of(rest[nm][i]) > budget:
+                continue                      # 这页这条放不下 -> 试别页，保证公平不饿死
+            cursor[nm] = i + 1
+            chosen[nm].append(rest[nm][i])
+            used += cost_of(rest[nm][i])
+            progressed = True
+        if not progressed:
+            break
+    if over:
+        print(f"      [explore] [!] 控件清单的**必给项**已超出字符预算 "
+              f"({used} > {budget})—— 场景提到的控件太多或单条过长，可调 HYBRID_PROMPT_LIST_CHARS")
+    globals()["_LAST_AMBIGUOUS_NAMES"] = amb      # 供 prompt 组装压表示时透传（同一口径）
+    return [(nm, chosen[nm], len(grp) - len(chosen[nm])) for nm, grp in groups]
+
+
+def _clip_by_chars(entries: list, budget: int | None = None, project=None) -> tuple[list, int]:
+    """通用**按字符预算**裁剪（替代 `list[:80]` 这类条数魔数）→ (保留下来的, 被裁条数)。
+
+    保留原顺序（这类清单是「位置/结构」清单，重排会改变语义），只从尾部裁。
+    """
+    b = _list_char_budget() if budget is None else budget
+    kept: list = []
+    used = 0
+    for e in entries or []:
+        p = project(e) if project else e
+        cost = len(json.dumps(p, ensure_ascii=False))
+        if kept and used + cost > b:
+            break
+        kept.append(e)
+        used += cost
+    return kept, len(entries or []) - len(kept)
+
+
 def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                          dom_ctx: list[dict] | None = None,
                          page_bg: str = "", guard: str = "",
@@ -1871,22 +2175,22 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
             f"自然语言测试场景: 「{scenario}」\n\n"
         )
 
-    # 控件清单：跨页时按页分组（每页限额，防 prompt 膨胀）；单页保持原样
-    if multi:
-        by_page: dict[str, list[dict]] = {}
-        for it in items:
-            by_page.setdefault(it.get("page") or "", []).append(it)
-        budget_per_page = max(8, 60 // max(1, len(pages)))
-        prompt += "页面已探测出以下可交互控件（**已按页分组**，只有这些可用，绝不自己编造 selector）:\n"
-        for pg in pages:
-            grp = by_page.get(pg["name"]) or []
-            prompt += (f"【{pg['name']}】{json.dumps(grp[:budget_per_page], ensure_ascii=False, indent=1)}\n")
-        prompt += "\n"
-    else:
-        prompt += (
-            f"页面已探测出以下可交互控件（只有这些可用，绝不自己编造 selector）:\n"
-            f"{json.dumps(items[:60], ensure_ascii=False, indent=1)}\n\n"
-        )
+    # 控件清单：**单页 / 跨页共用同一选取入口**（过去两条路径各写一段配额，同一个 bug 两边轮流复发）。
+    # 选取口径见 select_controls_for_prompt：必给层全给 + 字符预算 + 页间轮转 + 裁剪明示。
+    _sel = select_controls_for_prompt(items, pages if multi else None, scenario)
+    _amb = globals().get("_LAST_AMBIGUOUS_NAMES") or set()
+    prompt += ("页面已探测出以下可交互控件（只有这些可用，绝不自己编造 selector；"
+               + ("**已按页分组**）：\n" if multi else "）：\n"))
+    for nm, picked, hidden in _sel:
+        head = f"【{nm}】" if nm else ""
+        prompt += (head + json.dumps([_compact_item(x, _amb) for x in picked],
+                                     ensure_ascii=False, indent=1) + "\n")
+        if hidden:
+            # ④ 裁剪**必须明示**：静默给残缺清单 = AI 在残缺依据上推理（铁律 10 的根源）
+            prompt += (f"  （[!] 本页另有 {hidden} 个控件因篇幅未列出 —— 清单是**按篇幅裁剪**过的，"
+                       f"不代表页面上不存在；若场景明确要求操作它们，照常写出它的语义名，"
+                       f"框架会按探测清单校验并告警）\n")
+    prompt += "\n"
     # 同名控件（同一页不同区域）—— 最容易被 AI「只写前半段」的陷阱，显式列出来
     pairs = _shadowed_names(items)
     if pairs:
@@ -1908,6 +2212,7 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
     # 行内列清单（2026-09-17）：表格里「动态生成的那一行」只能靠 行锚文本+列字段 定位，
     # 把可用的列字段（td[data-field]）列给 AI —— 不然它只能猜 CSS（本项目铁律）。
     if row_fields:
+        _rf, _rf_hidden = _clip_by_chars(row_fields)
         prompt += (
             "表格行内列清单（**行内定位**用：row_text 取那一行里的唯一锚文本，"
             "列用下面这些**真实列**指定，禁止自造 field）：\n"
@@ -1917,7 +2222,9 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
             "  · 列**没有** field（field 为空，如 kind=checkbox 的勾选列）-> **不要自造 field、"
             "也不要拿这行里别的元素顶替**，改用 `cell_by=index` + `cell_index=<该列的 index>`；\n"
             "  · 或列有表头文案时用 `cell_by=header` + `cell_field=<表头文案>`。\n"
-            f"{json.dumps(row_fields[:80], ensure_ascii=False, indent=1)}\n\n"
+            f"{json.dumps(_rf, ensure_ascii=False, indent=1)}\n"
+            + (f"  （[!] 另有 {_rf_hidden} 条列未列出 —— 按篇幅裁剪）\n" if _rf_hidden else "")
+            + "\n"
         )
     # 场景文件带来的两块增量（内联模式下为空，行为与从前完全一致）
     if page_bg:
@@ -1926,10 +2233,13 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         prompt += (f"本场景断言护栏（**优先级高于下面的通用规则**，必须遵守）:\n{guard}\n\n")
     # 富 DOM 上下文：给 AI 额外的可见性/状态/索引，判断"该选哪个"更准
     if dom_ctx:
+        _dc, _dc_hidden = _clip_by_chars(dom_ctx)
         prompt += (
             f"额外 DOM 上下文（含全局索引 idx / 可见性 visible / 状态 disabled,readonly；"
             f"同名控件务必用 visible + 邻近文本综合判断是否为目标）:\n"
-            f"{json.dumps(dom_ctx[:80], ensure_ascii=False, indent=1)}\n\n"
+            f"{json.dumps(_dc, ensure_ascii=False, indent=1)}\n"
+            + (f"  （[!] 另有 {_dc_hidden} 条 DOM 记录未列出 —— 按篇幅裁剪）\n" if _dc_hidden else "")
+            + "\n"
         )
     prompt += (
         f"规则:\n"
@@ -2058,7 +2368,7 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         "    但 `HT-1001`、`SO-1011` 这种**字面编号**一律不许出现在任何字段里.\n"
         "  · 例外: 场景里**明确逐字给出了**该编号(如「输入合同编号 HT-1001 后搜索」)时可以照抄.\n"
     )
-    return _OUTPUT_CONTRACT + prompt
+    return _OUTPUT_CONTRACT + _required_fields_block() + prompt
 
 
 def _parse_steps_text(text: str, items: list[dict]) -> list[TestStep]:
@@ -2194,6 +2504,9 @@ def _apply_semantic_calibration(steps: list[TestStep], items: list[dict]) -> lis
     再与元素语义比对相似度 —— 这样"在搜索框输入'合同1'"才匹配得上"搜索框"。
     不匹配(<SEMANTIC_MIN_SIM) → 打警告，但不硬拦（靠 Tier1/Tier2 兜底）。
     """
+    # [!] 每轮无条件清空：它只在"有严重误选"时被 append，不清就会把上一轮的
+    #     误选记账带到本轮（实测必填项/写死两处已各犯一次，这里是第三处）。
+    SEMANTIC_MISMATCH_NOTES.clear()
     for st in steps:
         if st.element is None or not st.description:
             continue

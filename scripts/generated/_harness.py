@@ -734,17 +734,50 @@ def _append_log(case_id, line):
         pass
 
 _INDEX: dict = {}
+_SNAPSHOT_LOADED = False
+
+
+def _seed_index_from_snapshot() -> None:
+    """先把 **explore 探测快照**灌进索引 —— 它是"AI 看到的那份清单"，唯一权威（V8.4.3+）。
+
+    [!] 为什么必须优先于现场探测：探测有**两条链路，命名规则不同** ——
+        explore 跨页合并用 `原名@页名`（AI 看到的就是它），
+        运行时单页重探用 `原名@容器`；同一个控件因此有两个名字，
+        AI 照它看到的写、运行时却找不到 -> 模糊兜底见多候选 -> 报「语义名歧义」直接失败。
+        实测：`保存@订单详情页`（快照）vs `保存` / `保存@订单详情`（重探）。
+        这不是某场景特例：**凡跨页重名控件（保存/取消/返回/编辑）都会踩**。
+        口径：快照唯一权威；现场重探只补快照里没有的（如弹层打开后才出现的控件），且必须出声。
+    """
+    global _SNAPSHOT_LOADED
+    if _SNAPSHOT_LOADED:
+        return
+    _SNAPSHOT_LOADED = True
+    try:
+        from pathlib import Path as _P
+        from framework.tools.generate.probe_snapshot import load_snapshot
+        snap = load_snapshot(_P(__file__).resolve().parent)
+        for _k, _v in (snap or {}).items():
+            _INDEX.setdefault(_k, _v)
+        if snap:
+            _log(None, "snapshot", f"已装载 explore 快照 {len(snap)} 个语义名（运行时以此为准）")
+    except Exception as _e:
+        _log(None, "snapshot", f"[!] 读不到 explore 快照（{type(_e).__name__}: {_e}）-> 退回现场探测")
 
 
 def _item_for(hint, page):
-    """semantic_name → probe 控件项。缓存优先；未命中才重探一次（兼容弹窗后出现的控件）。
+    """semantic_name -> probe 控件项。**快照优先**；未命中才重探一次（兼容弹窗后出现的控件）。
 
     改造前每个动作都全页 probe（并发下页面时序不稳会超时）；现在只在首次/未命中时探。
     [!] 2026-09-18 批次 2 S3：逐字名不存在时不再「随便挑一个」—— 见 `_fuzzy_lookup`。
+    [!] V8.4.3+：先读 explore 快照（`_seed_index_from_snapshot`）—— 见那里的说明。
     """
     from framework.tools.probe.probe import probe_page
+    _seed_index_from_snapshot()
     it = _INDEX.get(hint)
     if it is None:
+        _log(None, "locate",
+             f"[!] 名字不在 explore 快照里: {hint!r} -> 现场重探"
+             f"（重探的命名口径可能与快照不同，同名多候选时会报歧义）")
         for x in probe_page(page):
             _INDEX.setdefault(x.get("semantic_name"), x)
         it = _INDEX.get(hint)
@@ -803,6 +836,11 @@ def _to_ref(it):
         text=it.get("text"),
         label=it.get("label"),
         nearby_text=it.get("nearby_text"),
+        # [!] V8.4.3+：容器/帮助文本必须透传 —— 它们是「同名控件消歧」的**唯一线索**。
+        #     实测事故：订单详情页两个按钮都叫「保存」，探针采到了 container_heading='详细信息'
+        #     却在这里被丢掉 -> 运行时无权收窄 -> 报「定位失败」。少传一个字段 = 丢一条能力。
+        container_heading=it.get("container_heading"),
+        help_text=it.get("help_text"),
     )
 
 

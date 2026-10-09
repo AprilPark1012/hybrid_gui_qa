@@ -291,6 +291,61 @@ def _tier2_fingerprint(page: Page, el: ElementRef,
             "confidence": round(best_score, 2), "healed": True}
 
 
+# ---------------- 容器收窄（V8.4.3+）：多个同名候选 -> 按容器**排除**到唯一 ----------------
+def _narrow_disabled() -> bool:
+    """HYBRID_STRICT_LOCATE=1 -> 连容器收窄也不做（CI 要求名字逐字准确、零兜底）。"""
+    import os as _os
+    return str(_os.environ.get("HYBRID_STRICT_LOCATE", "")).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _narrow_by_container(page: Page, el: ElementRef, loc, expr: str, cnt: int):
+    """候选按**容器标题**收窄到唯一 —— 确定性**排除**，不是猜（V8.4.3+）。
+
+    为什么需要（实测事故 · demo 订单详情页）：页面上**两个按钮文案都叫「保存」** ——
+      ① 区块「详细信息」里的**行保存**（AI 真正要点的那个，desc='保存订单行'）
+      ② 区块**之外**的底部保存（表单1+2+3）
+    探测跑的是**初始页态**，那时只有一个可见 -> 名字没加消歧后缀（语义名定不下来）；
+    进编辑态后两个同时可见 -> `get_by_role("button", name="保存")` 命中 2 个 -> Tier1 全败。
+    但**探针本来就采到了容器**（`container_heading='详细信息'`）—— 用它可以收窄。
+
+    口径（缺一不可）：
+      (1) 容器判据**复用探针同一个** `_nearest_heading` —— 不许另写一套，否则"探到的"和
+          "收窄用的"会各自漂移（本项目铁律：同一能力收敛成唯一入口）；
+      (2) **只排除**：留下容器标题等于 `el.container_heading` 的候选，且必须**恰好剩 1 个**
+          才返回（剩 0 个或多个 -> 如实放弃）—— 绝不"在多个里挑一个"（红线）；
+      (3) 返回前**自证**：命中总数没变 + 留下那一个的容器仍是目标。
+          按序号绑定必须能自证 —— 本项目 `row by nth` / `col.index` 同此口径。
+    """
+    if _narrow_disabled():
+        return None
+    want = collapse_ws(el.container_heading or "")
+    if not want or not cnt or cnt < 2:
+        return None
+    try:
+        from framework.tools.probe.probe import _nearest_heading
+    except Exception:
+        return None
+    keep = []
+    for i in range(cnt):
+        try:
+            if collapse_ws(_nearest_heading(loc.nth(i)) or "") == want:
+                keep.append(i)
+        except Exception:
+            continue
+    if len(keep) != 1:
+        return None
+    k = keep[0]
+    try:                                   # 自证：候选数没变 + 那一个的容器仍是目标
+        if loc.count() != cnt or collapse_ws(_nearest_heading(loc.nth(k)) or "") != want:
+            return None
+    except Exception:
+        return None
+    return {"ok": True, "locator": f"{expr}.nth({k})", "locator_obj": loc.nth(k),
+            "strategy": "container_narrowed", "count": 1,
+            "confidence": 0.9, "healed": True,
+            "narrowed_from": cnt}
+
+
 # ---------------- 入口：分层解析 ----------------
 def resolve_locator(page: Page, el: ElementRef,
                     tier2_threshold: float = TIER2_THRESHOLD,
@@ -318,7 +373,12 @@ def resolve_locator(page: Page, el: ElementRef,
                 return {"ok": True, "locator": expr, "locator_obj": loc_obj,
                         "strategy": strategy, "count": cnt,
                         "confidence": conf, "healed": False}
-            # count>1 歧义 → 降级下一策略；count==0 找不到 → 跳过
+            # count>1 歧义 -> **先试容器收窄**（同一信号 + 容器排除，比降级到更弱策略更可信），
+            # 收窄不出唯一再降级下一策略；count==0 找不到 -> 跳过
+            if cnt and cnt > 1:
+                nar = _narrow_by_container(page, el, loc_obj, expr, cnt)
+                if nar:
+                    return nar
     # Tier1 全败 → Tier2 指纹兜底
     t2 = _tier2_fingerprint(page, el, tier2_threshold, tier2_gap)
     if t2:
