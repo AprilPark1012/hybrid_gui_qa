@@ -6,7 +6,7 @@
 ## 总览
 
 - 大特性 **10** 个 · 子特性 **45** 条
-- 一类用例文件 **106** 个 / 用例函数 **870** 条
+- 一类用例文件 **106** 个 / 用例函数 **873** 条
 - 二类验证文件 **25** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
@@ -137,7 +137,7 @@
 | 9.1 | 布局与命名契约 | tests/ 与生成物的布局、路径拼接（跨平台）、命名空间契约 | `test_test_layout_contract.py`(13)、`test_generated_layout_contract.py`(5)、`test_path_join_contract.py`(2)、`test_case_scenario_contract.py`(6)、`test_click_then_ready_contract.py`(7)、`test_assert_kinds_render.py`(11)、`test_wait_text_kind.py`(6)、`test_demo_testid_policy.py`(12) | - |
 | 9.2 | 质量闸 | 用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤** | `test_case_quality_gate.py`(14)、`test_generate_quality_gate.py`(5)、`test_demo_freshness_gate.py`(35)、`test_ai_case_scenario_sync.py`(2)、`test_daily_skip_marker.py`(4)、`test_no_false_positive_blocks_ai.py`(9) | `verify_demo_freshness.py` |
 | 9.3 | 环境与编码适配 | 跨平台路径/内存探测/UTF-8 与 cp936 —— 源码不许出现 GBK 编不了的字符 | `test_env_adaptation.py`(18)、`test_utf8_io.py`(21)、`test_browser_preflight.py`(5)、`test_no_stale_paths.py`(9) | - |
-| 9.4 | 交付包与文档同步 | 打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README | `test_pack_release.py`(19)、`test_pack_release_requires_generated_dir.py`(1)、`test_readme_structure.py`(16)、`test_docs_sync.py`(10)、`test_build_html_hl.py`(9) | `verify_html_sync.py` |
+| 9.4 | 交付包与文档同步 | 打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README | `test_pack_release.py`(19)、`test_pack_release_requires_generated_dir.py`(1)、`test_readme_structure.py`(16)、`test_docs_sync.py`(10)、`test_build_html_hl.py`(12) | `verify_html_sync.py` |
 | 9.5 | 保留与产物健康 | 日志/产物保留策略与健康检查 | `test_retention_runs.py`(14)、`test_artifacts_health.py`(9) | `verify_retention_runs.py` |
 | 9.6 | 就绪与等待契约 | 点击后等就绪、等文本刷新策略、选择器生效、**动作后置校验（做了 != 生效了）** | `test_ready_and_locate.py`(12)、`test_wait_text_refresh_policy.py`(3)、`test_wait_text_selector.py`(2)、`test_import_targets.py`(4)、`test_generated_pytest_discovery.py`(1)、`test_case_imports_cover_helpers.py`(1)、`test_scenario_case_script_hygiene.py`(5)、`test_target_reachability.py`(7)、`test_declared_wait_budget.py`(24)、`test_action_effect_check.py`(12) | `verify_wait_text.py`、`verify_action_effect_check.py` |
 | 9.7 | 替换安全与闸门解耦 | 用例替换不许破坏结构；闸门自身不许互相耦合 | `test_case_replacement_safety.py`(6)、`test_no_gate_coupling.py`(2) | - |
