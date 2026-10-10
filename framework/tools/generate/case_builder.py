@@ -267,6 +267,14 @@ def _url_evidence_issues(case: dict) -> list[tuple[str, str]]:
             hits = [u for u in urls if u.rstrip("/") == frag.rstrip("/")]
         else:
             hits = [u for u in urls if frag in u]
+        # G2（2026-10-10 AprilPark1012拍定：自造片段升级为红线）配套 —— 匹配集**放宽**：
+        #   原来只比 `pages` 声明的 URL，而既有判据的顾虑正是「**清单可能不全**」
+        #   （那条判据原话：告警但不拦（可能清单不全））。
+        #   => 既然要拦，就把「已知 URL」扩到 **声明页 + goto 目标**，缩小误伤空间。
+        if exact:
+            g_hits = [u for u in goto_urls if u.rstrip("/") == frag.rstrip("/")]
+        else:
+            g_hits = [u for u in goto_urls if frag in u]
         host_only = _is_host_only(frag, hosts)
         if multi and host_only and not exact:
             # 跨页用例 + 只有 host[:端口] 的片段 -> 换页前后都能通过，证明不了换页（红线）
@@ -281,10 +289,24 @@ def _url_evidence_issues(case: dict) -> list[tuple[str, str]]:
                         f"（{'、'.join(hits[:3])}）-> 换页前后都能通过，证明不了「确实换页了」（假绿）。"
                         f"改用只出现在目标页的片段（如 contract_detail）；"
                         f"若目标页没有独有片段（多是列表页根路径 /）→ 改对该页独有文案做 text 断言"))
-        elif multi and not hits:
+        elif multi and not hits and g_hits:
+            # 片段只在 goto 目标里出现、没被声明成页面 -> 不算自造（可能只是漏声明），但该提示
             out.append((WARN,
-                        f"换页证据 {frag!r} 跟本用例声明的页面 URL 都对不上 -> 该断言可能永远不会通过"
-                        f"（自造片段？）；要么改成清单里真实存在的片段，要么删掉它"))
+                        f"换页证据 {frag!r} 只出现在 goto 目标里（{g_hits[0]!r}），"
+                        f"没在 `pages` 里声明成页面 -> 建议把它补进声明，否则跨页上下文不完整"))
+        elif multi and not hits:
+            # G2（2026-10-10 AprilPark1012拍定：**从 WARN 升级为红线**）：
+            #   跨页用例里 url 断言的**唯一作用**就是换页证据；片段跟「声明页 + goto 目标」
+            #   **一处都不匹配** => 这条断言**永远不可能通过**（不是"可能"）。
+            #   原判据的顾虑是「清单可能不全」（所以只告警）—— 上面已把 goto 目标并入匹配集，
+            #   若连 goto 都对不上，就不是"清单不全"能解释的了。
+            #   为什么该拦：只警告会把**注定失败**的断言放进产物，要等实跑才炸
+            #   （实测代价：白跑一整轮干净环境 E2E 约 8 分钟 + 一轮 AI 重试；
+            #     实跑原文 `AssertionError: Page URL expected to be 're.compile('index\\.html')'`）。
+            out.append((REDLINE,
+                        f"换页证据 {frag!r} 跟本用例声明的页面 URL、goto 目标都对不上（自造片段？）-> "
+                        f"该断言**永远不可能通过**。改成真实存在的片段 / 删掉它 / "
+                        f"改对该页独有文案做 text 断言"))
         elif host_only:
             out.append((WARN,
                         f"url 断言的期望值 {frag!r} 只是 host[:端口]：任何页面都含它，"

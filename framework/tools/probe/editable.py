@@ -121,10 +121,23 @@ def _click_item(page: Page, item: dict, timeout_ms: int = 3000) -> bool:
     try:
         loc.click(timeout=timeout_ms)
         return True
-    except Exception as e:                                         # noqa: BLE001
-        print(f"      [probe] [!] 点不动「{item.get('semantic_name')}」"
-              f"（{type(e).__name__}）-> 放弃这一步补探")
-        return False
+    except Exception as first:                                     # noqa: BLE001
+        # [!] 回退 force（2026-10-10 干净环境实测踩到）：
+        #   探测期的**权限上下文可能与执行业务步骤时不同**（例如场景里"切角色"是后面的一步，
+        #   而探测在之前就跑了）-> 此时「编辑」是 `aria-disabled`，**Playwright 常规点击会被直接拒绝**
+        #   （TimeoutError），补探一进门就放弃。
+        #   这与本 demo「权限不足的按钮置灰但仍可点、点了弹提示」的口径一致
+        #   （`tests/特性2-*/verify_role_switch_click.py` 的判据 1c 已把它钉成事实）——
+        #   所以探测期用 force 点一次是**安全**的：真有权限限制时应用只会弹提示、状态不变。
+        try:
+            loc.click(timeout=timeout_ms, force=True)
+            print(f"      [probe] [info] 「{item.get('semantic_name')}」常规点击被拒"
+                  f"（{type(first).__name__}）-> 改用 force 点一次（探测期权限上下文可能不同）")
+            return True
+        except Exception as second:                                # noqa: BLE001
+            print(f"      [probe] [!] 点不动「{item.get('semantic_name')}」"
+                  f"（常规 {type(first).__name__} / force {type(second).__name__}）-> 放弃这一步补探")
+            return False
 
 
 def _settle_new(page: Page, before: set[str], settle_s: float) -> list[dict]:

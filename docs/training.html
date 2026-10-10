@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.4.4）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.4.5）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -135,7 +135,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.4.4 · 2026-10-09　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.4.5 · 2026-10-09　▼</a>
   <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1726,7 +1726,7 @@ python -m framework.cli run --help             <- 单个子命令：用法 + 完
 
   <section id="changelog">
     <h2 class="sec-title"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.4.4</b>（2026-10-09）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.4.5</b>（2026-10-09）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
       <div class="cl-head"><span class="cl-ver">V8.4.1</span><span class="cl-date">2026-10-09</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>修 Windows 实测暴露的 4 个 AI 编排缺陷</b> — 写死行数据 / 选错控件 / 断言命中间隔元素 / 上游不支持 tool_choice</span></div>
       <p class="cl-sum">在内网 Windows 上按「删掉 cases/scripts/output 后跑 explore --ai」的口径实测，一轮跑出 4 个真问题，全部修掉（TDD 判据先行 + 负向自证）：<br><b>[P0-1] AI 把表格行数据的具体值写死</b> — 场景说「选中第一行合同」，AI 写成 <code>contract_no=HT-1001</code> / <code>选择合同_HT-1001</code>；现在能过只因当前 demo 第一行恰好是它，换数据/换排序立刻崩。违反「不许把观测到的具体值当地基」。-> 提示词硬约束（行数据走声明式定位：行锚 / 首行断言 / 单元格字段；参数只能用 {占位符}）+ 收集式闸门接单点收口。<br><b>[P0-2] 语义校准只警告不拦</b> — AI 给「点右上角头像展开角色菜单」选了控件「超」（那是登录用户名），框架自己报了重叠度 0.00 却只警告，用例照样落盘，下一轮就崩。-> 新增硬拦档位（贴着 0，宁漏不误伤）。<br><b>[P1-3] text 断言命中了隐藏的 &lt;option&gt;</b> — 用例等「已关闭」（在表格行里），同页「已关闭」也出现在筛选下拉里（不可见），断言死等隐藏选项 5s 超时。-> 断言优先挑<b>可见</b>候选。<br><b>[P2-4] 上游不支持 tool_choice</b> — DeepSeek thinking mode 每轮都回 400，虽有重试兜底但白烧一次调用、且红字让人以为框架坏了。-> 识别为能力差异后本会话改走纯文本路径，日志降级为 info。<br><b>验证</b>：一类 792 passed / 2 skipped · 4 组判据 14 条 · 负向自证 4 组全部奏效。</p>
@@ -2424,7 +2424,7 @@ python -m framework.cli run --help             <- 单个子命令：用法 + 完
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.4.4</b>（2026-10-09）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.4.5</b>（2026-10-09）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>

@@ -6,13 +6,13 @@
 ## 总览
 
 - 大特性 **10** 个 · 子特性 **45** 条
-- 一类用例文件 **104** 个 / 用例函数 **854** 条
-- 二类验证文件 **23** 个
+- 一类用例文件 **104** 个 / 用例函数 **856** 条
+- 二类验证文件 **24** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
 | 1 | 混合链路 | 3 | 4 | 3 |
-| 2 | 语义识别与步骤编排 | 4 | 21 | 4 |
+| 2 | 语义识别与步骤编排 | 4 | 21 | 5 |
 | 3 | 分层定位与控件识别 | 7 | 14 | 6 |
 | 4 | 选错控件兜底 | 4 | 4 | 2 |
 | 5 | 用例脚本数据三层分离 | 5 | 8 | 0 |
@@ -45,7 +45,7 @@
 | 2.1 | 语义名生成与对齐 | AI 产出的语义名能落到真实控件上；宁可不映射（大声告警）也不许错映射（静默点错） | `test_name_alignment.py`(11) | - |
 | 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_ai_retry_loop.py`(10)、`test_ai_incomplete_output_retries.py`(3)、`test_ai_retry_same_cause.py`(5)、`test_ai_no_hardcoded_row_values.py`(5)、`test_semantic_mismatch_blocks.py`(3)、`test_llm_tool_choice_unsupported.py`(3)、`test_production_defects_gate_l1.py`(3)、`test_ai_can_express_row_checkbox.py`(14)、`test_required_field_coverage.py`(8)、`test_retry_leaves_no_stale_notes.py`(4)、`test_required_fields_hard_checklist.py`(5)、`test_prompt_list_clipping_is_general.py`(15) | `verify_role_switch_click.py` |
 | 2.3 | 步骤到定位的合成 | 步骤里的语义名/属性如何合成可执行定位表达式 | `test_scope_locate_expr.py`(17)、`test_locate_by_title.py`(8) | `verify_scope_locate.py` |
-| 2.4 | 场景声明契约 | 人写的那部分：pages / pre / auth / data / probe_url —— 声明必须由场景提供，框架不懂具体系统 | `test_scenario_auth_spec.py`(8)、`test_page_pre_actions.py`(3)、`test_probe_url_and_occurrence.py`(6)、`test_login_priming_coverage.py`(4) | `verify_login_priming.py`、`verify_page_pre_actions.py` |
+| 2.4 | 场景声明契约 | 人写的那部分：pages / pre / auth / data / probe_url —— 声明必须由场景提供，框架不懂具体系统 | `test_scenario_auth_spec.py`(8)、`test_page_pre_actions.py`(3)、`test_probe_url_and_occurrence.py`(6)、`test_login_priming_coverage.py`(4) | `verify_login_priming.py`、`test_page_pre_actions_force_fallback.py`、`verify_page_pre_actions.py` |
 
 ## 特性 3 · 分层定位与控件识别
 
@@ -57,7 +57,7 @@
 |---|---|---|---|---|
 | 3.1 | 顶层锚点加容器内下钻 | 真实系统只有顶层元素有 testid；子元素靠「锚点 + 容器内相对语义路径」定位 | `test_element_anchor_path.py`(17)、`test_row_fields_cover_all_columns.py`(5)、`test_row_columns_are_named_items.py`(4) | `verify_scope_locate.py` |
 | 3.2 | 多层嵌套容器 | 容器套容器（区域内表格、表单里分组）时路径仍能唯一 | `test_element_anchor_path.py`(17) | - |
-| 3.3 | 弹出层与可展开容器 | 藏在 display:none 菜单里、点开才出现的弹层控件、以及**只在编辑态/动态新增之后才存在**的控件都能被探到并用起来（框架开的必须由框架关） | `test_expandable_menu_discovery.py`(6)、`test_probe_single_entry.py`(13)、`test_probe_page_scope.py`(8)、`test_probe_incremental.py`(7)、`test_editable_state_probe.py`(11) | `verify_expandable_menu.py`、`verify_probe_path_parity.py`、`verify_editable_state_probe.py` |
+| 3.3 | 弹出层与可展开容器 | 藏在 display:none 菜单里、点开才出现的弹层控件、以及**只在编辑态/动态新增之后才存在**的控件都能被探到并用起来（框架开的必须由框架关） | `test_expandable_menu_discovery.py`(6)、`test_probe_single_entry.py`(13)、`test_probe_page_scope.py`(8)、`test_probe_incremental.py`(7)、`test_editable_state_probe.py`(12) | `verify_expandable_menu.py`、`verify_probe_path_parity.py`、`verify_editable_state_probe.py` |
 | 3.4 | 跨页面元素 | 多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧 | `test_runtime_name_source_is_explore_snapshot.py`(12) | `verify_cross_page.py` |
 | 3.5 | 属性直定位 | 探测清单兜不住时，用属性（by+value）直接定位；select 的 index 语义 = 第 N 个非空选项（跳过 placeholder） | `test_select_by_index.py`(3)、`test_select_without_value.py`(3)、`test_text_assert_prefers_visible.py`(3) | `verify_select_index_skips_placeholder.py` |
 | 3.6 `[未实现]` | iframe 内控件 | [!] 未实现（缺口）：iframe 内以及跨 iframe 的控件识别与操作 | - | - |
@@ -135,7 +135,7 @@
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
 | 9.1 | 布局与命名契约 | tests/ 与生成物的布局、路径拼接（跨平台）、命名空间契约 | `test_test_layout_contract.py`(13)、`test_generated_layout_contract.py`(5)、`test_path_join_contract.py`(2)、`test_case_scenario_contract.py`(6)、`test_click_then_ready_contract.py`(7)、`test_assert_kinds_render.py`(11)、`test_wait_text_kind.py`(6)、`test_demo_testid_policy.py`(12) | - |
-| 9.2 | 质量闸 | 用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤** | `test_case_quality_gate.py`(13)、`test_generate_quality_gate.py`(5)、`test_demo_freshness_gate.py`(35)、`test_ai_case_scenario_sync.py`(2)、`test_daily_skip_marker.py`(4)、`test_no_false_positive_blocks_ai.py`(9) | `verify_demo_freshness.py` |
+| 9.2 | 质量闸 | 用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤** | `test_case_quality_gate.py`(14)、`test_generate_quality_gate.py`(5)、`test_demo_freshness_gate.py`(35)、`test_ai_case_scenario_sync.py`(2)、`test_daily_skip_marker.py`(4)、`test_no_false_positive_blocks_ai.py`(9) | `verify_demo_freshness.py` |
 | 9.3 | 环境与编码适配 | 跨平台路径/内存探测/UTF-8 与 cp936 —— 源码不许出现 GBK 编不了的字符 | `test_env_adaptation.py`(18)、`test_utf8_io.py`(21)、`test_browser_preflight.py`(5)、`test_no_stale_paths.py`(9) | - |
 | 9.4 | 交付包与文档同步 | 打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README | `test_pack_release.py`(19)、`test_pack_release_requires_generated_dir.py`(1)、`test_readme_structure.py`(16)、`test_docs_sync.py`(10)、`test_build_html_hl.py`(9) | `verify_html_sync.py` |
 | 9.5 | 保留与产物健康 | 日志/产物保留策略与健康检查 | `test_retention_runs.py`(14)、`test_artifacts_health.py`(9) | `verify_retention_runs.py` |

@@ -114,3 +114,14 @@ def test_e11_env_switch_disables():
             os.environ.pop("HYBRID_EDITABLE_PROBE", None)
         else:
             os.environ["HYBRID_EDITABLE_PROBE"] = old
+
+def test_e12_click_has_force_fallback():
+    """置灰(aria-disabled)按钮常规点击会被 Playwright 拒绝 -> 必须有 force 回退。
+
+    [为什么] 2026-10-10 干净环境实测：探测期是超管身份，「编辑」置灰 ->
+    常规点击 TimeoutError -> 补探一进门就放弃（日志原话「点不动「编辑」（TimeoutError）」）。
+    本 demo 的口径是「置灰但仍可点、点了弹提示」（verify_role_switch_click.py 判据 1c 已钉死），
+    所以探测期 force 一次是安全的。
+    """
+    code = _code_only((REPO / "framework" / "tools" / "probe" / "editable.py").read_text(encoding="utf-8"))
+    assert "force=True" in code, "没有 force 回退 -> 探测期遇到置灰按钮会直接放弃补探"

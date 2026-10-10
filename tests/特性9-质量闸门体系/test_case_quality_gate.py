@@ -113,11 +113,20 @@ def test_host_only_in_single_page_case_only_warns():
     assert any("host" in w for w in case_warnings(case))
 
 
-def test_fabricated_fragment_warns_but_does_not_block():
-    """片段跟声明的页面 URL 都对不上 -> 是「可能永远不通过」的假红风险，告警但不拦（可能清单不全）。"""
+def test_fabricated_fragment_is_redline_now():
+    """**决策已变更（2026-10-10 AprilPark1012拍定）**：自造片段由「告警」升级为**红线**。
+
+    原口径（本判据旧版）：`片段跟声明的页面 URL 都对不上 -> 告警但不拦（可能清单不全）`。
+    为什么改：只警告会把**注定失败**的断言放进产物，要等实跑才炸 ——
+      干净环境实测代价 = 白跑一整轮 E2E（约 8 分钟）+ 一轮 AI 重试，
+      实跑才报 `AssertionError: Page URL expected to be 're.compile('index\.html')'`。
+    误伤怎么防：匹配集**从「声明页」放宽到「声明页 + goto 目标」**（原判据的顾虑正是"清单不全"）；
+      片段只在 goto 里出现 -> 仍是 WARN（提示补声明），不算自造。
+    """
     case = _cross([{"kind": "url", "expect": "index.html"}])
-    assert case_errors(case) == []
-    assert any("都对不上" in w for w in case_warnings(case))
+    errs = case_errors(case)
+    assert errs, "自造换页片段必须被拦下（红线）"
+    assert any("自造片段" in e for e in errs)
 
 
 def test_missing_url_assertion_warning_still_there():
@@ -196,3 +205,24 @@ def test_prompt_no_longer_teaches_weak_evidence():
     src = (REPO / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
     assert "列表页写 localhost" not in src, "提示词还在教 AI 产弱换页证据"
     assert "每个页面都含" in src, "提示词缺少「禁止 host 片段」的说明"
+
+def test_g2_self_invented_url_fragment_is_redline():
+    """G2（2026-10-10 AprilPark1012拍定）：自造换页片段必须是**红线**，不能只警告。
+
+    事故：干净环境 E2E 里 AI 编了 `index.html` 当换页证据（场景声明的是 `http://localhost:8000/`），
+    闸门**只警告不拦** -> 注定失败的断言进了产物 -> 白跑一整轮 E2E（约 8 分钟）+ 一轮 AI 重试，
+    实跑才炸：`AssertionError: Page URL expected to be 're.compile('index\\.html')'`。
+    判据是纯字符串比对（片段 vs 全部声明 URL），**不存在误伤空间** => 该拦。
+    """
+    from framework.tools.generate.case_builder import REDLINE, WARN, _url_evidence_issues
+    case = {
+        "pages": [{"name": "合同列表页", "url": "http://localhost:8000/"},
+                  {"name": "订单列表页", "url": "http://localhost:8000/orders.html"}],
+        "steps": [{"op": "goto", "url": "http://localhost:8000/"}],
+        "asserts": [{"kind": "url", "expect": "index.html"}],        # 自造片段：谁都对不上
+    }
+    issues = _url_evidence_issues(case)
+    assert issues, "自造片段居然没有任何问题记录（判据前提失效）"
+    levels = [lv for lv, _ in issues]
+    assert REDLINE in levels, f"自造换页片段只报 WARN，没有升为红线：{issues}"
+    assert WARN not in levels or REDLINE in levels, "自造片段必须走红线分支"

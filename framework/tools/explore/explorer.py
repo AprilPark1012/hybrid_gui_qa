@@ -542,7 +542,20 @@ def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: 
                 print(f"      [explore] [!] [{page_name}] 前置动作「{nm}」没找到 → 跳过"
                       f"（不猜别的控件去点）")
                 continue
-            loc.first.click(timeout=per_step_ms)
+            try:
+                loc.first.click(timeout=per_step_ms)
+            except Exception as _first:                               # noqa: BLE001
+                # [!] 回退 force（2026-10-10 实测踩到，两次两个机制同症状）：
+                #   探测期的**权限上下文可能与执行期不同** —— 场景里"切角色"往往是后面的一步，
+                #   而探测在它之前就跑 => 目标控件是 `aria-disabled`，**Playwright 常规点击会被直接拒绝**
+                #   （TimeoutError），前置动作一进门就失败（日志原话：
+                #    「[订单详情页] 前置动作「编辑」执行失败（TimeoutError）」）。
+                #   本 demo 的口径是「权限不足的按钮置灰但**仍可点**、点了弹提示说明该切哪个角色」
+                #   （`tests/特性2-*/verify_role_switch_click.py` 判据 1c 已把它钉成事实），
+                #   所以探测期 force 一次是安全的：真有权限限制时应用只会弹提示、状态不变。
+                loc.first.click(timeout=per_step_ms, force=True)
+                print(f"      [explore] [info] [{page_name}] 前置动作「{nm}」常规点击被拒"
+                      f"（{type(_first).__name__}）-> 改用 force 点一次")
             pg.wait_for_timeout(350)
             done.append(nm)
         except Exception as e:                                        # noqa: BLE001
