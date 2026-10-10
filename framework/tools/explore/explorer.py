@@ -445,7 +445,7 @@ def _base_of(url: str) -> str:
 
 
 def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None = None,
-                          auth: dict | None = None):
+                          auth: dict | None = None, probe_pre: list | None = None):
     """【同步】探测页面上下文：基础控件 + 弹窗内控件 + 富 DOM 上下文。返回 (items, dom_ctx, err)。
 
     跨页流程（P3）：pages 给 ≥2 页时走 `_collect_pages_context`（一个浏览器顺序探每页 + 同名唯一化）；
@@ -460,7 +460,7 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
     现在拆成两个阶段：同步探测 → 异步 LLM 规划。
     """
     if pages and len(pages) > 1:
-        return _collect_pages_context(pages, items, auth=auth)
+        return _collect_pages_context(pages, items, auth=auth, probe_pre=probe_pre)
 
     from playwright.sync_api import sync_playwright
     from framework.tools.probe.probe import probe_page, probe_row_fields
@@ -484,6 +484,8 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
                 pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
             except Exception:
                 pg.wait_for_timeout(500)
+            # 2026-10-10（A 方案 S1）：单页路径同样先跑场景级探测前置（会话级、只一次）
+            _run_pre_actions(pg, probe_pre, "场景探测前置", quiet_missing=True)
             from framework.tools.probe.page_scan import scan_page   # V8.3.7：探测步骤唯一入口
             _sc = scan_page(pg)                                  # 基础 + 可展开容器 + 弹窗/弹层 + 合并
             menu_items = _sc.menu_items
@@ -510,7 +512,8 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
         return items, [], f"{type(e).__name__}: {str(e)[:160]}", [], []
 
 
-def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: int = 5000) -> list[str]:
+def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: int = 5000,
+                    quiet_missing: bool = False) -> list[str]:
     """探测前执行该页声明的**前置动作**（P22 批 5 缺口 (4)(5)）。
 
     为什么需要：有些控件只在"做了某个动作之后"才存在 ——
@@ -539,7 +542,8 @@ def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: 
             if not loc.count():
                 loc = pg.get_by_text(nm)
             if not loc.count():
-                print(f"      [explore] [!] [{page_name}] 前置动作「{nm}」没找到 → 跳过"
+                if not quiet_missing:
+                    print(f"      [explore] [!] [{page_name}] 前置动作「{nm}」没找到 → 跳过"
                       f"（不猜别的控件去点）")
                 continue
             try:
@@ -566,7 +570,8 @@ def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: 
     return done
 
 
-def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | None = None):
+def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | None = None,
+                           probe_pre: list | None = None):
     """【同步】跨页探测（P3）：一个浏览器 + 一个 context，按声明顺序 goto 每页。
 
     - 环境约束：本机 1.87G 无 swap -> 绝不为多页多开浏览器/并发探测（顺序 do 才是安全的）。
@@ -595,7 +600,9 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                 print("      [explore] [key] 登录前置：" + ("ok" if _lg.get("ok") else
                       f"[!] 失败 → {_lg.get('reason')}"))
             pg = ctx.new_page()
-            for spec in pages:
+            # 场景级探测前置的待办（每步只跑一次；跑不到的留到最后统一告警）
+            _pp_pending = list(probe_pre or [])
+            for _idx, spec in enumerate(pages):
                 # P22 批 5：探测期优先用场景声明的探测地址（运行期才有值的页面，探测期对象不存在）
                 pg.goto(spec.get("probe_url") or spec["url"], wait_until="domcontentloaded")
                 try:      # P22 批 3：同单页路径 —— networkidle 在本 demo 上不可靠（fetch 悬挂）
@@ -604,6 +611,17 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                     pg.wait_for_timeout(500)
                 # P22 批 5：该页声明的**前置动作**（弹层要先选合同、行控件要先点新增行）
                 # —— 不做前置，这些控件一次都探不到，AI 也就拿不到它们的语义名。
+                # 2026-10-10（A 方案 S1）：**场景级探测前置** —— 逐页尝试、能跑就跑、每步只跑一次。
+                #   为什么不是"只跑第一页"（实测踩到）：第一页可能是**登录页**，那儿根本没有
+                #   切身份控件 -> 前置动作报「没找到」（日志原文：前置动作「切换为订单管理员」没找到）。
+                #   逐页尝试让「登录」自然落在登录页、「切身份」自然落在声明了该控件的页 ——
+                #   且**只按精确名字匹配**（`quiet_missing` 抑制重复告警），找不到就留给后面的页，
+                #   **绝不猜别的控件去点**（本项目铁律：不让框架猜控件）。
+                #   必须在 scan_page **之前**：前置动作常改变权限上下文（切角色），
+                #   扫在它之后才拿得到编辑态/动态新增的控件。
+                if _pp_pending:
+                    _pp_done = _run_pre_actions(pg, _pp_pending, "场景探测前置", quiet_missing=True)
+                    _pp_pending = [s for s in _pp_pending if s not in _pp_done]
                 _run_pre_actions(pg, spec.get("pre"), spec.get("name", ""))
                 from framework.tools.probe.page_scan import scan_page   # V8.3.7：探测步骤唯一入口
                 _sc = scan_page(pg, page_name=spec["name"], tag_page=True)   # 基础+可展开容器+弹窗/弹层+合并
@@ -637,6 +655,10 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
             print(f"      [explore] [!] 跨页同名元素 {c['semantic_name']!r} 出现在 "
                   f"{'、'.join(c['pages'])} → 已唯一化为 "
                   f"{'、'.join(c['semantic_name'] + '@' + p for p in c['pages'])}")
+        if _pp_pending:
+            print("      [explore] [!] 场景探测前置没跑到的步骤：" + "、".join(str(s) for s in _pp_pending)
+                  + "（找到过但没点成功 / 或任何一页都没匹配到 -> 该前置等于没做，别当它生效了）")
+
         return merged, dom_ctx, "", collisions, row_fields
     except Exception as e:
         print(f"      [explore] [!] 跨页探测失败（{type(e).__name__}: {str(e)[:160]}）"
@@ -648,7 +670,7 @@ def ai_explore(
     scenario: str, items: list[dict], url: str, allow_mock_fallback: bool = False,
     page_bg: str = "", guard: str = "", pages: list[dict] | None = None,
     llm_cassette=None, cassette_strict: bool = False, auth: dict | None = None,
-    retry_feedback: str = "",
+    retry_feedback: str = "", probe_pre: list | None = None,
 ) -> ElementMap:
     """【LLM 语义识别】理解意图、规划步骤、挑元素（ChatDeepSeek 直连编排，非 Agent）。
 
@@ -676,7 +698,7 @@ def ai_explore(
     _LAST_REQUIRED_FIELDS.clear()
     _LAST_ROW_FIELDS.clear()
     globals()["_CURRENT_SCENARIO"] = scenario or ""
-    ctx = _collect_page_context(items, url, pages=pages, auth=auth or {})
+    ctx = _collect_page_context(items, url, pages=pages, auth=auth or {}, probe_pre=probe_pre)
     page_items, dom_ctx, err = ctx[0], ctx[1], ctx[2]
     collisions = ctx[3] if len(ctx) > 3 else []
     # 表格行内列清单（2026-09-17）：喂给 AI 做行内定位 —— 没有它，AI 只能猜 CSS（本项目铁律：绝不让 LLM 产 selector）

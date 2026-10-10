@@ -342,12 +342,13 @@ def test_arg_value_supports_equals_form():
 
 def test_ai_explore_accepts_cassette(tmp_path, monkeypatch):
     """ai_explore 把 cassette 透传到异步阶段（同步探测用替身，不启浏览器）。"""
-    # 签名/返回口径与实现对齐（2026-09-30：`_collect_page_context` 现为
-    # `(items, url, pages=None, auth=None)` → `(items, dom_ctx, err)`；
-    # 此前 mock 多出两个返回值、且缺 auth -> ai_explore 传 auth= 时 TypeError）
+    # 签名/返回口径必须与实现**逐字对齐**（2026-09-30 缺 auth 炸过；
+    # 2026-10-10 又缺 probe_pre 炸了一次 —— 同一个坑两次，说明这条替身就是签名的守门人：
+    # 实现签名一变，这里必须同步，否则 ai_explore 一传新 kwargs 就 TypeError）
+    # `(items, url, pages=None, auth=None, probe_pre=None)` -> `(items, dom_ctx, err, ?, row_fields)`
     monkeypatch.setattr(explorer, "_collect_page_context",
-                        lambda items, url, pages=None, auth=None:
-                        (ITEMS, "", "", [], []))   # 实现返回 5 元组：(items, dom_ctx, err, ?, row_fields)
+                        lambda items, url, pages=None, auth=None, probe_pre=None:
+                        (ITEMS, "", "", [], []))
     fake = _FakeLLM()
     monkeypatch.setattr("framework.tools.common.config.llm_from_env", lambda: fake)
     emap = explorer.ai_explore(SCENARIO, [], URL, llm_cassette=Cassette(MODE_RECORD, tmp_path))

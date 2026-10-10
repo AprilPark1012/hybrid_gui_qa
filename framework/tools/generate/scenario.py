@@ -85,6 +85,10 @@ class Scenario:
     pages: list = field(default_factory=list)      # list[ScenarioPage]（跨页；空 = 单页老写法）
     # P22 批 5（方案 H）：**登录前置声明** —— 探测与执行两侧共用的唯一来源（见 references/design/P22 §十）
     auth: dict = field(default_factory=dict)
+    # 2026-10-10（A 方案 S1）：**场景级探测前置** —— 探测期一开始就要处的状态（登录、切身份）。
+    #   与页面级 pages[].pre 是**两个层级**、**同一个执行引擎**（_run_pre_actions），
+    #   不是第二套机制（铁律 13：同一能力收敛成唯一入口）。
+    probe_pre: list = field(default_factory=list)
 
     def auth_spec(self) -> dict:
         """登录前置参数（空 dict = 该场景不需要登录）。"""
@@ -279,6 +283,27 @@ def load_scenario_file(path) -> Scenario:
         raise ScenarioError(
             f"{p}: data 的 id 重复：{dup} —— 参数名会撞车，报告里分不出是哪组数据")
 
+    # 场景级探测前置（2026-10-10 · A 方案 S1）：探测期一开始就要做的动作（登录、切身份）。
+    #   形态与 pages[].pre **同构**（语义名列表），后续 S2 扩成 goto/fill/click 三类动作。
+    probe_pre: list = []
+    raw_pp = raw.get("probe_pre")
+    if raw_pp is not None:
+        if not isinstance(raw_pp, list):
+            raise ScenarioError(f"{p}: probe_pre 应为列表（如 [切换为订单管理员]）"
+                                f"，实际是 {type(raw_pp).__name__}")
+        for _it in raw_pp:
+            if isinstance(_it, str) and _it.strip():
+                probe_pre.append(_it.strip())
+            elif isinstance(_it, dict):
+                probe_pre.append(_it)
+            else:
+                raise ScenarioError(f"{p}: probe_pre 的每一项应为控件语义名或动作映射，"
+                                    f"实际是 {type(_it).__name__}")
+        if probe_pre and auth:
+            warns.append("同时声明了 auth 与 probe_pre：探测期用 probe_pre（更新），"
+                         "auth 仅作兼容，建议逐步迁移到「场景级探测前置」")
+
+
     return Scenario(
         path=p, id=sid, scenario=text,
         title=str(raw.get("title") or ""),
@@ -298,6 +323,7 @@ def load_scenario_file(path) -> Scenario:
         warnings=warns,
         pages=pages,
         auth=auth,
+        probe_pre=probe_pre,
     )
 
 
