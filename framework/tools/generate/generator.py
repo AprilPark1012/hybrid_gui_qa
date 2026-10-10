@@ -859,22 +859,64 @@ def _load_loc_map_from_probe_snapshot(path: Path) -> dict:
     return out
 
 
+def _items_from_source(path: Path, kind: str) -> dict[str, dict]:
+    """从**定位来源文件**建「名字 → 元素字典」（步骤级 `by` 直定位要从这里取锚）。
+
+    两种来源：
+      · `element`（element_map_*.json）：steps[].element（AI 用到的）+ **probe_items（权威清单）**；
+      · `probe`（probe_*.json）：items 全量条目。
+    同名先到先得（与 loc_map 同口径）。读不动/格式坏 -> 空 dict（**不炸**：这只是锚的优化来源，
+    真缺锚时下游会如实报 `bad_by`，不会静默点错控件）。
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if kind == "probe":
+        entries = list((data.get("items") if isinstance(data, dict) else data) or [])
+    else:
+        entries = list((data or {}).get("steps") or []) + list((data or {}).get("probe_items") or [])
+    out: dict[str, dict] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        el = (entry.get("element") or {}) if "element" in entry else entry
+        if not isinstance(el, dict):
+            continue
+        name = el.get("semantic_name")
+        if name and name not in out:
+            out[name] = el
+    return out
+
+
 def _load_loc_map_from_element_map(path: Path) -> dict:
-    """从 element_map_*.json（explore 产物）建 semantic_name → locator 表达式。"""
+    """从 element_map_*.json（explore 产物）建 semantic_name → locator 表达式。
+
+    两个来源，缺一不可（2026-10-10 S1 收口）：
+      · `steps[].element`：AI **实际用到**的名字（老行为）；
+      · `probe_items`：本次探索**喂给 AI 的完整清单**（权威名字来源）—— 手搓用例/断言引用的、
+        AI 没用过的控件名只能从这里拿到。现场重探补不出它们：重探只探缺口所属那一两页，
+        拿不到跨页唯一化的上下文（实测补 0/1），页内消歧名也与猜写的页名后缀对不上。
+    同名以**先出现的为准**（steps 优先），与快照侧口径一致。
+    """
     out: dict[str, str] = {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return out
-    for st in data.get("steps", []):
-        el = st.get("element") or {}
-        name = el.get("semantic_name")
-        if not name or name in out:
-            continue
-        try:
-            out[name] = _semantic_to_locator_expr(el)
-        except Exception:
-            continue
+    sources = (list(data.get("steps") or []), list(data.get("probe_items") or []))
+    for src in sources:
+        for entry in src:
+            el = (entry.get("element") or {}) if "element" in entry else entry
+            if not isinstance(el, dict):
+                continue
+            name = el.get("semantic_name")
+            if not name or name in out:
+                continue
+            try:
+                out[name] = _semantic_to_locator_expr(el)
+            except Exception:
+                continue
     return out
 
 
@@ -888,6 +930,13 @@ _DUP_PAGES: dict[str, set[str]] = {}    # 原始名 → 出现过的页名集合
 #    实测把它写成探测块内的局部变量 -> 走快照路径（不现场探测）时渲染处 `UnboundLocalError`
 #    （判据 test_generate_quality_gate 当场抓到）。与 `_DUP_PAGES` 同模式：探测前 clear、读处直接用。
 _LIVE_IT: dict[str, dict] = {}
+
+#: 名字 → 元素字典（**定位来源文件里的权威条目**：element_map 的 steps + probe_items / probe 快照的 items）。
+#: [!] 为什么必须有它（2026-10-10 S1 收口时踩到）：`by: title` 这类**属性直定位**是从元素字典里取锚的
+#:     （`it.get("title") or it.get("help_text")`）。以前锚**只来自现场重探**（`_LIVE_IT`）——
+#:     清单落盘之后 generate 不再需要重探，锚也就跟着没了 -> 产物落 `pytest.fail` 存根。
+#:     口径：锚与名字**同源**（都来自那份权威清单），现场重探只作补充。
+_SRC_IT: dict[str, dict] = {}
 
 
 def _record_conflict_bases(items: list[dict]) -> None:
@@ -1281,6 +1330,7 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     _CONFLICT_BASES.clear()
     _DUP_RAW_NAMES.clear()
     _DUP_PAGES.clear()
+    _SRC_IT.clear()               # 权威条目的元素字典（由选中的定位来源填充，见下）
     datasets_dir = scripts_dir / "datasets"
     datasets_dir.mkdir(parents=True, exist_ok=True)
     scripts_dir.mkdir(parents=True, exist_ok=True)
@@ -1323,6 +1373,8 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             hit = {k: v for k, v in got.items() if k in needed}
             if hit:
                 loc_map.update(hit)
+                # 锚与名字**同源**：条目字典也从这份来源取（`by: title/testid` 这类属性直定位要用）
+                _SRC_IT.update(_items_from_source(f, kind))
                 src_parts.append(f"{label} 命中 {len(hit)}/{len(needed)}")
                 _src_file, _src_kind = f, kind      # V8.4.3+：记下来源，用于落 explore 快照
                 break
@@ -1594,7 +1646,7 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             continue
         mod.parent.mkdir(parents=True, exist_ok=True)
         mod.write_text(_MODULE_HEADER.format(cid=cid, sid=sid)
-                       + _render_pytest_case(c, loc_map, it_map=_LIVE_IT) + "\n", encoding="utf-8")
+                       + _render_pytest_case(c, loc_map, it_map={**_SRC_IT, **_LIVE_IT}) + "\n", encoding="utf-8")
         changed.append(cid)
 
     # 2-c) 三目录新陈代谢（R7-f）：index 不认识的脚本清掉（孤儿直接红，不留垃圾）

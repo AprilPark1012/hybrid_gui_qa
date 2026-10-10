@@ -1365,11 +1365,11 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-3.4" data-sub="3.4"><span class="sno">3.4</span>跨页面元素</h5>
-      <p class="codesrc"><b>目标：</b>多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧</p>
+      <p class="codesrc"><b>目标：</b>多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧；explore 期喂给 AI 的**完整清单**必须落盘，作为映射表与运行时快照的**唯一名字来源**</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>多页面场景下元素跨页可用；同名元素改成 <span class="code-inline">原名@页名</span> 消歧：<span class="code-inline">probe.uniquify_across_pages()</span> 把只出现在一页的名字保持原名，出现在多页的全部改名并记冲突（<span class="code-inline">name_source="page"</span>）。运行期「语义名 -> 控件」的唯一权威来源是 explore 快照 （<span class="code-inline">generate/probe_snapshot.py</span>）：AI 看的与跑的必须是同一份命名。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">_collect_pages_context()</span> -> <span class="code-inline">uniquify_across_pages()</span> -> 快照；运行时 <span class="code-inline">probe_snapshot.load_snapshot()</span> / <span class="code-inline">generator._probe_declared_pages()</span>。</p>
       <div class="flow2"><span class="fnode">多页探测</span><span class="farrow">-></span><span class="fnode">uniquify_across_pages()</span><span class="farrow">-></span><span class="fnode y">原名@页名</span><span class="farrow">-></span><span class="fnode">explore 快照（名字权威来源）</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_runtime_name_source_is_explore_snapshot.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/verify_cross_page.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_runtime_name_source_is_explore_snapshot.py（12 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_explore_manifest_authoritative.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/verify_cross_page.py</span></p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-3.5" data-sub="3.5"><span class="sno">3.5</span>属性直定位</h5>

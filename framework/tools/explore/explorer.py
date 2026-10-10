@@ -513,7 +513,68 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
 
 
 
-def _register_pre_action_items(page_name: str, names, page_items: list[dict]) -> list[dict]:
+def _locate_pre_action_control(pg, nm: str):
+    """按**可访问性名字**定位前置动作点过的那个控件（与 `_run_pre_actions` 同一套查找口径）。
+
+    只按语义名找（button 优先，其次文本）；找不到返回 None —— **绝不猜 CSS**（项目铁律）。
+    """
+    if pg is None or not nm:
+        return None
+    for mk in (lambda: pg.get_by_role("button", name=nm, exact=True),
+               lambda: pg.get_by_role("button", name=nm),
+               lambda: pg.get_by_text(nm, exact=True),
+               lambda: pg.get_by_text(nm)):
+        try:
+            loc = mk()
+            if loc.count():
+                return loc.first
+        except Exception:                                             # noqa: BLE001
+            continue
+    return None
+
+
+def _anchor_fields_of_locator(pg, el) -> dict:
+    """从一个**已拿到的 locator** 取定位锚字段（与 `probe_page` 条目同形状）。
+
+    [!] 必须在**点击之前**调用（2026-10-10 实测）：前置动作点完，控件本身的可访问名会变
+        （demo 的右上角头像：`超` -> 点完之后 `get_by_role("button", name="超")` 就不再命中），
+        事后再按名字去找 -> 命中的是别的元素 -> 取不到锚（实测空 dict）。
+        口径：**点的时候手里就有 locator**，锚在那一刻取，别事后再找一遍。
+    """
+    from framework.tools.probe.probe import _help_text, _label_text, _placeholder
+    out: dict = {}
+    if el is None:
+        return out
+    for key, fn in (("help_text", lambda: _help_text(pg, el)),
+                    ("label", lambda: _label_text(pg, el)),
+                    ("placeholder", lambda: _placeholder(el))):
+        try:
+            v = (fn() or "").strip()
+        except Exception:                                             # noqa: BLE001
+            v = ""
+        if v:
+            out[key] = v
+    try:
+        tid = (el.get_attribute("data-testid") or "").strip()
+    except Exception:                                                 # noqa: BLE001
+        tid = ""
+    if tid:
+        out["test_id"] = tid
+    return out
+
+
+def _anchor_fields_of(pg, nm: str) -> dict:
+    """按名字现找控件再取锚（**兜底路径**：只有没在点击时记下锚时才用）。
+
+    为什么必须有它也要有 `_anchor_fields_of_locator`：正常路径在点击时就取锚（那时名字还对得上），
+    这条只在「锚没被记下」时兜底 —— 状态已变，多半取不到，取不到就**如实留空**（下游会报 bad_by），
+    绝不编一个锚。
+    """
+    return _anchor_fields_of_locator(pg, _locate_pre_action_control(pg, nm))
+
+
+def _register_pre_action_items(page_name: str, names, page_items: list[dict],
+                               pg=None, anchors: dict | None = None) -> list[dict]:
     """把**前置动作成功点到的**控件补进清单（2026-10-10 实测缺口的通用修法）。
 
     为什么必须补：探针的扫描常发生在**状态切换之后**，于是「同一按钮在不同状态下的名字」
@@ -525,6 +586,10 @@ def _register_pre_action_items(page_name: str, names, page_items: list[dict]) ->
 
     口径：**「能点到」就是「存在且可交互」的铁证** —— 框架自己都点成功了，就该让 AI 引用得到。
     只补**清单里没有的**名字（幂等；不碰既有条目，避免污染同名唯一化与录像结构键）。
+
+    [!] 合成条目必须与探针条目**同形状**（2026-10-10 补）：带上 test_id / help_text / label /
+    placeholder 这些**定位锚**。否则下游 `by: title` 这种属性直定位从条目里取不到锚 ->
+    产物落 `pytest.fail` 存根（实测：手搓用例的「超@合同列表页 + by: title」就是这么炸的）。
     """
     have = set()
     for it in (page_items or []):
@@ -537,13 +602,17 @@ def _register_pre_action_items(page_name: str, names, page_items: list[dict]) ->
         nm = str(nm).strip()
         if not nm or nm in have:
             continue
-        out.append({"semantic_name": nm, "name": nm, "tag": "button", "role": "button",
-                    "text": nm, "page": page_name,
-                    "note": "由前置动作证明可点（补进清单，否则 AI 引用不到这个名字）"})
+        item = {"semantic_name": nm, "name": nm, "tag": "button", "role": "button",
+                "text": nm, "page": page_name,
+                "note": "由前置动作证明可点（补进清单，否则 AI 引用不到这个名字）"}
+        # 锚优先用**点击那一刻**记下的（那时名字还对得上）；没记下才按名字兜底找一次
+        item.update((anchors or {}).get(nm) or _anchor_fields_of(pg, nm))
+        out.append(item)
     return out
 
 def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: int = 5000,
-                    quiet_missing: bool = False, require_all_resolvable: bool = False) -> list[str]:
+                    quiet_missing: bool = False, require_all_resolvable: bool = False,
+                    seen: dict | None = None) -> list[str]:
     """探测前执行该页声明的**前置动作**（P22 批 5 缺口 (4)(5)）。
 
     为什么需要：有些控件只在"做了某个动作之后"才存在 ——
@@ -623,6 +692,14 @@ def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: 
                     break
                 pg.wait_for_timeout(300)
                 _w += 300
+            # [!] 锚必须在**点击之前**取（点了之后控件的可访问名会变，事后再找就找不到）：
+            #   实测 demo 的右上角头像 `button.nu-avatar`（name=超、title=点击切换角色 / 退出登录），
+            #   点完之后 `get_by_role("button", name="超")` 不再命中 -> 事后取锚恒为空。
+            if seen is not None:
+                try:
+                    seen[nm] = _anchor_fields_of_locator(pg, loc.first)
+                except Exception:                                     # noqa: BLE001
+                    pass
             try:
                 loc.first.click(timeout=per_step_ms)
             except Exception as _first:                               # noqa: BLE001
@@ -691,6 +768,7 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
             _pp_pending = list(probe_pre or [])
             for _idx, spec in enumerate(pages):
                 _pp_clicked = []                 # 逐页重置：只补**本页**点到过的控件
+                _pp_seen: dict = {}              # 逐页重置：点击那一刻记下的定位锚（名字 -> 字段）
                 # P22 批 5：探测期优先用场景声明的探测地址（运行期才有值的页面，探测期对象不存在）
                 pg.goto(spec.get("probe_url") or spec["url"], wait_until="domcontentloaded")
                 try:      # P22 批 3：同单页路径 —— networkidle 在本 demo 上不可靠（fetch 悬挂）
@@ -709,9 +787,9 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                 #   扫在它之后才拿得到编辑态/动态新增的控件。
                 if _pp_pending:
                     _pp_done = _run_pre_actions(pg, _pp_pending, "场景探测前置", quiet_missing=True,
-                                               require_all_resolvable=True)
+                                               require_all_resolvable=True, seen=_pp_seen)
                     _pp_pending = [s for s in _pp_pending if s not in _pp_done]
-                _pp2 = _run_pre_actions(pg, spec.get("pre"), spec.get("name", ""))
+                _pp2 = _run_pre_actions(pg, spec.get("pre"), spec.get("name", ""), seen=_pp_seen)
                 _pp_clicked += [x for x in (list(_pp_done) + list(_pp2)) if x not in _pp_clicked]
                 from framework.tools.probe.page_scan import scan_page   # V8.3.7：探测步骤唯一入口
                 _sc = scan_page(pg, page_name=spec["name"], tag_page=True)   # 基础+可展开容器+弹窗/弹层+合并
@@ -726,7 +804,8 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                 #   => 整条链卡死。**真根因是我的"半边修复"制造了快照与映射表的分歧**。
                 #   口径：名字要么两边一起改（单一权威快照，铁律 15），要么都不改；
                 #   **绝不允许只改一侧**。
-                _extra = _register_pre_action_items(spec["name"], _pp_clicked, merged_one)
+                _extra = _register_pre_action_items(spec["name"], _pp_clicked, merged_one,
+                                                    pg=pg, anchors=_pp_seen)
                 if _extra:
                     merged_one = merged_one + _extra
                     print("      [explore] [key] 前置动作证明可点的控件已补进清单："
@@ -939,7 +1018,7 @@ def _replay_from_cassette(cassette, prompt: str, items: list[dict], first_url: s
             continue
         if steps:
             steps = _apply_semantic_calibration(steps, items)
-            return _finalize_map(first_url, scenario, steps, pages=pages)
+            return _finalize_map(first_url, scenario, steps, pages=pages, manifest=items)
     detail = "；".join(dict.fromkeys(errs)) or "没有任何一条回答能解析出步骤"
     raise AiExploreError(
         f"录像命中但解析不出步骤（{detail}）—— 录的那份与当前框架 / 控件清单可能不兼容。\n"
@@ -1092,7 +1171,7 @@ async def _ai_explore_async(
                                       key_struct=struct_key(scenario, page_items, pages,
                                                             _PLANNER_SYSTEM))
                 steps = _apply_semantic_calibration(steps, page_items)
-                return _finalize_map(first_url, scenario, steps, pages=pages)
+                return _finalize_map(first_url, scenario, steps, pages=pages, manifest=page_items)
 
             if attempt < n_attempts:
                 await asyncio.sleep(1.5 * attempt)      # 退避：抖动/限流通常等一下就好
@@ -1126,7 +1205,7 @@ async def _ai_explore_async(
           "（这不是 AI 产物，不会写入 cases/）")
     steps = mock_explore(scenario, page_items, url).steps
     steps = _apply_semantic_calibration(steps, page_items)
-    return _finalize_map(first_url, scenario, steps, pages=pages)
+    return _finalize_map(first_url, scenario, steps, pages=pages, manifest=page_items)
 
 
 def _get_llm_text(obj, prompt: str) -> str:
@@ -1471,11 +1550,18 @@ def _fill_missing_row_column(steps: list, row_fields: list | None) -> list[str]:
 
 
 def _finalize_map(url: str, scenario: str, steps: list[TestStep],
-                  pages: list[dict] | None = None) -> ElementMap:
+                  pages: list[dict] | None = None,
+                  manifest: list[dict] | None = None) -> ElementMap:
     """补 goto + 构造 ElementMap。
 
     跨页（P3）：首步 goto 指向**第一页**的 URL（描述带页名）；ElementMap.url 记第一页，
     下游 generate 用它当 base_url。单页时与改造前完全一致。
+
+    manifest（2026-10-10 · S1 收口）：本次探索**喂给 AI 的完整元素清单**（`page_items`）——
+    原样落进 `ElementMap.probe_items`。为什么必须带：element_map 的 steps 只含 **AI 用到**的名字，
+    而手搓用例/断言引用的控件名 AI 可能没用过，generate 期只能靠现场重探重建，
+    重探又拿不到跨页唯一化的上下文 => 报「缺失项」把链路卡死（实测取证详见
+    `tests/特性3-分层定位与控件识别/test_explore_manifest_authoritative.py` 的文件头）。
     """
     # V8.4 单点收口：**所有**产出路径都经过这里（实测有 3 处调用），所以登录闸门放这一处即可。
     # 无条件执行的理由：AI 自己编的登录步骤**必然失败**（它拿不到真实凭据，只会编一个 ——
@@ -1518,7 +1604,8 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
     if steps and steps[0].action != "goto":
         label = f"【{first['name']}】{first_url}" if first else first_url
         steps.insert(0, TestStep(0, "goto", value=first_url, description=f"打开 {label}"))
-    return ElementMap(url=first_url, scenario=scenario, steps=steps)
+    return ElementMap(url=first_url, scenario=scenario, steps=steps,
+                      probe_items=list(manifest or []))
 
 
 # 触发弹窗的关键词（识别"新建/添加/新增/创建"类按钮 → 点开以探测表单控件）

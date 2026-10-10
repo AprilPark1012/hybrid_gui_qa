@@ -47,17 +47,24 @@ def _norm(it: dict) -> dict:
 
 
 def items_from_element_map(data: dict) -> list[dict]:
-    """从 explore 的 `element_map_*.json` 建条目（**这一步就是 AI 看到的那份命名**）。"""
+    """从 explore 的 `element_map_*.json` 建条目（**这一步就是 AI 看到的那份命名**）。
+
+    两个来源，缺一不可（2026-10-10 S1 收口）：
+      · `steps[].element`：AI **实际用到**的名字（老行为，保持优先）；
+      · `probe_items`：本次探索**喂给 AI 的完整清单**（权威名字来源）—— 手搓用例 / 断言引用的、
+        AI 没用过的控件名只能从这里拿到（现场重探拿不到跨页唯一化的上下文，实测补 0/1）。
+    """
     out: list[dict] = []
     seen: set[str] = set()
-    for st in (data or {}).get("steps", []) or []:
-        el = st.get("element") or {}
-        if not isinstance(el, dict):
-            continue
-        n = _norm(el)
-        if n and n["semantic_name"] not in seen:
-            seen.add(n["semantic_name"])
-            out.append(n)
+    for src in (list((data or {}).get("steps") or []), list((data or {}).get("probe_items") or [])):
+        for entry in src:
+            el = (entry.get("element") or {}) if isinstance(entry, dict) and "element" in entry else entry
+            if not isinstance(el, dict):
+                continue
+            n = _norm(el)
+            if n and n["semantic_name"] not in seen:
+                seen.add(n["semantic_name"])
+                out.append(n)
     return out
 
 

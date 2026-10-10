@@ -92,10 +92,21 @@ class ElementMap:
     url: str = ""
     scenario: str = ""           # 自然语言测试意图（用户输入）
     steps: list[TestStep] = field(default_factory=list)
+    #: 本次探索**喂给 AI 的完整元素清单**（含跨页唯一化后的最终名 = 权威名字来源）。
+    #:
+    #: 为什么必须落盘（2026-10-10 S1 收口，实测）：`steps` 里只有 **AI 实际用到**的名字；
+    #: 手搓用例、断言、其它用例引用到的控件名（AI 没用过）在 generate 期只能靠**现场重探**
+    #: 缺口所属那一两页去重建，而重探拿不到跨页唯一化的上下文：
+    #:   · `超@合同列表页` 要同探 >=2 页才会出现页名后缀 -> 只探 1 页 -> 探不到（实测补 0/1）；
+    #:   · 页内消歧的名（`订单名称@订单系统`）与用例里猜写的 `订单名称@订单列表页` 对不上 -> 永远探不到；
+    #: => 报出「缺失项」把整条链卡死，看着像命名口径冲突，实为**权威清单丢在内存里没落盘**。
+    #: 老产物没有这个键 -> 空列表（向后兼容，行为与改造前一致）。
+    probe_items: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {"url": self.url, "scenario": self.scenario,
-                "steps": [s.to_dict() for s in self.steps]}
+                "steps": [s.to_dict() for s in self.steps],
+                "probe_items": self.probe_items}
 
     def to_json(self, path) -> None:
         path.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=2),
@@ -105,4 +116,5 @@ class ElementMap:
     def from_json(cls, path) -> "ElementMap":
         d = json.loads(path.read_text(encoding="utf-8"))
         return cls(url=d["url"], scenario=d["scenario"],
-                   steps=[TestStep.from_dict(s) for s in d["steps"]])
+                   steps=[TestStep.from_dict(s) for s in d["steps"]],
+                   probe_items=list(d.get("probe_items") or []))
