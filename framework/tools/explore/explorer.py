@@ -549,17 +549,27 @@ def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: 
             try:
                 loc.first.click(timeout=per_step_ms)
             except Exception as _first:                               # noqa: BLE001
-                # [!] 回退 force（2026-10-10 实测踩到，两次两个机制同症状）：
-                #   探测期的**权限上下文可能与执行期不同** —— 场景里"切角色"往往是后面的一步，
-                #   而探测在它之前就跑 => 目标控件是 `aria-disabled`，**Playwright 常规点击会被直接拒绝**
-                #   （TimeoutError），前置动作一进门就失败（日志原话：
-                #    「[订单详情页] 前置动作「编辑」执行失败（TimeoutError）」）。
-                #   本 demo 的口径是「权限不足的按钮置灰但**仍可点**、点了弹提示说明该切哪个角色」
-                #   （`tests/特性2-*/verify_role_switch_click.py` 判据 1c 已把它钉成事实），
-                #   所以探测期 force 一次是安全的：真有权限限制时应用只会弹提示、状态不变。
-                loc.first.click(timeout=per_step_ms, force=True)
+                # 常规点击被拒的**两条**真实成因（2026-10-10 实测各踩一次）：
+                #   (a) 权限上下文不同：探测期比执行期早（场景里"切角色"是后面一步）=> 目标
+                #       `aria-disabled` => TimeoutError（「编辑」就是这种，判据 1c 已钉死
+                #       「置灰但**仍可点**、点了弹提示」=> 探测期 force 一次是安全的）；
+                #   (b) **同名隐藏项挡路**：菜单项在 DOM 里有未展开的副本 => `.first` 命中
+                #       不可见元素 => `Element is not visible`（「切换为订单管理员」就是这种，
+                #       与 L27 的隐藏 <option> 同款教训）。
+                #   => 先**挑可见的那个**（只排除、不猜：同名里可见的就是用户能点的那个），
+                #      全不可见再退 force。
+                # [!] 提示必须印在**尝试之前** —— 旧写法印在 force 之后，force 也失败时
+                #     这行根本不出现，日志会误导人以为 force 没触发（实测踩到）。
+                _n = loc.count()
+                _vis = [i for i in range(_n) if loc.nth(i).is_visible()]
                 print(f"      [explore] [info] [{page_name}] 前置动作「{nm}」常规点击被拒"
-                      f"（{type(_first).__name__}）-> 改用 force 点一次")
+                      f"（{type(_first).__name__}）-> 同名 {_n} 个 / 可见 {len(_vis)} 个")
+                if _vis:
+                    loc.nth(_vis[0]).click(timeout=per_step_ms)
+                    print(f"      [explore] [info] [{page_name}] 前置动作「{nm}」已改用可见项点一次")
+                else:
+                    loc.first.click(timeout=per_step_ms, force=True)
+                    print(f"      [explore] [info] [{page_name}] 前置动作「{nm}」全不可见 -> 改用 force 点一次")
             pg.wait_for_timeout(350)
             done.append(nm)
         except Exception as e:                                        # noqa: BLE001
