@@ -10,6 +10,11 @@ import re
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent      # build_tools/ 的上一层 = 仓库根
+# 第 7 章的「特性/子特性」直接读单一来源 framework/tools/spec/feature_spec.py 渲染
+# -> 生成时必须能 import 到仓库包（与 build_feature_map.py 同一口径）。
+import sys as _sys
+if str(BASE) not in _sys.path:
+    _sys.path.insert(0, str(BASE))
 # 输出路径可用 BUILD_HTML_OUT 覆盖 —— 供「可复现性验证」在 /tmp 里生成、不污染仓库（tests/特性9-质量闸门体系/verify_html_sync.py）
 OUT = Path(os.environ.get("BUILD_HTML_OUT") or (BASE / "docs" / "training.html"))
 
@@ -1931,8 +1936,946 @@ def _svg_two_scenarios() -> str:
     return "\n".join(out) + "\n</svg>"
 
 
+
+# ===================== 第 7 章：框架特性设计实现说明（按特性 / 子特性 · 以代码为基准）=====================
+# 数据来源：framework/tools/spec/feature_spec.py（**唯一来源**）——
+#   编号 / 名称 / 目标 / 判据归属直接读它渲染，保证「页面说的 10 特性 / 45 子特性」与代码一致。
+#   加特性或子特性：只改规格文件；这里补一段「关键实现逻辑 / 函数调用关系 / 图例」即可。
+# GBK 铁律：本段只写 GBK 可编码字符（无 emoji、无 U+26A0、无 U+21D2）；不可编符号一律改用文字。
+
+def _locate_test(fn: str) -> str:
+    """测试文件名 -> 仓库相对路径 `tests/<特性夹>/<fn>`；找不到返回空串（渲染时退回裸名）。"""
+    try:
+        for d in sorted((BASE / 'tests').iterdir()):
+            if d.is_dir() and (d / fn).exists():
+                return str((d / fn).relative_to(BASE))
+    except Exception:
+        pass
+    return ''
+
+
+def _count_tests(fn: str) -> int:
+    """数一个测试文件里的 `def test_` 条数（与 build_feature_map.py 同口径）。"""
+    rel = _locate_test(fn)
+    if not rel:
+        return 0
+    try:
+        return len(re.findall(r'^def test_\w+', (BASE / rel).read_text(encoding='utf-8'), re.M))
+    except Exception:
+        return 0
+
+
+def _esc(t) -> str:
+    """轻量转义：只处理 & < >（文本内容用，不碰引号）。"""
+    return (str(t if t is not None else '')
+            .replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+
+
+def _chips(files, kind: str = 'c1') -> str:
+    """判据文件 -> 一串 code-inline 标签（一类带条数，二类不带）。"""
+    if not files:
+        return ''
+    out = []
+    for fn in files:
+        rel = _locate_test(fn)
+        show = rel or fn
+        n = _count_tests(fn) if kind == 'c1' else 0
+        tail = ('（' + str(n) + ' 条）') if (kind == 'c1' and n) else ''
+        out.append('<span class="code-inline">' + show + tail + '</span>')
+    return ' '.join(out)
+
+
+def _feat_flow(nodes) -> str:
+    """图例：纯 HTML/CSS 的横向流程（节点之间用箭头）。节点可为 str 或 (str, 颜色类)。"""
+    parts = []
+    for i, nd in enumerate(nodes):
+        if i:
+            parts.append('<span class="farrow">-></span>')
+        if isinstance(nd, (tuple, list)):
+            txt, cls = nd[0], nd[1]
+            parts.append('<span class="fnode ' + str(cls) + '">' + str(txt) + '</span>')
+        else:
+            parts.append('<span class="fnode">' + str(nd) + '</span>')
+    return '<div class="flow2">' + ''.join(parts) + '</div>'
+
+
+def _svg_callmap() -> str:
+    """图例 0：端到端函数调用地图（内联 SVG，自包含、无外部依赖）。"""
+    box = 'fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"'
+    grn = 'fill="#0f2a20" stroke="#22c55e" stroke-width="1.2"'
+    yel = 'fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"'
+    t = 'fill="#e6edf3" font-size="12.5" font-family="sans-serif"'
+    s = 'fill="#9fb0c4" font-size="10.5" font-family="sans-serif"'
+    ar = 'stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"'
+    dash = 'stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"'
+    o = ['<h4 style="margin-bottom:8px">图例 0 · 端到端函数调用地图（cli 是总入口，三条链共用同一条确定性下游）</h4>']
+    o.append('<svg viewBox="0 0 920 252" width="100%" height="auto" role="img" '
+             'style="background:#0d1117;border-radius:10px;padding:4px;display:block">')
+    o.append('<defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">'
+             '<path d="M0,0 L7,3 L0,6 z" fill="#64748b"/></marker></defs>')
+    # 主干四框
+    o.append('<rect x="40" y="14" width="560" height="42" rx="9" ' + box + '/>')
+    o.append('<text x="320" y="40" text-anchor="middle" ' + t + '>python -m framework.cli  ->  main()</text>')
+    o.append('<rect x="40" y="76" width="560" height="42" rx="9" ' + box + '/>')
+    o.append('<text x="320" y="102" text-anchor="middle" ' + t
+             + '>cmd_explore()  ->  explorer.ai_explore()</text>')
+    o.append('<rect x="40" y="138" width="560" height="42" rx="9" ' + box + '/>')
+    o.append('<text x="320" y="164" text-anchor="middle" ' + t
+             + '>cmd_generate()  ->  generator.generate_scripts()</text>')
+    o.append('<rect x="40" y="200" width="560" height="42" rx="9" ' + grn + '/>')
+    o.append('<text x="320" y="226" text-anchor="middle" ' + t
+             + '>cmd_run()  ->  pytest  ->  生成物 _harness._act / _loc / _assert_*</text>')
+    # 主干箭头
+    o.append('<line x1="320" y1="56" x2="320" y2="74" ' + ar + '/>')
+    o.append('<line x1="320" y1="118" x2="320" y2="136" ' + ar + '/>')
+    o.append('<line x1="320" y1="180" x2="320" y2="198" ' + ar + '/>')
+    # 右侧：probe 层（喂 explore 与 generate）
+    o.append('<rect x="648" y="86" width="252" height="94" rx="9" ' + yel + '/>')
+    o.append('<text x="774" y="110" text-anchor="middle" ' + t + '>probe 层（只描述、不定位）</text>')
+    o.append('<text x="774" y="132" text-anchor="middle" ' + s + '>scan_page / probe_page</text>')
+    o.append('<text x="774" y="150" text-anchor="middle" ' + s + '>expandable / editable / modal</text>')
+    o.append('<text x="774" y="168" text-anchor="middle" ' + s + '>anchor + path（容器下钻）</text>')
+    o.append('<line x1="648" y1="110" x2="602" y2="104" ' + dash + '/>')
+    o.append('<line x1="648" y1="158" x2="602" y2="162" ' + dash + '/>')
+    # 右侧：locator_bridge（喂 run）
+    o.append('<rect x="648" y="198" width="252" height="46" rx="9" ' + yel + '/>')
+    o.append('<text x="774" y="218" text-anchor="middle" ' + t + '>locator_bridge.resolve_locator()</text>')
+    o.append('<text x="774" y="235" text-anchor="middle" ' + s + '>Tier1 精确 -> Tier2 指纹（唯一性校验）</text>')
+    o.append('<line x1="648" y1="221" x2="602" y2="221" ' + dash + '/>')
+    o.append('</svg>')
+    return ''.join(o)
+
+
+_FEAT_LEGEND = {
+    1: ('三种链路在下游汇合（AI / 手搓 / 离线回放共用同一条确定性下游）',
+        ['场景 yml / 手搓 json / 录像', 'cases/*.json', ('generate', 'g'), ('run（零 token）', 'g')]),
+    2: ('自然语言 -> 可执行步骤序列（面向生成）',
+        ['场景文案 + 控件清单', 'planner prompt', 'AI 产 steps', ('语义校准', 'y'), 'cases/*.json']),
+    3: ('真实系统只有顶层元素有 testid -> 锚点 + 容器内下钻',
+        ['顶层锚点（table/dialog/form/region）', ('容器内相对路径 row/col/target', 'y'),
+         '唯一 locator（count == 1）']),
+    4: ('同名 / 同区域控件的多道兜底（绝不含糊点错）',
+        ['同名控件', ('上下文后缀 @ctx', 'y'), ('容器收窄（只排除）', 'y'), ('唯一 or 如实失败', 'r')]),
+    5: ('用例 / 脚本 / 数据三层分离',
+        ['cases(意图)', 'scripts(逻辑)', ('datasets(数据)', 'y'), '运行期固化占位符']),
+    6: ('自愈闭环（兜底，不是瞎猜；每一次都可审）',
+        ['定位失败', ('A 级放宽阈值', 'y'), ('B 级 LLM 重猜（需 key）', 'y'), ('三态裁决', 'r')]),
+    7: ('并发与资源安全（低内存机器保命）',
+        ['MemAvailable', 'cap = max(1,min(可用/预算,CPU))', ('不够自动降级', 'g'), 'run-id 隔离产物']),
+    8: ('离线回放：没有外网也能跑 AI 链路',
+        ['严格键（逐字）', ('结构键兜底（大声告警）', 'y'), '录像命中', ('不联网跑', 'g')]),
+    9: ('质量闸门：把隐性问题变成当场变红',
+        ['契约判据', ('坏了就红', 'r'), ('SKIP != 通过', 'y'), '拒绝产出产物']),
+    10: ('CLI 帮助契约：help 里看到的 = 代码里注册的',
+         ['FLAG_SPECS', 'CMD_FLAGS', ('--help 自动生成', 'g'), '退出码区分好坏']),
+}
+
+
+_FEAT_IMPL = {
+    '1.1': dict(
+        logic='三条链路在下游汇合于 <span class="code-inline">cases/*.json</span>：'
+              '(1) AI 链路 <span class="code-inline">cli.py::cmd_explore()</span> -> '
+              '<span class="code-inline">explorer.ai_explore()</span> 产 ElementMap，再由 '
+              '<span class="code-inline">case_builder.elementmap_to_cases_file()</span> 落 '
+              '<span class="code-inline">cases/ai_*.json</span>（默认落盘，<span class="code-inline">--no-cases</span> 关）；'
+              '(2) 手搓链路：人写 <span class="code-inline">cases/&lt;scenario_id&gt;/&lt;case_id&gt;.json</span>；'
+              '(3) 离线回放：<span class="code-inline">--llm-cassette</span> 走 '
+              '<span class="code-inline">explorer._replay_from_cassette()</span>（不联网、不要 key）。'
+              '三条链路产物形态一致，下游完全共用。',
+        call='<span class="code-inline">main()</span> -> '
+             '<span class="code-inline">cmd_explore()</span> -> '
+             '<span class="code-inline">_collect_pages_context()</span> -> '
+             '<span class="code-inline">page_scan.scan_page()</span> -> '
+             '<span class="code-inline">probe.probe_page()</span> -> ElementMap -> '
+             '<span class="code-inline">elementmap_to_cases_file()</span> -> cases；'
+             'cases -> <span class="code-inline">generate_scripts()</span> -> '
+             '<span class="code-inline">_render_pytest_case()</span> -> scripts/generated/；'
+             'scripts -> <span class="code-inline">cmd_run()</span> -> pytest -> 生成物 '
+             '<span class="code-inline">_harness._act/_loc</span> -> '
+             '<span class="code-inline">locator_bridge.resolve_locator()</span>。',
+        legend=['cases/*.json', ('generate_scripts()', 'g'), 'scripts/generated/*.py', 'pytest（零 token）']),
+    '1.2': dict(
+        logic='<span class="code-inline">tests/_runner/run_acceptance.py</span> 把 R7 四项（框架自测 / 特性自测 / '
+              'demo 新鲜度 / E2E 三场景）收成一条命令，顺序按「便宜先跑 + fail fast」：'
+              '[0] 闸门自检 -> [1] demo 新鲜度 -> [2] 框架自测 <span class="code-inline">pytest tests/</span> -> '
+              '[3] E2E 场景3->2->1 -> [4] 特性自测。退出码：0 通过 / 1 有失败 / 2 用法错 / '
+              '3 有跳过（<b>SKIP != 通过</b>）。跳过策略（如 <span class="code-inline">--skip-ai</span>）'
+              '必须显式留痕、如实标「跳过」且不算通过，不许静默少跑。',
+        call='<span class="code-inline">run_acceptance.py</span> -> 子进程跑'
+             '<span class="code-inline">verify_*.py</span> / <span class="code-inline">pytest</span> -> '
+             '汇总退出码；<span class="code-inline">--list</span> 只看不跑、'
+             '<span class="code-inline">--only</span> 只跑某项、'
+             '<span class="code-inline">--keep-going</span> 跑完再汇总。',
+        legend=['[0] 闸门自检', ('[1] 新鲜度', 'g'), ('[2] 框架自测', 'g'), '[3] E2E 3->2->1', '[4] 特性自测']),
+    '1.3': dict(
+        logic='<span class="code-inline">build_tools/pack_release.py</span> 打「代码包」（含运行期必需文件），'
+              '<span class="code-inline">--with-cassettes</span> 打「LLM 录像包」；打包前强制'
+              '<span class="code-inline">build_tools/check_cassettes.py</span> 体检（覆盖不全就不产包，'
+              '<span class="code-inline">--allow-missing-cassettes</span> 仅供调试）。'
+              '无外网机器用 <span class="code-inline">build_tools/offline_explore_chain.py --repo . --run</span> '
+              '一键跑通（它把 LLM 端点指到黑洞 <span class="code-inline">127.0.0.1:9</span>，'
+              '「有没有偷偷联网」因而是可证伪的）。',
+        call='<span class="code-inline">pack_release.main()</span> -> '
+             '<span class="code-inline">check_cassettes.check()</span>（出厂闸门）-> 产包；'
+             '<span class="code-inline">offline_explore_chain</span> -> '
+             '<span class="code-inline">cli explore --llm-cassette</span> -> generate -> run。',
+        legend=['代码包', '+ 录像包', ('离线机解包', 'g'), 'explore --llm-cassette', 'generate -> run']),
+
+    '2.1': dict(
+        logic='AI 产出的语义名必须落到真实控件上。<span class="code-inline">explorer._match_item(sn, items)</span> '
+              '负责把 AI 返回的名字匹配到探测清单里的元素：精确命中优先，模糊命中留痕；'
+              '歧义（影子名）由 <span class="code-inline">_shadowed_names()</span> 列出并<b>大声失败</b>——'
+              '宁可不映射（告警）也不许错映射（静默点错）。',
+        call='<span class="code-inline">ai_explore()</span> -> '
+             '<span class="code-inline">_plan_to_steps(plan, items)</span> -> '
+             '<span class="code-inline">_match_item()</span>；每个动作落成 '
+             '<span class="code-inline">TestStep</span>。',
+        legend=['AI 语义名', 'explorer._match_item()', ('精确命中', 'g'), ('模糊留痕 / 歧义失败', 'r')]),
+
+    '2.2': dict(
+        logic='场景 yml 的自然语言 -> 步骤序列。<span class="code-inline">_build_planner_prompt()</span> 把「场景 + '
+              '控件清单 + DOM 上下文 + 必填控件块 + 声明等待块」组装成提示词；'
+              '<span class="code-inline">_parse_steps_text()</span> 解析结构化（function calling）或文本两种输出；'
+              '<span class="code-inline">_apply_semantic_calibration()</span> 做语义校准；'
+              '<span class="code-inline">_reject_login_steps()</span> 拒绝 AI 自编登录流程；'
+              '<span class="code-inline">reject_hardcoded_row_values()</span> 拒绝写死行内业务值；'
+              '<span class="code-inline">check_required_field_coverage()</span> 校验必填字段覆盖。'
+              '失败自动闭环：<span class="code-inline">HYBRID_AI_RETRY</span>（默认 2、上界 5）配 '
+              '<span class="code-inline">_should_retry_again()</span>（同因不重试，避免白烧 token）。'
+              '步骤还能<b>直接声明定位</b>（by+value），不依赖探测清单：'
+              '<span class="code-inline">generator._step_direct_locator_expr()</span>。',
+        call='<span class="code-inline">cmd_explore()</span> -> '
+             '<span class="code-inline">ai_explore()</span> -> '
+             '<span class="code-inline">_build_planner_prompt()</span> -> LLM -> '
+             '<span class="code-inline">_parse_steps_text()</span> -> '
+             '<span class="code-inline">_apply_semantic_calibration()</span> -> 校验族 -> ElementMap；'
+             '重试：<span class="code-inline">cmd_explore</span> 收 <span class="code-inline">_case_quality_reasons()</span> -> '
+             '<span class="code-inline">_should_retry_again()</span> -> 带 retry_feedback 再问一轮。',
+        legend=['场景文案', 'planner prompt', 'AI 产 steps', ('语义校准', 'y'), ('校验族（拒编登录/写死行值/必填）', 'r'), 'cases']),
+
+    '2.3': dict(
+        logic='步骤里的语义名 / 属性合成可执行定位表达式：'
+              '<span class="code-inline">generator._semantic_to_locator_expr(it, scope, by)</span> 按 Tier1 顺序产出；'
+              '带 <span class="code-inline">anchor</span> + <span class="code-inline">path</span> 的子元素优先产'
+              '「容器下钻」表达式（<span class="code-inline">scope_locate.path_expr()</span>），'
+              '静态拼不出（如 <span class="code-inline">col.header</span> 要运行时读表头）就退到'
+              '<span class="code-inline">_drill(p, anchor, path)</span> 运行期下钻。'
+              '<span class="code-inline">_primary_lambda()</span> 负责拼成 '
+              '<span class="code-inline">lambda p: p.&lt;expr&gt;</span> 并处理 occurrence（.nth）。',
+        call='<span class="code-inline">_render_pytest_case()</span> -> '
+             '<span class="code-inline">_semantic_to_locator_expr()</span> -> '
+             '<span class="code-inline">scope_locate.path_expr()</span> 或 '
+             '<span class="code-inline">_primary_lambda()</span>。',
+        legend=['语义名 + anchor/path', 'path_expr()', ('静态拼出 -> lambda p: ...', 'g'), ('拼不出 -> _drill() 运行期下钻', 'y')]),
+
+    '2.4': dict(
+        logic='人写的那部分（声明）由场景提供，框架不懂具体系统：'
+              '<span class="code-inline">scenario.load_scenario_file()</span> 解析 '
+              '<span class="code-inline">scenarios/**/*.yml</span> 的 pages / pre / auth / data / probe_url / '
+              'probe_pre。页面级前置 <span class="code-inline">_run_pre_actions()</span> 按可访问名依次点控件'
+              '（有些控件只在做了某个动作之后才存在）；登录前置 <span class="code-inline">login.ensure_logged_in()</span> '
+              '走接口拿 token 再 <span class="code-inline">install_token()</span> 注入 localStorage；'
+              '<span class="code-inline">ScenarioPage.probe_url_for()</span> 给「运行期才有值的页面」一个探测地址。',
+        call='<span class="code-inline">cmd_explore()</span> -> '
+             '<span class="code-inline">load_scenario_file()</span> / '
+             '<span class="code-inline">discover_scenarios()</span> -> '
+             '<span class="code-inline">_collect_pages_context(pages, auth)</span> -> '
+             '<span class="code-inline">_run_pre_actions()</span> / '
+             '<span class="code-inline">login.ensure_logged_in()</span> -> scan_page。',
+        legend=['场景 yml（pages/pre/auth/data/probe_url）', 'load_scenario_file()', ('_run_pre_actions()', 'y'), ('login.ensure_logged_in()', 'y'), '探测/执行']),
+
+    '3.1': dict(
+        logic='真实系统一般只有<b>顶层元素</b>有 data-testid，子元素没有埋点 -> 定位靠「锚点 + 容器内相对语义路径」。'
+              '探测端采集：<span class="code-inline">anchor.container_from_ancestors(chain)</span>（最近的'
+              '可锚定容器）+ <span class="code-inline">anchor.path_for_table_row()</span>（行锚 / 列 / 目标步）。'
+              '合成的表达式在 Tier1 里排第二（<span class="code-inline">_try_anchor_path()</span>，'
+              '在 test_id 之后、role+name 之前 —— 结构性锚定比裸语义更稳）；'
+              '跳过意图复验（它的消歧靠结构，不靠文本相似度）。',
+        call='<span class="code-inline">probe_page()</span> -> '
+             '<span class="code-inline">container_from_ancestors()</span> / '
+             '<span class="code-inline">path_for_table_row()</span>；'
+             '定位：<span class="code-inline">resolve_locator()</span> -> '
+             '<span class="code-inline">_try_anchor_path()</span> -> '
+             '<span class="code-inline">scope_locate.scope_locate()</span>。',
+        legend=['探针采集 anchor + path', 'Tier1._try_anchor_path()', 'scope_locate()', ('count == 1 才采用', 'g')]),
+
+    '3.2': dict(
+        logic='容器套容器（区域内表格、表单里分组）时路径仍能唯一：'
+              '<span class="code-inline">anchor.container_from_ancestors()</span> 从<b>由近到远</b>的祖先链里'
+              '挑<b>最近</b>的可锚定容器；<span class="code-inline">_container_kind()</span> 认 '
+              'table / dialog / form / region（region 含 section/article/nav/aside/main）。'
+              '没锚点信号时退回「按 kind 的 tag 取容器」，且要求 count == 1。',
+        call='<span class="code-inline">_ancestor_chain(loc)</span> -> '
+             '<span class="code-inline">container_from_ancestors(chain)</span> -> '
+             '<span class="code-inline">_container_kind()</span> / <span class="code-inline">_anchor_of()</span>。',
+        legend=['祖先链（由近到远）', 'container_from_ancestors()', ('最近的有信号容器', 'g'), ('无信号 -> 按 kind 取 tag（要求唯一）', 'y')]),
+
+    '3.3': dict(
+        logic='弹出层与可展开容器由<b>唯一探测入口</b> <span class="code-inline">page_scan.scan_page()</span> 收敛：'
+              '基础 <span class="code-inline">probe_page()</span> -> 可展开容器 '
+              '<span class="code-inline">expandable.expand_and_collect()</span>（藏在 display:none 菜单里的控件）'
+              '-> 弹窗/弹层 <span class="code-inline">explorer._try_collect_modal_items()</span> -> 编辑态/动态新增 '
+              '<span class="code-inline">editable.enter_editable_and_collect()</span> -> '
+              '<span class="code-inline">_merge_items()</span> 合并后统一重命名。'
+              '纯函数判据 <span class="code-inline">pick_expandable_opener()</span> / '
+              '<span class="code-inline">pick_verb_opener()</span> 负责「认出触发器」；'
+              '纪律是「<b>框架开的必须由框架关</b>」（<span class="code-inline">_close_open_modal()</span> / '
+              '<span class="code-inline">editable._restore()</span>）。',
+        call='<span class="code-inline">scan_page()</span> -> probe_page / expand_and_collect / '
+             '_try_collect_modal_items / enter_editable_and_collect -> _merge_items（合并后重命名）。',
+        legend=['scan_page()', 'probe_page', ('expand_and_collect（隐藏菜单）', 'y'), ('_try_collect_modal_items（弹层）', 'y'), ('enter_editable_and_collect（编辑态）', 'y'), '_merge_items']),
+
+    '3.4': dict(
+        logic='多页面场景下元素跨页可用；同名元素改成 <span class="code-inline">原名@页名</span> 消歧：'
+              '<span class="code-inline">probe.uniquify_across_pages()</span> 把只出现在一页的名字保持原名，'
+              '出现在多页的全部改名并记冲突（<span class="code-inline">name_source="page"</span>）。'
+              '运行期「语义名 -> 控件」的唯一权威来源是 explore 快照 '
+              '（<span class="code-inline">generate/probe_snapshot.py</span>）：AI 看的与跑的必须是同一份命名。',
+        call='<span class="code-inline">_collect_pages_context()</span> -> '
+             '<span class="code-inline">uniquify_across_pages()</span> -> 快照；'
+             '运行时 <span class="code-inline">probe_snapshot.load_snapshot()</span> / '
+             '<span class="code-inline">generator._probe_declared_pages()</span>。',
+        legend=['多页探测', 'uniquify_across_pages()', ('原名@页名', 'y'), 'explore 快照（名字权威来源）']),
+
+    '3.5': dict(
+        logic='探测清单兜不住时用属性直接定位：<span class="code-inline">generator._step_direct_locator_expr(by, value, '
+              'role_name)</span> 支持 by ∈ {label, title, placeholder, testid, role, css}。'
+              'select 的 index 语义 = <b>第 N 个非空选项</b>（跳过 <span class="code-inline">value=""</span> 的 placeholder）：'
+              '给值按值选、没给值选第一个真选项 —— <span class="code-inline">run/runner._run_step()</span> 与生成物 '
+              '<span class="code-inline">_harness._act()</span> 用<b>完全一致</b>的口径（同一能力不许两个语义）。',
+        call='<span class="code-inline">_step_direct_locator_expr()</span> -> '
+             '<span class="code-inline">_primary_lambda()</span>；执行 '
+             '<span class="code-inline">runner._run_step()</span> / 生成物 <span class="code-inline">_act()</span>。',
+        legend=['by + value', '_step_direct_locator_expr()', ('select 给值 -> 按值选', 'g'), ('不给值 -> 第 1 个非空选项（跳过 placeholder）', 'y')]),
+
+    '3.6': dict(
+        logic='<b>未实现（缺口）</b>：iframe 内以及跨 iframe 的控件识别与操作尚未落地。'
+              '<span class="code-inline">page_scan.scan_page()</span> 的注释已把「新增一步探测动作（例如 iframe 内控件）」'
+              '标注为未来只需改这一处的扩展点，但当前代码里没有任何 iframe 处理。'
+              '规格 <span class="code-inline">feature_spec.py</span> 对此打 <span class="code-inline">status="未实现"</span>。',
+        call='（无实现）—— 现状：探测/定位都在主框架内进行，未跨 frame 遍历。',
+        legend=[('iframe 内控件', 'r'), ('当前：未实现（如实标注）', 'r')]),
+
+    '3.7': dict(
+        logic='行锚 + 单元格定位。行锚：<span class="code-inline">anchor.pick_row_anchor(cells, table_cells)</span> '
+              '挑「整表内唯一的最短单元格文本」；列：<span class="code-inline">anchor.header_index()</span> / '
+              '<span class="code-inline">path_for_table_row()</span>。支持的 op 不只 click：'
+              '<span class="code-inline">generator._ROW_CELL_OPS</span> = '
+              '(click / click_new_tab / check / uncheck / fill)；列的指定方式 '
+              '<span class="code-inline">_CELL_BY_WHITELIST</span> = (field / header / index，index 从 1 起)。',
+        call='生成期 <span class="code-inline">_row_col_step()</span> -> '
+             '<span class="code-inline">_is_row_cell_step()</span>；执行期 '
+             '<span class="code-inline">_click_row_cell()</span> -> '
+             '<span class="code-inline">scope_locate.locate_in_scope()</span>（共用同一套唯一性口径）。',
+        legend=['row_text（行锚）', '+ cell_field/cell_by', '_click_row_cell()', 'locate_in_scope()', ('check/fill/click 都支持', 'g')]),
+
+    '4.1': dict(
+        logic='同名控件各有唯一名字（后缀消歧）并留痕：<span class="code-inline">probe.assign_semantic_names()</span> '
+              '在同名组里给每个控件带上 <span class="code-inline">@上下文</span>（ctx_token，用列表项首片段），'
+              '拿不到上下文才退回 <span class="code-inline">_N</span>；留痕字段 base_name / ctx_token / name_source / '
+              'base_conflict。用例若引用裸名，质量闸当场拦下（fail loud）。'
+              '另一道闸是<b>容器收窄</b> <span class="code-inline">locator_bridge._narrow_by_container()</span>：'
+              '多个同名候选按 probe 采到的容器标题<b>确定性排除</b>，恰好剩 1 个才用（绝不「多个里挑一个」）。',
+        call='<span class="code-inline">probe_page()</span> / <span class="code-inline">_merge_items()</span> -> '
+             '<span class="code-inline">assign_semantic_names()</span>；'
+             '定位 <span class="code-inline">resolve_locator()</span> 命中多个 -> '
+             '<span class="code-inline">_narrow_by_container()</span>。',
+        legend=['同名控件', 'assign_semantic_names()', ('base@上下文（消歧）', 'y'), ('容器收窄（只排除）', 'y'), ('唯一 or 失败', 'r')]),
+
+    '4.2': dict(
+        logic='不锚容器时的整页序号定位 —— 处理同名按钮分布在不同区域：用例显式声明 '
+              '<span class="code-inline">scope="page"</span> 时，'
+              '<span class="code-inline">_semantic_to_locator_expr(scope="page")</span> 直接在全页范围用元素自身的 '
+              'role+name，<span class="code-inline">_page_scope_expr()</span> 负责把容器段剥掉；'
+              '再配 <span class="code-inline">occurrence</span>（第 N 个）。框架不替用户猜，只有用例显式声明才走这条路。',
+        call='<span class="code-inline">_semantic_to_locator_expr(it, scope="page")</span> -> '
+             '<span class="code-inline">_page_scope_expr()</span> -> '
+             '<span class="code-inline">_primary_lambda(expr, occurrence)</span>。',
+        legend=['同名按钮（不同区域）', ('scope="page" 显式声明', 'y'), '全页 role+name', 'occurrence 指定第 N 个']),
+
+    '4.3': dict(
+        logic='行锚的选取从「整行文本」改成「整表内唯一的最短单元格文本」：'
+              '<span class="code-inline">anchor.pick_row_anchor(cells, table_cells)</span> 只保留整表内出现恰 1 次的候选，'
+              '取最短者（等长取列序最小）。挑不到 -> 返回 None（绝不退化猜整行 / 第一列 / 第一行），'
+              '由生成期显式告警「该行锚未取得稳定值」。',
+        call='<span class="code-inline">probe_row_fields()</span> / <span class="code-inline">_table_context()</span> -> '
+             '<span class="code-inline">pick_row_anchor()</span> -> '
+             '<span class="code-inline">path_for_table_row(row_text=...)</span>。',
+        legend=['整行文本（旧）', 'pick_row_anchor()', ('整表内唯一的最短单元格文本', 'g'), ('挑不到 -> 生成期告警', 'r')]),
+
+    '4.4': dict(
+        logic='锚点内表单字段的 target 步不能落到 <span class="code-inline">get_by_text</span>（那会选到标签而不是输入框）：'
+              'probe 按<b>元素类型</b>挑最稳的信号产 target 步 —— 表单控件用 '
+              'placeholder -> label -> title -> text；图标按钮（文字就是 "..."）优先用 title。'
+              '<span class="code-inline">locator_bridge._intent_verify()</span> 在 Tier1 命中后回读元素实际语义做复验，'
+              '防「名字对、命中错」。',
+        call='<span class="code-inline">probe_page()</span>（按 tag 选 target 步）-> 生成 '
+             '<span class="code-inline">{"axis":"target", ...}</span>；'
+             '定位 <span class="code-inline">_intent_verify()</span> 复验。',
+        legend=['锚点内字段', ('按元素类型挑信号（placeholder/label/title）', 'y'), ('不落到 get_by_text', 'r'), '唯一命中']),
+
+    '5.1': dict(
+        logic='三层各司其职：<b>用例</b> <span class="code-inline">cases/*.json</span>（意图：op 操作类型 + desc 描述 + '
+              'element 语义 + value + asserts[]）；<b>脚本</b> '
+              '<span class="code-inline">scripts/generated/&lt;场景&gt;/&lt;case_id&gt;.py</span>（逻辑：'
+              '<span class="code-inline">_render_pytest_case()</span> 渲染）；<b>数据</b> '
+              '<span class="code-inline">scripts/datasets/&lt;case_id&gt;.json</span>（'
+              '<span class="code-inline">_extract_data()</span> 把字面值抽离）。'
+              '同一场景多组数据 -> 多条独立用例（<span class="code-inline">_scenario_data_sets()</span>），报告独立一行、失败可定位。',
+        call='<span class="code-inline">generate_scripts()</span> -> '
+             '<span class="code-inline">_render_pytest_case()</span> + '
+             '<span class="code-inline">_extract_data()</span> + '
+             '<span class="code-inline">_scenario_data_sets()</span>。',
+        legend=['cases(意图)', 'scripts(逻辑)', ('datasets(数据)', 'y'), '多组数据 -> 多条用例']),
+
+    '5.2': dict(
+        logic='占位符没被替换时必须报错，不许把 <span class="code-inline">{占位符}</span> 原样当字面量跑：'
+              '<span class="code-inline">generator._validate_data_sets()</span> 校验每组数据与占位符一一对应，'
+              '不齐就抛 <span class="code-inline">DataSetsError</span> -> 拒绝落盘、exit 2；'
+              '<span class="code-inline">data_driven.format_template()</span> 解析内置动态占位符（date/datetime/uuid...）'
+              '与 ctx 静态变量，未命中保留原样由调用方决定；'
+              '<span class="code-inline">generator._freeze_placeholders()</span> 在运行时一次性固化（填表值 == 断言值）。',
+        call='<span class="code-inline">generate_scripts()</span> -> '
+             '<span class="code-inline">_scenario_data_sets()</span> -> '
+             '<span class="code-inline">_validate_data_sets()</span>；'
+             '运行 <span class="code-inline">data_driven.format_template()</span> / '
+             '<span class="code-inline">_freeze_placeholders()</span>。',
+        legend=['数据组', '_validate_data_sets()', ('占位符一一对应？', 'y'), ('不齐 -> exit 2（不静默）', 'r')]),
+
+    '5.3': dict(
+        logic='数据里的换行 / 引号等特殊字符不能破坏生成的 Python 源码：'
+              '<span class="code-inline">generator._py_str()</span> 渲染字符串字面量、'
+              '<span class="code-inline">_brace_safe()</span> 转义要嵌进 f-string 的大括号、'
+              '<span class="code-inline">_gbk_safe()</span> 把 GBK 编不了的装饰字符降级成 ASCII 等价物'
+              '（表 <span class="code-inline">_GBK_CHAR_FALLBACK</span>，无等价物的剔除并出声）、'
+              '<span class="code-inline">_collapse_ws()</span> 归一 accessible name 的多余空白。',
+        call='<span class="code-inline">_render_pytest_case()</span> -> '
+             '<span class="code-inline">_py_str()</span> / <span class="code-inline">_brace_safe()</span> / '
+             '<span class="code-inline">_gbk_safe()</span>。',
+        legend=['数据含换行/引号', '_py_str() / _brace_safe()', ('GBK 编不了 -> 降级', 'y'), '源码不被破坏']),
+
+    '5.4': dict(
+        logic='场景变了要重新生成 —— 两个触发源都要认：'
+              '<span class="code-inline">generate_scripts(changed_only=True, only=[...])</span> 比对 4 个指纹'
+              '（case_fingerprint / scenario_fingerprint / probe_fingerprint / template_fingerprint，记在 '
+              '<span class="code-inline">scripts/generated/index.json</span>）：<b>场景指纹变</b>（人改了场景）或'
+              '<b>模板指纹变</b>（框架改了渲染器）都会触发重生成；全同且脚本在 -> 跳过；'
+              '<span class="code-inline">--only</span> 指定用例、<span class="code-inline">--force</span> 强制全量；'
+              'index 不认识的孤儿脚本被清掉。',
+        call='<span class="code-inline">cmd_generate()</span> -> '
+             '<span class="code-inline">generate_scripts()</span> -> 指纹比对 -> '
+             '变化者 <span class="code-inline">_render_pytest_case()</span>，未变者进 skipped。',
+        legend=['4 个指纹比对', ('场景/模板 指纹变', 'y'), ('重生成该条', 'g'), ('全同 -> 跳过（增量）', 'y')]),
+
+    '5.5': dict(
+        logic='步骤缺可选字段（如 select 不给 value）时脚本照样生成，绝不因单个字段缺失崩掉整批：'
+              '渲染时 <span class="code-inline">st.get("value")</span> 为空就不写 value；'
+              '运行期 <span class="code-inline">_act()</span> 走「选第一个非空选项」的分支（'
+              '<span class="code-inline">_real</span> 过滤 <span class="code-inline">value=""</span> 的占位项）。',
+        call='<span class="code-inline">_render_pytest_case()</span>（缺 value 分支）-> '
+             '<span class="code-inline">_act()</span>（select 无 value -> index 分支）。',
+        legend=['步骤缺可选字段', ('渲染不崩', 'g'), 'select 无 value -> 选第 1 个非空项']),
+
+    '6.1': dict(
+        logic='<b>代码已存在、但零判据</b>：<span class="code-inline">run/healer.py</span> 的 '
+              '<span class="code-inline">Healer.try_heal()</span> 在定位失败时自愈 —— '
+              'Level-A <span class="code-inline">_negotiate()</span> 放宽阈值重定位'
+              '（<span class="code-inline">resolve_locator(tier2_threshold * 0.75, tier2_gap * 0.6)</span>，确定性、无 LLM）；'
+              'Level-B <span class="code-inline">_llm_renegotiate()</span> 请 LLM 重猜（需 key，无 key 自动跳过）；'
+              '每次自愈落 <span class="code-inline">output/heals/heals_*.json|.md</span> 成<b>可审 diff</b>'
+              '（<span class="code-inline">dump()</span>），并用业务后置断言裁决成 '
+              '<b>recovered / real_bug / failed</b> 三态（绝不静默改写脚本）。'
+              'runner 侧接入：<span class="code-inline">_run_step()</span> 里 resolve 失败 -> '
+              '<span class="code-inline">healer.try_heal()</span>；指纹自愈 -> <span class="code-inline">record_heal()</span>。',
+        call='<span class="code-inline">runner._run_step()</span> -> '
+             '<span class="code-inline">resolve_locator()</span> 失败 -> '
+             '<span class="code-inline">Healer.try_heal()</span> -> '
+             '<span class="code-inline">_negotiate()</span> -> '
+             '<span class="code-inline">_record()</span> / <span class="code-inline">dump()</span>。',
+        legend=['定位失败', ('A 级放宽阈值', 'y'), ('B 级 LLM 重猜（需 key）', 'y'), ('recovered / real_bug / failed', 'r')],
+        diff='[!] 与规格一致但需说明：<span class="code-inline">feature_spec.py</span> 把特性 6 标为 '
+             '<span class="code-inline">规划中（零判据）</span> —— 指的是「还没有自动化判据」，'
+             '不等于「没实现」：代码里 healer 是<b>已实现</b>的。已实现 != 已验证，这是一条待补的缺口。'),
+
+    '7.1': dict(
+        logic='二类调度的统一实现是 <span class="code-inline">tests/_runner/run_verifications.py</span>：'
+              '全量跑二类（端到端、需 demo），带<b>内存闸</b> —— 内存不足时如实 SKIP 并 exit 3，而不是假绿。'
+              '并发数由 <span class="code-inline">common/limits.safe_workers()</span> 按 '
+              '<span class="code-inline">cap = max(1, min((MemAvailable - RESERVE) / PER_WORKER, CPU))</span> 裁定。',
+        call='<span class="code-inline">run_verifications.py</span> -> '
+             '<span class="code-inline">limits.safe_workers()</span> -> 逐脚本子进程 -> 汇总退出码。',
+        legend=['run_verifications.py', 'safe_workers() 预算', ('内存不足 -> SKIP + exit 3', 'y'), '汇总']),
+
+    '7.2': dict(
+        logic='一类的红绝不能由二类的资源闸门造成（否则一类红灯失去可信度）：一类（'
+              '<span class="code-inline">tests/</span> 下的框架自测）刻意<b>与 demo 解耦</b>、秒级、可离线跑，'
+              '<span class="code-inline">run_acceptance.py</span> 的第 [2] 步 '
+              '<span class="code-inline">pytest tests/ -q</span> 不依赖任何资源闸门或浏览器。',
+        call='<span class="code-inline">run_acceptance.py</span> [2] -> <span class="code-inline">pytest tests/ -q</span>'
+             '（与 demo / 内存闸无关）。',
+        legend=['一类：tests/ 框架自测', ('不依赖 demo / 浏览器', 'g'), ('与二类资源闸解耦', 'g')]),
+
+    '7.3': dict(
+        logic='二类 runner 冒烟：<span class="code-inline">tests/_runner/run_verifications.py</span> 连得上、'
+              '能列出计划。环境不满足（如没 demo）时<b>跳过并说明</b>，而不是假红 —— 跳过用 exit 3 与「通过」区分。',
+        call='<span class="code-inline">run_verifications.py --list</span> -> 计划；环境不满足 -> SKIP。',
+        legend=['runner 起来', ('环境不满足 -> SKIP + 说明', 'y'), ('绝不假红', 'r')]),
+
+    '7.4': dict(
+        logic='慢机器 / 高并发目标下用例依然全绿（下行区就绪信号）：二类 '
+              '<span class="code-inline">tests/特性7-并发与资源安全/verify_slow_target.py</span> '
+              '在慢代理 300ms/请求下跑 6 条关键用例；内存不足时如实 SKIP 并 exit 3。',
+        call='<span class="code-inline">verify_slow_target.py</span> -> 慢代理 -> 用例 -> 全绿判定。',
+        legend=['慢目标（300ms/请求）', '6 条关键用例', ('全绿', 'g'), ('内存不足 -> SKIP exit 3', 'y')]),
+
+    '8.1': dict(
+        logic='两级键策略：<b>严格键</b> <span class="code-inline">cassette_key()</span> = '
+              'sha256(system + NUL + prompt) 前 16 位（逐字一致，刻意不含模型名 —— 否则「A 机录、B 机放」永远不命中）；'
+              '<b>结构键</b> <span class="code-inline">struct_key()</span> 只看「场景 + 页面 + 控件语义骨架」，'
+              '配 <span class="code-inline">normalize_values()</span> 把引号内字面值与花括号占位符折成 '
+              '<span class="code-inline">&lt;VAL&gt;</span>、<span class="code-inline">element_fingerprint()</span> '
+              '折数字，实现「换数据 / 参数化都不失效」。多键兼容：查询同时试新算法与旧算法'
+              '（<span class="code-inline">struct_key_prev()</span> / <span class="code-inline">struct_key_legacy()</span>），'
+              '升级不会让已有录像集体失效。',
+        call='<span class="code-inline">Cassette.lookup(prompt, struct_key_value=[...])</span> -> 先严格键 -> '
+             '再结构键（命中时大声告警）；<span class="code-inline">cassette_key()</span> / '
+             '<span class="code-inline">struct_key()</span> 算键。',
+        legend=['prompt', ('严格键（逐字）', 'g'), ('结构键兜底（大声告警）', 'y'), '命中']),
+
+    '8.2': dict(
+        logic='录像体检（零成本，不需 key / 外网）：<span class="code-inline">build_tools/check_cassettes.py</span> '
+              '抠出场景段、判定「每个场景是否都有可用录像」，缺录像要能报出来；'
+              '打包前作为<b>出厂闸门</b>强制跑（覆盖不全不产包）。',
+        call='<span class="code-inline">check_cassettes.py</span> -> 逐场景 -> 覆盖判定 -> 报告/非 0 退出。',
+        legend=['场景清单', 'check_cassettes.py', ('每场景有可用录像？', 'y'), ('缺 -> 报出来', 'r')]),
+
+    '8.3': dict(
+        logic='录制与回放契约（能录、能放、放得对：不联网、不要 key）：'
+              '<span class="code-inline">llm_cassette.Cassette(MODE_RECORD / MODE_REPLAY)</span>、'
+              '<span class="code-inline">store()</span> / <span class="code-inline">lookup()</span>；'
+              'explorer 侧 <span class="code-inline">_save_to_cassette()</span> / '
+              '<span class="code-inline">_replay_from_cassette()</span>；'
+              '默认目录 <span class="code-inline">output/llm_cassettes</span>（在 .gitignore 里，录像含 prompt 全文，不入库）。',
+        call='<span class="code-inline">cmd_explore()</span> -> Cassette -> '
+             '<span class="code-inline">ai_explore()</span> -> _save_to_cassette / _replay_from_cassette。',
+        legend=['--llm-record', ('录：prompt + 回答 + 键', 'g'), '--llm-cassette', ('放：不联网、不要 key', 'g')]),
+
+    '8.4': dict(
+        logic='LLM 偶发失败要退避重试，不许把抖动当失败：'
+              '<span class="code-inline">explorer._get_llm_text()</span> 按 '
+              '<span class="code-inline">HYBRID_LLM_ATTEMPTS</span>（默认 3）重试，间隔 '
+              '<span class="code-inline">await asyncio.sleep(1.5 * attempt)</span>；'
+              '<span class="code-inline">_llm_failure_hint()</span> 对限流给「稍后重试 / 调大 attempts」的提示。',
+        call='<span class="code-inline">ai_explore()</span> -> <span class="code-inline">_get_llm_text()</span> -> '
+             '重试循环（退避）-> 成功 / 耗尽后如实失败。',
+        legend=['LLM 抖动', ('退避重试（默认 3 次）', 'y'), ('成功 -> 继续', 'g'), ('耗尽 -> 如实失败', 'r')]),
+
+    '9.1': dict(
+        logic='布局与命名契约：tests/ 与生成物的目录布局、跨平台路径拼接、命名空间、生成物形态都由判据钉住'
+              '（<span class="code-inline">test_test_layout_contract.py</span> / '
+              '<span class="code-inline">test_generated_layout_contract.py</span> / '
+              '<span class="code-inline">test_path_join_contract.py</span> 等）。',
+        call='判据直接读磁盘布局与生成物文本做断言（秒级、不依赖 demo）。',
+        legend=['布局 / 路径 / 命名空间契约', ('坏了就红', 'r')]),
+
+    '9.2': dict(
+        logic='质量闸：用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，且<b>不许误伤</b>。'
+              '红线实现：<span class="code-inline">case_builder.case_errors()</span>（换页证据没区分力等假绿）、'
+              '<span class="code-inline">case_warnings()</span>（断言 = 输入回显 / 猜出来的运行时值）、'
+              '<span class="code-inline">generator._gate_false_green()</span>（生成前拦）。'
+              '<span class="code-inline">test_no_false_positive_blocks_ai.py</span> 专门守「闸门不许误伤 AI 链路」。',
+        call='<span class="code-inline">generate_scripts()</span> -> <span class="code-inline">_gate_false_green()</span>；'
+             '落盘前 <span class="code-inline">case_errors()</span> / <span class="code-inline">case_warnings()</span>。',
+        legend=['用例 / 生成 / 新鲜度 / 同步闸', ('坏就红', 'r'), ('宁漏不误伤', 'y')]),
+
+    '9.3': dict(
+        logic='跨平台路径 / 内存探测 / UTF-8 与 cp936：<span class="code-inline">config._repo_root()</span> '
+              '按标记文件 pyproject.toml 找仓库根（不写死 parents[N]）；'
+              '<span class="code-inline">common/limits.mem_available_mb()</span> 在非 Linux 退到 Windows '
+              'GlobalMemoryStatusEx；<span class="code-inline">cli.force_stdio()</span> 统一 UTF-8；'
+              '<span class="code-inline">generator._gbk_safe()</span> 保证生成物源码不出现 GBK 编不了的字符。',
+        call='<span class="code-inline">main()</span> -> <span class="code-inline">force_stdio()</span>；'
+             '各处 -> <span class="code-inline">config._repo_root()</span> / '
+             '<span class="code-inline">limits.mem_available_mb()</span>。',
+        legend=['跨平台路径', ('UTF-8 / cp936', 'y'), ('源码不许有 GBK 编不了的字符', 'r')]),
+
+    '9.4': dict(
+        logic='交付包与文档同步：<span class="code-inline">build_tools/pack_release.py</span> 打包（内容完整、只留一份 '
+              'README）、<span class="code-inline">build_tools/build_html.py</span> 是<b>版本号单一来源</b>且生成'
+              '<b>可复现</b>（换哈希种子逐字节一致）、<span class="code-inline">build_tools/build_feature_map.py</span> '
+              '渲染特性映射文档。判据把「文档与代码一致」钉成红。',
+        call='<span class="code-inline">build_html.build()</span> -> docs/training.html；'
+             '<span class="code-inline">build_feature_map.render()</span> -> docs/feature_map.md；'
+             '<span class="code-inline">verify_html_sync.py</span> 校验可复现 + 与代码一致。',
+        legend=['pack_release.py', 'build_html.py（版本单一来源）', ('可复现 + 与代码同步', 'g'), '判据 test_docs_sync']),
+
+    '9.5': dict(
+        logic='日志 / 产物保留策略与健康检查：<span class="code-inline">common/retention.prune_snapshots()</span> '
+              '清快照、<span class="code-inline">prune_runs()</span> 管 run/verify（保留最近 N 个并集 N 天；'
+              '<span class="code-inline">.protected_runs</span> 显式保护；<b>只有能证明成功才整删</b>，其余只瘦身）；'
+              '健康检查 <span class="code-inline">test_artifacts_health.py</span> 对坏产物给人话诊断。',
+        call='<span class="code-inline">cli cmd_prune()</span> -> '
+             '<span class="code-inline">retention.prune_snapshots()</span> / '
+             '<span class="code-inline">prune_runs()</span>；'
+             '<span class="code-inline">run_is_proven_success()</span> 决定整删或瘦身。',
+        legend=['产物/日志', 'retention 分级清理', ('能证明成功才整删', 'y'), ('其余瘦身 / 显式保护', 'g')]),
+
+    '9.6': dict(
+        logic='点击后等就绪、等文本刷新策略、选择器生效、<b>动作后置校验（做了 != 生效了）</b>：'
+              '<span class="code-inline">run/waits.wait_after_action()</span> 先确认真的发生了导航、再等就绪标记'
+              '（否则旧文档的标记会假满足）；<span class="code-inline">common/declared_wait</span> 让'
+              '<b>场景声明的业务时长优先于框架默认</b>；生成物 <span class="code-inline">_wait_ready()</span> / '
+              '<span class="code-inline">_assert_wait_text()</span> / '
+              '<span class="code-inline">_check_effect()</span>（业务动词点击后判「动作是否真的生效」）。',
+        call='<span class="code-inline">_act()</span> -> <span class="code-inline">_wait_after_action()</span>；'
+             '<span class="code-inline">_check_effect()</span> -> 回读提示区 / 计数变化；'
+             '<span class="code-inline">declared_wait.effective_wait_ms()</span> 定等待时长。',
+        legend=['动作（click/...）', ('确认导航 -> 等就绪标记', 'y'), ('动作后置校验（做了 != 生效了）', 'r'), 'web-first 断言']),
+
+    '9.7': dict(
+        logic='用例替换不许破坏结构；闸门自身不许互相耦合：'
+              '<span class="code-inline">test_case_replacement_safety.py</span> 与 '
+              '<span class="code-inline">test_no_gate_coupling.py</span> 分别钉住「替换安全」与「闸门解耦」。',
+        call='判据静态/秒级校验（读生成物与闸门源码）。',
+        legend=['用例替换', ('不破坏结构', 'g'), ('闸门之间不互相耦合', 'g')]),
+
+    '9.8': dict(
+        logic='特性/子特性/用例归属的规格与磁盘<b>双向一致</b>：'
+              '<span class="code-inline">feature_spec.py</span> 是唯一来源，'
+              '<span class="code-inline">build_feature_map.py</span> 渲染 '
+              '<span class="code-inline">docs/feature_map.md</span>，'
+              '<span class="code-inline">test_feature_spec_contract.py</span> 校验「规格里列的文件必须存在、'
+              '磁盘上的用例必须有归属、编号规范、目录不漂移、文档与规格同步」。本章即由该规格驱动渲染。',
+        call='<span class="code-inline">feature_spec.FEATURES</span> -> build_feature_map.render() -> '
+             'docs/feature_map.md；build_html 本段 -> 本章。',
+        legend=['feature_spec.py（唯一来源）', ('双向一致', 'g'), ('不一致 -> 红', 'r')]),
+
+    '10.1': dict(
+        logic='退出码能区分好坏：成功 0 / 有用例失败 1 / 环境或参数问题 2 / 有跳过 3 / 没匹配到 5 —— '
+              '<b>绝不静默成功</b>。<span class="code-inline">main()</span> 会'
+              '<b>采纳</b>子命令返回值（<span class="code-inline">if isinstance(rc, int) and rc != 0: '
+              'raise SystemExit(rc)</span>），修掉过「报了错却 exit 0」的坑。',
+        call='<span class="code-inline">main()</span> -> 分派各 <span class="code-inline">cmd_*()</span> -> '
+             '收返回值 -> <span class="code-inline">raise SystemExit(rc)</span>。',
+        legend=['0 成功', ('1 用例失败', 'r'), ('2 环境/参数', 'r'), ('3 有跳过（不算通过）', 'y'), '5 没匹配到']),
+
+    '10.2': dict(
+        logic='未知 / 错位参数一律报错 + 非 0 退出，绝不静默忽略：'
+              '<span class="code-inline">_validate_args(cmd, rest)</span> 对照 '
+              '<span class="code-inline">FLAG_SPECS</span>（值语义 value/opt/纯开关）与 '
+              '<span class="code-inline">CMD_FLAGS</span>（每个子命令允许哪些）；'
+              '不认识的用 <span class="code-inline">difflib.get_close_matches()</span> 给「是不是想写 X？」；'
+              '已移除的用 <span class="code-inline">REMOVED_FLAGS</span> 给替代做法。',
+        call='<span class="code-inline">main()</span> -> <span class="code-inline">_validate_args()</span> -> '
+             '<span class="code-inline">_fail()</span> -> <span class="code-inline">SystemExit(2)</span>。',
+        legend=['FLAG_SPECS + CMD_FLAGS', '_validate_args()', ('未知/错位/缺值 -> exit 2', 'r'), '就近提示']),
+
+    '10.3': dict(
+        logic='新增子命令 / 参数必须自动出现在 <span class="code-inline">--help</span> 总览里：'
+              '<span class="code-inline">_print_help()</span> 的每一行都由代码生成 —— 子命令清单与每个子命令的全部参数'
+              '取自 <span class="code-inline">CMD_FLAGS</span>（唯一注册表），一句话说明取自各子命令函数 docstring 首行'
+              '-> 人只需写那句 docstring。',
+        call='<span class="code-inline">main()</span>（无参/--help）-> <span class="code-inline">_print_help()</span> '
+             '-> 遍历 <span class="code-inline">CMD_FLAGS</span> + inspect.getdoc()。',
+        legend=['注册一个新参数', ('总览自动带上它', 'g'), ('漏了 -> 判据红', 'r')]),
+
+    '10.4': dict(
+        logic='<span class="code-inline">setup --check</span> 的退出码能区分环境好坏（只读体检，不安装）：'
+              '<span class="code-inline">cmd_setup()</span> 依次查依赖 -> 浏览器 -> 真启一次 chromium 自检，'
+              '任一步失败即退出码 2 并把原始输出尾部打出来（不静默）。',
+        call='<span class="code-inline">cmd_setup(argv)</span> -> 依赖检查 -> '
+             '<span class="code-inline">browser.ensure_browser_installed()</span> -> 自检 -> 退出码。',
+        legend=['setup --check', ('依赖 / 浏览器 / 自检', 'y'), ('好 -> 0', 'g'), ('坏 -> 2', 'r')]),
+
+    '10.5': dict(
+        logic='文档/提示/培训页的主推路径 = <b>AI 链路</b>；手搓用例降级为调试与回归辅助。'
+              '为此把常用可调项开成 CLI 参数（<span class="code-inline">--ai-retry</span> / '
+              '<span class="code-inline">--timeout</span> / <span class="code-inline">--strict-locate</span> ...）并由 '
+              '<span class="code-inline">cli config</span>（<span class="code-inline">TUNABLE_CATALOG</span>）一屏可见，'
+              '让「有哪些旋钮、当前多少、从哪来」不用翻源码。',
+        call='<span class="code-inline">main()</span> -> <span class="code-inline">cmd_config()</span> -> '
+             '遍历 <span class="code-inline">TUNABLE_CATALOG</span>；'
+             '<span class="code-inline">ENV_TO_FLAG</span> 把 CLI 值落进环境变量（CLI > env > 默认）。',
+        legend=['AI 链路（主推）', ('手搓用例（调试/回归辅助）', 'y'), 'cli config 一屏可调项']),
+}
+
+
+def _feat_overview_table(features) -> str:
+    subs = sum(len(f.get('subs', [])) for f in features)
+    o = ['  <div class="card">',
+         '    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：' + str(len(features))
+         + ' 特性 / ' + str(subs) + ' 子特性）</h4>',
+         '    <table class="tbl"><tr><th style="width:46px">No</th><th style="width:230px">特性</th>'
+         '<th style="width:110px">key</th><th style="width:64px">子特性</th><th>目标</th></tr>']
+    for f in features:
+        o.append('    <tr><td>' + str(f['no']) + '</td><td><b>' + _esc(f['name']) + '</b></td>'
+                 '<td><span class="code-inline">' + _esc(f.get('key', '')) + '</span></td>'
+                 '<td>' + str(len(f.get('subs', []))) + '</td><td>' + _esc(f.get('goal', '')) + '</td></tr>')
+    o.append('    </table>')
+    o.append('  </div>')
+    return '\n'.join(o)
+
+
+def _subfeat_block(s) -> str:
+    no = str(s['no'])
+    impl = _FEAT_IMPL.get(no, {})
+    st = (' <span class="code-inline">[' + str(s.get('status')) + ']</span>') if s.get('status') else ''
+    o = ['    <div class="subfeat">']
+    o.append('      <h5 class="subfeat-title" data-sub="' + no + '">'
+             '<span class="sno">' + no + '</span>' + _esc(s.get('name', '')) + st + '</h5>')
+    o.append('      <p class="codesrc"><b>目标：</b>' + _esc(s.get('goal', '')) + '</p>')
+    if impl.get('logic'):
+        o.append('      <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>' + impl['logic'] + '</p>')
+    if impl.get('call'):
+        o.append('      <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b>' + impl['call'] + '</p>')
+    if impl.get('legend'):
+        o.append('      ' + _feat_flow(impl['legend']))
+    if impl.get('diff'):
+        o.append('      <div class="diffbox">' + impl['diff'] + '</div>')
+    c1 = _chips(s.get('class1') or [], 'c1')
+    c2 = _chips(s.get('class2') or [], 'c2')
+    o.append('      <p class="codesrc"><b>证据 · 一类（框架自测）：</b>' + (c1 or '无')
+             + '<br><b>证据 · 二类（特性自证）：</b>' + (c2 or '无') + '</p>')
+    o.append('    </div>')
+    return '\n'.join(o)
+
+
+def _feat_block(f) -> str:
+    n = f['no']
+    o = ['  <section class="feat">']
+    tag = (' <span class="fkey">[' + _esc(f.get('status')) + ']</span>') if f.get('status') else ''
+    o.append('    <h4 class="feat-title" data-feat="' + str(n) + '">'
+             '<span class="fno">特性 ' + str(n) + '</span>' + _esc(f.get('name', ''))
+             + ' <span class="fkey">' + _esc(f.get('key', '')) + '</span>' + tag + '</h4>')
+    o.append('    <p class="feat-goal"><b>目标：</b>' + _esc(f.get('goal', ''))
+             + '　<b>目录：</b><span class="code-inline">tests/' + _esc(f.get('dir', '')) + '/</span></p>')
+    fl = _FEAT_LEGEND.get(n)
+    if fl:
+        o.append('    <p class="codesrc" style="margin:2px 0 0">图例 · ' + _esc(fl[0]) + '</p>')
+        o.append('    ' + _feat_flow(fl[1]))
+    for s in f.get('subs', []):
+        o.append(_subfeat_block(s))
+    o.append('  </section>')
+    return '\n'.join(o)
+
+
+def _feature_chapter() -> str:
+    from framework.tools.spec.feature_spec import FEATURES
+    subs = sum(len(f.get('subs', [])) for f in FEATURES)
+    o = ['<!-- ========== 7. 框架特性设计实现说明（按特性/子特性 · 以代码为基准） ========== -->']
+    o.append('<section>')
+    o.append('  <h2 class="sec-title"><span class="n">7</span>框架特性设计实现说明（'
+             + str(len(FEATURES)) + ' 特性 / ' + str(subs) + ' 子特性）</h2>')
+    o.append('  <p class="sec-sub">第 6 章讲「一条主线上有什么」；本章按 <b>特性 -&gt; 子特性</b> 横向拆开：'
+             '每个子特性给「<b>关键实现逻辑</b> + <b>函数调用关系</b> + <b>证据（判据文件）</b>」，并配一张<b>图例</b>。'
+             '编号 / 名称 / 目标 / 判据归属<b>直接读单一来源</b> '
+             '<span class="code-inline">framework/tools/spec/feature_spec.py</span> 渲染'
+             '（它同时被 <span class="code-inline">build_tools/build_feature_map.py</span> 渲染成 '
+             '<span class="code-inline">docs/feature_map.md</span>）；'
+             '实现逻辑以 <span class="code-inline">framework/</span> 下的<b>真实代码为准</b>。</p>')
+    o.append('  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>'
+             '(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、'
+             '其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>' + str(len(FEATURES))
+             + ' 特性 / ' + str(subs) + ' 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>'
+             '(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，'
+             '属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>'
+             '(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，'
+             '不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>')
+    o.append('  <div class="card">' + _svg_callmap() + '</div>')
+    o.append(_feat_overview_table(FEATURES))
+    for f in FEATURES:
+        o.append(_feat_block(f))
+    o.append('  <div class="card" style="border-top:4px solid var(--brand);margin-top:18px">'
+             '<h4>[pin] 读本章的顺序建议（新手路线）</h4>'
+             '<p style="font-size:.94rem;line-height:1.8">'
+             '1 先读 <b>特性 1</b>（两条链路怎么汇合）-&gt; 2 再读 <b>特性 5</b>'
+             '（用例/脚本/数据怎么分工，这是你日常改的东西）-&gt; '
+             '3 跑一遍第 6 章图例(0) 的六个阶段对照代码 -&gt; 4 遇到点不中元素时回读 <b>特性 2 / 3 / 4</b> -&gt; '
+             '5 交付或换机器前读 <b>特性 8</b>（录像与出厂闸门）-&gt; 6 改完代码用 <b>特性 9 / 10</b> 的入口自检。</p>'
+             '<p class="codesrc">判据条数以实跑输出为准（'
+             '<span class="code-inline">pytest tests/ -q</span> · '
+             '<span class="code-inline">python tests/_runner/run_acceptance.py</span>）；'
+             '本页条数是生成时从测试文件数出来的（与 build_feature_map.py 同口径）。</p>'
+             '</div>')
+    o.append('</section>')
+    return '\n'.join(o)
+
+
+# ===================== 右侧章节大纲（TOC）：注入 id + 生成锚点 + 滚动联动 =====================
+
+_HEAD_RE = None
+
+
+def _inject_toc(page: str) -> str:
+    """给每个章节/子章节分配锚点 id，生成右侧大纲，并替换 `<!--TOC_PLACEHOLDER-->`。
+
+    层级：h2（章） -&gt; h3（一般子章节）/ h4.feat-title（特性） -&gt; h5.subfeat-title（子特性）。
+    默认展开到「子章节」（2026-10-10 用户明令：右侧大纲要能直接点到任意子章节）：
+    子特性列表（.toc-l3）初始即带 `open`，caret / 全局按钮可收起；
+    折叠状态下子项不可点击（Playwright 点它会 TimeoutError）—— 那等于"跳不到子章节"。
+    """
+    import re as _re
+    head = _re.compile(
+        r'<h2 class="sec-title"><span class="n">([^<]*)</span>(.*?)</h2>'
+        r'|<h3([^>]*)>(.*?)</h3>'
+        r'|<h4 class="feat-title" data-feat="([^"]+)">(.*?)</h4>'
+        r'|<h5 class="subfeat-title" data-sub="([^"]+)">(.*?)</h5>',
+        _re.S)
+
+    def strip_tags(s: str) -> str:
+        return _re.sub(r'<[^>]+>', '', s).strip()
+
+    out: list = []
+    pos = 0
+    chapters: list = []
+    cur_chap = None
+    cur_feat = None
+    sub_k = 0
+    for m in head.finditer(page):
+        out.append(page[pos:m.start()])
+        pos = m.end()
+        g = m.groups()
+        if g[0] is not None:                                  # h2 = 章
+            n = str(g[0]).strip()
+            title = strip_tags(g[1]) or n
+            cid = 'chap-' + _slug_id(n)
+            out.append('<h2 class="sec-title" id="' + cid + '"><span class="n">' + g[0] + '</span>' + g[1] + '</h2>')
+            cur_chap = {'id': cid, 'n': n, 'title': title, 'kids': []}
+            chapters.append(cur_chap)
+            cur_feat = None
+            sub_k = 0
+        elif g[2] is not None:                                # h3 = 一般子章节
+            sub_k += 1
+            sid = 'sec-' + _slug_id(cur_chap['n'] if cur_chap else 'x') + '-' + str(sub_k)
+            title = strip_tags(g[3]) or sid
+            out.append('<h3 id="' + sid + '"' + g[2] + '>' + g[3] + '</h3>')
+            if cur_chap is not None:
+                cur_chap['kids'].append({'kind': 'sub', 'id': sid, 'title': title})
+        elif g[4] is not None:                                # h4 = 特性
+            fid = 'feat-' + _slug_id(g[4])
+            title = strip_tags(g[5]) or fid
+            out.append('<h4 class="feat-title" id="' + fid + '" data-feat="' + g[4] + '">' + g[5] + '</h4>')
+            cur_feat = {'kind': 'feat', 'id': fid, 'title': title, 'subs': []}
+            if cur_chap is not None:
+                cur_chap['kids'].append(cur_feat)
+        else:                                                 # h5 = 子特性
+            sid = 'sub-' + _slug_id(g[6])
+            title = strip_tags(g[7]) or sid
+            out.append('<h5 class="subfeat-title" id="' + sid + '" data-sub="' + g[6] + '">' + g[7] + '</h5>')
+            if cur_feat is not None:
+                cur_feat['subs'].append({'kind': 'sub', 'id': sid, 'title': title})
+    out.append(page[pos:])
+    page = ''.join(out)
+    nav = _render_toc(chapters)
+    return page.replace('<!--TOC_PLACEHOLDER-->', nav)
+
+
+def _slug_id(s: str) -> str:
+    """把章号 / 特性号 / 子特性号转成安全的锚点片段（保留数字、字母、点、横线）。"""
+    import re as _re
+    t = _re.sub(r'[^0-9A-Za-z.\-]', '', str(s or '')).strip('.')
+    return t or 'x'
+
+
+def _render_toc(chapters) -> str:
+    def li_class(kid):
+        return 'toc-feat' if kid['kind'] == 'feat' else 'toc-sub'
+    o = ['<nav id="toc" aria-label="章节大纲">',
+         '  <div class="toc-head"><b>目录</b>'
+         '<button id="toc-all" class="toc-btn" type="button">全展开</button></div>',
+         '  <ul class="toc-l1">']
+    for c in chapters:
+        o.append('    <li class="toc-chap' + (' has-sub' if c['kids'] else '') + '">')
+        o.append('      <a href="#' + c['id'] + '"><span class="tn">' + _esc(c['n']) + '</span> '
+                 + _esc(c['title']) + '</a>')
+        if c['kids']:
+            o.append('      <ul class="toc-l2">')
+            for k in c['kids']:
+                if k['kind'] == 'feat':
+                    o.append('        <li class="toc-feat">')
+                    o.append('          <a href="#' + k['id'] + '">' + _esc(k['title']) + '</a>')
+                    if k.get('subs'):
+                        o.append('          <button class="toc-caret" type="button" aria-expanded="true" '
+                                 'data-target="tocsub-' + k['id'] + '" title="收起/展开子特性">-</button>')
+                        o.append('          <ul class="toc-l3 open" id="tocsub-' + k['id'] + '">')
+                        for sk in k['subs']:
+                            o.append('            <li><a href="#' + sk['id'] + '">' + _esc(sk['title']) + '</a></li>')
+                        o.append('          </ul>')
+                    o.append('        </li>')
+                else:
+                    o.append('        <li class="toc-sub"><a href="#' + k['id'] + '">' + _esc(k['title']) + '</a></li>')
+            o.append('      </ul>')
+        o.append('    </li>')
+    o.append('  </ul>')
+    o.append('</nav>')
+    return '\n'.join(o)
+
+
+_TOC_FAB = '<div class="toc-fab" id="toc-fab">目录</div>'
+
+# 右侧大纲交互（纯 JS，无依赖）：滚动高亮 + caret 展开子特性 + 全局折叠 + 窄屏悬浮开关。
+# 注意：本字符串不进 f-string 求值，内含花括号是安全的（作为 {_TOC_JS} 的值原样插入）。
+_TOC_JS = """<script>
+(function(){
+  var toc = document.getElementById('toc');
+  var fab = document.getElementById('toc-fab');
+  if(fab && toc){ fab.addEventListener('click', function(){ toc.classList.toggle('open'); }); }
+  document.addEventListener('click', function(ev){
+    var b = ev.target;
+    if(b && b.classList && b.classList.contains('toc-caret')){
+      ev.preventDefault();
+      var ul = document.getElementById(b.getAttribute('data-target'));
+      if(!ul){ return; }
+      var open = ul.classList.toggle('open');
+      b.textContent = open ? '-' : '+';
+      b.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+  });
+  var all = document.getElementById('toc-all');
+  if(all){ all.addEventListener('click', function(){
+    var anyOpen = document.querySelector('.toc-l3.open');
+    var uls = document.querySelectorAll('.toc-l3');
+    var btns = document.querySelectorAll('.toc-caret');
+    for(var i=0;i<uls.length;i++){ uls[i].classList.toggle('open', !anyOpen); }
+    for(var j=0;j<btns.length;j++){ btns[j].textContent = anyOpen ? '+' : '-'; }
+    all.textContent = anyOpen ? '全展开' : '全收起';
+  }); }
+  var links = [].slice.call(document.querySelectorAll('#toc a[href^="#"]'));
+  var items = [];
+  for(var k=0;k<links.length;k++){
+    var id = links[k].getAttribute('href').slice(1);
+    var el = document.getElementById(id);
+    if(el){ items.push({a:links[k], el:el}); }
+  }
+  function spy(){
+    if(!items.length){ return; }
+    var sy = window.pageYOffset || document.documentElement.scrollTop || 0;
+    var y = sy + 110;
+    var cur = items[0];
+    for(var i=0;i<items.length;i++){
+      var top = items[i].el.getBoundingClientRect().top + sy;
+      if(top <= y){ cur = items[i]; } else { break; }
+    }
+    for(var k2=0;k2<items.length;k2++){ items[k2].a.classList.toggle('active', items[k2]===cur); }
+    var grp = cur.a.parentNode;
+    while(grp && grp.classList && !grp.classList.contains('toc-l3') && grp !== document.documentElement){
+      grp = grp.parentNode;
+    }
+    if(grp && grp.classList && grp.classList.contains('toc-l3') && !grp.classList.contains('open')){
+      grp.classList.add('open');
+      var btn = grp.parentNode.querySelector('.toc-caret');
+      if(btn){ btn.textContent = '-'; btn.setAttribute('aria-expanded','true'); }
+    }
+  }
+  window.addEventListener('scroll', spy, {passive:true});
+  window.addEventListener('resize', spy);
+  window.addEventListener('load', spy);
+  spy();
+})();
+</script>"""
+
 def build() -> str:
-    return f"""<!DOCTYPE html>
+    _page = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -2063,6 +3006,87 @@ def build() -> str:
   .cl-kind li {{ margin:5px 0; }}
   .chip {{ flex:0 0 auto; font-size:.78rem; font-weight:700; padding:3px 10px; border-radius:999px; white-space:nowrap; }}
   footer {{ text-align:center; color:var(--muted); padding:34px 0 40px; font-size:.88rem; }}
+
+  /* ===== 右侧章节大纲（TOC）+ 特性章 + 表格重排 + 打印（A4 纵向）===== */
+  html {{ scroll-behavior:smooth; }}
+  [id] {{ scroll-margin-top:16px; }}
+  .shell {{ display:flex; align-items:flex-start; justify-content:center;
+            gap:22px; max-width:1980px; margin:0 auto; padding:0 14px; }}
+  .shell .wrap {{ flex:1 1 auto; min-width:0; }}
+  #toc {{ position:sticky; top:14px; flex:0 0 296px; width:296px;
+          max-height:calc(100vh - 28px); overflow:auto; background:#fff;
+          border:1px solid var(--line); border-radius:12px; padding:12px 12px 16px;
+          box-shadow:0 1px 3px rgba(15,23,42,.06); font-size:.86rem; }}
+  .toc-head {{ display:flex; align-items:center; justify-content:space-between;
+               margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid var(--line); }}
+  .toc-head b {{ font-size:.95rem; }}
+  .toc-btn {{ border:1px solid var(--line); background:#f8fafc; border-radius:6px;
+              padding:2px 8px; font-size:.76rem; cursor:pointer; color:var(--muted); }}
+  #toc ul {{ list-style:none; margin:0; padding:0; }}
+  #toc li {{ margin:1px 0; }}
+  #toc a {{ display:block; color:var(--ink); text-decoration:none; border-radius:6px;
+            padding:3px 6px; line-height:1.45; }}
+  #toc a:hover {{ background:#f1f5f9; }}
+  #toc a.active {{ background:#e0f2fe; color:#0e7490; font-weight:700; }}
+  #toc .tn {{ display:inline-block; min-width:16px; color:var(--brand); font-weight:700; }}
+  .toc-l2 {{ margin-left:6px; border-left:1px dashed var(--line); padding-left:6px; }}
+  .toc-l3 {{ display:none; margin-left:10px; border-left:1px dotted var(--line); padding-left:6px; }}
+  .toc-l3.open {{ display:block; }}
+  .toc-l3 a {{ color:var(--muted); font-size:.81rem; }}
+  .toc-feat > a {{ font-weight:600; }}
+  .toc-caret {{ float:right; border:1px solid var(--line); background:#fff; border-radius:5px;
+                width:20px; height:18px; line-height:1; font-size:.82rem; cursor:pointer;
+                color:var(--muted); padding:0; }}
+  .toc-fab {{ position:fixed; right:14px; bottom:16px; z-index:40; display:none;
+              background:var(--brand); color:#fff; border-radius:999px; padding:8px 14px;
+              font-size:.86rem; box-shadow:0 2px 8px rgba(0,0,0,.22); cursor:pointer; }}
+  @media (max-width:1180px) {{
+    #toc {{ position:fixed; right:0; top:0; height:100vh; max-height:100vh; border-radius:0;
+            width:300px; transform:translateX(105%); transition:transform .18s;
+            z-index:60; box-shadow:-4px 0 18px rgba(15,23,42,.18); }}
+    #toc.open {{ transform:translateX(0); }}
+    .toc-fab {{ display:block; }}
+  }}
+  /* 表格：按纸宽重排（避免超宽横向滚动） */
+  .tbl {{ width:100%; border-collapse:collapse; font-size:.86rem; margin:6px 0 14px; }}
+  .tbl th, .tbl td {{ border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }}
+  .tbl th {{ background:#f1f5f9; }}
+  /* 特性章（第 7 章） */
+  .feat {{ margin:22px 0 26px; }}
+  .feat-title {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:1.18rem;
+                 border-bottom:2px solid var(--brand); padding-bottom:6px; margin-bottom:4px; }}
+  .feat-title .fno {{ background:var(--brand); color:#fff; border-radius:6px; padding:2px 9px; font-size:.82rem; }}
+  .feat-title .fkey {{ color:var(--muted); font-size:.78rem; font-family:ui-monospace,monospace; }}
+  .feat-goal {{ font-size:.92rem; margin-bottom:12px; }}
+  .subfeat {{ border-left:3px solid var(--line); padding:2px 0 2px 14px; margin:14px 0; }}
+  .subfeat-title {{ font-size:1rem; margin-bottom:4px; }}
+  .subfeat-title .sno {{ color:var(--brand2); font-family:ui-monospace,monospace; margin-right:6px; }}
+  .codesrc {{ font-size:.82rem; color:var(--muted); margin:3px 0; }}
+  .diffbox {{ background:#fff7ed; border:1px solid #fdba74; border-radius:8px; padding:8px 12px;
+              margin:8px 0; font-size:.86rem; }}
+  .flow2 {{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:7px 0; }}
+  .fnode {{ background:#eef2ff; border:1px solid #c7d2fe; border-radius:7px;
+            padding:4px 9px; font-size:.82rem; font-family:ui-monospace,monospace; }}
+  .fnode.g {{ background:#ecfdf5; border-color:#a7f3d0; }}
+  .fnode.y {{ background:#fefce8; border-color:#fde68a; }}
+  .fnode.r {{ background:#fef2f2; border-color:#fecaca; }}
+  .farrow {{ color:var(--brand); font-weight:700; }}
+  @page {{ size:A4 portrait; margin:12mm; }}
+  @media print {{
+    .shell {{ display:block; max-width:none; padding:0; }}
+    .shell .wrap {{ max-width:100%; margin:0; padding:0; }}
+    #toc, .toc-fab {{ display:none !important; }}
+    body {{ background:#fff; }}
+    .hero {{ padding:16px 10px 12px; }}
+    .hero h1 {{ font-size:1.5rem; }}
+    section {{ margin:14px 0; }}
+    .card {{ box-shadow:none; break-inside:avoid; }}
+    .subfeat {{ break-inside:avoid; }}
+    .tree, .cmd, .codebox {{ overflow:visible !important; white-space:pre-wrap; word-break:break-word; font-size:8.4pt; }}
+    .tbl {{ font-size:8.4pt; }}
+    .tbl th, .tbl td {{ padding:4px 5px; }}
+    a {{ color:inherit; text-decoration:none; }}
+  }}
 </style>
 </head>
 <body>
@@ -2079,6 +3103,7 @@ def build() -> str:
   </div>
 </div>
 
+<div class="shell">
 <div class="wrap">
 
 <!-- ========== 1. 为什么混合 ========== -->
@@ -2603,286 +3628,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
   </div>
 </section>
 
-<!-- ========== 7. 框架特性设计实现说明（2026-09-22 新增） ========== -->
-<section>
-  <h2 class="sec-title"><span class="n">7</span>框架特性设计实现说明</h2>
-  <p class="sec-sub">上面第 6 章讲的是「一条主线上有什么」；本章按<b>特性</b>横向讲清楚：每个特性 = <b>定位一句话 -> 关键设计 -> 实现图例 -> 怎么用 -> 测试验证用例设计</b>。新手按特性读一遍，既能看懂框架结构，也知道每个特性<b>拿什么证据证明它是好的</b>。</p>
-
-  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
-    <h4>先看全局：验证资产总览（真值，随代码增长）</h4>
-    <pre class="tree">一类「框架自验证」  tests/_helpers/test_*.py      —— 秒级、<b>不依赖 demo 与浏览器</b>、可离线跑
-二类「特性自验证」  tests/_runner/verify_*.py      —— 端到端、<b>需 demo</b>、<b>必含负向证伪</b>
-E2E 三场景        场景1 自然语言->AI 链路（离线回放可证伪）· 场景2 手写用例驱动 · 场景3 录制回放验证
-统一入口          python tests/_runner/run_acceptance.py     <- R7 四项一条命令（便宜先跑 + fail fast；SKIP ≠ 通过）
-                  python tests/_runner/run_verifications.py  <- 二类全量（唯一实现；内存不足如实 SKIP 并 exit 3）</pre>
-    <p style="color:var(--muted);font-size:.88rem;margin-top:8px">下面每个特性都会列出<b>它自己的</b>判据文件与条数；条数以实跑输出为准（<code>pytest tests/_helpers/ -q</code>、<code>run_acceptance.py</code>）。</p>
-  </div>
-
-  <!-- ============ 特性 1 ============ -->
-  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
-    <h4>特性 1 · 混合链路：AI 探索 + 确定性执行</h4>
-    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>把「想」和「做」拆开——AI 只负责把自然语言翻译成语义引用（花钱、一次性），确定性代码负责定位与执行（零 token、可无限回归）。</p>
-    <p><b>关键设计</b></p>
-    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
-      <li><b>两条业务链路在 <span class="code-inline">cases/*.json</span> 汇合</b>：(1) 自然语言 -> <span class="code-inline">explore --ai</span> 产用例（花 token）；(2) 手搓用例 -> <span class="code-inline">generate</span> -> <span class="code-inline">run</span>（零 token）。下游 <b>probe -> generate -> run</b> 完全共用。</li>
-      <li><b>ElementMap 是契约</b>：AI 只引用 <span class="code-inline">semantic_name</span>，绝不产 selector —— 换页面、换模型都不用改执行端。</li>
-      <li><b>成本分层</b>：探索阶段每步一次推理；生成脚本后执行端零 token，可无限次进 CI。</li>
-    </ul>
-    <pre class="tree">自然语言场景 ──explore --ai──[run] cases/ai_*.json ─┐
-                                              ├─[run] generate ─[run] scripts/ + datasets/ ─[run] run（零 token）
-手搓 cases/*.json ──────────────────────────┘        ▲ 缺项才现场 probe；ElementMap 快照优先</pre>
-    <p><b>怎么用：</b><code>python -m framework.cli explore --ai --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml</code> -> <code>python -m framework.cli generate</code> -> <code>python -m framework.cli run --workers 2</code></p>
-    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
-      <b>[test] 测试验证用例设计</b>
-      <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">tests/特性1-混合链路/test_offline_chain_python.py</span>（9 条：离线链 Python 化，跨平台）· <span class="code-inline">tests/特性9-质量闸门体系/test_no_gate_coupling.py</span>（2 条：框架自测与 demo 解耦）</li>
-        <li><b>二类：</b><span class="code-inline">tests/特性1-混合链路/verify_offline_delivery.py</span>（交付两件套形态）· <span class="code-inline">tests/特性8-离线回放/verify_offline_chain_deps.py</span>（离线链依赖齐备）· <span class="code-inline">tests/特性8-离线回放/verify_e2e_scenario3_replay.py</span>（<b>7 项，含 2 条负向证伪 + 归档零残留</b>）</li>
-        <li><b>E2E：</b>场景1（自然语言->AI->cases->generate->run，日常走离线回放）· 场景2（手写用例驱动 <span class="code-inline">cli run</span>）</li>
-      </ul>
-    </div>
-  </div>
-
-  <!-- ============ 特性 2 ============ -->
-  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
-    <h4>特性 2 · 语义识别 + 分层定位（probe -> AI -> Tier1/Tier2）</h4>
-    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>让「人能读懂的语义名」变成「Playwright 能唯一命中的 locator」，且每一步失败都可解释、不瞎猜。</p>
-    <p><b>关键设计</b></p>
-    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
-      <li><b>probe 先出「词汇表」</b>：扫页面可交互元素，产 role/name/placeholder/test_id/nearby_text 等语义清单（AI 与 Playwright 共用）。</li>
-      <li><b>Tier1 精确语义</b>（5 级顺序）：<span class="code-inline">data-testid</span> &gt; <span class="code-inline">role+name</span> &gt; <span class="code-inline">label</span> &gt; <span class="code-inline">placeholder</span> &gt; <span class="code-inline">text</span>，命中后还要<b>意图复验</b>（回读元素实际语义比对，阈值 0.15，不符降级）。</li>
-      <li><b>Tier2 指纹 + 语义上下文</b>：nearby_text / container_heading / help_text 加权评分，<b>评分差距 &gt; 0.12（MINGAP）才唯一采用</b>，否则诚实失败。</li>
-      <li><b>铁律</b>：<span class="code-inline">count()==1</span> —— 不唯一就降级，找不到就报错，绝不蒙一个可能点错的。</li>
-    </ul>
-    <pre class="tree">semantic_name ─[run] Tier1(精确语义) ──唯一命中?──[run] [run] 意图复验(阈值0.15) ──符合──[run] [OK] 采用
-                     │  不唯一 / 找不到 / 复验不过
-                     ▼
-                 Tier2(指纹 + 语义上下文) ──评分差距&gt;0.12?──[run] [OK] 唯一采用
-                                          └── 否则 ──[run] [NG] 诚实失败（进 Healer）</pre>
-    <p><b>怎么用：</b><span class="code-inline">explore --ai</span> 产 ElementMap -> <span class="code-inline">generate</span> 时优先吃 element_map 快照（缺项才现场 probe）-> <span class="code-inline">run</span> 时逐动作先 Tier1 再 Tier2。</p>
-    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
-      <b>[test] 测试验证用例设计</b>
-      <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">tests/特性9-质量闸门体系/test_ready_and_locate.py</span>（13 条：ready 契约、_goto/_wait_ready 接线、误导性报错消失）· <span class="code-inline">tests/特性4-选错控件兜底/test_element_ambiguity_gate.py</span>（15 条）· <span class="code-inline">tests/特性2-语义识别与步骤编排/test_name_alignment.py</span>（11 条：精确名优先 / 模糊命中留痕 / 歧义必须 fail loud / 严格模式拒绝近似）· <span class="code-inline">tests/特性9-质量闸门体系/test_import_targets.py</span>（4 条：内部 import 都能解析）</li>
-        <li><b>二类：</b><span class="code-inline">tests/特性3-分层定位与控件识别/verify_cross_page.py</span>（跨页流程 + 质量闸：缺 url 断言告警 / 弱换页证据红线 / 负向无假绿）· <span class="code-inline">tests/特性9-质量闸门体系/verify_wait_text.py</span> · <span class="code-inline">tests/特性3-分层定位与控件识别/verify_expandable_menu.py</span>（真开浏览器点、真读页面与服务端状态，<b>不看「代码里写了」</b>）</li>
-        <li><b>[!] 2026-10-07 口径变更：</b>demo 需求侧验证（登录与角色 / 开票前置 / 新建订单三区域 / 订单详情编辑闭环 / 两个入口同构 / 弹层 picker 等 <b>8 个脚本</b>）<b>已整体删除</b> —— demo 是用 TDD 做出来的，做完即固化，除非有大变动不再改，留着只是浪费验证时间。框架能力侧的验证（上列）全部保留。</li>
-        <li><b>[!] 待补缺口（如实标注）：</b>Tier1 意图复验阈值（0.15）与 Tier2 MINGAP（0.12）目前<b>没有直接判据</b>——只有闸门层与命名层判据。阈值改动可能静默退化，建议补两条（复验不符必须降级 / 评分差距不足必须失败）。</li>
-      </ul>
-    </div>
-  </div>
-
-  <!-- ============ 特性 3 ============ -->
-  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
-    <h4>特性 3 · 防「AI 选对名字、选错控件」的多层兜底</h4>
-    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>AI 在复杂页面可能挑错控件（如把「合同名称输入框」选成「搜索框」）——用代码侧的多道防线把「AI 选错 -> 框架点错」压到最低。</p>
-    <p><b>关键设计</b></p>
-    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
-      <li><b>防线(1)语义校准</b>（explorer）：AI 挑完元素后，用其描述与元素语义做字符级核心词重叠，<b>相似度 &lt; 0.3 打警告</b>「疑似选错控件」。</li>
-      <li><b>防线(3)Tier1 意图复验</b>（locator_bridge）：Tier1 命中唯一后回读元素实际语义与 page_hint/semantic_name 比对（阈值 0.15），不符 -> 降级下一策略 / Tier2。</li>
-      <li><b>防线(2)Tier2 指纹消歧</b>：同名元素靠语义上下文（nearby_text 等）选出唯一；<b>无上下文的裸元素诚实失败</b>（防 false-heal）。</li>
-      <li><b>兜底 Healer</b>：三道防线都失败才走自愈，且自愈结果要过业务后置断言裁决。</li>
-    </ul>
-    <pre class="tree">AI 挑控件 ─[run] (1)语义校准(相似度&lt;0.3 -> 告警)
-                ▼
-          locator 解析 ─[run] (3)Tier1 意图复验(阈值0.15；不符->降级)
-                ▼
-          (2)Tier2 指纹+上下文(差距&gt;0.12 才唯一；裸元素 -> 失败)
-                ▼
-          Healer 自愈(A级放宽阈值 -> B级LLM重猜) ─[run] 后置断言裁决 recovered / real_bug / failed
-   —— 任一层不确定都<b>走失败</b>，宁可报错也不点错元素</pre>
-    <p><b>怎么用：</b>无需额外开关——<span class="code-inline">explore --ai</span> 与 <span class="code-inline">run</span> 默认生效；告警出现在 explore 日志，自愈事件落 <span class="code-inline">output/heals/*.md</span>。</p>
-    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
-      <b>[test] 测试验证用例设计</b>
-      <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">tests/特性4-选错控件兜底/test_element_ambiguity_gate.py</span>（15 条）· <span class="code-inline">tests/特性2-语义识别与步骤编排/test_name_alignment.py</span>（11 条：<b>歧义裸名不许猜</b>、精确名优先、影子名要列出来）· <span class="code-inline">tests/特性8-离线回放/test_llm_retry.py</span>（3 条：LLM 失败重试边界）</li>
-        <li><b>二类：</b><span class="code-inline">tests/特性4-选错控件兜底/verify_element_ambiguity.py</span>（<b>12 项，含负向</b>）· <span class="code-inline">tests/特性3-分层定位与控件识别/verify_cross_page.py</span>（跨页场景：<b>每条错误都必须失败</b>——防假绿铁律）</li>
-        <li><b>E2E：</b>场景1 的离线链本身就覆盖「AI 挑名 -> 定位 -> 执行」整条路（含 2 条负向）。</li>
-      </ul>
-    </div>
-  </div>
-
-  <!-- ============ 特性 4 ============ -->
-  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
-    <h4>特性 4 · 用例 / 脚本 / 数据三层分离</h4>
-    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>用例写自然语言、脚本只放逻辑、数据全部抽离——改数据不动脚本，改页面不动用例。</p>
-    <p><b>关键设计</b></p>
-    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
-      <li><b>cases/*.json</b>：op 操作类型 + desc 描述 + element 探测语义 + value 数据；断言用 <span class="code-inline">asserts[]</span>，<b>11 种 kind</b>（文本/可见/隐藏/数量/属性/输入值/URL/勾选/未勾选/可用/禁用）。</li>
-      <li><b>scripts/ + datasets/</b>：generate 把字面值抽到 <span class="code-inline">scripts/datasets/&lt;case_id&gt;.json</span>，脚本只留引用。</li>
-      <li><b>动态占位符</b>：<span class="code-inline">{{datetime}}</span> / <span class="code-inline">{{date}}</span> / <span class="code-inline">{{uuid}}</span> 运行时解析固化（填表名 == 断言名，反复重跑不重名）。</li>
-      <li><b>用例级变量池</b> <span class="code-inline">case.vars</span>：存过程数据（新建名称/系统返回编号），function-scope 隔离；检查点主判据用「输入值一致性」，系统编号仅作增强项（没有也照样通过）。</li>
-    </ul>
-    <pre class="tree">cases/…/xxx.json ──generate──[run]  scripts/generated/…/xxx.py（逻辑：操作类型 -> Playwright 调用）
-  (自然语言 + 数据)                scripts/generated/_harness.py（夹具：_goto/_wait_ready/_act…）
-                                scripts/datasets/xxx.json  （数据：字面值抽离 + 占位符）
-                                        │
-                                        └─ run ─[run] 逐用例 .log + report.html + 变量池隔离</pre>
-    <p><b>怎么用：</b><code>python -m framework.cli generate</code> 后看 <code>scripts/datasets/&lt;case_id&gt;.json</code>；改数据只动 datasets（或改 cases 重生成）。</p>
-    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
-      <b>[test] 测试验证用例设计</b>
-      <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">tests/特性5-用例脚本数据三层分离/test_data_expand.py</span>（16 条：占位符展开与固化）· <span class="code-inline">tests/特性9-质量闸门体系/test_assert_kinds_render.py</span>（25 条：11 种断言渲染正确）· <span class="code-inline">tests/特性9-质量闸门体系/test_case_quality_gate.py</span>（13 条：用例质量闸门）· <span class="code-inline">tests/特性9-质量闸门体系/test_generate_quality_gate.py</span>（4 条）</li>
-        <li><b>二类：</b>全真跑的端到端验证脚本（<span class="code-inline">tests/_runner/verify_*.py</span>）· <b>防假绿铁律：每条断言在「期望值写错」时必须 FAIL</b><br><span class="muted">（V8.3 起数据参数化与断言种类两项的独立脚本已随手写用例删除，本版交付面见发行说明「二类验收面」一节）</span></li>
-      </ul>
-    </div>
-  </div>
-
-  <!-- ============ 特性 5 ============ -->
-  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
-    <h4>特性 5 · 自愈闭环 Healer</h4>
-    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>只给「定位意外」兜底（工程上占比应 &lt; 5%），且<b>每一次自愈都可审</b>——绝不静默改写脚本、绝不把真 bug 治愈成绿。</p>
-    <p><b>关键设计</b></p>
-    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
-      <li><b>A 级（确定性、无 LLM）</b>：放宽阈值重定位（阈值 × 0.75 / MINGAP × 0.6）。</li>
-      <li><b>B 级（可选，需 key）</b>：请 LLM 重猜；失败即记为真 bug。</li>
-      <li><b>可审 diff</b>：事件落 <span class="code-inline">output/heals/*.md</span>，含改前/改后，人可复核。</li>
-      <li><b>三态裁决</b>：自愈后跑业务后置断言 -> <b>recovered / real_bug / failed</b>，只有 recovered 才算「自愈成功」。</li>
-    </ul>
-    <pre class="tree">定位失败 ──[run] A级 放宽阈值(×0.75 / MINGAP×0.6) ──成功?──[run] 后置断言裁决
-                │ 失败                                        ├─ recovered（真兜底）
-                ▼                                            ├─ real_bug（页面/数据真的坏了）
-             B级 LLM 重猜(需key) ──成功?──[run] 同上              └─ failed（兜不住，如实失败）
-                └─ 失败 ──[run] [NG] 失败（不静默跳过）        每次事件都落 output/heals/*.md（可审）</pre>
-    <p><b>怎么用：</b><span class="code-inline">run</span> 时默认生效；跑完看 <span class="code-inline">output/heals/*.md</span> 复核，或看 <span class="code-inline">log/&lt;run_id&gt;/*.log</span> 里的自愈记录。</p>
-    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
-      <b>[test] 测试验证用例设计</b>
-      <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>[!] 现状（如实标注）：本特性目前<b>没有自动化判据</b></b>（<span class="code-inline">tests/</span> 里搜 <span class="code-inline">healer</span> / <span class="code-inline">try_heal</span> / <span class="code-inline">heals/</span> 零命中），属于 R7 口径下的<b>待补项</b>。</li>
-        <li><b>建议补的判据（一类，秒级可测）：</b>(1) A 级放宽阈值后能重新命中唯一元素；(2) B 级<b>只在 A 级失败后</b>才触发（不许一失败就烧 token）；(3) 三态裁决正确（recovered / real_bug / failed 各一条）；(4) <b>兜不住时必须如实失败</b>，不许静默通过或改写脚本。</li>
-        <li><b>二类建议：</b>用 demo 造一个「元素改名」的临时场景，端到端验证「自愈成功 -> 后置断言放行」与「真改坏 -> real_bug」两条路。</li>
-      </ul>
-    </div>
-  </div>
-
-  <!-- ============ 特性 6 ============ -->
-  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
-    <h4>特性 6 · 并发与资源安全（低内存机器保命）</h4>
-    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>在内存紧张的机器上，宁可降并发也不许 OOM 连锁——实测 1 个 headless Chromium ≈ 515MB，1.87GB 无 swap 的机器强跑 2 并发会触发内核 global OOM（连无关进程一起被杀）。</p>
-    <p><b>关键设计</b></p>
-    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
-      <li><b>资源预检</b>：读 MemAvailable -> <span class="code-inline">cap = max(1, min((MemAvailable - 保留) / 每 worker 预算, CPU 核数))</span>，不够<b>自动降级并打印理由</b>；<span class="code-inline">--force-workers</span> 可显式覆盖。</li>
-      <li><b>worker 复用浏览器</b>：每个 pytest-xdist worker 只起一个 Chromium 全程复用（逐条 setup 0.57~0.66s -> 0.04~0.06s）。</li>
-      <li><b>日志 run-id 隔离</b>：<span class="code-inline">log/&lt;run_id&gt;/</span> 下 .log / report.html / traces / videos，重跑不覆盖历史。</li>
-      <li><b>调试开关 <span class="code-inline">--debug</span></b>（别名 <span class="code-inline">--headed</span>，默认关）：有图形显示 -> 真开窗口一步步跑；<b>无图形显示（服务器）-> 降级为录屏 + 逐步截图 + trace</b>，两种环境都<u>不报错退出</u>。</li>
-      <li><b>跨平台铁律</b>：所有脚本显式 UTF-8（Windows 中文环境不乱码）；入口一律 Python（PowerShell 没有 bash）。</li>
-    </ul>
-    <pre class="tree">cli run ─[run] 资源预检: MemAvailable ─[run] cap = max(1, min(可用/每worker预算, CPU)) ─[run] 不够则降级(打印理由)
-                                                                        │
-        ┌───────────────────────────────────────────────────────────────┘
-        ▼
-  workers=1..N，每个 worker: 1 个 Chromium（复用） ─[run] 逐用例: 新建 context+page
-  产物: log/&lt;run_id&gt;/{{run.log, report.html, traces/, videos/, shots/}}
-
-  --debug: 有 DISPLAY ─[run] 真窗口(headed)  |  无 DISPLAY ─[run] 录屏 + 逐步截图 + trace（都不报错）</pre>
-    <p><b>怎么用：</b><code>python -m framework.cli run --workers 2</code>（自动降级）· <code>--force-workers 1</code>（显式）· <code>--debug</code>（看得见这次执行）。</p>
-    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
-      <b>[test] 测试验证用例设计</b>
-      <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">tests/特性9-质量闸门体系/test_env_adaptation.py</span>（22 条：Windows / 非 git 目录 / 无 demo 下的降级路径）· <span class="code-inline">tests/特性9-质量闸门体系/test_utf8_io.py</span>（20 条：UTF-8 机理 + 真实默认编码路径）· <span class="code-inline">tests/特性9-质量闸门体系/test_retention_runs.py</span>（14 条：run-id 日志隔离与保留策略）· <span class="code-inline">tests/特性10-CLI帮助契约/test_cli_exit_codes.py</span>（10 条：退出码契约，跳过 ≠ 通过）</li>
-        <li><b>二类：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_retention_runs.py</span>（全真跑：日志保留）· <span class="code-inline">tests/特性7-并发与资源安全/verify_slow_target.py</span>（慢目标闸门：慢代理 300ms 下 6 条关键用例全绿；<b>内存不足如实 SKIP exit 3</b>）</li>
-        <li><b>[!] 待补缺口：</b><span class="code-inline">--debug</span> 两态（有/无图形显示）目前只有手工验证，<b>无自动化判据</b>——建议至少补「无 DISPLAY 时不许报错退出、且产物清单里必须有录像/截图」。</li>
-      </ul>
-    </div>
-  </div>
-
-  <!-- ============ 特性 7 ============ -->
-  <div class="card" style="border-left:4px solid var(--brand);margin-bottom:18px">
-    <h4>特性 7 · 离线回放（LLM 录像）：无外网也能跑完整 AI 链路</h4>
-    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>把 <span class="code-inline">explore --ai</span> 每次问 LLM 的「prompt -> 回答」原件录下来，让<b>连不上外网的机器</b>也能跑完整 AI 链路（语义识别 -> generate -> run），全程无需 key、不联网。</p>
-    <p><b>关键设计</b></p>
-    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
-      <li><b>两种命中</b>：先试<b>严格键</b>（prompt 逐字），再用<b>结构键</b>（场景语义 + 页面清单 + 控件骨架）兜底；命中结构键时<b>大声告警</b>（步骤是录制时针对那批数据做的判断）。</li>
-      <li><b>值归一化</b>：场景数据里的<b>引号内字面值</b>与 <span class="code-inline">花括号占位符</span>统一折成 <span class="code-inline">&lt;VAL&gt;</span> -> 换数据、参数化都不再让录像失效；只有真改页面/控件/场景语义才需重录。</li>
-      <li><b>多键兼容</b>：查询同时试「新算法 + 旧算法」两把结构键 -> 框架升级<b>不会让已有录像集体失效</b>。</li>
-      <li><b>录像运维三件套</b>：体检（<span class="code-inline">check_cassettes.py</span>，零成本：哪些场景没有可用录像）· 批量重录（<span class="code-inline">record_cassettes.py --missing-only</span>，需 key+外网）· <b>出厂闸门</b>（打包前强制体检，<b>不过就不产包</b>）。</li>
-      <li><b>可证伪</b>：离线链把 LLM 端点指到黑洞 <span class="code-inline">127.0.0.1:9</span> ->「有没有偷偷联网」是可验证的。</li>
-    </ul>
-    <pre class="tree">有外网机器:  explore --ai --llm-record ─[run] output/llm_cassettes/*.json（prompt + 回答 + 键）
-                                                    │  打包体检(每场景都有可用录像?) ─[run] 录像包
-无外网机器:  output/llm_cassettes/ [here]── 解包        ▼
-             explore --ai --llm-cassette（严格键 -> 结构键兜底）─[run] generate ─[run] run
-             一键: python build_tools/offline_explore_chain.py --repo . --run（端点指黑洞，可证伪）</pre>
-    <p><b>怎么用：</b><code>--llm-record</code>（录）· <code>--llm-cassette</code>（放）· <code>--llm-cassette-strict</code>（只认逐字）· <code>build_tools/check_cassettes.py</code>（体检）· <code>build_tools/pack_release.py --with-cassettes</code>（打录像包，含出厂闸门）。</p>
-    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
-      <b>[test] 测试验证用例设计</b>
-      <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">tests/特性8-离线回放/test_llm_cassette.py</span>（30 条：键计算 / 归一化 / 多键兼容 / <b>负向：键不匹配必须报「没有这一份」、坏录像文件不许毁掉整次回放</b>）· <span class="code-inline">tests/特性1-混合链路/test_offline_chain_python.py</span>（9 条）· <span class="code-inline">tests/特性9-质量闸门体系/test_pack_release.py</span>（含出厂闸门 3 条：接线锁 / 覆盖不全必须拦 / 逃生口必须有效）</li>
-        <li><b>二类：</b><span class="code-inline">tests/特性8-离线回放/verify_e2e_scenario3_replay.py</span>（场景1 离线端到端，<b>7 项含 2 条负向 + 归档零残留</b>）· <span class="code-inline">tests/特性8-离线回放/verify_e2e_scenario3_cassette.py</span>（<b>场景3 = 录制回放验证</b>：覆盖体检 / 体检有效性负向 / 不匹配必须 fail loud / <span class="code-inline">--with-record</span> 时跑「录制->回放闭环」）</li>
-        <li><b>E2E：</b>场景3 就是为这个特性单独立项的（录像对不上 = 无网机器整段跑不了，以前只有现场才会发现）。</li>
-      </ul>
-    </div>
-  </div>
-
-  <!-- ============ 特性 8 ============ -->
-  <div class="card" style="border-left:4px solid var(--brand)">
-    <h4>特性 8 · 质量闸门体系（把隐性问题变成当场变红）</h4>
-    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>框架的可靠性不靠「记得检查」，靠闸门——每个曾经踩过的坑都变成一个会当场变红的判据。</p>
-    <p><b>关键设计</b></p>
-    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
-      <li><b>demo 新鲜度闸门</b>：跑用例前先确认 demo 是最新版（否则后面全白做）。</li>
-      <li><b>元素歧义闸门</b>：同名元素必须消歧或诚实失败，不许瞎选。</li>
-      <li><b>慢目标闸门</b>：慢代理 300ms/请求下 6 条关键用例必须全绿。</li>
-      <li><b>录像包出厂闸门</b>：打包前强制体检，覆盖不全不产包。</li>
-      <li><b>R7 四项验收 / SKIP ≠ 通过</b>：(1)框架自测 (2)特性自测 (3)新鲜度 (4)E2E 三场景；任一段跳过 -> 退出码 3（<b>跳过不算通过</b>）；新特性一律 <b>TDD 判据先行</b>（先落判据 -> 留红态证据 -> 再实现）。</li>
-    </ul>
-    <pre class="tree">python tests/_runner/run_acceptance.py        <- 一条命令跑完 R7 四项（便宜先跑 + fail fast）
-  [0] 闸门自检（先验「闸门自己」）
-  [1] (3) demo 新鲜度      [2] (1) 框架自测（条数以实跑为准）   [3] (4) E2E 场景3->2->1   [4] (2) 特性自测（脚本数以实跑为准）
-  退出码: 0 通过 / 3 跳过(不算通过) / 其它失败 —— 任一项红就停手并报「哪一项」</pre>
-    <p><b>怎么用：</b><code>python tests/_runner/run_acceptance.py</code>（日常）· <code>--with-record</code>（发版前含录制闭环）· <code>python tests/_runner/run_verifications.py</code>（只跑二类）。</p>
-    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
-      <b>[test] 测试验证用例设计（闸门自己也要被判据钉住）</b>
-      <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">tests/特性1-混合链路/test_acceptance_entry.py</span>（8 条：入口步骤顺序即契约 / 三场景齐全 / 跳过必须标出 / SKIP ≠ 通过）· <span class="code-inline">tests/特性9-质量闸门体系/test_demo_freshness_gate.py</span>（21 条）· <span class="code-inline">tests/特性9-质量闸门体系/test_pack_release.py</span>（16 条）· <span class="code-inline">tests/特性9-质量闸门体系/test_artifacts_health.py</span>（7 条：产物健康，坏产物给人话诊断）· <span class="code-inline">tests/特性9-质量闸门体系/test_target_reachability.py</span>（7 条：连不上时统一给「先起 demo」指引）· <span class="code-inline">tests/特性9-质量闸门体系/test_case_quality_gate.py</span>（13 条）</li>
-        <li><b>二类：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_demo_freshness.py</span>（<b>7 项含负向证伪 + 真重启 + 还原</b>：闸门自己也必须被证明「坏 demo 能抓、好 demo 不误伤」）· <span class="code-inline">tests/特性7-并发与资源安全/verify_slow_target.py</span> · <span class="code-inline">tests/特性9-质量闸门体系/verify_html_sync.py</span>（R8：培训页可复现 + 与代码逐字节一致）</li>
-        <li><b>原则：</b>闸门类结论必须<b>先主动证伪</b>（实测漏洞 + 边界清单）再下结论；<b>宁漏不误伤</b>（误拦会诱发绕过工具）。</li>
-      </ul>
-    </div>
-  </div>
-
-  <div class="card" style="border-left:4px solid var(--brand)">
-    <h4>特性 9 · CLI 帮助契约（<code>--help</code> 与参数注册表同源 -> 新增命令/参数自动进总览）</h4>
-    <p style="color:var(--muted);font-size:.92rem"><b>定位：</b>「<b>help 里看到的 = 代码里注册的</b>」。
-      过去总览只列子命令<b>名字</b>，V8.2.x 之后加的参数（<code>--llm-cassette</code>、<code>--only</code>、
-      <code>--changed</code>、<code>--keep-runs</code>、<code>--force-browser</code> …）在总览里<b>一个都看不到</b>
-      —— 新人只能翻代码才知道能带什么。旧判据只断言「子命令名出现在输出里」，所以这类漂移长期没被抓到。</p>
-    <p><b>关键设计</b></p>
-    <ul style="margin-left:18px;font-size:.92rem;line-height:1.8">
-      <li><b>唯一来源</b>：总览的子命令清单 + 每个子命令的「<code>参数：</code>」行<b>全部由参数注册表
-          <code>CMD_FLAGS</code> 生成</b>（<code>framework/cli.py::_print_help</code>），一句话说明取各子命令函数 docstring 首行
-          -> 新增子命令 / 参数<b>不用改 help 代码</b>就会出现在总览里。</li>
-      <li><b>人只需做两件事</b>：(1) 在 <code>FLAG_SPECS</code> 登记新参数（值语义 value / opt / 纯开关）；
-          (2) 在 <code>CMD_FLAGS</code> 里给它归属子命令，并给该子命令写一句 docstring。</li>
-      <li><b>两级视图</b>：总览答「有什么」（逐条列全，机器可比对）；<code>python -m framework.cli &lt;子命令&gt; --help</code>
-          答「怎么用」（用法行 + 完整说明）。</li>
-      <li><b>唯一真值口径</b>：help 与注册表不一致即 bug（文档漂移），用判据钉住而不是靠「记得刷新」。</li>
-    </ul>
-    <pre class="tree">python -m framework.cli --help                 <- 总览：子命令 + 每个的全部参数（每行形如「参数：--a --b」，无参数则「参数：(无参数)」）
-python -m framework.cli run --help             <- 单个子命令：用法 + 完整说明
-新增参数后必跑：python -m pytest tests/特性10-CLI帮助契约/test_cli_help_coverage.py -q      （秒级，不需要 demo / key）</pre>
-    <p><b>怎么用：</b>接手项目第一件事就是 <code>python -m framework.cli --help</code>（一眼看完能带什么都）；
-      改完 <code>FLAG_SPECS</code> / <code>CMD_FLAGS</code> 之后<b>必须</b>跑上面那条判据。</p>
-    <div style="border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:.9rem;margin-top:10px">
-      <b>[test] 测试验证用例设计（20 条）</b>
-      <ul style="margin:6px 0 0 18px;line-height:1.75">
-        <li><b>一类：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_cli_help_coverage.py</span>（20 条）——
-          逐子命令比对「<b>总览参数集 <-> CMD_FLAGS</b>」· 全集覆盖（一个 flag 都不许漏）· 反向（总览不许列未注册的命令 / docstring 不许写不存在的参数）·
-          <b>机制自证</b>（临时注册一个假子命令 + 假参数 -> 总览必须<b>自动</b>带上它，不改文案）·
-          <b>负向自证</b>（喂一段「少一个 flag」「多一个假 flag」的总览文本 -> 判定必须报红，防判据写成恒真）</li>
-        <li><b>为什么要机制自证 + 负向自证：</b>上一次漏掉这类漂移的判据，恰恰只断言「名字出现」而自己从未被证伪过 ——
-          判据没证明过「写错会红」，等于没写（R7 口径）。</li>
-      </ul>
-    </div>
-  </div>
-
-  <div class="card" style="border-top:4px solid var(--brand);margin-top:18px">
-    <h4>[pin] 读本章的顺序建议（新手路线）</h4>
-    <p style="font-size:.94rem;line-height:1.8">
-      1 先读 <b>特性 1</b>（知道两条链路怎么汇合）-> 2 再读 <b>特性 4</b>（知道用例/脚本/数据怎么分工，这是你日常改的东西）->
-      3 跑一遍第 6 章图例(0) 的六个阶段对照代码 -> 4 遇到点不中元素时回读 <b>特性 2 / 3</b> ->
-      5 交付或换机器前读 <b>特性 7</b>（录像与出厂闸门）-> 6 改完代码用 <b>特性 8</b> 的入口自检。
-    </p>
-  </div>
-</section>
+{_feature_chapter()}
 
 <!-- ========== 8. 常见坑 ========== -->
 <section>
@@ -3171,9 +3917,14 @@ python -m framework.cli run --help             <- 单个子命令：用法 + 完
 </footer>
 
 </div>
+<!--TOC_PLACEHOLDER-->
+</div>
+{_TOC_FAB}
+{_TOC_JS}
 </body>
 </html>
 """
+    return _inject_toc(_page)
 
 
 if __name__ == "__main__":
