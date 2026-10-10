@@ -1284,7 +1284,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>四条验收原则能用一条命令跑完；跳过策略（如 --skip-ai）必须显式留痕，不许静默少跑</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b><span class="code-inline">tests/_runner/run_acceptance.py</span> 把 R7 四项（框架自测 / 特性自测 / demo 新鲜度 / E2E 三场景）收成一条命令，顺序按「便宜先跑 + fail fast」：[0] 闸门自检 -> [1] demo 新鲜度 -> [2] 框架自测 <span class="code-inline">pytest tests/</span> -> [3] E2E 场景3->2->1 -> [4] 特性自测。退出码：0 通过 / 1 有失败 / 2 用法错 / 3 有跳过（<b>SKIP != 通过</b>）。跳过策略（如 <span class="code-inline">--skip-ai</span>）必须显式留痕、如实标「跳过」且不算通过，不许静默少跑。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">run_acceptance.py</span> -> 子进程跑<span class="code-inline">verify_*.py</span> / <span class="code-inline">pytest</span> -> 汇总退出码；<span class="code-inline">--list</span> 只看不跑、<span class="code-inline">--only</span> 只跑某项、<span class="code-inline">--keep-going</span> 跑完再汇总。</p>
-      <div class="flow2"><span class="fnode">[0] 闸门自检</span><span class="farrow">-></span><span class="fnode g">[1] 新鲜度</span><span class="farrow">-></span><span class="fnode g">[2] 框架自测</span><span class="farrow">-></span><span class="fnode">[3] E2E 3->2->1</span><span class="farrow">-></span><span class="fnode">[4] 特性自测</span></div>
+      <div class="flow2"><span class="fnode">run_acceptance.py</span><span class="farrow">-></span><span class="fnode g">step_gate_selfcheck()</span><span class="farrow">-></span><span class="fnode g">step_framework_selftest()</span><span class="farrow">-></span><span class="fnode">step_e2e() 3->2->1</span><span class="farrow">-></span><span class="fnode r">SKIP != 通过 -> exit 3</span><span class="farrow">-></span><span class="fnode">退出码 0/1/2/3</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_acceptance_entry.py（8 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_acceptance_skip_policy.py（6 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1292,7 +1292,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>无外网机器靠「代码包 + LLM 录像包」即可跑 AI 链路</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b><span class="code-inline">build_tools/pack_release.py</span> 打「代码包」（含运行期必需文件），<span class="code-inline">--with-cassettes</span> 打「LLM 录像包」；打包前强制<span class="code-inline">build_tools/check_cassettes.py</span> 体检（覆盖不全就不产包，<span class="code-inline">--allow-missing-cassettes</span> 仅供调试）。无外网机器用 <span class="code-inline">build_tools/offline_explore_chain.py --repo . --run</span> 一键跑通（它把 LLM 端点指到黑洞 <span class="code-inline">127.0.0.1:9</span>，「有没有偷偷联网」因而是可证伪的）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">pack_release.main()</span> -> <span class="code-inline">check_cassettes.check()</span>（出厂闸门）-> 产包；<span class="code-inline">offline_explore_chain</span> -> <span class="code-inline">cli explore --llm-cassette</span> -> generate -> run。</p>
-      <div class="flow2"><span class="fnode">代码包</span><span class="farrow">-></span><span class="fnode">+ 录像包</span><span class="farrow">-></span><span class="fnode g">离线机解包</span><span class="farrow">-></span><span class="fnode">explore --llm-cassette</span><span class="farrow">-></span><span class="fnode">generate -> run</span></div>
+      <div class="flow2"><span class="fnode">pack_release.main()</span><span class="farrow">-></span><span class="fnode">check_cassettes.check()（出厂闸门）</span><span class="farrow">-></span><span class="fnode g">代码包 + 录像包</span><span class="farrow">-></span><span class="fnode">offline_explore_chain.main()</span><span class="farrow">-></span><span class="fnode y">cli explore --llm-cassette</span><span class="farrow">-></span><span class="fnode">generate -> run</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_render_entrypoint.py（2 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性1-混合链路/verify_offline_delivery.py</span></p>
     </div>
   </section>
@@ -1314,7 +1314,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>场景 yml 的自然语言 -> 步骤序列。<span class="code-inline">_build_planner_prompt()</span> 把「场景 + 控件清单 + DOM 上下文 + 必填控件块 + 声明等待块」组装成提示词；<span class="code-inline">_parse_steps_text()</span> 解析结构化（function calling）或文本两种输出；<span class="code-inline">_apply_semantic_calibration()</span> 做语义校准；<span class="code-inline">_reject_login_steps()</span> 拒绝 AI 自编登录流程；<span class="code-inline">reject_hardcoded_row_values()</span> 拒绝写死行内业务值；<span class="code-inline">check_required_field_coverage()</span> 校验必填字段覆盖。失败自动闭环：<span class="code-inline">HYBRID_AI_RETRY</span>（默认 2、上界 5）配 <span class="code-inline">_should_retry_again()</span>（同因不重试，避免白烧 token）。步骤还能<b>直接声明定位</b>（by+value），不依赖探测清单：<span class="code-inline">generator._step_direct_locator_expr()</span>。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">cmd_explore()</span> -> <span class="code-inline">ai_explore()</span> -> <span class="code-inline">_build_planner_prompt()</span> -> LLM -> <span class="code-inline">_parse_steps_text()</span> -> <span class="code-inline">_apply_semantic_calibration()</span> -> 校验族 -> ElementMap；重试：<span class="code-inline">cmd_explore</span> 收 <span class="code-inline">_case_quality_reasons()</span> -> <span class="code-inline">_should_retry_again()</span> -> 带 retry_feedback 再问一轮。</p>
-      <div class="flow2"><span class="fnode">场景文案</span><span class="farrow">-></span><span class="fnode">planner prompt</span><span class="farrow">-></span><span class="fnode">AI 产 steps</span><span class="farrow">-></span><span class="fnode y">语义校准</span><span class="farrow">-></span><span class="fnode r">校验族（拒编登录/写死行值/必填）</span><span class="farrow">-></span><span class="fnode">cases</span></div>
+      <div class="flow2"><span class="fnode">场景文案 + 控件清单</span><span class="farrow">-></span><span class="fnode">_build_planner_prompt()</span><span class="farrow">-></span><span class="fnode">LLM</span><span class="farrow">-></span><span class="fnode">_parse_steps_text()</span><span class="farrow">-></span><span class="fnode y">_apply_semantic_calibration()</span><span class="farrow">-></span><span class="fnode r">校验族（拒编登录/写死行值/必填）</span><span class="farrow">-></span><span class="fnode">ElementMap</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/test_step_direct_locator.py（15 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_scenario_preconditions.py（10 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_retry_loop.py（10 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_incomplete_output_retries.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_retry_same_cause.py（5 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_no_hardcoded_row_values.py（5 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_semantic_mismatch_blocks.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_llm_tool_choice_unsupported.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_production_defects_gate_l1.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_can_express_row_checkbox.py（14 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_required_field_coverage.py（8 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_retry_leaves_no_stale_notes.py（4 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_required_fields_hard_checklist.py（5 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_list_clipping_is_general.py（15 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/verify_role_switch_click.py</span></p>
     </div>
     <div class="subfeat">
@@ -1384,7 +1384,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>[!] 未实现（缺口）：iframe 内以及跨 iframe 的控件识别与操作</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b><b>未实现（缺口）</b>：iframe 内以及跨 iframe 的控件识别与操作尚未落地。<span class="code-inline">page_scan.scan_page()</span> 的注释已把「新增一步探测动作（例如 iframe 内控件）」标注为未来只需改这一处的扩展点，但当前代码里没有任何 iframe 处理。规格 <span class="code-inline">feature_spec.py</span> 对此打 <span class="code-inline">status="未实现"</span>。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b>（无实现）—— 现状：探测/定位都在主框架内进行，未跨 frame 遍历。</p>
-      <div class="flow2"><span class="fnode r">iframe 内控件</span><span class="farrow">-></span><span class="fnode r">当前：未实现（如实标注）</span></div>
+      <div class="flow2"><span class="fnode">scan_page()（未跨 frame 遍历）</span><span class="farrow">-></span><span class="fnode r">iframe 内控件</span><span class="farrow">-></span><span class="fnode r">当前：未实现（如实标注）</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b>无<br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1414,7 +1414,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>不锚容器时的整页 nth —— 处理同名按钮分布在不同区域</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>不锚容器时的整页序号定位 —— 处理同名按钮分布在不同区域：用例显式声明 <span class="code-inline">scope="page"</span> 时，<span class="code-inline">_semantic_to_locator_expr(scope="page")</span> 直接在全页范围用元素自身的 role+name，<span class="code-inline">_page_scope_expr()</span> 负责把容器段剥掉；再配 <span class="code-inline">occurrence</span>（第 N 个）。框架不替用户猜，只有用例显式声明才走这条路。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">_semantic_to_locator_expr(it, scope="page")</span> -> <span class="code-inline">_page_scope_expr()</span> -> <span class="code-inline">_primary_lambda(expr, occurrence)</span>。</p>
-      <div class="flow2"><span class="fnode">同名按钮（不同区域）</span><span class="farrow">-></span><span class="fnode y">scope="page" 显式声明</span><span class="farrow">-></span><span class="fnode">全页 role+name</span><span class="farrow">-></span><span class="fnode">occurrence 指定第 N 个</span></div>
+      <div class="flow2"><span class="fnode">同名按钮（不同区域）</span><span class="farrow">-></span><span class="fnode y">_semantic_to_locator_expr(scope="page")</span><span class="farrow">-></span><span class="fnode">_page_scope_expr() 剥容器段</span><span class="farrow">-></span><span class="fnode">_primary_lambda(expr, occurrence) 第 N 个</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性4-选错控件兜底/test_page_scope_nth.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1430,7 +1430,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>锚点内表单字段的 target 步不能落到 get_by_text（会选到标签而不是输入框）</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>锚点内表单字段的 target 步不能落到 <span class="code-inline">get_by_text</span>（那会选到标签而不是输入框）：probe 按<b>元素类型</b>挑最稳的信号产 target 步 —— 表单控件用 placeholder -> label -> title -> text；图标按钮（文字就是 "..."）优先用 title。<span class="code-inline">locator_bridge._intent_verify()</span> 在 Tier1 命中后回读元素实际语义做复验，防「名字对、命中错」。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">probe_page()</span>（按 tag 选 target 步）-> 生成 <span class="code-inline">{"axis":"target", ...}</span>；定位 <span class="code-inline">_intent_verify()</span> 复验。</p>
-      <div class="flow2"><span class="fnode">锚点内字段</span><span class="farrow">-></span><span class="fnode y">按元素类型挑信号（placeholder/label/title）</span><span class="farrow">-></span><span class="fnode r">不落到 get_by_text</span><span class="farrow">-></span><span class="fnode">唯一命中</span></div>
+      <div class="flow2"><span class="fnode">锚点内字段 probe_page()</span><span class="farrow">-></span><span class="fnode y">按元素类型挑信号（placeholder/label/title）</span><span class="farrow">-></span><span class="fnode r">不落到 get_by_text</span><span class="farrow">-></span><span class="fnode">_intent_verify() 回读复验</span><span class="farrow">-></span><span class="fnode">唯一命中</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b>无<br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性4-选错控件兜底/verify_row_field_signal.py</span></p>
     </div>
   </section>
@@ -1468,7 +1468,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>场景变了要重新生成；两个触发源都要认</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>场景变了要重新生成 —— 两个触发源都要认：<span class="code-inline">generate_scripts(changed_only=True, only=[...])</span> 比对 4 个指纹（case_fingerprint / scenario_fingerprint / probe_fingerprint / template_fingerprint，记在 <span class="code-inline">scripts/generated/index.json</span>）：<b>场景指纹变</b>（人改了场景）或<b>模板指纹变</b>（框架改了渲染器）都会触发重生成；全同且脚本在 -> 跳过；<span class="code-inline">--only</span> 指定用例、<span class="code-inline">--force</span> 强制全量；index 不认识的孤儿脚本被清掉。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">cmd_generate()</span> -> <span class="code-inline">generate_scripts()</span> -> 指纹比对 -> 变化者 <span class="code-inline">_render_pytest_case()</span>，未变者进 skipped。</p>
-      <div class="flow2"><span class="fnode">4 个指纹比对</span><span class="farrow">-></span><span class="fnode y">场景/模板 指纹变</span><span class="farrow">-></span><span class="fnode g">重生成该条</span><span class="farrow">-></span><span class="fnode y">全同 -> 跳过（增量）</span></div>
+      <div class="flow2"><span class="fnode">cmd_generate() -> generate_scripts()</span><span class="farrow">-></span><span class="fnode">4 个指纹比对</span><span class="farrow">-></span><span class="fnode y">场景/模板 指纹变</span><span class="farrow">-></span><span class="fnode g">_render_pytest_case() 重生成该条</span><span class="farrow">-></span><span class="fnode y">全同 -> 跳过（增量）</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性5-用例脚本数据三层分离/test_generate_incremental.py（3 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1476,7 +1476,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>步骤缺可选字段（如 select 不给 value）时脚本照样生成，绝不因单个字段缺失崩掉整批</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>步骤缺可选字段（如 select 不给 value）时脚本照样生成，绝不因单个字段缺失崩掉整批：渲染时 <span class="code-inline">st.get("value")</span> 为空就不写 value；运行期 <span class="code-inline">_act()</span> 走「选第一个非空选项」的分支（<span class="code-inline">_real</span> 过滤 <span class="code-inline">value=""</span> 的占位项）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">_render_pytest_case()</span>（缺 value 分支）-> <span class="code-inline">_act()</span>（select 无 value -> index 分支）。</p>
-      <div class="flow2"><span class="fnode">步骤缺可选字段</span><span class="farrow">-></span><span class="fnode g">渲染不崩</span><span class="farrow">-></span><span class="fnode">select 无 value -> 选第 1 个非空项</span></div>
+      <div class="flow2"><span class="fnode">步骤缺可选字段</span><span class="farrow">-></span><span class="fnode">_render_pytest_case()（缺 value 分支）</span><span class="farrow">-></span><span class="fnode g">渲染不崩</span><span class="farrow">-></span><span class="fnode">_act()（select 无 value -> index 分支）</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性5-用例脚本数据三层分离/test_render_step_without_value.py（3 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
@@ -1490,7 +1490,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>[!] 待定：主定位失败时尝试候选并记录自愈过程</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b><b>代码已存在、但零判据</b>：<span class="code-inline">run/healer.py</span> 的 <span class="code-inline">Healer.try_heal()</span> 在定位失败时自愈 —— Level-A <span class="code-inline">_negotiate()</span> 放宽阈值重定位（<span class="code-inline">resolve_locator(tier2_threshold * 0.75, tier2_gap * 0.6)</span>，确定性、无 LLM）；Level-B <span class="code-inline">_llm_renegotiate()</span> 请 LLM 重猜（需 key，无 key 自动跳过）；每次自愈落 <span class="code-inline">output/heals/heals_*.json|.md</span> 成<b>可审 diff</b>（<span class="code-inline">dump()</span>），并用业务后置断言裁决成 <b>recovered / real_bug / failed</b> 三态（绝不静默改写脚本）。runner 侧接入：<span class="code-inline">_run_step()</span> 里 resolve 失败 -> <span class="code-inline">healer.try_heal()</span>；指纹自愈 -> <span class="code-inline">record_heal()</span>。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">runner._run_step()</span> -> <span class="code-inline">resolve_locator()</span> 失败 -> <span class="code-inline">Healer.try_heal()</span> -> <span class="code-inline">_negotiate()</span> -> <span class="code-inline">_record()</span> / <span class="code-inline">dump()</span>。</p>
-      <div class="flow2"><span class="fnode">定位失败</span><span class="farrow">-></span><span class="fnode y">A 级放宽阈值</span><span class="farrow">-></span><span class="fnode y">B 级 LLM 重猜（需 key）</span><span class="farrow">-></span><span class="fnode r">recovered / real_bug / failed</span></div>
+      <div class="flow2"><span class="fnode">runner._run_step() 定位失败</span><span class="farrow">-></span><span class="fnode">Healer.try_heal()</span><span class="farrow">-></span><span class="fnode y">A 级 _negotiate() 放宽阈值</span><span class="farrow">-></span><span class="fnode y">B 级 _llm_renegotiate()（需 key）</span><span class="farrow">-></span><span class="fnode r">recovered / real_bug / failed</span></div>
       <div class="diffbox">[!] 与规格一致但需说明：<span class="code-inline">feature_spec.py</span> 把特性 6 标为 <span class="code-inline">规划中（零判据）</span> —— 指的是「还没有自动化判据」，不等于「没实现」：代码里 healer 是<b>已实现</b>的。已实现 != 已验证，这是一条待补的缺口。</div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b>无<br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
@@ -1513,7 +1513,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>一类的红绝不能由二类的资源闸门造成（否则一类红灯失去可信度）</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>一类的红绝不能由二类的资源闸门造成（否则一类红灯失去可信度）：一类（<span class="code-inline">tests/</span> 下的框架自测）刻意<b>与 demo 解耦</b>、秒级、可离线跑，<span class="code-inline">run_acceptance.py</span> 的第 [2] 步 <span class="code-inline">pytest tests/ -q</span> 不依赖任何资源闸门或浏览器。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">run_acceptance.py</span> [2] -> <span class="code-inline">pytest tests/ -q</span>（与 demo / 内存闸无关）。</p>
-      <div class="flow2"><span class="fnode">一类：tests/ 框架自测</span><span class="farrow">-></span><span class="fnode g">不依赖 demo / 浏览器</span><span class="farrow">-></span><span class="fnode g">与二类资源闸解耦</span></div>
+      <div class="flow2"><span class="fnode">run_acceptance.py [2]</span><span class="farrow">-></span><span class="fnode">step_framework_selftest()</span><span class="farrow">-></span><span class="fnode g">pytest tests/ -q</span><span class="farrow">-></span><span class="fnode g">不依赖 demo / 浏览器</span><span class="farrow">-></span><span class="fnode g">与二类资源闸解耦</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性7-并发与资源安全/test_class1_no_mem_gate_coupling.py（9 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1521,7 +1521,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>二类 runner 冒烟；环境不满足时跳过并说明，而不是假红</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>二类 runner 冒烟：<span class="code-inline">tests/_runner/run_verifications.py</span> 连得上、能列出计划。环境不满足（如没 demo）时<b>跳过并说明</b>，而不是假红 —— 跳过用 exit 3 与「通过」区分。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">run_verifications.py --list</span> -> 计划；环境不满足 -> SKIP。</p>
-      <div class="flow2"><span class="fnode">runner 起来</span><span class="farrow">-></span><span class="fnode y">环境不满足 -> SKIP + 说明</span><span class="farrow">-></span><span class="fnode r">绝不假红</span></div>
+      <div class="flow2"><span class="fnode">run_verifications.py --list</span><span class="farrow">-></span><span class="fnode">list_scripts() 列计划</span><span class="farrow">-></span><span class="fnode y">classify() 判退出</span><span class="farrow">-></span><span class="fnode y">环境不满足 -> SKIP + 说明</span><span class="farrow">-></span><span class="fnode r">绝不假红</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性7-并发与资源安全/test_runner_smoke.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1529,7 +1529,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>慢机器/高并发目标下用例依然全绿（下行区就绪信号）</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>慢机器 / 高并发目标下用例依然全绿（下行区就绪信号）：二类 <span class="code-inline">tests/特性7-并发与资源安全/verify_slow_target.py</span> 在慢代理 300ms/请求下跑 6 条关键用例；内存不足时如实 SKIP 并 exit 3。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">verify_slow_target.py</span> -> 慢代理 -> 用例 -> 全绿判定。</p>
-      <div class="flow2"><span class="fnode">慢目标（300ms/请求）</span><span class="farrow">-></span><span class="fnode">6 条关键用例</span><span class="farrow">-></span><span class="fnode g">全绿</span><span class="farrow">-></span><span class="fnode y">内存不足 -> SKIP exit 3</span></div>
+      <div class="flow2"><span class="fnode">verify_slow_target.py</span><span class="farrow">-></span><span class="fnode">safe_workers() 并发裁定</span><span class="farrow">-></span><span class="fnode">慢目标（300ms/请求）6 条用例</span><span class="farrow">-></span><span class="fnode g">全绿</span><span class="farrow">-></span><span class="fnode y">内存不足 -> SKIP exit 3</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b>无<br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性7-并发与资源安全/verify_slow_target.py</span></p>
     </div>
   </section>
@@ -1543,7 +1543,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>严格级（逐字一致）+ 宽松级的匹配分工</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>两级键策略：<b>严格键</b> <span class="code-inline">cassette_key()</span> = sha256(system + NUL + prompt) 前 16 位（逐字一致，刻意不含模型名 —— 否则「A 机录、B 机放」永远不命中）；<b>结构键</b> <span class="code-inline">struct_key()</span> 只看「场景 + 页面 + 控件语义骨架」，配 <span class="code-inline">normalize_values()</span> 把引号内字面值与花括号占位符折成 <span class="code-inline">&lt;VAL&gt;</span>、<span class="code-inline">element_fingerprint()</span> 折数字，实现「换数据 / 参数化都不失效」。多键兼容：查询同时试新算法与旧算法（<span class="code-inline">struct_key_prev()</span> / <span class="code-inline">struct_key_legacy()</span>），升级不会让已有录像集体失效。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">Cassette.lookup(prompt, struct_key_value=[...])</span> -> 先严格键 -> 再结构键（命中时大声告警）；<span class="code-inline">cassette_key()</span> / <span class="code-inline">struct_key()</span> 算键。</p>
-      <div class="flow2"><span class="fnode">prompt</span><span class="farrow">-></span><span class="fnode g">严格键（逐字）</span><span class="farrow">-></span><span class="fnode y">结构键兜底（大声告警）</span><span class="farrow">-></span><span class="fnode">命中</span></div>
+      <div class="flow2"><span class="fnode">prompt</span><span class="farrow">-></span><span class="fnode">cassette_key()（严格键：逐字）</span><span class="farrow">-></span><span class="fnode y">struct_key()（结构键兜底，大声告警）</span><span class="farrow">-></span><span class="fnode">Cassette.lookup() 命中</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性8-离线回放/test_cassette_strict_policy.py（3 条）</span> <span class="code-inline">tests/特性8-离线回放/test_cassette_key_stability.py（9 条）</span> <span class="code-inline">tests/特性8-离线回放/test_cassette_fuzzy_fallback.py（9 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1551,7 +1551,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>场景段抠取 + 覆盖判定；缺录像要能报出来</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>录像体检（零成本，不需 key / 外网）：<span class="code-inline">build_tools/check_cassettes.py</span> 抠出场景段、判定「每个场景是否都有可用录像」，缺录像要能报出来；打包前作为<b>出厂闸门</b>强制跑（覆盖不全不产包）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">check_cassettes.py</span> -> 逐场景 -> 覆盖判定 -> 报告/非 0 退出。</p>
-      <div class="flow2"><span class="fnode">场景清单</span><span class="farrow">-></span><span class="fnode">check_cassettes.py</span><span class="farrow">-></span><span class="fnode y">每场景有可用录像？</span><span class="farrow">-></span><span class="fnode r">缺 -> 报出来</span></div>
+      <div class="flow2"><span class="fnode">场景清单</span><span class="farrow">-></span><span class="fnode">check_cassettes.check()</span><span class="farrow">-></span><span class="fnode">load_cassettes() 读录像</span><span class="farrow">-></span><span class="fnode y">每场景有可用录像？</span><span class="farrow">-></span><span class="fnode r">缺 -> 报出来（非 0 退出）</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性8-离线回放/test_check_cassettes_block.py（6 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1559,7 +1559,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>录像能录、能放、放得对（不联网、不要 key）</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>录制与回放契约（能录、能放、放得对：不联网、不要 key）：<span class="code-inline">llm_cassette.Cassette(MODE_RECORD / MODE_REPLAY)</span>、<span class="code-inline">store()</span> / <span class="code-inline">lookup()</span>；explorer 侧 <span class="code-inline">_save_to_cassette()</span> / <span class="code-inline">_replay_from_cassette()</span>；默认目录 <span class="code-inline">output/llm_cassettes</span>（在 .gitignore 里，录像含 prompt 全文，不入库）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">cmd_explore()</span> -> Cassette -> <span class="code-inline">ai_explore()</span> -> _save_to_cassette / _replay_from_cassette。</p>
-      <div class="flow2"><span class="fnode">--llm-record</span><span class="farrow">-></span><span class="fnode g">录：prompt + 回答 + 键</span><span class="farrow">-></span><span class="fnode">--llm-cassette</span><span class="farrow">-></span><span class="fnode g">放：不联网、不要 key</span></div>
+      <div class="flow2"><span class="fnode">--llm-record</span><span class="farrow">-></span><span class="fnode g">_save_to_cassette()：录 prompt + 回答 + 键</span><span class="farrow">-></span><span class="fnode">--llm-cassette</span><span class="farrow">-></span><span class="fnode g">_replay_from_cassette()：放（不联网、不要 key）</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性8-离线回放/test_llm_cassette.py（30 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性8-离线回放/verify_e2e_scenario3_cassette.py</span> <span class="code-inline">tests/特性8-离线回放/verify_e2e_scenario3_replay.py</span></p>
     </div>
     <div class="subfeat">
@@ -1567,7 +1567,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>LLM 偶发失败要退避重试，不许把抖动当失败</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>LLM 偶发失败要退避重试，不许把抖动当失败：<span class="code-inline">explorer._get_llm_text()</span> 按 <span class="code-inline">HYBRID_LLM_ATTEMPTS</span>（默认 3）重试，间隔 <span class="code-inline">await asyncio.sleep(1.5 * attempt)</span>；<span class="code-inline">_llm_failure_hint()</span> 对限流给「稍后重试 / 调大 attempts」的提示。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">ai_explore()</span> -> <span class="code-inline">_get_llm_text()</span> -> 重试循环（退避）-> 成功 / 耗尽后如实失败。</p>
-      <div class="flow2"><span class="fnode">LLM 抖动</span><span class="farrow">-></span><span class="fnode y">退避重试（默认 3 次）</span><span class="farrow">-></span><span class="fnode g">成功 -> 继续</span><span class="farrow">-></span><span class="fnode r">耗尽 -> 如实失败</span></div>
+      <div class="flow2"><span class="fnode">LLM 抖动</span><span class="farrow">-></span><span class="fnode">_get_llm_text()</span><span class="farrow">-></span><span class="fnode y">退避重试（HYBRID_LLM_ATTEMPTS 默认 3 次）</span><span class="farrow">-></span><span class="fnode g">成功 -> 继续</span><span class="farrow">-></span><span class="fnode r">耗尽 -> 如实失败</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性8-离线回放/test_llm_retry.py（3 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性8-离线回放/verify_offline_chain_deps.py</span></p>
     </div>
   </section>
@@ -1581,7 +1581,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>tests/ 与生成物的布局、路径拼接（跨平台）、命名空间契约</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>布局与命名契约：tests/ 与生成物的目录布局、跨平台路径拼接、命名空间、生成物形态都由判据钉住（<span class="code-inline">test_test_layout_contract.py</span> / <span class="code-inline">test_generated_layout_contract.py</span> / <span class="code-inline">test_path_join_contract.py</span> 等）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b>判据直接读磁盘布局与生成物文本做断言（秒级、不依赖 demo）。</p>
-      <div class="flow2"><span class="fnode">布局 / 路径 / 命名空间契约</span><span class="farrow">-></span><span class="fnode r">坏了就红</span></div>
+      <div class="flow2"><span class="fnode">布局/路径/命名空间 契约判据</span><span class="farrow">-></span><span class="fnode">test_*_contract.py（读磁盘布局）</span><span class="farrow">-></span><span class="fnode y">config._repo_root() 定仓库根</span><span class="farrow">-></span><span class="fnode r">坏了就红</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_test_layout_contract.py（13 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_generated_layout_contract.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_path_join_contract.py（2 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_case_scenario_contract.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_click_then_ready_contract.py（7 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_assert_kinds_render.py（11 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_wait_text_kind.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_demo_testid_policy.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1589,7 +1589,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤**</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>质量闸：用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，且<b>不许误伤</b>。红线实现：<span class="code-inline">case_builder.case_errors()</span>（换页证据没区分力等假绿）、<span class="code-inline">case_warnings()</span>（断言 = 输入回显 / 猜出来的运行时值）、<span class="code-inline">generator._gate_false_green()</span>（生成前拦）。<span class="code-inline">test_no_false_positive_blocks_ai.py</span> 专门守「闸门不许误伤 AI 链路」。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">generate_scripts()</span> -> <span class="code-inline">_gate_false_green()</span>；落盘前 <span class="code-inline">case_errors()</span> / <span class="code-inline">case_warnings()</span>。</p>
-      <div class="flow2"><span class="fnode">用例 / 生成 / 新鲜度 / 同步闸</span><span class="farrow">-></span><span class="fnode r">坏就红</span><span class="farrow">-></span><span class="fnode y">宁漏不误伤</span></div>
+      <div class="flow2"><span class="fnode">用例/生成/新鲜度/同步闸</span><span class="farrow">-></span><span class="fnode">case_errors() / case_warnings()</span><span class="farrow">-></span><span class="fnode y">_gate_false_green() 生成前拦</span><span class="farrow">-></span><span class="fnode r">坏就红</span><span class="farrow">-></span><span class="fnode y">宁漏不误伤</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_case_quality_gate.py（14 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_generate_quality_gate.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_demo_freshness_gate.py（35 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_ai_case_scenario_sync.py（2 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_daily_skip_marker.py（4 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_no_false_positive_blocks_ai.py（9 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_demo_freshness.py</span></p>
     </div>
     <div class="subfeat">
@@ -1597,7 +1597,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>跨平台路径/内存探测/UTF-8 与 cp936 —— 源码不许出现 GBK 编不了的字符</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>跨平台路径 / 内存探测 / UTF-8 与 cp936：<span class="code-inline">config._repo_root()</span> 按标记文件 pyproject.toml 找仓库根（不写死 parents[N]）；<span class="code-inline">common/limits.mem_available_mb()</span> 在非 Linux 退到 Windows GlobalMemoryStatusEx；<span class="code-inline">cli.force_stdio()</span> 统一 UTF-8；<span class="code-inline">generator._gbk_safe()</span> 保证生成物源码不出现 GBK 编不了的字符。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">main()</span> -> <span class="code-inline">force_stdio()</span>；各处 -> <span class="code-inline">config._repo_root()</span> / <span class="code-inline">limits.mem_available_mb()</span>。</p>
-      <div class="flow2"><span class="fnode">跨平台路径</span><span class="farrow">-></span><span class="fnode y">UTF-8 / cp936</span><span class="farrow">-></span><span class="fnode r">源码不许有 GBK 编不了的字符</span></div>
+      <div class="flow2"><span class="fnode">main() -> force_stdio()</span><span class="farrow">-></span><span class="fnode">config._repo_root()（标记文件定位）</span><span class="farrow">-></span><span class="fnode">limits.mem_available_mb()</span><span class="farrow">-></span><span class="fnode y">UTF-8 / cp936</span><span class="farrow">-></span><span class="fnode r">源码不许有 GBK 编不了的字符 _gbk_safe()</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_env_adaptation.py（18 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_utf8_io.py（21 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_browser_preflight.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_no_stale_paths.py（9 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1605,7 +1605,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>交付包与文档同步：<span class="code-inline">build_tools/pack_release.py</span> 打包（内容完整、只留一份 README）、<span class="code-inline">build_tools/build_html.py</span> 是<b>版本号单一来源</b>且生成<b>可复现</b>（换哈希种子逐字节一致）、<span class="code-inline">build_tools/build_feature_map.py</span> 渲染特性映射文档。判据把「文档与代码一致」钉成红。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">build_html.build()</span> -> docs/training.html；<span class="code-inline">build_feature_map.render()</span> -> docs/feature_map.md；<span class="code-inline">verify_html_sync.py</span> 校验可复现 + 与代码一致。</p>
-      <div class="flow2"><span class="fnode">pack_release.py</span><span class="farrow">-></span><span class="fnode">build_html.py（版本单一来源）</span><span class="farrow">-></span><span class="fnode g">可复现 + 与代码同步</span><span class="farrow">-></span><span class="fnode">判据 test_docs_sync</span></div>
+      <div class="flow2"><span class="fnode">pack_release.py</span><span class="farrow">-></span><span class="fnode">build_html.build()（版本单一来源）</span><span class="farrow">-></span><span class="fnode">build_feature_map.render()</span><span class="farrow">-></span><span class="fnode">verify_html_sync.py</span><span class="farrow">-></span><span class="fnode g">可复现 + 与代码同步</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_pack_release.py（19 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_pack_release_requires_generated_dir.py（1 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_readme_structure.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_docs_sync.py（10 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_build_html_hl.py（9 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_html_sync.py</span></p>
     </div>
     <div class="subfeat">
@@ -1613,7 +1613,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>日志/产物保留策略与健康检查</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>日志 / 产物保留策略与健康检查：<span class="code-inline">common/retention.prune_snapshots()</span> 清快照、<span class="code-inline">prune_runs()</span> 管 run/verify（保留最近 N 个并集 N 天；<span class="code-inline">.protected_runs</span> 显式保护；<b>只有能证明成功才整删</b>，其余只瘦身）；健康检查 <span class="code-inline">test_artifacts_health.py</span> 对坏产物给人话诊断。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">cli cmd_prune()</span> -> <span class="code-inline">retention.prune_snapshots()</span> / <span class="code-inline">prune_runs()</span>；<span class="code-inline">run_is_proven_success()</span> 决定整删或瘦身。</p>
-      <div class="flow2"><span class="fnode">产物/日志</span><span class="farrow">-></span><span class="fnode">retention 分级清理</span><span class="farrow">-></span><span class="fnode y">能证明成功才整删</span><span class="farrow">-></span><span class="fnode g">其余瘦身 / 显式保护</span></div>
+      <div class="flow2"><span class="fnode">产物/日志</span><span class="farrow">-></span><span class="fnode">cmd_prune() -> retention</span><span class="farrow">-></span><span class="fnode">prune_snapshots() / prune_runs()</span><span class="farrow">-></span><span class="fnode">run_is_proven_success()</span><span class="farrow">-></span><span class="fnode y">能证明成功才整删</span><span class="farrow">-></span><span class="fnode g">其余瘦身 / 显式保护</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_retention_runs.py（14 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_artifacts_health.py（9 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_retention_runs.py</span></p>
     </div>
     <div class="subfeat">
@@ -1621,7 +1621,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>点击后等就绪、等文本刷新策略、选择器生效、**动作后置校验（做了 != 生效了）**</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>点击后等就绪、等文本刷新策略、选择器生效、<b>动作后置校验（做了 != 生效了）</b>：<span class="code-inline">run/waits.wait_after_action()</span> 先确认真的发生了导航、再等就绪标记（否则旧文档的标记会假满足）；<span class="code-inline">common/declared_wait</span> 让<b>场景声明的业务时长优先于框架默认</b>；生成物 <span class="code-inline">_wait_ready()</span> / <span class="code-inline">_assert_wait_text()</span> / <span class="code-inline">_check_effect()</span>（业务动词点击后判「动作是否真的生效」）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">_act()</span> -> <span class="code-inline">_wait_after_action()</span>；<span class="code-inline">_check_effect()</span> -> 回读提示区 / 计数变化；<span class="code-inline">declared_wait.effective_wait_ms()</span> 定等待时长。</p>
-      <div class="flow2"><span class="fnode">动作（click/...）</span><span class="farrow">-></span><span class="fnode y">确认导航 -> 等就绪标记</span><span class="farrow">-></span><span class="fnode r">动作后置校验（做了 != 生效了）</span><span class="farrow">-></span><span class="fnode">web-first 断言</span></div>
+      <div class="flow2"><span class="fnode">_act()（click/...）</span><span class="farrow">-></span><span class="fnode">wait_after_action() 先确认导航</span><span class="farrow">-></span><span class="fnode y">_wait_ready() 等就绪标记</span><span class="farrow">-></span><span class="fnode r">_check_effect() 动作后置校验（做了 != 生效了）</span><span class="farrow">-></span><span class="fnode">declared_wait.effective_wait_ms() 定等待</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_ready_and_locate.py（12 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_wait_text_refresh_policy.py（3 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_wait_text_selector.py（2 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_import_targets.py（4 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_generated_pytest_discovery.py（1 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_case_imports_cover_helpers.py（1 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_scenario_case_script_hygiene.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_target_reachability.py（7 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_declared_wait_budget.py（24 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_action_effect_check.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_wait_text.py</span> <span class="code-inline">tests/特性9-质量闸门体系/verify_action_effect_check.py</span></p>
     </div>
     <div class="subfeat">
@@ -1629,7 +1629,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>用例替换不许破坏结构；闸门自身不许互相耦合</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>用例替换不许破坏结构；闸门自身不许互相耦合：<span class="code-inline">test_case_replacement_safety.py</span> 与 <span class="code-inline">test_no_gate_coupling.py</span> 分别钉住「替换安全」与「闸门解耦」。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b>判据静态/秒级校验（读生成物与闸门源码）。</p>
-      <div class="flow2"><span class="fnode">用例替换</span><span class="farrow">-></span><span class="fnode g">不破坏结构</span><span class="farrow">-></span><span class="fnode g">闸门之间不互相耦合</span></div>
+      <div class="flow2"><span class="fnode">用例替换 write_case()（AI 用例换代）</span><span class="farrow">-></span><span class="fnode g">不误伤手搓/临时用例</span><span class="farrow">-></span><span class="fnode">闸门解耦 test_no_gate_coupling.py</span><span class="farrow">-></span><span class="fnode g">闸门之间不互相耦合</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_case_replacement_safety.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_no_gate_coupling.py（2 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1637,7 +1637,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>特性/子特性/用例归属的规格（feature_spec）与磁盘**双向一致**：规格里列的文件必须存在、磁盘上的用例必须有归属、编号规范、目录不漂移、文档与规格同步</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>特性/子特性/用例归属的规格与磁盘<b>双向一致</b>：<span class="code-inline">feature_spec.py</span> 是唯一来源，<span class="code-inline">build_feature_map.py</span> 渲染 <span class="code-inline">docs/feature_map.md</span>，<span class="code-inline">test_feature_spec_contract.py</span> 校验「规格里列的文件必须存在、磁盘上的用例必须有归属、编号规范、目录不漂移、文档与规格同步」。本章即由该规格驱动渲染。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">feature_spec.FEATURES</span> -> build_feature_map.render() -> docs/feature_map.md；build_html 本段 -> 本章。</p>
-      <div class="flow2"><span class="fnode">feature_spec.py（唯一来源）</span><span class="farrow">-></span><span class="fnode g">双向一致</span><span class="farrow">-></span><span class="fnode r">不一致 -> 红</span></div>
+      <div class="flow2"><span class="fnode">feature_spec.FEATURES（唯一来源）</span><span class="farrow">-></span><span class="fnode">build_feature_map.render()</span><span class="farrow">-></span><span class="fnode g">双向一致</span><span class="farrow">-></span><span class="fnode r">不一致 -> 红</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_feature_spec_contract.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
@@ -1651,7 +1651,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>成功 0 / 有用例失败 1 / 没匹配到 5 / 环境问题其它 —— 绝不静默成功</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>退出码能区分好坏：成功 0 / 有用例失败 1 / 环境或参数问题 2 / 有跳过 3 / 没匹配到 5 —— <b>绝不静默成功</b>。<span class="code-inline">main()</span> 会<b>采纳</b>子命令返回值（<span class="code-inline">if isinstance(rc, int) and rc != 0: raise SystemExit(rc)</span>），修掉过「报了错却 exit 0」的坑。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">main()</span> -> 分派各 <span class="code-inline">cmd_*()</span> -> 收返回值 -> <span class="code-inline">raise SystemExit(rc)</span>。</p>
-      <div class="flow2"><span class="fnode">0 成功</span><span class="farrow">-></span><span class="fnode r">1 用例失败</span><span class="farrow">-></span><span class="fnode r">2 环境/参数</span><span class="farrow">-></span><span class="fnode y">3 有跳过（不算通过）</span><span class="farrow">-></span><span class="fnode">5 没匹配到</span></div>
+      <div class="flow2"><span class="fnode">main() -> cmd_*()</span><span class="farrow">-></span><span class="fnode g">0 成功</span><span class="farrow">-></span><span class="fnode r">1 用例失败</span><span class="farrow">-></span><span class="fnode r">2 环境/参数</span><span class="farrow">-></span><span class="fnode y">3 有跳过（不算通过）</span><span class="farrow">-></span><span class="fnode">raise SystemExit(rc)</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_cli_exit_codes.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1667,7 +1667,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>新增子命令/参数必须自动出现在 --help 总览里</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>新增子命令 / 参数必须自动出现在 <span class="code-inline">--help</span> 总览里：<span class="code-inline">_print_help()</span> 的每一行都由代码生成 —— 子命令清单与每个子命令的全部参数取自 <span class="code-inline">CMD_FLAGS</span>（唯一注册表），一句话说明取自各子命令函数 docstring 首行-> 人只需写那句 docstring。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">main()</span>（无参/--help）-> <span class="code-inline">_print_help()</span> -> 遍历 <span class="code-inline">CMD_FLAGS</span> + inspect.getdoc()。</p>
-      <div class="flow2"><span class="fnode">注册一个新参数</span><span class="farrow">-></span><span class="fnode g">总览自动带上它</span><span class="farrow">-></span><span class="fnode r">漏了 -> 判据红</span></div>
+      <div class="flow2"><span class="fnode">main() --help -> _print_help()</span><span class="farrow">-></span><span class="fnode">CMD_FLAGS（唯一注册表）</span><span class="farrow">-></span><span class="fnode">inspect.getdoc() 取首行</span><span class="farrow">-></span><span class="fnode g">总览自动带上它</span><span class="farrow">-></span><span class="fnode r">漏了 -> 判据红</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_cli_help_coverage.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1675,7 +1675,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>`setup --check` 退出码能区分环境好坏</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b><span class="code-inline">setup --check</span> 的退出码能区分环境好坏（只读体检，不安装）：<span class="code-inline">cmd_setup()</span> 依次查依赖 -> 浏览器 -> 真启一次 chromium 自检，任一步失败即退出码 2 并把原始输出尾部打出来（不静默）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">cmd_setup(argv)</span> -> 依赖检查 -> <span class="code-inline">browser.ensure_browser_installed()</span> -> 自检 -> 退出码。</p>
-      <div class="flow2"><span class="fnode">setup --check</span><span class="farrow">-></span><span class="fnode y">依赖 / 浏览器 / 自检</span><span class="farrow">-></span><span class="fnode g">好 -> 0</span><span class="farrow">-></span><span class="fnode r">坏 -> 2</span></div>
+      <div class="flow2"><span class="fnode">cmd_setup() --check</span><span class="farrow">-></span><span class="fnode">ensure_browser_installed()</span><span class="farrow">-></span><span class="fnode y">依赖 / 浏览器 / 自检</span><span class="farrow">-></span><span class="fnode g">好 -> 0</span><span class="farrow">-></span><span class="fnode r">坏 -> 2</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_cli_setup.py（10 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1683,7 +1683,7 @@ pytest 并发执行 -> 逐用例 .log + report.html + 变量池(用例隔离)</p
       <p class="codesrc"><b>目标：</b>文档/提示/培训页的主推路径 = AI 链路；手搓用例降级为调试与回归辅助（历史版本记录不改）</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>文档/提示/培训页的主推路径 = <b>AI 链路</b>；手搓用例降级为调试与回归辅助。为此把常用可调项开成 CLI 参数（<span class="code-inline">--ai-retry</span> / <span class="code-inline">--timeout</span> / <span class="code-inline">--strict-locate</span> ...）并由 <span class="code-inline">cli config</span>（<span class="code-inline">TUNABLE_CATALOG</span>）一屏可见，让「有哪些旋钮、当前多少、从哪来」不用翻源码。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">main()</span> -> <span class="code-inline">cmd_config()</span> -> 遍历 <span class="code-inline">TUNABLE_CATALOG</span>；<span class="code-inline">ENV_TO_FLAG</span> 把 CLI 值落进环境变量（CLI > env > 默认）。</p>
-      <div class="flow2"><span class="fnode">AI 链路（主推）</span><span class="farrow">-></span><span class="fnode y">手搓用例（调试/回归辅助）</span><span class="farrow">-></span><span class="fnode">cli config 一屏可调项</span></div>
+      <div class="flow2"><span class="fnode">AI 链路（主推）</span><span class="farrow">-></span><span class="fnode y">手搓用例（调试/回归辅助）</span><span class="farrow">-></span><span class="fnode">cmd_config() -> TUNABLE_CATALOG</span><span class="farrow">-></span><span class="fnode">ENV_TO_FLAG（CLI > env > 默认）</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_ai_first_docs.py（6 条）</span> <span class="code-inline">tests/特性10-CLI帮助契约/test_tunables_exposed_as_flags.py（6 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>

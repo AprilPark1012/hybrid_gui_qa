@@ -2106,7 +2106,7 @@ _FEAT_IMPL = {
              '汇总退出码；<span class="code-inline">--list</span> 只看不跑、'
              '<span class="code-inline">--only</span> 只跑某项、'
              '<span class="code-inline">--keep-going</span> 跑完再汇总。',
-        legend=['[0] 闸门自检', ('[1] 新鲜度', 'g'), ('[2] 框架自测', 'g'), '[3] E2E 3->2->1', '[4] 特性自测']),
+        legend=['run_acceptance.py', ('step_gate_selfcheck()', 'g'), ('step_framework_selftest()', 'g'), 'step_e2e() 3->2->1', ('SKIP != 通过 -> exit 3', 'r'), '退出码 0/1/2/3']),
     '1.3': dict(
         logic='<span class="code-inline">build_tools/pack_release.py</span> 打「代码包」（含运行期必需文件），'
               '<span class="code-inline">--with-cassettes</span> 打「LLM 录像包」；打包前强制'
@@ -2119,7 +2119,7 @@ _FEAT_IMPL = {
              '<span class="code-inline">check_cassettes.check()</span>（出厂闸门）-> 产包；'
              '<span class="code-inline">offline_explore_chain</span> -> '
              '<span class="code-inline">cli explore --llm-cassette</span> -> generate -> run。',
-        legend=['代码包', '+ 录像包', ('离线机解包', 'g'), 'explore --llm-cassette', 'generate -> run']),
+        legend=['pack_release.main()', 'check_cassettes.check()（出厂闸门）', ('代码包 + 录像包', 'g'), 'offline_explore_chain.main()', ('cli explore --llm-cassette', 'y'), 'generate -> run']),
 
     '2.1': dict(
         logic='AI 产出的语义名必须落到真实控件上。<span class="code-inline">explorer._match_item(sn, items)</span> '
@@ -2151,7 +2151,7 @@ _FEAT_IMPL = {
              '<span class="code-inline">_apply_semantic_calibration()</span> -> 校验族 -> ElementMap；'
              '重试：<span class="code-inline">cmd_explore</span> 收 <span class="code-inline">_case_quality_reasons()</span> -> '
              '<span class="code-inline">_should_retry_again()</span> -> 带 retry_feedback 再问一轮。',
-        legend=['场景文案', 'planner prompt', 'AI 产 steps', ('语义校准', 'y'), ('校验族（拒编登录/写死行值/必填）', 'r'), 'cases']),
+        legend=['场景文案 + 控件清单', '_build_planner_prompt()', 'LLM', '_parse_steps_text()', ('_apply_semantic_calibration()', 'y'), ('校验族（拒编登录/写死行值/必填）', 'r'), 'ElementMap']),
 
     '2.3': dict(
         logic='步骤里的语义名 / 属性合成可执行定位表达式：'
@@ -2254,7 +2254,7 @@ _FEAT_IMPL = {
               '标注为未来只需改这一处的扩展点，但当前代码里没有任何 iframe 处理。'
               '规格 <span class="code-inline">feature_spec.py</span> 对此打 <span class="code-inline">status="未实现"</span>。',
         call='（无实现）—— 现状：探测/定位都在主框架内进行，未跨 frame 遍历。',
-        legend=[('iframe 内控件', 'r'), ('当前：未实现（如实标注）', 'r')]),
+        legend=['scan_page()（未跨 frame 遍历）', ('iframe 内控件', 'r'), ('当前：未实现（如实标注）', 'r')]),
 
     '3.7': dict(
         logic='行锚 + 单元格定位。行锚：<span class="code-inline">anchor.pick_row_anchor(cells, table_cells)</span> '
@@ -2291,7 +2291,7 @@ _FEAT_IMPL = {
         call='<span class="code-inline">_semantic_to_locator_expr(it, scope="page")</span> -> '
              '<span class="code-inline">_page_scope_expr()</span> -> '
              '<span class="code-inline">_primary_lambda(expr, occurrence)</span>。',
-        legend=['同名按钮（不同区域）', ('scope="page" 显式声明', 'y'), '全页 role+name', 'occurrence 指定第 N 个']),
+        legend=['同名按钮（不同区域）', ('_semantic_to_locator_expr(scope="page")', 'y'), '_page_scope_expr() 剥容器段', '_primary_lambda(expr, occurrence) 第 N 个']),
 
     '4.3': dict(
         logic='行锚的选取从「整行文本」改成「整表内唯一的最短单元格文本」：'
@@ -2312,7 +2312,7 @@ _FEAT_IMPL = {
         call='<span class="code-inline">probe_page()</span>（按 tag 选 target 步）-> 生成 '
              '<span class="code-inline">{"axis":"target", ...}</span>；'
              '定位 <span class="code-inline">_intent_verify()</span> 复验。',
-        legend=['锚点内字段', ('按元素类型挑信号（placeholder/label/title）', 'y'), ('不落到 get_by_text', 'r'), '唯一命中']),
+        legend=['锚点内字段 probe_page()', ('按元素类型挑信号（placeholder/label/title）', 'y'), ('不落到 get_by_text', 'r'), '_intent_verify() 回读复验', '唯一命中']),
 
     '5.1': dict(
         logic='三层各司其职：<b>用例</b> <span class="code-inline">cases/*.json</span>（意图：op 操作类型 + desc 描述 + '
@@ -2365,7 +2365,7 @@ _FEAT_IMPL = {
         call='<span class="code-inline">cmd_generate()</span> -> '
              '<span class="code-inline">generate_scripts()</span> -> 指纹比对 -> '
              '变化者 <span class="code-inline">_render_pytest_case()</span>，未变者进 skipped。',
-        legend=['4 个指纹比对', ('场景/模板 指纹变', 'y'), ('重生成该条', 'g'), ('全同 -> 跳过（增量）', 'y')]),
+        legend=['cmd_generate() -> generate_scripts()', '4 个指纹比对', ('场景/模板 指纹变', 'y'), ('_render_pytest_case() 重生成该条', 'g'), ('全同 -> 跳过（增量）', 'y')]),
 
     '5.5': dict(
         logic='步骤缺可选字段（如 select 不给 value）时脚本照样生成，绝不因单个字段缺失崩掉整批：'
@@ -2374,7 +2374,7 @@ _FEAT_IMPL = {
               '<span class="code-inline">_real</span> 过滤 <span class="code-inline">value=""</span> 的占位项）。',
         call='<span class="code-inline">_render_pytest_case()</span>（缺 value 分支）-> '
              '<span class="code-inline">_act()</span>（select 无 value -> index 分支）。',
-        legend=['步骤缺可选字段', ('渲染不崩', 'g'), 'select 无 value -> 选第 1 个非空项']),
+        legend=['步骤缺可选字段', '_render_pytest_case()（缺 value 分支）', ('渲染不崩', 'g'), '_act()（select 无 value -> index 分支）']),
 
     '6.1': dict(
         logic='<b>代码已存在、但零判据</b>：<span class="code-inline">run/healer.py</span> 的 '
@@ -2392,7 +2392,7 @@ _FEAT_IMPL = {
              '<span class="code-inline">Healer.try_heal()</span> -> '
              '<span class="code-inline">_negotiate()</span> -> '
              '<span class="code-inline">_record()</span> / <span class="code-inline">dump()</span>。',
-        legend=['定位失败', ('A 级放宽阈值', 'y'), ('B 级 LLM 重猜（需 key）', 'y'), ('recovered / real_bug / failed', 'r')],
+        legend=['runner._run_step() 定位失败', 'Healer.try_heal()', ('A 级 _negotiate() 放宽阈值', 'y'), ('B 级 _llm_renegotiate()（需 key）', 'y'), ('recovered / real_bug / failed', 'r')],
         diff='[!] 与规格一致但需说明：<span class="code-inline">feature_spec.py</span> 把特性 6 标为 '
              '<span class="code-inline">规划中（零判据）</span> —— 指的是「还没有自动化判据」，'
              '不等于「没实现」：代码里 healer 是<b>已实现</b>的。已实现 != 已验证，这是一条待补的缺口。'),
@@ -2413,20 +2413,20 @@ _FEAT_IMPL = {
               '<span class="code-inline">pytest tests/ -q</span> 不依赖任何资源闸门或浏览器。',
         call='<span class="code-inline">run_acceptance.py</span> [2] -> <span class="code-inline">pytest tests/ -q</span>'
              '（与 demo / 内存闸无关）。',
-        legend=['一类：tests/ 框架自测', ('不依赖 demo / 浏览器', 'g'), ('与二类资源闸解耦', 'g')]),
+        legend=['run_acceptance.py [2]', 'step_framework_selftest()', ('pytest tests/ -q', 'g'), ('不依赖 demo / 浏览器', 'g'), ('与二类资源闸解耦', 'g')]),
 
     '7.3': dict(
         logic='二类 runner 冒烟：<span class="code-inline">tests/_runner/run_verifications.py</span> 连得上、'
               '能列出计划。环境不满足（如没 demo）时<b>跳过并说明</b>，而不是假红 —— 跳过用 exit 3 与「通过」区分。',
         call='<span class="code-inline">run_verifications.py --list</span> -> 计划；环境不满足 -> SKIP。',
-        legend=['runner 起来', ('环境不满足 -> SKIP + 说明', 'y'), ('绝不假红', 'r')]),
+        legend=['run_verifications.py --list', 'list_scripts() 列计划', ('classify() 判退出', 'y'), ('环境不满足 -> SKIP + 说明', 'y'), ('绝不假红', 'r')]),
 
     '7.4': dict(
         logic='慢机器 / 高并发目标下用例依然全绿（下行区就绪信号）：二类 '
               '<span class="code-inline">tests/特性7-并发与资源安全/verify_slow_target.py</span> '
               '在慢代理 300ms/请求下跑 6 条关键用例；内存不足时如实 SKIP 并 exit 3。',
         call='<span class="code-inline">verify_slow_target.py</span> -> 慢代理 -> 用例 -> 全绿判定。',
-        legend=['慢目标（300ms/请求）', '6 条关键用例', ('全绿', 'g'), ('内存不足 -> SKIP exit 3', 'y')]),
+        legend=['verify_slow_target.py', 'safe_workers() 并发裁定', '慢目标（300ms/请求）6 条用例', ('全绿', 'g'), ('内存不足 -> SKIP exit 3', 'y')]),
 
     '8.1': dict(
         logic='两级键策略：<b>严格键</b> <span class="code-inline">cassette_key()</span> = '
@@ -2440,14 +2440,14 @@ _FEAT_IMPL = {
         call='<span class="code-inline">Cassette.lookup(prompt, struct_key_value=[...])</span> -> 先严格键 -> '
              '再结构键（命中时大声告警）；<span class="code-inline">cassette_key()</span> / '
              '<span class="code-inline">struct_key()</span> 算键。',
-        legend=['prompt', ('严格键（逐字）', 'g'), ('结构键兜底（大声告警）', 'y'), '命中']),
+        legend=['prompt', 'cassette_key()（严格键：逐字）', ('struct_key()（结构键兜底，大声告警）', 'y'), 'Cassette.lookup() 命中']),
 
     '8.2': dict(
         logic='录像体检（零成本，不需 key / 外网）：<span class="code-inline">build_tools/check_cassettes.py</span> '
               '抠出场景段、判定「每个场景是否都有可用录像」，缺录像要能报出来；'
               '打包前作为<b>出厂闸门</b>强制跑（覆盖不全不产包）。',
         call='<span class="code-inline">check_cassettes.py</span> -> 逐场景 -> 覆盖判定 -> 报告/非 0 退出。',
-        legend=['场景清单', 'check_cassettes.py', ('每场景有可用录像？', 'y'), ('缺 -> 报出来', 'r')]),
+        legend=['场景清单', 'check_cassettes.check()', 'load_cassettes() 读录像', ('每场景有可用录像？', 'y'), ('缺 -> 报出来（非 0 退出）', 'r')]),
 
     '8.3': dict(
         logic='录制与回放契约（能录、能放、放得对：不联网、不要 key）：'
@@ -2458,7 +2458,7 @@ _FEAT_IMPL = {
               '默认目录 <span class="code-inline">output/llm_cassettes</span>（在 .gitignore 里，录像含 prompt 全文，不入库）。',
         call='<span class="code-inline">cmd_explore()</span> -> Cassette -> '
              '<span class="code-inline">ai_explore()</span> -> _save_to_cassette / _replay_from_cassette。',
-        legend=['--llm-record', ('录：prompt + 回答 + 键', 'g'), '--llm-cassette', ('放：不联网、不要 key', 'g')]),
+        legend=['--llm-record', ('_save_to_cassette()：录 prompt + 回答 + 键', 'g'), '--llm-cassette', ('_replay_from_cassette()：放（不联网、不要 key）', 'g')]),
 
     '8.4': dict(
         logic='LLM 偶发失败要退避重试，不许把抖动当失败：'
@@ -2468,7 +2468,7 @@ _FEAT_IMPL = {
               '<span class="code-inline">_llm_failure_hint()</span> 对限流给「稍后重试 / 调大 attempts」的提示。',
         call='<span class="code-inline">ai_explore()</span> -> <span class="code-inline">_get_llm_text()</span> -> '
              '重试循环（退避）-> 成功 / 耗尽后如实失败。',
-        legend=['LLM 抖动', ('退避重试（默认 3 次）', 'y'), ('成功 -> 继续', 'g'), ('耗尽 -> 如实失败', 'r')]),
+        legend=['LLM 抖动', '_get_llm_text()', ('退避重试（HYBRID_LLM_ATTEMPTS 默认 3 次）', 'y'), ('成功 -> 继续', 'g'), ('耗尽 -> 如实失败', 'r')]),
 
     '9.1': dict(
         logic='布局与命名契约：tests/ 与生成物的目录布局、跨平台路径拼接、命名空间、生成物形态都由判据钉住'
@@ -2476,7 +2476,7 @@ _FEAT_IMPL = {
               '<span class="code-inline">test_generated_layout_contract.py</span> / '
               '<span class="code-inline">test_path_join_contract.py</span> 等）。',
         call='判据直接读磁盘布局与生成物文本做断言（秒级、不依赖 demo）。',
-        legend=['布局 / 路径 / 命名空间契约', ('坏了就红', 'r')]),
+        legend=['布局/路径/命名空间 契约判据', 'test_*_contract.py（读磁盘布局）', ('config._repo_root() 定仓库根', 'y'), ('坏了就红', 'r')]),
 
     '9.2': dict(
         logic='质量闸：用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，且<b>不许误伤</b>。'
@@ -2486,7 +2486,7 @@ _FEAT_IMPL = {
               '<span class="code-inline">test_no_false_positive_blocks_ai.py</span> 专门守「闸门不许误伤 AI 链路」。',
         call='<span class="code-inline">generate_scripts()</span> -> <span class="code-inline">_gate_false_green()</span>；'
              '落盘前 <span class="code-inline">case_errors()</span> / <span class="code-inline">case_warnings()</span>。',
-        legend=['用例 / 生成 / 新鲜度 / 同步闸', ('坏就红', 'r'), ('宁漏不误伤', 'y')]),
+        legend=['用例/生成/新鲜度/同步闸', 'case_errors() / case_warnings()', ('_gate_false_green() 生成前拦', 'y'), ('坏就红', 'r'), ('宁漏不误伤', 'y')]),
 
     '9.3': dict(
         logic='跨平台路径 / 内存探测 / UTF-8 与 cp936：<span class="code-inline">config._repo_root()</span> '
@@ -2497,7 +2497,7 @@ _FEAT_IMPL = {
         call='<span class="code-inline">main()</span> -> <span class="code-inline">force_stdio()</span>；'
              '各处 -> <span class="code-inline">config._repo_root()</span> / '
              '<span class="code-inline">limits.mem_available_mb()</span>。',
-        legend=['跨平台路径', ('UTF-8 / cp936', 'y'), ('源码不许有 GBK 编不了的字符', 'r')]),
+        legend=['main() -> force_stdio()', 'config._repo_root()（标记文件定位）', 'limits.mem_available_mb()', ('UTF-8 / cp936', 'y'), ('源码不许有 GBK 编不了的字符 _gbk_safe()', 'r')]),
 
     '9.4': dict(
         logic='交付包与文档同步：<span class="code-inline">build_tools/pack_release.py</span> 打包（内容完整、只留一份 '
@@ -2507,7 +2507,7 @@ _FEAT_IMPL = {
         call='<span class="code-inline">build_html.build()</span> -> docs/training.html；'
              '<span class="code-inline">build_feature_map.render()</span> -> docs/feature_map.md；'
              '<span class="code-inline">verify_html_sync.py</span> 校验可复现 + 与代码一致。',
-        legend=['pack_release.py', 'build_html.py（版本单一来源）', ('可复现 + 与代码同步', 'g'), '判据 test_docs_sync']),
+        legend=['pack_release.py', 'build_html.build()（版本单一来源）', 'build_feature_map.render()', 'verify_html_sync.py', ('可复现 + 与代码同步', 'g')]),
 
     '9.5': dict(
         logic='日志 / 产物保留策略与健康检查：<span class="code-inline">common/retention.prune_snapshots()</span> '
@@ -2518,7 +2518,7 @@ _FEAT_IMPL = {
              '<span class="code-inline">retention.prune_snapshots()</span> / '
              '<span class="code-inline">prune_runs()</span>；'
              '<span class="code-inline">run_is_proven_success()</span> 决定整删或瘦身。',
-        legend=['产物/日志', 'retention 分级清理', ('能证明成功才整删', 'y'), ('其余瘦身 / 显式保护', 'g')]),
+        legend=['产物/日志', 'cmd_prune() -> retention', 'prune_snapshots() / prune_runs()', 'run_is_proven_success()', ('能证明成功才整删', 'y'), ('其余瘦身 / 显式保护', 'g')]),
 
     '9.6': dict(
         logic='点击后等就绪、等文本刷新策略、选择器生效、<b>动作后置校验（做了 != 生效了）</b>：'
@@ -2530,14 +2530,14 @@ _FEAT_IMPL = {
         call='<span class="code-inline">_act()</span> -> <span class="code-inline">_wait_after_action()</span>；'
              '<span class="code-inline">_check_effect()</span> -> 回读提示区 / 计数变化；'
              '<span class="code-inline">declared_wait.effective_wait_ms()</span> 定等待时长。',
-        legend=['动作（click/...）', ('确认导航 -> 等就绪标记', 'y'), ('动作后置校验（做了 != 生效了）', 'r'), 'web-first 断言']),
+        legend=['_act()（click/...）', 'wait_after_action() 先确认导航', ('_wait_ready() 等就绪标记', 'y'), ('_check_effect() 动作后置校验（做了 != 生效了）', 'r'), 'declared_wait.effective_wait_ms() 定等待']),
 
     '9.7': dict(
         logic='用例替换不许破坏结构；闸门自身不许互相耦合：'
               '<span class="code-inline">test_case_replacement_safety.py</span> 与 '
               '<span class="code-inline">test_no_gate_coupling.py</span> 分别钉住「替换安全」与「闸门解耦」。',
         call='判据静态/秒级校验（读生成物与闸门源码）。',
-        legend=['用例替换', ('不破坏结构', 'g'), ('闸门之间不互相耦合', 'g')]),
+        legend=['用例替换 write_case()（AI 用例换代）', ('不误伤手搓/临时用例', 'g'), '闸门解耦 test_no_gate_coupling.py', ('闸门之间不互相耦合', 'g')]),
 
     '9.8': dict(
         logic='特性/子特性/用例归属的规格与磁盘<b>双向一致</b>：'
@@ -2548,7 +2548,7 @@ _FEAT_IMPL = {
               '磁盘上的用例必须有归属、编号规范、目录不漂移、文档与规格同步」。本章即由该规格驱动渲染。',
         call='<span class="code-inline">feature_spec.FEATURES</span> -> build_feature_map.render() -> '
              'docs/feature_map.md；build_html 本段 -> 本章。',
-        legend=['feature_spec.py（唯一来源）', ('双向一致', 'g'), ('不一致 -> 红', 'r')]),
+        legend=['feature_spec.FEATURES（唯一来源）', 'build_feature_map.render()', ('双向一致', 'g'), ('不一致 -> 红', 'r')]),
 
     '10.1': dict(
         logic='退出码能区分好坏：成功 0 / 有用例失败 1 / 环境或参数问题 2 / 有跳过 3 / 没匹配到 5 —— '
@@ -2557,7 +2557,7 @@ _FEAT_IMPL = {
               'raise SystemExit(rc)</span>），修掉过「报了错却 exit 0」的坑。',
         call='<span class="code-inline">main()</span> -> 分派各 <span class="code-inline">cmd_*()</span> -> '
              '收返回值 -> <span class="code-inline">raise SystemExit(rc)</span>。',
-        legend=['0 成功', ('1 用例失败', 'r'), ('2 环境/参数', 'r'), ('3 有跳过（不算通过）', 'y'), '5 没匹配到']),
+        legend=['main() -> cmd_*()', ('0 成功', 'g'), ('1 用例失败', 'r'), ('2 环境/参数', 'r'), ('3 有跳过（不算通过）', 'y'), 'raise SystemExit(rc)']),
 
     '10.2': dict(
         logic='未知 / 错位参数一律报错 + 非 0 退出，绝不静默忽略：'
@@ -2577,7 +2577,7 @@ _FEAT_IMPL = {
               '-> 人只需写那句 docstring。',
         call='<span class="code-inline">main()</span>（无参/--help）-> <span class="code-inline">_print_help()</span> '
              '-> 遍历 <span class="code-inline">CMD_FLAGS</span> + inspect.getdoc()。',
-        legend=['注册一个新参数', ('总览自动带上它', 'g'), ('漏了 -> 判据红', 'r')]),
+        legend=['main() --help -> _print_help()', 'CMD_FLAGS（唯一注册表）', 'inspect.getdoc() 取首行', ('总览自动带上它', 'g'), ('漏了 -> 判据红', 'r')]),
 
     '10.4': dict(
         logic='<span class="code-inline">setup --check</span> 的退出码能区分环境好坏（只读体检，不安装）：'
@@ -2585,7 +2585,7 @@ _FEAT_IMPL = {
               '任一步失败即退出码 2 并把原始输出尾部打出来（不静默）。',
         call='<span class="code-inline">cmd_setup(argv)</span> -> 依赖检查 -> '
              '<span class="code-inline">browser.ensure_browser_installed()</span> -> 自检 -> 退出码。',
-        legend=['setup --check', ('依赖 / 浏览器 / 自检', 'y'), ('好 -> 0', 'g'), ('坏 -> 2', 'r')]),
+        legend=['cmd_setup() --check', 'ensure_browser_installed()', ('依赖 / 浏览器 / 自检', 'y'), ('好 -> 0', 'g'), ('坏 -> 2', 'r')]),
 
     '10.5': dict(
         logic='文档/提示/培训页的主推路径 = <b>AI 链路</b>；手搓用例降级为调试与回归辅助。'
@@ -2596,7 +2596,7 @@ _FEAT_IMPL = {
         call='<span class="code-inline">main()</span> -> <span class="code-inline">cmd_config()</span> -> '
              '遍历 <span class="code-inline">TUNABLE_CATALOG</span>；'
              '<span class="code-inline">ENV_TO_FLAG</span> 把 CLI 值落进环境变量（CLI > env > 默认）。',
-        legend=['AI 链路（主推）', ('手搓用例（调试/回归辅助）', 'y'), 'cli config 一屏可调项']),
+        legend=['AI 链路（主推）', ('手搓用例（调试/回归辅助）', 'y'), 'cmd_config() -> TUNABLE_CATALOG', 'ENV_TO_FLAG（CLI > env > 默认）']),
 }
 
 
