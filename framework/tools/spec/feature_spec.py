@@ -33,7 +33,7 @@ FEATURES = [
                  class1=["test_name_alignment.py"],
                  class2=[]),
             dict(no="2.2", name="自然语言步骤编排", goal="场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单",
-                 class1=["test_step_direct_locator.py", "test_ai_scenario_preconditions.py", "test_ai_retry_loop.py", "test_ai_incomplete_output_retries.py", "test_ai_retry_same_cause.py", "test_ai_no_hardcoded_row_values.py",
+                 class1=["test_step_direct_locator.py", "test_ai_scenario_preconditions.py", "test_prompt_no_demo_literals.py", "test_ai_retry_loop.py", "test_ai_incomplete_output_retries.py", "test_ai_retry_same_cause.py", "test_ai_no_hardcoded_row_values.py",
                           "test_semantic_mismatch_blocks.py", "test_llm_tool_choice_unsupported.py", "test_production_defects_gate_l1.py", "test_ai_can_express_row_checkbox.py",
                           "test_required_field_coverage.py", "test_retry_leaves_no_stale_notes.py", "test_required_fields_hard_checklist.py",
                           "test_prompt_list_clipping_is_general.py"],
