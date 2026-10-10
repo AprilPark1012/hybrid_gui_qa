@@ -512,8 +512,38 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
         return items, [], f"{type(e).__name__}: {str(e)[:160]}", [], []
 
 
+
+def _register_pre_action_items(page_name: str, names, page_items: list[dict]) -> list[dict]:
+    """把**前置动作成功点到的**控件补进清单（2026-10-10 实测缺口的通用修法）。
+
+    为什么必须补：探针的扫描常发生在**状态切换之后**，于是「同一按钮在不同状态下的名字」
+    只留下了切换后的那个 —— 实测真值：demo 的 `<button id=btn-detail-edit>` 在只读态叫
+    「编辑」、编辑态叫「保存」（`{{ editing ? '保存' : '编辑' }}`）。页面前置动作点完「编辑」
+    再扫描，清单里就只剩 `保存@详细信息`，**「编辑」这个名字凭空消失** =>
+    AI 想写"进入编辑态"这一步时**绑不上任何元素** => 映射质量闸拦下 => 脚本生成不出来
+    （整条链路卡在最后 1 步）。
+
+    口径：**「能点到」就是「存在且可交互」的铁证** —— 框架自己都点成功了，就该让 AI 引用得到。
+    只补**清单里没有的**名字（幂等；不碰既有条目，避免污染同名唯一化与录像结构键）。
+    """
+    have = set()
+    for it in (page_items or []):
+        for k in ("semantic_name", "name"):
+            v = str(it.get(k) or "").strip()
+            if v:
+                have.add(v)
+    out: list[dict] = []
+    for nm in (names or []):
+        nm = str(nm).strip()
+        if not nm or nm in have:
+            continue
+        out.append({"semantic_name": nm, "name": nm, "tag": "button", "role": "button",
+                    "text": nm, "page": page_name,
+                    "note": "由前置动作证明可点（补进清单，否则 AI 引用不到这个名字）"})
+    return out
+
 def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: int = 5000,
-                    quiet_missing: bool = False) -> list[str]:
+                    quiet_missing: bool = False, require_all_resolvable: bool = False) -> list[str]:
     """探测前执行该页声明的**前置动作**（P22 批 5 缺口 (4)(5)）。
 
     为什么需要：有些控件只在"做了某个动作之后"才存在 ——
@@ -536,9 +566,34 @@ def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: 
     if len(steps) > 5:
         print(f"      [explore] [!] [{page_name}] pre 声明了 {len(steps)} 步（上限 5）→ 只执行前 5 步")
         steps = steps[:5]
+    # [!] 场景级前置的**整组语义**（2026-10-10 实测踩到的真根因）：
+    #   原来"逐页尝试、每步只跑一次"会让**半个序列**在错误页面上"假成功" ——
+    #   第 1 页是登录页时，`get_by_role(button, name=超)` 命中 0，退到**子串**匹配命中了
+    #   登录页上的「超级管理员」=> 报"已执行"却毫无效果，而「超」已被移出待办 =>
+    #   到了真正的业务页只剩第 2 步，菜单没被点开 => 菜单项**永远不可见**。
+    #   => 场景级前置：**只有当本页能解析到全部名字时，才整组执行**；否则整组留给后面的页。
+    #   （页面级 `pages[].pre` 不启用这条 —— 它本来就只在该页做，行为保持不变。）
+    if require_all_resolvable and steps:
+        _unresolved = []
+        for _nm in steps:
+            _l = pg.get_by_role("button", name=_nm)
+            if not _l.count():
+                _l = pg.get_by_text(_nm, exact=True)
+            if not _l.count():
+                _unresolved.append(_nm)
+        if _unresolved:
+            if not quiet_missing:
+                print(f"      [explore] [info] [{page_name}] 场景级前置「{'、'.join(_unresolved)}」"
+                      f"本页解析不到 -> **整组留到后面的页**（不许只跑半个序列：假成功会污染后续步骤）")
+            return done
     for nm in steps:
         try:
             loc = pg.get_by_role("button", name=nm)
+            if not loc.count():
+                # [!] 先**精确**文本匹配（2026-10-10 实测）：`get_by_text` 默认子串匹配，
+                #   页面还没注入异步内容时会命中"**碰巧含这个字**"的无关元素 ——
+                #   实测点了「超」报"已执行"，其实点的是别的元素（菜单一点没动）。
+                loc = pg.get_by_text(nm, exact=True)
             if not loc.count():
                 loc = pg.get_by_text(nm)
             if not loc.count():
@@ -546,6 +601,28 @@ def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: 
                     print(f"      [explore] [!] [{page_name}] 前置动作「{nm}」没找到 → 跳过"
                       f"（不猜别的控件去点）")
                 continue
+            # [!] 点击前先**等目标就绪**（2026-10-10 实测根因）：页面"就绪契约"达成
+            #   != 前置动作要点的东西已经存在 —— demo 的导航（含身份菜单）是 auth.js 拿
+            #   /api/me 之后**异步注入**的，实测那一刻 `#nu-avatar` 还不存在（count=0）。
+            #   不等就点 => 要么点到无关元素（报"已执行"却无效），要么永远 Element is not visible。
+            #   有界等待：最多 6s；等待期间**只观察不动作**（不猜控件、不换做法）。
+            #   等待上限**由环境变量给**（HYBRID_PRE_ACTION_WAIT_MS，默认 15000）。
+            #   [!] 更正（2026-10-10 当天自我纠错）：一度以为"这个 demo 的导航注入 >6s"，
+            #     那是**我的诊断脚本把 auth.token_key 凭记忆写成 nu_token**（yml 真值 demo_token）
+            #     -> /api/me 失败 -> 导航压根不注入造成的假象。用真值实测：**0.1s 就出现**。
+            #     有界等待本身仍然要留（异步内容就绪晚于骨架就绪是普遍现象），但别把它
+            #     当成这个 demo 的"特性"。
+            _wait_ms = 15000
+            try:
+                _wait_ms = int(__import__("os").environ.get("HYBRID_PRE_ACTION_WAIT_MS") or 15000)
+            except Exception:                                          # noqa: BLE001
+                pass
+            _w = 0
+            while _w < _wait_ms:
+                if any(loc.nth(_k).is_visible() for _k in range(loc.count())):
+                    break
+                pg.wait_for_timeout(300)
+                _w += 300
             try:
                 loc.first.click(timeout=per_step_ms)
             except Exception as _first:                               # noqa: BLE001
@@ -613,6 +690,7 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
             # 场景级探测前置的待办（每步只跑一次；跑不到的留到最后统一告警）
             _pp_pending = list(probe_pre or [])
             for _idx, spec in enumerate(pages):
+                _pp_clicked = []                 # 逐页重置：只补**本页**点到过的控件
                 # P22 批 5：探测期优先用场景声明的探测地址（运行期才有值的页面，探测期对象不存在）
                 pg.goto(spec.get("probe_url") or spec["url"], wait_until="domcontentloaded")
                 try:      # P22 批 3：同单页路径 —— networkidle 在本 demo 上不可靠（fetch 悬挂）
@@ -630,15 +708,32 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                 #   必须在 scan_page **之前**：前置动作常改变权限上下文（切角色），
                 #   扫在它之后才拿得到编辑态/动态新增的控件。
                 if _pp_pending:
-                    _pp_done = _run_pre_actions(pg, _pp_pending, "场景探测前置", quiet_missing=True)
+                    _pp_done = _run_pre_actions(pg, _pp_pending, "场景探测前置", quiet_missing=True,
+                                               require_all_resolvable=True)
                     _pp_pending = [s for s in _pp_pending if s not in _pp_done]
-                _run_pre_actions(pg, spec.get("pre"), spec.get("name", ""))
+                _pp2 = _run_pre_actions(pg, spec.get("pre"), spec.get("name", ""))
+                _pp_clicked += [x for x in (list(_pp_done) + list(_pp2)) if x not in _pp_clicked]
                 from framework.tools.probe.page_scan import scan_page   # V8.3.7：探测步骤唯一入口
                 _sc = scan_page(pg, page_name=spec["name"], tag_page=True)   # 基础+可展开容器+弹窗/弹层+合并
                 menu_items = _sc.menu_items
                 modal_items = _sc.modal_items
                 merged_one = _sc.items
                 _remember_required_fields(merged_one, spec["name"])   # 必填项覆盖校验（唯一入口）
+                # [!] 一页只能有一个页名（2026-10-10 实测）：同一页里混着 `@订单列表页` 与
+                #   `@订单系统` 两种后缀 -> AI 照**声明页名**（订单列表页）去引用，
+                #   而那个控件登记的是 `订单名称@订单系统` => 绑不上 => 映射质量闸报
+                #   `缺失项：['订单名称@订单列表页']` => generate 拒绝产出。
+                #   口径：**页内所有控件的页名一律取声明页名**（单一来源），
+                #   否则"AI 写得对、却引用不到"的假失败会反复出现（铁律：先查它拿到的依据）。
+                for _it in merged_one:
+                    if str(_it.get("page") or "").strip() and _it.get("page") != spec["name"]:
+                        _it["page_aliases"] = sorted(set(_it.get("page_aliases") or []) | {str(_it["page"])})
+                        _it["page"] = spec["name"]
+                _extra = _register_pre_action_items(spec["name"], _pp_clicked, merged_one)
+                if _extra:
+                    merged_one = merged_one + _extra
+                    print("      [explore] [key] 前置动作证明可点的控件已补进清单："
+                          + "、".join(i["semantic_name"] for i in _extra))
                 per_page.append((spec["name"], merged_one))
                 for d in _collect_dom_context(pg):
                     d["page"] = spec["name"]
