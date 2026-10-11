@@ -16,7 +16,7 @@ import json
 import re
 from pathlib import Path
 
-from framework.shared.config import BASE, CASES_DIR, SCRIPTS_DIR
+from framework.shared.config import BASE, CASES_DIR, SCRIPTS_DIR, target_url
 from framework.features.f03_locate.element_map import (row_scope_violation,         # 行定位判据的唯一入口
                                                apply_row_locator_fallback,     # 框架兜底：行定位
                                                apply_scene_start_fallback,    # 框架兜底：多余起手页导航
@@ -667,6 +667,107 @@ def _gbk_safe(text: str) -> str:
     return "".join(out)
 
 
+# ==================== V8.5.1：登录步骤化（P23）====================
+# 把场景 `login:` 段声明的动作序列展开成用例的**前导步骤**。
+#
+# 为什么不交给 AI 生成：历史上 AI 自造过 4 步手工登录、还把用户名当密码填过 ——
+# 登录是确定性的，声明一次、框架展开，比让模型每次猜一遍可靠得多。
+# 为什么必须展开进用例（而不是像旧机制那样靠运行期读 `_auth.json`）：
+#   旧机制要读的文件**不进交付包**（被 .gitignore 忽略），收包方 run 时登录前置**静默失效**，
+#   报「元素语义未找到」而真因是"整条用例跑在登录页上"，排查方向被带偏一整天。
+#   ⇒ 展开进用例后：包里有什么、跑的就是什么，跑挂了能直接看到卡在登录。
+
+def _scenario_for_case(case: dict):
+    """按用例里记的场景名反查场景对象；拿不到就返回 None（不猜、不降级）。
+
+    [!] 键名血泪：用例里记的是 `scenario_id` / `source_scenario`（生成用例时写入），
+    **不是** `scenario` / `case_extra`。本轮我先按错键名查 -> 恒为 None -> 登录步骤一步都不展开，
+    而链路照样绿（demo 未登录也能操作）=> **差点变成"看似做了、其实没生效"的假绿**。
+    ⇒ 这类"字段名假设"必须拿真实产物核对，不能凭印象。
+    """
+    ex = case.get("case_extra") or {}
+    sid = str(case.get("scenario_id") or case.get("source_scenario")
+              or ex.get("scenario_id") or ex.get("scenario")
+              or case.get("scenario") or "").strip()
+    if not sid:
+        return None
+    try:
+        from framework.features.f02_semantic.scenario_generate import load_scenario_file
+    except Exception:
+        return None
+    base = Path(__file__).resolve().parents[3] / "scenarios"      # [!] 本文件是 `from pathlib import Path`，没有 `import pathlib`
+    for f in base.rglob("*.yml"):
+        if f.stem == sid:
+            try:
+                return load_scenario_file(f)
+            except Exception:
+                return None
+    return None
+
+
+def _login_steps_of_case(case: dict) -> list[dict]:
+    """取该用例所属场景的登录动作序列（已校验）；没有 -> **返回空**（行为与今天一致）。"""
+    sc = _scenario_for_case(case)
+    if sc is None:
+        return []
+    try:
+        spec = sc.login_spec() or {}
+    except Exception:
+        return []
+    if not spec.get("steps"):
+        return []
+    return [spec]
+
+
+def _render_login_lines(spec: dict, base_url: str) -> list[str]:
+    """把登录动作序列渲染成 pytest 行（goto -> 各动作 -> 等可观测条件）。"""
+    out = ["    # ---- 登录（V8.5.1 步骤化：场景声明 -> 框架展开，不交给 AI）----"]
+    url = str(spec.get("login_url") or "").strip()
+    if not url:
+        url = base_url.rstrip("/") + "/login.html"
+    elif not url.startswith("http"):          # [!] 场景里常写相对路径 `/login.html`，
+        url = base_url.rstrip("/") + ("/" + url.lstrip("/"))   #     要拼成绝对地址，否则 _goto 会失败
+    out.append(f"    _goto(page, {url!r})")
+    for i, st in enumerate(spec.get("steps") or [], 1):
+        op = str(st.get("op") or "").strip()
+        if op == "goto":
+            out.append(f"    _goto(page, {str(st.get('url'))!r})")
+            continue
+        by = st.get("by") or {}
+        val = str(st.get("value") or "")
+        # 口令口径：`{{env:NAME}}` -> 运行期读环境变量（值不落盘）；其余原样（demo 公开凭据）
+        if val.startswith("{{env:") and val.endswith("}}"):
+            env = val[6:-2].strip()
+            val_expr = f"__import__('os').environ.get({env!r}, '')"
+        else:
+            val_expr = repr(val)
+        out.append(f"    # 登录步骤 {i}: {op} {sorted(by)}")
+        if op == "fill":
+            out.append(f"    _login_do(page, 'fill', {by!r}, value={val_expr})")
+        elif op == "click":
+            out.append(f"    _login_do(page, 'click', {by!r})")
+        elif op == "press":
+            out.append(f"    _login_do(page, 'press', {by!r}, value={val_expr})")
+        elif op == "check":
+            out.append(f"    _login_do(page, 'check', {by!r})")
+        elif op == "hover":
+            out.append(f"    _login_do(page, 'hover', {by!r})")
+    wait = spec.get("wait") or {}
+    if wait:
+        out.append(f"    _login_wait(page, {wait!r})")
+    out.append("    # ---- 登录步骤结束 ----")
+    return out
+
+
+def _login_lines_for(case: dict, base_url: str) -> list[str]:
+    """给渲染器用的**唯一入口**：拿该用例的登录前导行（无声明 -> 空列表）。"""
+    lines: list[str] = []
+    for spec in _login_steps_of_case(case):
+        lines.extend(_render_login_lines(spec, base_url))
+    return lines
+
+
+
 def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
                         it_map: dict | None = None) -> str:
     """把单个 cases 用例渲染成一个 pytest test 函数（locator 内联确定性定位）。
@@ -776,6 +877,13 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
         lines.append('    _t = _Tabs(page)          # 多 tab：点了会开新 tab 的控件后 page 会被重新绑定到新 tab')
     lines += [
         f'    _goto(page, {case.get("base_url", "http://localhost:8000")!r})',
+    ]
+    # V8.5.1：登录前导步骤（场景声明了 login: 才展开；否则空 -> 与今天逐字节一致）
+    # [!] 别用 `case['base_url']` 当根址 —— 那是**登录页**（框架固定开局就是它），
+    #   拿它拼 `/login.html` 会得到 `.../login.html/login.html`（实测踩过：登录直接超时挂）。
+    #   工作页根址只有 `config.target_url()` 一个权威来源。
+    lines.extend(_login_lines_for(case, target_url()))
+    lines += [
         f'    _log(page, "场景开始", f"case={cid}")',
         '',
     ]
@@ -2265,6 +2373,10 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       #   （2026-10-11 实测：生成期闸门全绿、真跑才红）。模板渲染出的调用
                       #   与这里的 import 必须**成对**维护 —— 判据 test_generated_helpers_are_imported 兜着。
                       _act_row,
+                      # V8.5.1：登录步骤化 —— 生成期会把场景 `login:` 的动作序列展开成前导步骤，
+                      #   渲染出的 `_login_do` / `_login_wait` 必须在这里同步 import
+                      #   （本轮又踩了一次 "模板渲染了但没 import -> 真跑 NameError"）。
+                      _login_do, _login_wait,
                       # P22 批 4/5：等待式断言（wait_text；批 5 起支持 selector 限定范围）
                       _assert_wait_text)
 # P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）
@@ -2930,6 +3042,78 @@ class _BrowserPool:
 
 # ---- P22 批 5：登录前置表（case_id → auth 声明）----
 # generate 按场景的 `auth:` 段写进同目录 `_auth.json`；没有该文件 -> 空表 -> 行为与从前**完全一致**。
+# ==================== V8.5.1：登录步骤化（P23）====================
+# 生成期把场景 `login:` 的动作序列展开成用例**前导步骤**，渲染出的是下面这两个函数调用。
+# 与旧 `_install_login`（POST 接口 + token 注入 + 读 `_auth.json`）的区别：
+#   · 走**真实 UI** -> 登录**可见**（跑挂了直接看到卡在登录，排查方向不被带偏）；
+#   · 不依赖任何"运行期隐藏文件"（旧机制要读的 `_auth.json` 被 .gitignore 忽略 ->
+#     不进交付包 -> 收包方静默失效）。
+# 框架层**零业务词**：不认识"账号/密码"，只认"声明了哪个 by 键 + 哪个动作"。
+
+_LOGIN_BY = {
+    "id": "#{}",
+    "name": '[name="{}"]',
+    "placeholder": '[placeholder="{}"]',
+    "test_id": '[data-testid="{}"]',
+    "title": '[title="{}"]',
+    "aria_label": '[aria-label="{}"]',
+}
+
+
+def _login_locator(page, by):
+    """把声明式 `by` 合成 locator（登录页重构只改场景，框架不动）。"""
+    if not isinstance(by, dict) or not by:
+        raise RuntimeError("登录步骤缺少 by 定位声明（框架不猜控件，必须由场景声明）")
+    for k, v in by.items():
+        if k == "css":
+            return page.locator(str(v))
+        if k == "text":
+            return page.get_by_text(str(v), exact=False)
+        if k == "label":
+            return page.get_by_label(str(v))
+        if k == "role":
+            role, _, nm = str(v).partition(":")
+            return page.get_by_role(role, name=nm) if nm else page.get_by_role(role)
+        tpl = _LOGIN_BY.get(k)
+        if tpl:
+            return page.locator(tpl.format(v))
+    raise RuntimeError(f"登录步骤：不认识的 by 键 {sorted(by)}（可用 {sorted(_LOGIN_BY)} 或 css/text/label/role）")
+
+
+def _login_do(page, op, by, value=None):
+    """执行登录动作序列里的**一个**动作。失败**如实抛**，绝不静默跳过。"""
+    loc = _login_locator(page, by)
+    _log(page, "login_step", f"{op} {sorted((by or {}))}")
+    if op == "fill":
+        loc.fill(str(value or ""), timeout=15000)
+    elif op == "click":
+        loc.click(timeout=15000)
+    elif op == "check":
+        loc.check(timeout=15000)
+    elif op == "hover":
+        loc.hover(timeout=15000)
+    elif op == "press":
+        loc.press(str(value or "Enter"), timeout=15000)
+    else:
+        raise RuntimeError(f"登录步骤：op={op!r} 不认识（可用 fill/click/check/hover/press）")
+
+
+def _login_wait(page, wait):
+    """等**可观测**的登录成功条件（框架铁律：不许用固定 sleep 判断登录成功）。"""
+    if not isinstance(wait, dict) or not wait:
+        return
+    if wait.get("url_not"):
+        _pat = str(wait["url_not"])
+        page.wait_for_url(lambda u: _pat not in u, timeout=15000)
+    elif wait.get("url"):
+        page.wait_for_url(str(wait["url"]), timeout=15000)
+    elif wait.get("selector"):
+        page.wait_for_selector(str(wait["selector"]), timeout=15000)
+    elif wait.get("text"):
+        page.wait_for_selector(f"text={wait['text']}", timeout=15000)
+    _log(page, "login_ok", f"url={page.url}")
+
+
 _AUTH_TABLE: dict = {}
 try:
     import json as _json_auth          # 显式 import：harness 顶层没有 json（实测踩过 NameError）

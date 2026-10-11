@@ -28,6 +28,10 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       #   （2026-10-11 实测：生成期闸门全绿、真跑才红）。模板渲染出的调用
                       #   与这里的 import 必须**成对**维护 —— 判据 test_generated_helpers_are_imported 兜着。
                       _act_row,
+                      # V8.5.1：登录步骤化 —— 生成期会把场景 `login:` 的动作序列展开成前导步骤，
+                      #   渲染出的 `_login_do` / `_login_wait` 必须在这里同步 import
+                      #   （本轮又踩了一次 "模板渲染了但没 import -> 真跑 NameError"）。
+                      _login_do, _login_wait,
                       # P22 批 4/5：等待式断言（wait_text；批 5 起支持 selector 限定范围）
                       _assert_wait_text)
 # P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）

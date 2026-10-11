@@ -95,3 +95,139 @@ def describe(spec: dict) -> str:
     src = "env:" + str(sp.get("password_env")) if sp.get("password_env") else "inline"
     return (f"登录 {sp.get('username')}@{sp.get('login_api')}"
             f"（口令来源 {src} · token 键 {sp.get('token_key') or '未声明'}）")
+
+
+# ==================== V8.5.1：登录步骤化（P23）====================
+# 为什么另起这条：旧机制走 POST 接口 + token 注入，运行期还要读 `scripts/generated/_auth.json`
+#   —— 那文件由生成期写出、却被 `.gitignore` 忽略 ⇒ **不进交付包** ⇒ 收包方 run 时登录前置
+#   **静默失效**，报「元素语义未找到」而真因是"整条用例跑在登录页上"（排查方向被带偏）。
+# 新口径（他 2026-10-11 定）：登录就是**登录页上的表单动作序列**，
+#   探测期与执行期**共用同一份声明**，并且会**展开进用例**（跑挂了能直接看到"卡在登录"）。
+# 框架层**零业务词**：不认识"账号/密码/登录"，只认"声明了一个 by 表达式 + 一个动作"。
+
+class LoginSpecError(RuntimeError):
+    """登录声明非法（缺值 / 定位表达式不认识）—— 一律**大声报**，绝不静默跳过。"""
+
+
+_BY_KEY = {
+    "id": "#{}",
+    "name": '[name="{}"]',
+    "placeholder": '[placeholder="{}"]',
+    "test_id": '[data-testid="{}"]',
+    "title": '[title="{}"]',
+    "aria_label": '[aria-label="{}"]',
+}
+
+
+def locator_of(page, by):
+    """把声明式 `by:` 合成 Playwright locator。
+
+    只认"声明了哪个键"，不认业务语义 —— 登录页重构时改**场景**即可，框架不动
+    （铁律：不拿"观测到的具体值"当地基）。
+    """
+    if not isinstance(by, dict) or not by:
+        raise LoginSpecError('登录步骤：`by` 必须是非空对象，例如 {"id": "login-user"}')
+    for k, v in by.items():
+        if k == "css":
+            return page.locator(str(v))
+        if k == "text":
+            return page.get_by_text(str(v), exact=False)
+        if k == "label":
+            return page.get_by_label(str(v))
+        if k == "role":
+            role, _, nm = str(v).partition(":")
+            return page.get_by_role(role, name=nm) if nm else page.get_by_role(role)
+        tpl = _BY_KEY.get(k)
+        if tpl:
+            return page.locator(tpl.format(v))
+    raise LoginSpecError(f"登录步骤：不认识的 `by` 键 {sorted(by)}（可用 {sorted(_BY_KEY)} 或 css/text/label/role）")
+
+
+def perform_login(page, base_url, spec, timeout=15000):
+    """在**登录页上**执行表单动作序列：goto -> 逐个动作 -> 等可观测成功条件。
+
+    spec（场景声明，框架不解释其含义）：
+        login_url : 登录页地址；缺省 = base_url 的 /login.html
+        steps     : [{op: goto|fill|click|check|press, by?: {...}, value?: str, url?: str}, ...]
+        wait      : 成功条件，可观测、**不许 sleep**；支持
+                      {"url_not": "login"} / {"url": "..."} / {"selector": "#x"} / {"text": "..."}
+
+    返回 {"ok": bool, "steps": 执行步数, "reason": 失败原因}；**失败如实抛**，不静默降级。
+    """
+    if not isinstance(spec, dict) or not spec:
+        return {"ok": False, "steps": 0, "reason": "未声明登录"}
+    steps = spec.get("steps") or []
+    if not isinstance(steps, list) or not steps:
+        raise LoginSpecError("登录声明缺少 `steps`（登录步骤化后，登录就是动作序列；空 = 没声明）")
+
+    login_url = str(spec.get("login_url") or "").strip()
+    if not login_url:
+        login_url = (base_url or "").rstrip("/") + "/login.html"
+
+    page.goto(login_url, wait_until="domcontentloaded")
+    done = 0
+    for i, st in enumerate(steps, 1):
+        if not isinstance(st, dict):
+            raise LoginSpecError(f"登录步骤 {i} 不是对象：{st!r}")
+        op = str(st.get("op") or "").strip()
+        if op == "goto":
+            page.goto(str(st.get("url") or login_url), wait_until="domcontentloaded")
+        elif op in ("fill", "click", "check", "press", "hover"):
+            loc = locator_of(page, st.get("by"))
+            if op == "fill":
+                loc.fill(str(st.get("value") or ""), timeout=timeout)
+            elif op == "press":
+                loc.press(str(st.get("value") or "Enter"), timeout=timeout)
+            elif op == "check":
+                loc.check(timeout=timeout)
+            elif op == "hover":
+                loc.hover(timeout=timeout)
+            else:
+                loc.click(timeout=timeout)
+        else:
+            raise LoginSpecError(f"登录步骤 {i} 的 op 不认识：{op!r}（可用 goto/fill/click/check/press/hover）")
+        done = i
+
+    wait = spec.get("wait") or {}
+    if wait:
+        if wait.get("url_not"):
+            pat = str(wait["url_not"])
+            page.wait_for_url(lambda u: pat not in u, timeout=timeout)
+        elif wait.get("url"):
+            page.wait_for_url(str(wait["url"]), timeout=timeout)
+        elif wait.get("selector"):
+            page.wait_for_selector(str(wait["selector"]), timeout=timeout)
+        elif wait.get("text"):
+            page.wait_for_selector(f"text={wait['text']}", timeout=timeout)
+    return {"ok": True, "steps": done, "url": page.url}
+
+
+def on_login_page(page, base_url="", spec=None):
+    """判断当前是否**还停在登录页** —— 供报错文案用（把"卡在登录"直说出来）。
+
+    为什么需要：实测真因是登录没生效，报错却指向"元素语义未找到"，把排查方向带偏一整天。
+    """
+    try:
+        u = page.url or ""
+    except Exception:
+        return False
+    u = u.lower()
+    if "login" in u:
+        return True
+    for s in ((spec or {}).get("steps") or []):
+        by = (s or {}).get("by") or {}
+        sel = _BY_KEY.get("id", "#{}").format(by.get("id")) if by.get("id") else None
+        if sel:
+            try:
+                if page.locator(sel).count() > 0:
+                    return True
+            except Exception:
+                pass
+    return False
+
+
+def login_failure_hint(url=""):
+    """卡在登录页时的标准提示：直指登录，不把方向带向"异步取数/弹层未渲染"。"""
+    return (f"当前在**登录页**（{url}）—— 登录步骤未执行或失败，"
+            "后续动作都在登录页上跑，所以报「元素未找到」是**表象**，真因是登录。"
+            "请检查场景声明的登录动作序列（填账号 -> 填密码 -> 点登录 -> 等生效）。")

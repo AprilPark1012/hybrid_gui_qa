@@ -118,11 +118,19 @@ business_context: |
 # 为什么必须声明：demo 加了登录后，未登录访问业务页会被 auth.js 踢到 /login.html（探针只能探到登录页控件）；
 # 而 `?demo_role=` 直连**不能切角色**（app.py:670-671 明确 400「切换角色需要真实登录会话」）。
 # ⚠️ 这里是**公开的演示凭据**（登录页提示里就写着）；真实系统请改用 `password_env: 环境变量名`。
-auth:
-  login_api: /api/login
-  username: super
-  password: super@123
-  token_key: demo_token
+# V8.5.1（P23 登录步骤化）：登录 = **登录页上的表单动作序列**，取代原先的 `auth:` 接口登录。
+# 为什么换：`auth:` 那套要在运行期读 `scripts/generated/_auth.json`，而该文件被 .gitignore 忽略
+#   ⇒ **不进交付包** ⇒ 收包方 run 时登录前置**静默失效**，报「元素语义未找到」而真因是
+#   "整条用例跑在登录页上"（排查方向被带偏）。
+# 现在这套：动作**展开进用例**，包里有什么、跑的就是什么；跑挂了能直接看到卡在登录。
+# 控件真值见 demo/login.html（#login-user / #login-pwd / #btn-login）—— 公开演示凭据。
+login:
+  url: /login.html
+  steps:
+    - {op: fill, by: {id: login-user}, value: super}
+    - {op: fill, by: {id: login-pwd}, value: super@123}
+    - {op: click, by: {id: btn-login}}
+  wait: {url_not: login.html}
 
 assert_guard:
   must_contain: ["订单", "发票"]

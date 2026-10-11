@@ -662,6 +662,78 @@ class _BrowserPool:
 
 # ---- P22 批 5：登录前置表（case_id → auth 声明）----
 # generate 按场景的 `auth:` 段写进同目录 `_auth.json`；没有该文件 -> 空表 -> 行为与从前**完全一致**。
+# ==================== V8.5.1：登录步骤化（P23）====================
+# 生成期把场景 `login:` 的动作序列展开成用例**前导步骤**，渲染出的是下面这两个函数调用。
+# 与旧 `_install_login`（POST 接口 + token 注入 + 读 `_auth.json`）的区别：
+#   · 走**真实 UI** -> 登录**可见**（跑挂了直接看到卡在登录，排查方向不被带偏）；
+#   · 不依赖任何"运行期隐藏文件"（旧机制要读的 `_auth.json` 被 .gitignore 忽略 ->
+#     不进交付包 -> 收包方静默失效）。
+# 框架层**零业务词**：不认识"账号/密码"，只认"声明了哪个 by 键 + 哪个动作"。
+
+_LOGIN_BY = {
+    "id": "#{}",
+    "name": '[name="{}"]',
+    "placeholder": '[placeholder="{}"]',
+    "test_id": '[data-testid="{}"]',
+    "title": '[title="{}"]',
+    "aria_label": '[aria-label="{}"]',
+}
+
+
+def _login_locator(page, by):
+    """把声明式 `by` 合成 locator（登录页重构只改场景，框架不动）。"""
+    if not isinstance(by, dict) or not by:
+        raise RuntimeError("登录步骤缺少 by 定位声明（框架不猜控件，必须由场景声明）")
+    for k, v in by.items():
+        if k == "css":
+            return page.locator(str(v))
+        if k == "text":
+            return page.get_by_text(str(v), exact=False)
+        if k == "label":
+            return page.get_by_label(str(v))
+        if k == "role":
+            role, _, nm = str(v).partition(":")
+            return page.get_by_role(role, name=nm) if nm else page.get_by_role(role)
+        tpl = _LOGIN_BY.get(k)
+        if tpl:
+            return page.locator(tpl.format(v))
+    raise RuntimeError(f"登录步骤：不认识的 by 键 {sorted(by)}（可用 {sorted(_LOGIN_BY)} 或 css/text/label/role）")
+
+
+def _login_do(page, op, by, value=None):
+    """执行登录动作序列里的**一个**动作。失败**如实抛**，绝不静默跳过。"""
+    loc = _login_locator(page, by)
+    _log(page, "login_step", f"{op} {sorted((by or {}))}")
+    if op == "fill":
+        loc.fill(str(value or ""), timeout=15000)
+    elif op == "click":
+        loc.click(timeout=15000)
+    elif op == "check":
+        loc.check(timeout=15000)
+    elif op == "hover":
+        loc.hover(timeout=15000)
+    elif op == "press":
+        loc.press(str(value or "Enter"), timeout=15000)
+    else:
+        raise RuntimeError(f"登录步骤：op={op!r} 不认识（可用 fill/click/check/hover/press）")
+
+
+def _login_wait(page, wait):
+    """等**可观测**的登录成功条件（框架铁律：不许用固定 sleep 判断登录成功）。"""
+    if not isinstance(wait, dict) or not wait:
+        return
+    if wait.get("url_not"):
+        _pat = str(wait["url_not"])
+        page.wait_for_url(lambda u: _pat not in u, timeout=15000)
+    elif wait.get("url"):
+        page.wait_for_url(str(wait["url"]), timeout=15000)
+    elif wait.get("selector"):
+        page.wait_for_selector(str(wait["selector"]), timeout=15000)
+    elif wait.get("text"):
+        page.wait_for_selector(f"text={wait['text']}", timeout=15000)
+    _log(page, "login_ok", f"url={page.url}")
+
+
 _AUTH_TABLE: dict = {}
 try:
     import json as _json_auth          # 显式 import：harness 顶层没有 json（实测踩过 NameError）

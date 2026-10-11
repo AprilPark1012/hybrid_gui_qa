@@ -5,7 +5,7 @@
     "scenario_fingerprint": "282b923e23312069",
     "scenario_id": "orders_invoice_full_lifecycle",
     "script_path": "scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_044342.py",
-    "template_fingerprint": "1085294b7dcbec4b"
+    "template_fingerprint": "15afd1f6fc913838"
   },
   "manual_order_create_smoke": {
     "case_fingerprint": "097c1ece1bbf6591",
@@ -13,6 +13,6 @@
     "scenario_fingerprint": "",
     "scenario_id": "manual",
     "script_path": "scripts/generated/manual/manual_order_create_smoke.py",
-    "template_fingerprint": "1085294b7dcbec4b"
+    "template_fingerprint": "15afd1f6fc913838"
   }
 }

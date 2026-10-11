@@ -86,6 +86,12 @@ class Scenario:
     pages: list = field(default_factory=list)      # list[ScenarioPage]（跨页；空 = 单页老写法）
     # P22 批 5（方案 H）：**登录前置声明** —— 探测与执行两侧共用的唯一来源（见 references/design/P22 §十）
     auth: dict = field(default_factory=dict)
+    # V8.5.1（P23 登录步骤化）：**结构化登录动作序列** —— 取代 `auth:` 的接口登录 + token 注入。
+    # 动作由场景确定性声明，**不交给 AI 生成**（AI 自造过 4 步手工登录还把账号密码填反）。
+    login: dict = field(default_factory=dict)
+    # V8.5.1（P23 登录步骤化）：**结构化登录动作序列** —— 取代 `auth:` 的接口登录 + token 注入。
+    # 动作由场景确定性声明，**不交给 AI 生成**（AI 自造过 4 步手工登录还把账号密码填反）。
+    login: dict = field(default_factory=dict)
     # 2026-10-10（A 方案 S1）：**场景级探测前置** —— 探测期一开始就要处的状态（登录、切身份）。
     #   与页面级 pages[].pre 是**两个层级**、**同一个执行引擎**（_run_pre_actions），
     #   不是第二套机制（铁律 13：同一能力收敛成唯一入口）。
@@ -95,6 +101,20 @@ class Scenario:
     #   框架层不许出现业务词（口径：补能力要与场景解耦、不能写死、不拿观测值当地基）。
     #   声明了 `probe_pre` 就必须声明它 —— 缺了在 **加载期**硬红，不允许"猜一个"。
     probe_pre_host: str = ""
+
+    def login_spec(self) -> dict:
+        """登录动作序列声明（**已校验**：有 steps、每步 op 合法、fill 带 value + by）。
+
+        空 = 该场景不声明登录（行为与今天完全一致，向后兼容）。
+        """
+        return dict(self.login or {})
+
+    def login_spec(self) -> dict:
+        """登录动作序列声明（**已校验**：有 steps、每步 op 合法、fill 带 value + by）。
+
+        空 = 该场景不声明登录（行为与今天完全一致，向后兼容）。
+        """
+        return dict(self.login or {})
 
     def auth_spec(self) -> dict:
         """登录前置参数（空 dict = 该场景不需要登录）。"""
@@ -247,6 +267,88 @@ def load_scenario_file(path) -> Scenario:
         if len(pages) == 1:
             warns.append("pages 只给了一个页面 —— 等价于单页场景（跨页至少 2 页）")
     # ---- P22 批 5：登录前置（可选段）----
+    # ---- V8.5.1：`login:` 段（结构化登录动作序列）----
+    raw_login = raw.get("login")
+    login: dict = {}
+    if raw_login is not None:
+        if not isinstance(raw_login, dict):
+            raise ScenarioError(
+                f"{p}: login 应为映射（url / steps / wait），实际是 {type(raw_login).__name__}")
+        steps = raw_login.get("steps")
+        if not isinstance(steps, list) or not steps:
+            raise ScenarioError(
+                f"{p}: login 缺少 steps —— 登录步骤化后登录就是**动作序列**"
+                "（如 [{op: fill, by: {id: login-user}, value: \"账号\"}, ...]）；"
+                "空声明等于没登录，必须显式写清楚，不许静默跳过")
+        _OPS = {"goto", "fill", "click", "check", "press", "hover"}
+        for _i, _st in enumerate(steps, 1):
+            if not isinstance(_st, dict):
+                raise ScenarioError(f"{p}: login.steps[{_i}] 应为映射，实际是 {type(_st).__name__}")
+            _op = str(_st.get("op") or "").strip()
+            if _op not in _OPS:
+                raise ScenarioError(
+                    f"{p}: login.steps[{_i}] 的 op={_op!r} 不认识（可用 {sorted(_OPS)}）")
+            if _op == "goto":
+                if not str(_st.get("url") or "").strip():
+                    raise ScenarioError(f"{p}: login.steps[{_i}] goto 缺少 url")
+                continue
+            if not (_st.get("by") or {}):
+                raise ScenarioError(
+                    f"{p}: login.steps[{_i}]（{_op}）缺少 by 定位声明 —— "
+                    "框架层零业务词，必须由场景声明用哪个键定位（如 {id: btn-login}）")
+            if _op == "fill" and not str(_st.get("value") or ""):
+                raise ScenarioError(
+                    f"{p}: login.steps[{_i}] fill 缺少 value —— "
+                    "真实系统请用 {{env:变量名}} 形态，值不落盘")
+        _w = raw_login.get("wait") or {}
+        if _w and not any(k in _w for k in ("url", "url_not", "selector", "text")):
+            raise ScenarioError(
+                f"{p}: login.wait 必须给出**可观测**成功条件"
+                "（url / url_not / selector / text 之一）—— 框架铁律：不许固定 sleep 判断登录成功")
+        login = {"login_url": str(raw_login.get("url") or "").strip(),
+                 "steps": steps, "wait": dict(_w)}
+    # ---- 以下是既有 auth 段（V8.5.1 收尾时整体删除）----
+    # ---- V8.5.1：`login:` 段（结构化登录动作序列）----
+    raw_login = raw.get("login")
+    login: dict = {}
+    if raw_login is not None:
+        if not isinstance(raw_login, dict):
+            raise ScenarioError(
+                f"{p}: login 应为映射（url / steps / wait），实际是 {type(raw_login).__name__}")
+        steps = raw_login.get("steps")
+        if not isinstance(steps, list) or not steps:
+            raise ScenarioError(
+                f"{p}: login 缺少 steps —— 登录步骤化后登录就是**动作序列**"
+                "（如 [{op: fill, by: {id: login-user}, value: \"账号\"}, ...]）；"
+                "空声明等于没登录，必须显式写清楚，不许静默跳过")
+        _OPS = {"goto", "fill", "click", "check", "press", "hover"}
+        for _i, _st in enumerate(steps, 1):
+            if not isinstance(_st, dict):
+                raise ScenarioError(f"{p}: login.steps[{_i}] 应为映射，实际是 {type(_st).__name__}")
+            _op = str(_st.get("op") or "").strip()
+            if _op not in _OPS:
+                raise ScenarioError(
+                    f"{p}: login.steps[{_i}] 的 op={_op!r} 不认识（可用 {sorted(_OPS)}）")
+            if _op == "goto":
+                if not str(_st.get("url") or "").strip():
+                    raise ScenarioError(f"{p}: login.steps[{_i}] goto 缺少 url")
+                continue
+            if not (_st.get("by") or {}):
+                raise ScenarioError(
+                    f"{p}: login.steps[{_i}]（{_op}）缺少 by 定位声明 —— "
+                    "框架层零业务词，必须由场景声明用哪个键定位（如 {id: btn-login}）")
+            if _op == "fill" and not str(_st.get("value") or ""):
+                raise ScenarioError(
+                    f"{p}: login.steps[{_i}] fill 缺少 value —— "
+                    "真实系统请用 {{env:变量名}} 形态，值不落盘")
+        _w = raw_login.get("wait") or {}
+        if _w and not any(k in _w for k in ("url", "url_not", "selector", "text")):
+            raise ScenarioError(
+                f"{p}: login.wait 必须给出**可观测**成功条件"
+                "（url / url_not / selector / text 之一）—— 框架铁律：不许固定 sleep 判断登录成功")
+        login = {"login_url": str(raw_login.get("url") or "").strip(),
+                 "steps": steps, "wait": dict(_w)}
+    # ---- 以下是既有 auth 段（V8.5.1 收尾时整体删除）----
     raw_auth = raw.get("auth")
     auth: dict = {}
     if raw_auth is not None:
@@ -355,6 +457,7 @@ def load_scenario_file(path) -> Scenario:
         notes=str(raw.get("notes") or ""),
         warnings=warns,
         pages=pages,
+        login=login,
         auth=auth,
         probe_pre=probe_pre,
         probe_pre_host=probe_pre_host,
