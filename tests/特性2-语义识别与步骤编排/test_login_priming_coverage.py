@@ -30,7 +30,7 @@ LOGIN = (REPO / "framework" / "shared" / "login.py").read_text(encoding="utf-8")
 #    这里就要同步（我第一次没改 -> 判据自己变成假红 —— 与 pitfalls 里"判据口径随重构走"同一条）。
 _PROBE_CALL_EXPL = "ensure_logged_in(ctx, _base_of"   # explorer 侧：单页 / 跨页
 _PROBE_CALL_GEN = "_ensure_login_for(ctx, "           # generate 侧：(1) 单页惯例 (2) 声明页（统一入口）
-_EXEC_CALL = "_install_login(context, _AUTH_TABLE"
+_EXEC_CALL = "_login_do(page,"          # 执行侧（V8.5.1 登录步骤化后）
 
 
 def _count(src: str, needle: str) -> int:
@@ -74,11 +74,24 @@ def test_three_probe_paths_install_login():
 
 
 def test_execution_side_installs_login():
-    """判据 2：执行侧（生成物 harness 的 page fixture）也要注入，且按 case_id 查表。"""
+    """判据 2：执行侧登录必须**可见地执行**（V8.5.1 登录步骤化后口径已变）。
+
+    [!] 这条判据**随重构改口径**（2026-10-12 V8.5.1）：执行侧原来靠 harness 读 `_auth.json`
+    注入 token —— 那文件由生成期写出却被 .gitignore 忽略、**不进交付包**，收包方 run 时
+    登录前置会**静默失效**（报「元素语义未找到」而真因是"整条用例跑在登录页上"）。
+    现在改为：场景 `login:` 声明 -> 生成期展开成用例**前导步骤**（`_login_do`/`_login_wait`）。
+    所以"执行侧有没有登录"要盯的是**展开出来的调用**，而不是那个 json。
+    """
     assert _count(GEN, _EXEC_CALL) >= 1, (
-        "harness 的 page fixture 没有按 `_auth.json` 注入登录态 -> 生成的用例会整条跑在登录页上")
-    assert "_auth.json" in GEN, "没有写/读 `_auth.json` 的逻辑 -> 执行侧拿不到 auth 声明"
-    assert "登录前置失败" in GEN, "登录失败必须是**大声失败**（静默继续 = 整条用例白跑还报绿）"
+        "生成物模板里没有 `_login_do(page, ...)` -> 登录步骤不会真的执行，"
+        "用例会整条跑在登录页上（这正是 V8.3 的静默失效形态）")
+    assert "def _login_wait(" in GEN, "缺 `_login_wait` -> 登录成功判定会退化成固定 sleep"
+    # [!] 只查**代码行**：GEN 里"已删除 `_auth.json`"这类**注释**不该算残留
+    #   （第一版直接 `"_auth.json" not in GEN` -> 被自己的说明注释判红）。
+    _gen_code = "\n".join(l.split("#", 1)[0] for l in GEN.splitlines())
+    assert '"_auth.json"' not in _gen_code and "'_auth.json'" not in _gen_code, (
+        "`_auth.json` 那套必须已删除（它不进交付包 -> 收包方拿不到登录态）")
+    assert "def _login_do(" in GEN, "登录动作执行函数不见了"
 
 
 def test_login_module_is_the_single_source():
@@ -106,5 +119,10 @@ def test_negative_missing_a_call_is_caught():
     broken_gen = GEN.replace("_ensure_login_for(ctx, target_url(), _decl_auth)", "")
     assert broken_gen != GEN, "负向自证前提不成立（找不到 generate 单页惯例那行）"
     assert _count(broken_gen, _PROBE_CALL_GEN) < 2, "删掉 generate 一条路径后判据仍通过 -> 守门失效"
-    broken_gen = GEN.replace("_install_login(context, _AUTH_TABLE.get(_cid)", "_install_login(context, {}")
-    assert _count(broken_gen, _EXEC_CALL) < 1, "把执行侧注入改坏后判据仍通过 -> 守门失效"
+    # [!] V8.5.1：执行侧改口径后，负向自证也要跟着改 —— 原来打坏的是 `_install_login` 调用，
+    #   现在执行侧靠 `_login_do` 展开，所以要打坏**那个**（否则自证恒真 = 判据形同虚设）。
+    # [!] 要打坏**渲染处**（`_login_do(page,` 出现在渲染模板里），
+    #   只改 `def _login_do(` 定义是没用的 —— 计数仍 >=1，自证就成了永真断言。
+    broken_gen = GEN.replace("_login_do(page, ", "_login_do_RENAMED(page, ")
+    assert broken_gen != GEN, "负向自证前提不成立（找不到渲染处的 `_login_do(page,`）"
+    assert _count(broken_gen, _EXEC_CALL) < 1, "把执行侧登录调用打坏后判据仍通过 -> 守门失效"

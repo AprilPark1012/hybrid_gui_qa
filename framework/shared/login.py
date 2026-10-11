@@ -68,9 +68,45 @@ def install_token(ctx, token_key: str, token: str) -> bool:
 
 
 def ensure_logged_in(ctx, base_url: str, spec: dict) -> dict:
-    """组合动作：拿 token → 注入上下文。返回摘要 dict（供日志与判据使用，不抛）。"""
-    out = {"attempted": False, "ok": False, "reason": ""}
-    sp = resolve_spec(base_url, spec or {})
+    """登录前置的**唯一入口**（探针期与执行期共用）。
+
+    [!] V8.5.1（P23 登录步骤化）：优先走**新口径** —— 场景 `login:` 段声明的 `steps` 是
+    「登录页上的表单动作序列」，由 `perform_login` 在真实页面上执行。
+    为什么必须两期共用一份实现：探针期登录失效时，探到的**只有登录页控件**，
+    AI 手上没有业务页控件 => 它只能规划登录步骤（实测连写三次，被产出闸门拦下）。
+    表现是"AI 不听话"，真因是**探针没登录**。
+
+    旧口径（`login_api` + `token_key` 接口登录）作为兼容分支保留，但新场景应写 `login:`。
+    """
+    out = {"attempted": False, "ok": False, "reason": "", "mode": ""}
+    spec = spec or {}
+    if not spec:
+        return out
+
+    # ---- 新口径：表单动作序列（推荐） ----
+    if spec.get("steps"):
+        out["attempted"] = True
+        out["mode"] = "ui"
+        try:
+            page = None
+            try:
+                page = ctx.pages[0] if getattr(ctx, "pages", None) else None
+            except Exception:                                       # noqa: BLE001
+                page = None
+            if page is None:
+                page = ctx.new_page()
+            r = perform_login(page, base_url, spec)
+            out["ok"] = bool(r.get("ok"))
+            out["steps"] = r.get("steps", 0)
+            if not out["ok"]:
+                out["reason"] = str(r.get("reason") or "登录动作序列未完成")
+        except Exception as e:                                      # noqa: BLE001
+            out["reason"] = f"{type(e).__name__}: {e}"
+        return out
+
+    # ---- 旧口径：接口登录 + token 注入（兼容保留） ----
+    sp = resolve_spec(base_url, spec)
+    out["mode"] = "api"
     if not sp:
         return out
     out["attempted"] = True
@@ -99,7 +135,7 @@ def describe(spec: dict) -> str:
 
 # ==================== V8.5.1：登录步骤化（P23）====================
 # 为什么另起这条：旧机制走 POST 接口 + token 注入，运行期还要读 `scripts/generated/_auth.json`
-#   —— 那文件由生成期写出、却被 `.gitignore` 忽略 ⇒ **不进交付包** ⇒ 收包方 run 时登录前置
+#   —— 那文件由生成期写出、却被 `.gitignore` 忽略 -> **不进交付包** -> 收包方 run 时登录前置
 #   **静默失效**，报「元素语义未找到」而真因是"整条用例跑在登录页上"（排查方向被带偏）。
 # 新口径（他 2026-10-11 定）：登录就是**登录页上的表单动作序列**，
 #   探测期与执行期**共用同一份声明**，并且会**展开进用例**（跑挂了能直接看到"卡在登录"）。

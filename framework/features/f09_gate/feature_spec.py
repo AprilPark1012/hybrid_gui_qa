@@ -42,7 +42,7 @@ FEATURES = [
                  class1=["test_scope_locate_expr.py", "test_locate_by_title.py"],
                  class2=["verify_scope_locate.py"]),
             dict(no="2.4", name="场景声明契约", goal="人写的那部分：pages / pre / auth / data / probe_url —— 声明必须由场景提供，框架不懂具体系统",
-                 class1=["test_scenario_auth_spec.py", "test_page_pre_actions.py", "test_probe_pre_consistency.py",
+                 class1=["test_login_stepwise_contract.py", "test_scenario_auth_spec.py", "test_page_pre_actions.py", "test_probe_pre_consistency.py",
                          "test_probe_url_and_occurrence.py", "test_login_priming_coverage.py"],
                  class2=["verify_login_priming.py", "test_page_pre_actions_force_fallback.py", "test_scenario_probe_pre.py", "verify_page_pre_actions.py"]),
         ],

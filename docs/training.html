@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.5）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.5.1）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.5 · 2026-10-12　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.5.1 · 2026-10-12　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1347,7 +1347,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>人写的那部分（声明）由场景提供，框架不懂具体系统：<span class="code-inline">scenario.load_scenario_file()</span> 解析 <span class="code-inline">scenarios/**/*.yml</span> 的 pages / pre / auth / data / probe_url / probe_pre。前置动作只有一个引擎 <span class="code-inline">run_pre_actions()</span>（探测期与执行期共用）：探测期 <span class="code-inline">_run_pre_actions()</span> 只做委托，让探针一开始就处对身份（有些控件只在某个身份/某个动作之后才存在，点不动就采不到）；<b>执行期</b>由生成物 <span class="code-inline">_harness._maybe_scene_pre()</span> 在<b>首次导航之后</b>照同一声明复现一遍 —— 少这一半，AI 只会写序列的后半段（漏掉「点开头像菜单」那步）-> 菜单项未展开 -> <span class="code-inline">Element is not visible</span>；同时提示词明确告知「已声明的身份前置不用写进步骤」，<span class="code-inline">_drop_declared_pre_steps()</span> 再按基名兜底移除重复步骤（两道闸）。登录前置 <span class="code-inline">login.ensure_logged_in()</span> 走接口拿 token 再 <span class="code-inline">install_token()</span> 注入 localStorage；<span class="code-inline">ScenarioPage.probe_url_for()</span> 给「运行期才有值的页面」一个探测地址。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">cmd_explore()</span> -> <span class="code-inline">load_scenario_file()</span> / <span class="code-inline">discover_scenarios()</span> -> <span class="code-inline">_collect_pages_context(pages, auth)</span> -> <span class="code-inline">_run_pre_actions()</span> -> <span class="code-inline">run_pre_actions()</span> / <span class="code-inline">login.ensure_logged_in()</span> -> scan_page　执行期：<span class="code-inline">_goto()</span> -> <span class="code-inline">_maybe_scene_pre()</span> -> <span class="code-inline">run_pre_actions()</span>（读产物 <span class="code-inline">_pre.json</span>）。</p>
       <div class="flow2"><span class="fnode">场景 yml（pages/pre/auth/data/probe_url/probe_pre）</span><span class="farrow">-></span><span class="fnode">load_scenario_file()</span><span class="farrow">-></span><span class="fnode y">探测期 _run_pre_actions()</span><span class="farrow">-></span><span class="fnode g">执行期 _maybe_scene_pre()</span><span class="farrow">-></span><span class="fnode">同一引擎 run_pre_actions()</span><span class="farrow">-></span><span class="fnode">探测/执行</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/test_scenario_auth_spec.py（8 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_page_pre_actions.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_probe_pre_consistency.py（10 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_probe_url_and_occurrence.py（6 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_login_priming_coverage.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/verify_login_priming.py</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_page_pre_actions_force_fallback.py</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_scenario_probe_pre.py</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/verify_page_pre_actions.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/test_login_stepwise_contract.py（8 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_scenario_auth_spec.py（8 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_page_pre_actions.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_probe_pre_consistency.py（10 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_probe_url_and_occurrence.py（6 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_login_priming_coverage.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/verify_login_priming.py</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_page_pre_actions_force_fallback.py</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_scenario_probe_pre.py</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/verify_page_pre_actions.py</span></p>
     </div>
   </section>
   <section class="feat">
@@ -2012,7 +2012,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.5</b>（2026-10-12）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.5.1</b>（2026-10-12）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
       <div class="cl-head"><span class="cl-ver">V8.5</span><span class="cl-date">2026-10-12</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>真 AI 链路端到端跑通 + framework 按特性重组</b></span></div>
       <p class="cl-sum">两条链路（手搓 / 真 AI）端到端全绿：<code>python -m framework.cli all --ai</code> 从探测、生成到真跑一次通过（<code>2 passed</code> / pytest 退出码 0）。<br>期间打穿 8 层真故障，逐层都有实测证据：行下标落盘丢失、录像取到最旧那份、运行期快照丢定位信号、右下角保存按钮拿不到定位信号（探测未采集元素自身 <code>id</code>）、AI 多写一步「回登录页」、兜底读错字段名（<code>value</code> vs <code>url</code>）、断言写在勾选之前、点击「查看订单」是<b>新开标签页</b>而断言仍在旧页。<br><b>口径沉淀</b>：能由场景描述钉死的写进场景；模型不可靠的那部分由框架做<b>确定性兜底</b>（有边界、可审计、判不出来的照旧红）。</p>
@@ -2772,7 +2772,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.5</b>（2026-10-12）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.5.1</b>（2026-10-12）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>

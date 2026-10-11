@@ -53,7 +53,6 @@ demo/.data/
 # 为什么忽略：它是 **运行期产物**，源在 scenarios/*.yml 的 auth: 段（generate 时重建）。
 # 内容含登录前置要用的口令（demo 是公开演示凭据；真实系统的口令走场景里的 password_env 从环境变量取）。
 # ⇒ 交付包里不该带运行期凭据文件，收包方 `generate` 一次就会重建它。
-scripts/generated/_auth.json
 
 # V8.4.3+：运行时定位快照（generate 产物，按次生成；含当次探测到的语义名）
 scripts/generated/_probe_snapshot.json

@@ -675,7 +675,7 @@ def _gbk_safe(text: str) -> str:
 # 为什么必须展开进用例（而不是像旧机制那样靠运行期读 `_auth.json`）：
 #   旧机制要读的文件**不进交付包**（被 .gitignore 忽略），收包方 run 时登录前置**静默失效**，
 #   报「元素语义未找到」而真因是"整条用例跑在登录页上"，排查方向被带偏一整天。
-#   ⇒ 展开进用例后：包里有什么、跑的就是什么，跑挂了能直接看到卡在登录。
+#   -> 展开进用例后：包里有什么、跑的就是什么，跑挂了能直接看到卡在登录。
 
 def _scenario_for_case(case: dict):
     """按用例里记的场景名反查场景对象；拿不到就返回 None（不猜、不降级）。
@@ -683,7 +683,7 @@ def _scenario_for_case(case: dict):
     [!] 键名血泪：用例里记的是 `scenario_id` / `source_scenario`（生成用例时写入），
     **不是** `scenario` / `case_extra`。本轮我先按错键名查 -> 恒为 None -> 登录步骤一步都不展开，
     而链路照样绿（demo 未登录也能操作）=> **差点变成"看似做了、其实没生效"的假绿**。
-    ⇒ 这类"字段名假设"必须拿真实产物核对，不能凭印象。
+    -> 这类"字段名假设"必须拿真实产物核对，不能凭印象。
     """
     ex = case.get("case_extra") or {}
     sid = str(case.get("scenario_id") or case.get("source_scenario")
@@ -2218,42 +2218,8 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     index_path.write_text(json.dumps(new_index, ensure_ascii=False, indent=2, sort_keys=True),
                           encoding="utf-8")
 
-    # ---- P22 批 5：写「登录前置表」（case_id → 场景 auth 声明）----
-    # 为什么放产物里：执行侧 harness 需要它才能在 context 建好后注入 token。
-    # 为什么**合并式**写：增量生成只处理变化的那几条 -> 不能把别的场景的 auth 抹掉。
-    # [!] 口令会随声明落进产物：**演示凭据可接受**；真实系统请在场景里用 `password_env`。
-    _auth_path = gen_dir / "_auth.json"
-    try:
-        _auth_tbl = (json.loads(_auth_path.read_text(encoding="utf-8"))
-                     if _auth_path.exists() else {})
-    except Exception:                                              # noqa: BLE001
-        _auth_tbl = {}
-    _scen_auth_cache: dict[str, dict] = {}
-    _auth_added: list[str] = []
-    for _c in cases:
-        _cid, _rel = _c.get("case_id"), str(_c.get("source_scenario") or "")
-        if not _cid:
-            continue
-        if _rel and _rel not in _scen_auth_cache:
-            _scen_auth_cache[_rel] = _scenario_auth_of(_rel)       # P22 批 5：唯一实现，别各写一份
-        # 用例自带 auth（手搓用例）优先，其次场景声明 —— 与 _decl_auth 同一优先级口径
-        _spec = dict(_c.get("auth") or {}) or (_scen_auth_cache.get(_rel) or {})
-        if _spec and _auth_tbl.get(_cid) != _spec:
-            _auth_tbl[_cid] = _spec
-            _auth_added.append(_cid)
-    _live_ids = {_c["case_id"] for _c in cases}                    # 表不许越攒越大
-    _auth_tbl = {k: v for k, v in _auth_tbl.items() if k in _live_ids}
-    if _auth_tbl:
-        _auth_path.write_text(json.dumps(_auth_tbl, ensure_ascii=False, indent=2, sort_keys=True),
-                              encoding="utf-8")
-        if _auth_added:
-            print(f"[generate] [key] 登录前置写入 {len(_auth_added)} 条：{_auth_added[:4]}"
-                  f"{'…' if len(_auth_added) > 4 else ''}")
-    elif _auth_path.exists():
-        _auth_path.unlink()                                        # 场景都不需要登录 -> 不留死文件
-
     # ---- 2026-10-10 A 方案：写「场景身份前置表」（case_id → `probe_pre` 序列）----
-    # 与 `_auth.json` 同款（合并式写 + 按现存用例裁剪 + 没人声明就不留死文件）：
+    # 合并式写 + 按现存用例裁剪 + 没人声明就不留死文件：
     # 执行侧 harness 读它 → 在**首次导航之后**跑**同一引擎**，把声明式身份前置在执行期复现。
     # 为什么必须有：只探测期跑、执行期不跑 -> AI 只写序列的后半段（漏"点开菜单"那步）
     #   -> `Locator.click: Element is not visible`（2026-10-10 干净环境 E2E 实录）。
@@ -2266,6 +2232,9 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     _scen_pre_cache: dict[str, list] = {}
     _scen_host_cache: dict[str, str] = {}
     _pre_added: list[str] = []
+    # [!] `_live_ids` 原先定义在已删除的 `_auth.json` 块里，被下面这行复用 —— 删块时必须
+    #   先查"块内变量还有谁在用"（本轮连着踩了两次：`_json_auth` 和 `_live_ids`）。
+    _live_ids = {_c["case_id"] for _c in cases}                    # 表不许越攒越大
     for _c in cases:
         _cid, _rel = _c.get("case_id"), str(_c.get("source_scenario") or "")
         if not _cid:
@@ -3044,7 +3013,7 @@ class _BrowserPool:
 # generate 按场景的 `auth:` 段写进同目录 `_auth.json`；没有该文件 -> 空表 -> 行为与从前**完全一致**。
 # ==================== V8.5.1：登录步骤化（P23）====================
 # 生成期把场景 `login:` 的动作序列展开成用例**前导步骤**，渲染出的是下面这两个函数调用。
-# 与旧 `_install_login`（POST 接口 + token 注入 + 读 `_auth.json`）的区别：
+# 取代了旧的 `_install_login`（POST 接口 + token 注入 + 读 `_auth.json`，已整体删除）：
 #   · 走**真实 UI** -> 登录**可见**（跑挂了直接看到卡在登录，排查方向不被带偏）；
 #   · 不依赖任何"运行期隐藏文件"（旧机制要读的 `_auth.json` 被 .gitignore 忽略 ->
 #     不进交付包 -> 收包方静默失效）。
@@ -3114,23 +3083,15 @@ def _login_wait(page, wait):
     _log(page, "login_ok", f"url={page.url}")
 
 
-_AUTH_TABLE: dict = {}
-try:
-    import json as _json_auth          # 显式 import：harness 顶层没有 json（实测踩过 NameError）
-    import pathlib as _pl_auth
-    _ap = _pl_auth.Path(__file__).resolve().parent / "_auth.json"
-    if _ap.exists():
-        _AUTH_TABLE = _json_auth.loads(_ap.read_text(encoding="utf-8")) or {}
-except Exception as _e_auth:
-    # [!] 兜底**不许把"自己写错"吞成"没有登录前置"**（P19 教训：NameError 被 except 吞掉 -> 静默失效，
-    # 现象是"整条用例跑在登录页上"，排查方向还容易被带偏）。产物里明明有 _auth.json 却读不出来
-    # = 环境/产物坏了 -> **当场抛**，不降级。
-    raise RuntimeError(
-        f"_auth.json 读取失败（{type(_e_auth).__name__}: {_e_auth}）"
-        f" —— 登录前置无法生效，用例会整条跑在登录页上，故当场失败（不静默降级）") from _e_auth
+import json as _json_auth              # 显式 import：harness 顶层没有 json（实测踩过 NameError）
+# [!] P25 / V8.5.1：`_auth.json` 那套**已整体删除**。
+#   它由生成期写出、却被 `.gitignore` 忽略 => **不进交付包** => 收包方 run 时登录前置
+#   **静默失效**，报「元素语义未找到」而真因是"整条用例跑在登录页上"（排查方向被带偏一整天）。
+#   登录改为：场景 `login:` 段声明动作序列 -> 生成期展开成**可见的用例前导步骤**（`_login_do`/`_login_wait`）。
+#   => 从此包里有什么、跑的就是什么，不存在"运行期必需的隐藏文件"。
 
 # 场景级**身份前置表**（case_id -> `probe_pre` 序列 · 2026-10-10 A 方案）。
-# 与 `_auth.json` 同款：generate 按场景声明写进同目录 `_pre.json`；没有该文件 -> 空表 -> 行为与从前一致。
+# generate 按场景声明写进同目录 `_pre.json`；没有该文件 -> 空表 -> 行为与从前一致。
 # [!] 为什么执行期也要跑：声明式的前置是"怎么到达这个身份"的**唯一权威**。
 #   只探测期跑、执行期不跑 -> AI 只写序列的后半段（漏了"点开菜单"那步）=> `Element is not visible`。
 _PRE_TABLE: dict = {}
@@ -3145,24 +3106,6 @@ except Exception as _e_pre:
 
 _SCENE_PRE_DONE: set = set()
 _CURRENT_CASE: dict = {"cid": ""}
-
-
-def _install_login(context, auth_spec=None):
-    """**登录前置**：context 建好后立刻把 token 注入 localStorage（P22 批 5 · 方案 H）。
-
-    为什么需要：目标系统未登录会跳登录页 -> 用例里的 goto 全落在登录页（整条用例白跑）。
-    没声明（空 spec）-> 直接返回 —— 行为与不加这个特性时**完全一致**（零开销）。
-    登录失败**当场抛**：静默继续会变成"整条用例都在登录页上跑"的假象，比失败更坏。
-    """
-    if not auth_spec:
-        return
-    from framework.shared.login import ensure_logged_in
-    r = ensure_logged_in(context, _HYBRID_BASE or "http://localhost:8000", auth_spec)
-    if not r.get("ok"):
-        raise RuntimeError(
-            f"登录前置失败（场景声明了 auth，但登录没成功）：{r.get('reason')}"
-            f" —— 未登录态下跑用例没有意义，故当场失败（不静默）")
-    print(f"[setup] [key] 登录前置 ok（{auth_spec.get('username')}）", flush=True)
 
 
 def _is_headed():
@@ -3198,7 +3141,6 @@ def page(request, _pool):
         _ctx_kw = {"record_video_dir": str(RUN_LOG_DIR / "videos"),
                    "record_video_size": {"width": 1280, "height": 720}}
     context = browser.new_context(**_ctx_kw)
-    _install_login(context, _AUTH_TABLE.get(_cid) or _AUTH_TABLE.get("*") or {})   # P22 批 5
     if _PARTITION:
         # F6：把分区号注入页面（页面据此把 /api 调用带上 ?w=…）-> 并发 worker 各用各的数据
         context.add_init_script("window.__HYBRID_W = " + repr(_PARTITION) + ";")

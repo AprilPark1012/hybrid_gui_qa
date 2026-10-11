@@ -664,7 +664,7 @@ class _BrowserPool:
 # generate 按场景的 `auth:` 段写进同目录 `_auth.json`；没有该文件 -> 空表 -> 行为与从前**完全一致**。
 # ==================== V8.5.1：登录步骤化（P23）====================
 # 生成期把场景 `login:` 的动作序列展开成用例**前导步骤**，渲染出的是下面这两个函数调用。
-# 与旧 `_install_login`（POST 接口 + token 注入 + 读 `_auth.json`）的区别：
+# 取代了旧的 `_install_login`（POST 接口 + token 注入 + 读 `_auth.json`，已整体删除）：
 #   · 走**真实 UI** -> 登录**可见**（跑挂了直接看到卡在登录，排查方向不被带偏）；
 #   · 不依赖任何"运行期隐藏文件"（旧机制要读的 `_auth.json` 被 .gitignore 忽略 ->
 #     不进交付包 -> 收包方静默失效）。
@@ -734,23 +734,15 @@ def _login_wait(page, wait):
     _log(page, "login_ok", f"url={page.url}")
 
 
-_AUTH_TABLE: dict = {}
-try:
-    import json as _json_auth          # 显式 import：harness 顶层没有 json（实测踩过 NameError）
-    import pathlib as _pl_auth
-    _ap = _pl_auth.Path(__file__).resolve().parent / "_auth.json"
-    if _ap.exists():
-        _AUTH_TABLE = _json_auth.loads(_ap.read_text(encoding="utf-8")) or {}
-except Exception as _e_auth:
-    # [!] 兜底**不许把"自己写错"吞成"没有登录前置"**（P19 教训：NameError 被 except 吞掉 -> 静默失效，
-    # 现象是"整条用例跑在登录页上"，排查方向还容易被带偏）。产物里明明有 _auth.json 却读不出来
-    # = 环境/产物坏了 -> **当场抛**，不降级。
-    raise RuntimeError(
-        f"_auth.json 读取失败（{type(_e_auth).__name__}: {_e_auth}）"
-        f" —— 登录前置无法生效，用例会整条跑在登录页上，故当场失败（不静默降级）") from _e_auth
+import json as _json_auth              # 显式 import：harness 顶层没有 json（实测踩过 NameError）
+# [!] P25 / V8.5.1：`_auth.json` 那套**已整体删除**。
+#   它由生成期写出、却被 `.gitignore` 忽略 => **不进交付包** => 收包方 run 时登录前置
+#   **静默失效**，报「元素语义未找到」而真因是"整条用例跑在登录页上"（排查方向被带偏一整天）。
+#   登录改为：场景 `login:` 段声明动作序列 -> 生成期展开成**可见的用例前导步骤**（`_login_do`/`_login_wait`）。
+#   => 从此包里有什么、跑的就是什么，不存在"运行期必需的隐藏文件"。
 
 # 场景级**身份前置表**（case_id -> `probe_pre` 序列 · 2026-10-10 A 方案）。
-# 与 `_auth.json` 同款：generate 按场景声明写进同目录 `_pre.json`；没有该文件 -> 空表 -> 行为与从前一致。
+# generate 按场景声明写进同目录 `_pre.json`；没有该文件 -> 空表 -> 行为与从前一致。
 # [!] 为什么执行期也要跑：声明式的前置是"怎么到达这个身份"的**唯一权威**。
 #   只探测期跑、执行期不跑 -> AI 只写序列的后半段（漏了"点开菜单"那步）=> `Element is not visible`。
 _PRE_TABLE: dict = {}
@@ -765,24 +757,6 @@ except Exception as _e_pre:
 
 _SCENE_PRE_DONE: set = set()
 _CURRENT_CASE: dict = {"cid": ""}
-
-
-def _install_login(context, auth_spec=None):
-    """**登录前置**：context 建好后立刻把 token 注入 localStorage（P22 批 5 · 方案 H）。
-
-    为什么需要：目标系统未登录会跳登录页 -> 用例里的 goto 全落在登录页（整条用例白跑）。
-    没声明（空 spec）-> 直接返回 —— 行为与不加这个特性时**完全一致**（零开销）。
-    登录失败**当场抛**：静默继续会变成"整条用例都在登录页上跑"的假象，比失败更坏。
-    """
-    if not auth_spec:
-        return
-    from framework.shared.login import ensure_logged_in
-    r = ensure_logged_in(context, _HYBRID_BASE or "http://localhost:8000", auth_spec)
-    if not r.get("ok"):
-        raise RuntimeError(
-            f"登录前置失败（场景声明了 auth，但登录没成功）：{r.get('reason')}"
-            f" —— 未登录态下跑用例没有意义，故当场失败（不静默）")
-    print(f"[setup] [key] 登录前置 ok（{auth_spec.get('username')}）", flush=True)
 
 
 def _is_headed():
@@ -818,7 +792,6 @@ def page(request, _pool):
         _ctx_kw = {"record_video_dir": str(RUN_LOG_DIR / "videos"),
                    "record_video_size": {"width": 1280, "height": 720}}
     context = browser.new_context(**_ctx_kw)
-    _install_login(context, _AUTH_TABLE.get(_cid) or _AUTH_TABLE.get("*") or {})   # P22 批 5
     if _PARTITION:
         # F6：把分区号注入页面（页面据此把 /api 调用带上 ?w=…）-> 并发 worker 各用各的数据
         context.add_init_script("window.__HYBRID_W = " + repr(_PARTITION) + ";")

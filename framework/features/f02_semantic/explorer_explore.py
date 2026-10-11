@@ -1132,7 +1132,7 @@ def _reject_login_steps(steps: list[TestStep]) -> None:
     if bad:
         detail = "；".join(f"第 {n} 步：{why}" for n, why in bad)
         raise AiExploreError(
-            f"AI 产出里夹带了登录步骤（{detail}）。场景已声明登录前置（auth:）时框架会自动登录，"
+            f"AI 产出里夹带了登录步骤（{detail}）。场景已声明登录前置（login: 段）时框架会自动执行登录动作，"
             "生成登录步骤不仅多余，还会因编造凭据而使整个用例失败。"
             "请让 AI 从**登录之后**的页面开始规划。"
         )

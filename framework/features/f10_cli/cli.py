@@ -204,7 +204,7 @@ def cmd_probe(rest: list[str] | None = None):
         print(f"[probe] 多页模式：{sfile}（id={sc.id}）→ 按声明顺序探测 {len(specs)} 页")
         for _s in specs:
             print(f"      - {_s['name']}  {_s['url']}")
-        auth = sc.auth_spec()
+        auth = (_decl_login_of(sc))
         probe_pre = list(getattr(sc, "probe_pre", None) or [])
     else:
         specs.append({"name": "probe", "url": _tgt})
@@ -644,6 +644,28 @@ def cmd_explore(rest: list[str] = None):
 
     from framework.features.f02_semantic.case_builder_generate import make_case_id_from_scenario_id
 
+
+    def _decl_login_of(sc) -> dict:      # noqa: E306  局部辅助：探针期登录声明的唯一取法
+        """取场景的**登录声明**（V8.5.1 唯一入口）。
+
+        [!] 原来这里直接取 `sc.auth_spec()` —— 那是**接口登录**（`auth:` 段，已随 P23 删除）。
+        删掉 `auth:` 之后这里恒为空 => **探针期根本不登录** => 探到的只有登录页控件
+        => AI 手上没有业务页控件，只能规划登录步骤（实测连写三次，被产出闸门拦下）。
+        表现像"AI 不听话"，真因是**探针没登录**。
+        现在优先新口径 `login:`（表单动作序列），旧 `auth:` 保留兼容。
+        """
+        try:
+            spec = sc.login_spec() or {}
+        except Exception:
+            spec = {}
+        if spec.get("steps"):
+            return spec
+        try:
+            return sc.auth_spec() or {}
+        except Exception:
+            return {}
+
+
     def _job_from_scenario(sc, scenario_text: str) -> dict:
         pgs = [p.to_dict() for p in sc.all_pages()]
         return dict(
@@ -673,7 +695,7 @@ def cmd_explore(rest: list[str] = None):
                 print(f"  [!] [{sc.id}] {w}")
             # P22 批 5：把场景的**登录前置声明**带进 job —— 不带的话跨页探测每页都只拿到登录页控件
         #（实测 2026-09-30：7 页全是 7 个控件 -> AI 的 31 个步骤 element 全为空）
-        jobs.append({**_job_from_scenario(sc, sc.scenario), "auth": sc.auth_spec(),
+        jobs.append({**_job_from_scenario(sc, sc.scenario), "auth": (_decl_login_of(sc)),
                  "probe_pre": list(sc.probe_pre or [])})
     elif sfile:
         from pathlib import Path
@@ -690,7 +712,7 @@ def cmd_explore(rest: list[str] = None):
               + (f", priority={sc.priority}" if sc.priority else "") + "）")
         # P22 批 5：把场景的**登录前置声明**带进 job —— 不带的话跨页探测每页都只拿到登录页控件
         #（实测 2026-09-30：7 页全是 7 个控件 -> AI 的 31 个步骤 element 全为空）
-        jobs.append({**_job_from_scenario(sc, sc.scenario), "auth": sc.auth_spec(),
+        jobs.append({**_job_from_scenario(sc, sc.scenario), "auth": (_decl_login_of(sc)),
                  "probe_pre": list(sc.probe_pre or [])})
     else:
         jobs.append(dict(

@@ -1,0 +1,15 @@
+{
+  "ai_orders_invoice_full_lifecycle_044342": {
+    "login_api": "/api/login",
+    "password": "super@123",
+    "password_env": "",
+    "token_key": "demo_token",
+    "username": "super"
+  },
+  "manual_order_create_smoke": {
+    "login_api": "/api/login",
+    "password": "super@123",
+    "token_key": "demo_token",
+    "username": "super"
+  }
+}

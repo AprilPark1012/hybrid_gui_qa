@@ -174,7 +174,7 @@ def test_ai_orders_invoice_full_lifecycle_044342(page, ctx):
     _assert_url(page, _data('expect_5', ctx), '确认到达订单详情页')
 
     # step 19: 点「编辑」进入编辑态（否则行工具栏的新增行/保存置灰不可用）
-    _act(page, "click", semantic='编辑', primary=lambda p: p.get_by_role("button", name="编辑"))
+    _act(page, "click", semantic='编辑', primary=lambda p: p.locator("#btn-detail-edit"))
     _log(page, "click", f"点「编辑」进入编辑态（否则行工具栏的新增行/保存置灰不可用）")
 
     # step 20: 新增第 1 个订单行
@@ -198,9 +198,8 @@ def test_ai_orders_invoice_full_lifecycle_044342(page, ctx):
     _log(page, "select", f"选新增行的行类型（必填项）")
 
     # step 25: 点行工具栏里的「保存」，先把这一行订单行本身保存下来
-    _act(page, "click", semantic='保存@详细信息', primary=lambda p: p.locator('section[aria-label="详细信息"]').get_by_text("保存", exact=True))
-    _log(page, "click", f"点行工具栏里的「保存」，先把这一行订单行本身保存下来")
-
+    _log(page, "multi_match", '缺行定位: 保存@详细信息')
+    pytest.fail("控件 '保存@详细信息' 在页面上**重复出现 2 个**（同一容器内每行/每条一个）-> 只给语义名会同时命中多个，运行期必红。请补行定位：`row_index`（第 N 行，从 1 起；`-1` = 最后一行）或 `row_text` + 列字段；**刚新增的空行只能用 `row_index`**。", pytrace=False)
     # step 26: 新增第 2 个订单行
     _act(page, "click", semantic='新增行@订单详情页', primary=lambda p: p.locator('section[aria-label="详细信息"]').get_by_text("新增行", exact=True))
     _log(page, "click", f"新增第 2 个订单行")
@@ -222,9 +221,8 @@ def test_ai_orders_invoice_full_lifecycle_044342(page, ctx):
     _log(page, "select", f"选第 2 个新增行的行类型（必填项）")
 
     # step 31: 点行工具栏里的「保存」，把第 2 行订单行也保存下来
-    _act(page, "click", semantic='保存@详细信息', primary=lambda p: p.locator('section[aria-label="详细信息"]').get_by_text("保存", exact=True))
-    _log(page, "click", f"点行工具栏里的「保存」，把第 2 行订单行也保存下来")
-
+    _log(page, "multi_match", '缺行定位: 保存@详细信息')
+    pytest.fail("控件 '保存@详细信息' 在页面上**重复出现 2 个**（同一容器内每行/每条一个）-> 只给语义名会同时命中多个，运行期必红。请补行定位：`row_index`（第 N 行，从 1 起；`-1` = 最后一行）或 `row_text` + 列字段；**刚新增的空行只能用 `row_index`**。", pytrace=False)
     # step 32: 点页面右下角（底部按钮行最右侧）的「保存」，这一步才完成整个订单的保存
     _act(page, "click", semantic='保存@订单详情', primary=lambda p: p.locator("#btn-detail-edit"))
     _log(page, "click", f"点页面右下角（底部按钮行最右侧）的「保存」，这一步才完成整个订单的保存")
