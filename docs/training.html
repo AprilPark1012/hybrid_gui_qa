@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.4.5）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.4.6）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.4.5 · 2026-10-10　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.4.6 · 2026-10-11　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -320,6 +320,28 @@
       <b>Level-B LLM 语义重猜</b>（抓真 DOM 快照 + 目标语义让 LLM 重挑；需配 key，无 key 自动跳过）。
       每条 heal 都记成<b>可审 diff</b>（<code class="code-inline">output/heals/</code>），
       且由<b>业务后置断言</b>裁决——断言不过一律判【真 bug】，<b>绝不静默改写</b>。
+    </p>
+  </div>
+  <h3 id="sec-1-4" style="margin:20px 0 8px;">兜底原则：explore 做不到的，后三段兜 —— 但<b>约定优于兜底</b></h3>
+  <div class="card">
+    <p style="margin:0 0 8px;">
+      [*] 四段链路 = <b>explore（LLM）</b> -> <b>probe</b> -> <b>generate</b> -> <b>run</b>。
+      explore 阶段 LLM 做不到的地方，由框架在<b>后续三个阶段</b>兜底 —— 但兜底<b>有边界</b>。
+    </p>
+    <ol style="margin:0 0 8px;padding-left:20px;">
+      <li><b>只兜能判死的</b>：兜底必须有事实/结构依据（例：刚新增的那一行 => <code class="code-inline">row_index=-1</code>，
+          依据是「该步无任何行定位 + 前面存在『新增行』动作」）。判不出来的一律<b>报红</b>，
+          绝不猜、绝不静默降级（宁红不猜）。</li>
+      <li><b>兜底不许无限 —— 约定优于兜底</b>：凡是<b>该在场景里说清楚的</b>（页面结构、权限与前置、
+          行区/表格语义、期望值、数据的唯一锚、业务等待时长），就写进
+          <code class="code-inline">scenarios/*.yml</code> 作为<b>约定</b>。
+          判据很简单：<b>改场景 vs 改框架</b> —— 前者成本更低、更健壮、更通用、更适配复杂生产页面。</li>
+      <li><b>兜底必须可审计</b>：补了什么 / 依据哪条规则 / 还有哪些没推定 —— 全部打出来，
+          否则兜底会变成遮住真问题的遮羞布。</li>
+    </ol>
+    <p style="margin:0;">
+      [OK] 本版第一个实例：<code class="code-inline">element_map.apply_row_locator_fallback()</code>
+      —— 只认 R1「刚新增行」、出现行锚后本批不再兜底、只认精确键（防跨页误伤）、补了什么逐条打印。
     </p>
   </div>
 </section>
@@ -1339,7 +1361,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>真实系统一般只有<b>顶层元素</b>有 data-testid，子元素没有埋点 -> 定位靠「锚点 + 容器内相对语义路径」。探测端采集：<span class="code-inline">anchor.container_from_ancestors(chain)</span>（最近的可锚定容器）+ <span class="code-inline">anchor.path_for_table_row()</span>（行锚 / 列 / 目标步）。合成的表达式在 Tier1 里排第二（<span class="code-inline">_try_anchor_path()</span>，在 test_id 之后、role+name 之前 —— 结构性锚定比裸语义更稳）；跳过意图复验（它的消歧靠结构，不靠文本相似度）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">probe_page()</span> -> <span class="code-inline">container_from_ancestors()</span> / <span class="code-inline">path_for_table_row()</span>；定位：<span class="code-inline">resolve_locator()</span> -> <span class="code-inline">_try_anchor_path()</span> -> <span class="code-inline">scope_locate.scope_locate()</span>。</p>
       <div class="flow2"><span class="fnode">探针采集 anchor + path</span><span class="farrow">-></span><span class="fnode">Tier1._try_anchor_path()</span><span class="farrow">-></span><span class="fnode">scope_locate()</span><span class="farrow">-></span><span class="fnode g">count == 1 才采用</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_element_anchor_path.py（17 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_fields_cover_all_columns.py（5 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_columns_are_named_items.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/verify_scope_locate.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_element_anchor_path.py（17 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_fields_cover_all_columns.py（5 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_columns_are_named_items.py（5 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/verify_scope_locate.py</span></p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-3.2" data-sub="3.2"><span class="sno">3.2</span>多层嵌套容器</h5>
@@ -1391,8 +1413,8 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-3.8" data-sub="3.8"><span class="sno">3.8</span>重复控件信号与行定位闸门</h5>
-      <p class="codesrc"><b>目标：</b>同一容器内重复出现的控件（表格每行一个）收敛成一条并标 `multi_match`，AI 据此给行定位（`row_index`）；生成期拦下「引用重复控件却没给行定位」的步骤</p>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_multi_match_signal.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <p class="codesrc"><b>目标：</b>同一容器内重复出现的控件（表格每行一个）收敛成一条并标 `multi_match`，AI 据此给行定位（`row_index`）；生成期拦下「引用重复控件却没给行定位」的步骤。**框架确定性兜底（V8.4.6）**：模型不写也不阻塞 —— 能由用例结构判死的（刚新增行 -&gt; `row_index=-1`）由 `apply_row_locator_fallback()` 补上（只认精确键、宁漏不误伤、出现行锚后不再兜底），判不出来的照旧报红；字段口径只有一处（`ROW_LOCATOR_FIELDS` + `has_row_locator()`）**行内定位走多命中（V8.4.6）**：`_act_row` 不再先走要求语义唯一的 `_loc()`（行内同名列控件必然多个 -&gt; 会被判死），改走探测期录下的「锚点 + 容器内相对语义」（`scope_locate`）拿多命中 locator 再 `.nth(行号)`；行内 `select` 未给 value 时与非行内**同口径**（选第一个真选项、留痕、无选项才报错）</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_multi_match_signal.py（18 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_locate_uses_scope.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
   <section class="feat">
@@ -1581,7 +1603,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>布局与命名契约：tests/ 与生成物的目录布局、跨平台路径拼接、命名空间、生成物形态都由判据钉住（<span class="code-inline">test_test_layout_contract.py</span> / <span class="code-inline">test_generated_layout_contract.py</span> / <span class="code-inline">test_path_join_contract.py</span> 等）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b>判据直接读磁盘布局与生成物文本做断言（秒级、不依赖 demo）。</p>
       <div class="flow2"><span class="fnode">布局/路径/命名空间 契约判据</span><span class="farrow">-></span><span class="fnode">test_*_contract.py（读磁盘布局）</span><span class="farrow">-></span><span class="fnode y">config._repo_root() 定仓库根</span><span class="farrow">-></span><span class="fnode r">坏了就红</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_test_layout_contract.py（13 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_generated_layout_contract.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_path_join_contract.py（2 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_case_scenario_contract.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_click_then_ready_contract.py（8 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_assert_kinds_render.py（11 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_wait_text_kind.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_demo_testid_policy.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_test_layout_contract.py（13 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_generated_layout_contract.py（7 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_path_join_contract.py（2 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_case_scenario_contract.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_click_then_ready_contract.py（8 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_assert_kinds_render.py（11 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_wait_text_kind.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_demo_testid_policy.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-9.2" data-sub="9.2"><span class="sno">9.2</span>质量闸</h5>
@@ -1971,9 +1993,24 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.4.5</b>（2026-10-10）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.4.6</b>（2026-10-11）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.4.5</span><span class="cl-date">2026-10-10</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>名字的单一权威来源</b> —— explore 权威清单落盘 + 映射表/快照两侧同源</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.4.6</span><span class="cl-date">2026-10-11</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>重复控件的行定位</b> —— 框架确定性兜底（不再指望模型）+ 「混合」口径正名</span></div>
+      <p class="cl-sum">症状：AI 用例里「刚新增那行」的字段（物料编码/产品编码/数量/行类型）只给了语义名 -> 生成期闸门报「重复出现 3 个 … 请补行定位」-> 用例跑不绿。<br>取证：能力（<code>row_index</code> 契约）、信号（探测期 <code>multi_match</code>）、第 0 位硬清单、生成期闸门、闸门原因喂回重试（方案 ①）<b>全部到位</b>，<code>deepseek-flash</code> 实测仍只给语义名（42 步里 <code>row_index</code> 0 个）。<br><b>口径改为：与其指望模型，不如框架确定性兜底（方案 ③）</b> —— 凡是能由用例自身结构<b>判死</b>的就补上，判不出来的照旧红（宁红不猜）。</p>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">[tool] 改进</span><ul>
+        <li><b>新增唯一入口</b> <code>element_map.apply_row_locator_fallback()</code>：只认一条能判死的规则 R1「刚新增的那一行」—— 该步无任何行定位 + 前面存在「新增行」动作 + 自那次新增后<b>没有</b>任何步骤给出过行锚 => 补 <code>row_index: -1</code>（最后一行，引擎已支持）；出现行锚后本批<b>不再兜底</b>（保守原则：宁漏不误伤）</li>
+        <li><b>两处调用、一段判据</b>：explore 产出成型时补（<code>row_index</code> 直接落进用例 JSON，可审）+ generate 渲染入口补（手搓用例与 AI 用例<b>共同的收口</b>）</li>
+        <li><b>只认精确键</b>：兜底不走基名兜底 —— 实测「开票页的 <code>单位</code>/<code>数量</code>」会被订单详情页的同名重复控件带下水、补出错误的 <code>-1</code>；判据（只读报红）误伤看得见，兜底是<b>直接改用例</b>，必须宁漏不误伤</li>
+        <li><b>真 bug 修复（现场探测没对齐场景约定）</b>：全新环境（没有 element_map 落盘）跑 <code>cli all</code> 时，<code>generate</code> 的<b>两条现场探测路径都没应用</b>场景声明的 <code>probe_pre</code>（explore 侧 2026-10-10 就修了）-> 探测还是超管身份 -> 详情页「编辑/新增行」置灰（只 force 点一下、不变状态）-> <b>编辑态控件根本没渲染</b> -> 7 个语义名探不到 -> <code>映射质量闸拦下：拒绝产出任何产物</code>（用户 2026-10-11 实测复现）。修法：两条路径探测前都走<b>同一个引擎</b> <code>run_pre_actions()</code> 应用 <code>probe_pre</code> （用例自带优先、其次回读场景 yml），并把探测页数由 5 页一并补齐</li>
+        <li><b>行内列控件（`_当前行`）收敛成唯一入口</b>：<code>_row_columns_to_items</code> 从 <code>explorer</code> 搬到 <code>framework/tools/probe/row_columns.py</code> —— explore 与 generate 现场探测<b>共用同一份</b>（generate 不能 import explorer：explorer 依赖可选包 browser-use，会破坏「无 AI 依赖也能 generate/run」）。实测效果：缺失项 <b>7 个 -> 1 个 -> 0 个</b>；订单列表页探测覆盖 107 -> <b>155</b> 个控件（含弹层 52 个）</li>
+        <li><b>字段口径收敛成一处</b>：<code>ROW_LOCATOR_FIELDS</code> + <code>has_row_locator()</code>，判据与兜底共用（此前两处各写一份 = 日后只改一处）</li>
+        <li><b>真 bug 修复</b>：模板渲染出 <code>_act_row(...)</code> 但 harness import 名单<b>漏了它</b> -> 生成期全绿、真跑 <code>NameError</code>；并加判据 <code>test_generated_case_scripts_import_every_harness_helper_they_call</code> 锁住「模板调用 vs import 名单」成对维护</li>
+        <li><b>口径正名（A+B）</b>：培训页第 1 章原先写「Browser Use（AI）/Browser Use 负责思考」-> 读者以为框架用 browser-use 的 <b>Agent</b> 驱动浏览器。事实是只用它的 <b>LLM 客户端</b>（<code>browser_use.llm.ChatDeepSeek</code>）直连编排、<b>从未 import Agent</b>，且 <code>browser-use</code> 是<b>可选</b>依赖。已改培训页 + README，并新增「四段闭环」证据表（浏览器出证据 -> LLM 出编排 -> 确定性执行 -> 浏览器裁决）与「命令 -> 职责 -> 是否用 AI」对照表</li>
+        <li>判据：<code>test_docs_sync.py</code> 新增 6 条（旧口径禁用 / 四段闭环必在 / all 与 explore 分工 / 负向自证 / 全仓不得 import browser-use Agent / generator 不得含 LLM 调用），<b>同时盖培训页与 README</b>（一处加多处查）</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.4.5</span><span class="cl-date">2026-10-10</span><span class="cl-tag"></span><span class="cl-theme"><b>名字的单一权威来源</b> —— explore 权威清单落盘 + 映射表/快照两侧同源</span></div>
       <p class="cl-sum">症状：<code>generate</code> 报 <code>缺失项 ['订单名称@订单列表页']</code> -> 拒绝产出 -> 整条链卡死。<br>取证（同轮三产物对齐 + <b>全量 cases 扫描</b>）后真因两条，<b>都不是命名口径</b>：<br>(1) 那条缺失名是<b>手搓用例</b>写的（不是 AI 产物），而且是一个<b>任何规则都产不出</b>的后缀（<code>@订单列表页</code>；真实名是页内消歧的 <code>@订单系统</code>）；<br>(2) 更深一层：<b>explore 喂给 AI 的完整清单（552 条 / 7 页）没落盘</b> —— element_map 只存 <b>AI 实际用到</b>的 31 个名字，手搓用例/断言引用的控件名只能靠「现场重探缺口那一两页」重建，而重探拿不到跨页唯一化上下文（实测补 0/1）。<br><b>修法口径 = 单一权威清单</b>：清单随 element_map 落盘（<code>ElementMap.probe_items</code>），generate <b>两条链路同时</b>吃它（映射表 + 运行时快照）；<b>只改一侧 = 制造新的不一致</b>（此前连踩两次打空）。</p>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">[tool] 改进</span><ul>
         <li><code>ElementMap</code> 新增 <code>probe_items</code>：<code>_finalize_map(manifest=...)</code> 把清单带进产物，<b>3 条产出路径全接线</b>（离线回放 / LLM 成功 / mock 兜底）</li>
@@ -2702,7 +2739,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.4.5</b>（2026-10-10）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.4.6</b>（2026-10-11）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
@@ -2715,6 +2752,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         <li class="toc-sub"><a href="#sec-1-1">[ai] LLM 语义编排（DeepSeek 直连 · 非 Agent）</a></li>
         <li class="toc-sub"><a href="#sec-1-2">[OK] Playwright（确定）</a></li>
         <li class="toc-sub"><a href="#sec-1-3">「混合」的准确定义：四段闭环（浏览器在两端）</a></li>
+        <li class="toc-sub"><a href="#sec-1-4">兜底原则：explore 做不到的，后三段兜 —— 但约定优于兜底</a></li>
       </ul>
     </li>
     <li class="toc-chap">

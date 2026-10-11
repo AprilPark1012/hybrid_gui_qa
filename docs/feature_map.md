@@ -6,14 +6,14 @@
 ## 总览
 
 - 大特性 **10** 个 · 子特性 **46** 条
-- 一类用例文件 **108** 个 / 用例函数 **903** 条
+- 一类用例文件 **109** 个 / 用例函数 **915** 条
 - 二类验证文件 **26** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
 | 1 | 混合链路 | 3 | 4 | 3 |
 | 2 | 语义识别与步骤编排 | 4 | 22 | 6 |
-| 3 | 分层定位与控件识别 | 8 | 16 | 6 |
+| 3 | 分层定位与控件识别 | 8 | 17 | 6 |
 | 4 | 选错控件兜底 | 4 | 4 | 2 |
 | 5 | 用例脚本数据三层分离 | 5 | 8 | 0 |
 | 6 | 自愈闭环 Healer | 1 | 0 | 0 |
@@ -55,14 +55,14 @@
 
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
-| 3.1 | 顶层锚点加容器内下钻 | 真实系统只有顶层元素有 testid；子元素靠「锚点 + 容器内相对语义路径」定位 | `test_element_anchor_path.py`(17)、`test_row_fields_cover_all_columns.py`(5)、`test_row_columns_are_named_items.py`(4) | `verify_scope_locate.py` |
+| 3.1 | 顶层锚点加容器内下钻 | 真实系统只有顶层元素有 testid；子元素靠「锚点 + 容器内相对语义路径」定位 | `test_element_anchor_path.py`(17)、`test_row_fields_cover_all_columns.py`(5)、`test_row_columns_are_named_items.py`(5) | `verify_scope_locate.py` |
 | 3.2 | 多层嵌套容器 | 容器套容器（区域内表格、表单里分组）时路径仍能唯一 | `test_element_anchor_path.py`(17) | - |
 | 3.3 | 弹出层与可展开容器 | 藏在 display:none 菜单里、点开才出现的弹层控件、以及**只在编辑态/动态新增之后才存在**的控件都能被探到并用起来（框架开的必须由框架关） | `test_expandable_menu_discovery.py`(6)、`test_probe_single_entry.py`(13)、`test_probe_page_scope.py`(8)、`test_probe_incremental.py`(7)、`test_editable_state_probe.py`(12) | `verify_expandable_menu.py`、`verify_probe_path_parity.py`、`verify_editable_state_probe.py` |
 | 3.4 | 跨页面元素 | 多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧；explore 期喂给 AI 的**完整清单**必须落盘，作为映射表与运行时快照的**唯一名字来源** | `test_runtime_name_source_is_explore_snapshot.py`(12)、`test_explore_manifest_authoritative.py`(13) | `verify_cross_page.py` |
 | 3.5 | 属性直定位 | 探测清单兜不住时，用属性（by+value）直接定位；select 的 index 语义 = 第 N 个非空选项（跳过 placeholder） | `test_select_by_index.py`(3)、`test_select_without_value.py`(3)、`test_text_assert_prefers_visible.py`(3) | `verify_select_index_skips_placeholder.py` |
 | 3.6 `[未实现]` | iframe 内控件 | [!] 未实现（缺口）：iframe 内以及跨 iframe 的控件识别与操作 | - | - |
 | 3.7 | 行内单元格定位 | 行锚 + 单元格：列的指定方式（多列 by）与支持的 op（不只 click） | `test_row_cell_col_by.py`(12)、`test_row_cell_ops.py`(10) | - |
-| 3.8 | 重复控件信号与行定位闸门 | 同一容器内重复出现的控件（表格每行一个）收敛成一条并标 `multi_match`，AI 据此给行定位（`row_index`）；生成期拦下「引用重复控件却没给行定位」的步骤 | `test_multi_match_signal.py`(12) | - |
+| 3.8 | 重复控件信号与行定位闸门 | 同一容器内重复出现的控件（表格每行一个）收敛成一条并标 `multi_match`，AI 据此给行定位（`row_index`）；生成期拦下「引用重复控件却没给行定位」的步骤。**框架确定性兜底（V8.4.6）**：模型不写也不阻塞 —— 能由用例结构判死的（刚新增行 -> `row_index=-1`）由 `apply_row_locator_fallback()` 补上（只认精确键、宁漏不误伤、出现行锚后不再兜底），判不出来的照旧报红；字段口径只有一处（`ROW_LOCATOR_FIELDS` + `has_row_locator()`）**行内定位走多命中（V8.4.6）**：`_act_row` 不再先走要求语义唯一的 `_loc()`（行内同名列控件必然多个 -> 会被判死），改走探测期录下的「锚点 + 容器内相对语义」（`scope_locate`）拿多命中 locator 再 `.nth(行号)`；行内 `select` 未给 value 时与非行内**同口径**（选第一个真选项、留痕、无选项才报错） | `test_multi_match_signal.py`(18)、`test_row_locate_uses_scope.py`(4) | - |
 
 ## 特性 4 · 选错控件兜底
 
@@ -135,7 +135,7 @@
 
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
-| 9.1 | 布局与命名契约 | tests/ 与生成物的布局、路径拼接（跨平台）、命名空间契约 | `test_test_layout_contract.py`(13)、`test_generated_layout_contract.py`(6)、`test_path_join_contract.py`(2)、`test_case_scenario_contract.py`(6)、`test_click_then_ready_contract.py`(8)、`test_assert_kinds_render.py`(11)、`test_wait_text_kind.py`(6)、`test_demo_testid_policy.py`(12) | - |
+| 9.1 | 布局与命名契约 | tests/ 与生成物的布局、路径拼接（跨平台）、命名空间契约 | `test_test_layout_contract.py`(13)、`test_generated_layout_contract.py`(7)、`test_path_join_contract.py`(2)、`test_case_scenario_contract.py`(6)、`test_click_then_ready_contract.py`(8)、`test_assert_kinds_render.py`(11)、`test_wait_text_kind.py`(6)、`test_demo_testid_policy.py`(12) | - |
 | 9.2 | 质量闸 | 用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤** | `test_case_quality_gate.py`(14)、`test_generate_quality_gate.py`(5)、`test_demo_freshness_gate.py`(35)、`test_ai_case_scenario_sync.py`(2)、`test_daily_skip_marker.py`(4)、`test_no_false_positive_blocks_ai.py`(9) | `verify_demo_freshness.py` |
 | 9.3 | 环境与编码适配 | 跨平台路径/内存探测/UTF-8 与 cp936 —— 源码不许出现 GBK 编不了的字符；**源码不许有未绑定名**（拷代码漏作用域会被 except 兜成静默降级） | `test_env_adaptation.py`(18)、`test_utf8_io.py`(21)、`test_browser_preflight.py`(5)、`test_no_stale_paths.py`(9)、`test_no_undefined_names.py`(3) | `verify_undefined_names.py` |
 | 9.4 | 交付包与文档同步 | 打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README | `test_pack_release.py`(19)、`test_pack_release_requires_generated_dir.py`(1)、`test_readme_structure.py`(16)、`test_docs_sync.py`(16)、`test_build_html_hl.py`(12) | `verify_html_sync.py` |

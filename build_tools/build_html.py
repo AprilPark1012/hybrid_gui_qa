@@ -61,11 +61,60 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.4.5"
-VERSION_DATE = "2026-10-10"
+VERSION = "8.4.6"
+VERSION_DATE = "2026-10-11"
 CHANGELOG = [
     dict(
-        version="8.4.5", date="2026-10-10", tag="当前版本",
+        version="8.4.6", date="2026-10-11", tag="当前版本",
+        theme="<b>重复控件的行定位</b> —— 框架确定性兜底（不再指望模型）+ 「混合」口径正名",
+        summary="症状：AI 用例里「刚新增那行」的字段（物料编码/产品编码/数量/行类型）只给了语义名 -> "
+                "生成期闸门报「重复出现 3 个 … 请补行定位」-> 用例跑不绿。<br>"
+                "取证：能力（<code>row_index</code> 契约）、信号（探测期 <code>multi_match</code>）、"
+                "第 0 位硬清单、生成期闸门、闸门原因喂回重试（方案 ①）<b>全部到位</b>，"
+                "<code>deepseek-flash</code> 实测仍只给语义名（42 步里 <code>row_index</code> 0 个）。<br>"
+                "<b>口径改为：与其指望模型，不如框架确定性兜底（方案 ③）</b> —— 凡是能由用例自身结构"
+                "<b>判死</b>的就补上，判不出来的照旧红（宁红不猜）。",
+        changed=[
+            "<b>新增唯一入口</b> <code>element_map.apply_row_locator_fallback()</code>：只认一条能判死的规则 "
+            "R1「刚新增的那一行」—— 该步无任何行定位 + 前面存在「新增行」动作 + 自那次新增后"
+            "<b>没有</b>任何步骤给出过行锚 => 补 <code>row_index: -1</code>（最后一行，引擎已支持）；"
+            "出现行锚后本批<b>不再兜底</b>（保守原则：宁漏不误伤）",
+            "<b>两处调用、一段判据</b>：explore 产出成型时补（<code>row_index</code> 直接落进用例 JSON，可审）+ "
+            "generate 渲染入口补（手搓用例与 AI 用例<b>共同的收口</b>）",
+            "<b>只认精确键</b>：兜底不走基名兜底 —— 实测「开票页的 <code>单位</code>/<code>数量</code>」"
+            "会被订单详情页的同名重复控件带下水、补出错误的 <code>-1</code>；"
+            "判据（只读报红）误伤看得见，兜底是<b>直接改用例</b>，必须宁漏不误伤",
+            "<b>真 bug 修复（现场探测没对齐场景约定）</b>：全新环境（没有 element_map 落盘）跑 "
+            "<code>cli all</code> 时，<code>generate</code> 的<b>两条现场探测路径都没应用</b>场景声明的 "
+            "<code>probe_pre</code>（explore 侧 2026-10-10 就修了）-> 探测还是超管身份 -> "
+            "详情页「编辑/新增行」置灰（只 force 点一下、不变状态）-> <b>编辑态控件根本没渲染</b> -> "
+            "7 个语义名探不到 -> <code>映射质量闸拦下：拒绝产出任何产物</code>（用户 2026-10-11 实测复现）。"
+            "修法：两条路径探测前都走<b>同一个引擎</b> <code>run_pre_actions()</code> 应用 <code>probe_pre</code> "
+            "（用例自带优先、其次回读场景 yml），并把探测页数由 5 页一并补齐",
+            "<b>行内列控件（`_当前行`）收敛成唯一入口</b>：<code>_row_columns_to_items</code> 从 "
+            "<code>explorer</code> 搬到 <code>framework/tools/probe/row_columns.py</code> —— "
+            "explore 与 generate 现场探测<b>共用同一份</b>（generate 不能 import explorer："
+            "explorer 依赖可选包 browser-use，会破坏「无 AI 依赖也能 generate/run」）。"
+            "实测效果：缺失项 <b>7 个 -> 1 个 -> 0 个</b>；订单列表页探测覆盖 107 -> <b>155</b> 个控件"
+            "（含弹层 52 个）",
+            "<b>字段口径收敛成一处</b>：<code>ROW_LOCATOR_FIELDS</code> + <code>has_row_locator()</code>，"
+            "判据与兜底共用（此前两处各写一份 = 日后只改一处）",
+            "<b>真 bug 修复</b>：模板渲染出 <code>_act_row(...)</code> 但 harness import 名单<b>漏了它</b> -> "
+            "生成期全绿、真跑 <code>NameError</code>；并加判据 "
+            "<code>test_generated_case_scripts_import_every_harness_helper_they_call</code> 锁住"
+            "「模板调用 vs import 名单」成对维护",
+            "<b>口径正名（A+B）</b>：培训页第 1 章原先写「Browser Use（AI）/Browser Use 负责思考」-> "
+            "读者以为框架用 browser-use 的 <b>Agent</b> 驱动浏览器。事实是只用它的 <b>LLM 客户端</b>"
+            "（<code>browser_use.llm.ChatDeepSeek</code>）直连编排、<b>从未 import Agent</b>，"
+            "且 <code>browser-use</code> 是<b>可选</b>依赖。已改培训页 + README，并新增「四段闭环」证据表"
+            "（浏览器出证据 -> LLM 出编排 -> 确定性执行 -> 浏览器裁决）与「命令 -> 职责 -> 是否用 AI」对照表",
+            "判据：<code>test_docs_sync.py</code> 新增 6 条（旧口径禁用 / 四段闭环必在 / all 与 explore 分工 / "
+            "负向自证 / 全仓不得 import browser-use Agent / generator 不得含 LLM 调用），"
+            "<b>同时盖培训页与 README</b>（一处加多处查）",
+        ],
+    ),
+    dict(
+        version="8.4.5", date="2026-10-10", tag="",
         theme="<b>名字的单一权威来源</b> —— explore 权威清单落盘 + 映射表/快照两侧同源",
         summary="症状：<code>generate</code> 报 <code>缺失项 ['订单名称@订单列表页']</code> -> 拒绝产出 -> 整条链卡死。<br>"
                 "取证（同轮三产物对齐 + <b>全量 cases 扫描</b>）后真因两条，<b>都不是命名口径</b>：<br>"
@@ -3297,6 +3346,28 @@ def build() -> str:
       <b>Level-B LLM 语义重猜</b>（抓真 DOM 快照 + 目标语义让 LLM 重挑；需配 key，无 key 自动跳过）。
       每条 heal 都记成<b>可审 diff</b>（<code class="code-inline">output/heals/</code>），
       且由<b>业务后置断言</b>裁决——断言不过一律判【真 bug】，<b>绝不静默改写</b>。
+    </p>
+  </div>
+  <h3 style="margin:20px 0 8px;">兜底原则：explore 做不到的，后三段兜 —— 但<b>约定优于兜底</b></h3>
+  <div class="card">
+    <p style="margin:0 0 8px;">
+      [*] 四段链路 = <b>explore（LLM）</b> -> <b>probe</b> -> <b>generate</b> -> <b>run</b>。
+      explore 阶段 LLM 做不到的地方，由框架在<b>后续三个阶段</b>兜底 —— 但兜底<b>有边界</b>。
+    </p>
+    <ol style="margin:0 0 8px;padding-left:20px;">
+      <li><b>只兜能判死的</b>：兜底必须有事实/结构依据（例：刚新增的那一行 => <code class="code-inline">row_index=-1</code>，
+          依据是「该步无任何行定位 + 前面存在『新增行』动作」）。判不出来的一律<b>报红</b>，
+          绝不猜、绝不静默降级（宁红不猜）。</li>
+      <li><b>兜底不许无限 —— 约定优于兜底</b>：凡是<b>该在场景里说清楚的</b>（页面结构、权限与前置、
+          行区/表格语义、期望值、数据的唯一锚、业务等待时长），就写进
+          <code class="code-inline">scenarios/*.yml</code> 作为<b>约定</b>。
+          判据很简单：<b>改场景 vs 改框架</b> —— 前者成本更低、更健壮、更通用、更适配复杂生产页面。</li>
+      <li><b>兜底必须可审计</b>：补了什么 / 依据哪条规则 / 还有哪些没推定 —— 全部打出来，
+          否则兜底会变成遮住真问题的遮羞布。</li>
+    </ol>
+    <p style="margin:0;">
+      [OK] 本版第一个实例：<code class="code-inline">element_map.apply_row_locator_fallback()</code>
+      —— 只认 R1「刚新增行」、出现行锚后本批不再兜底、只认精确键（防跨页误伤）、补了什么逐条打印。
     </p>
   </div>
 </section>

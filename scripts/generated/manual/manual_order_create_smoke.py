@@ -22,6 +22,12 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       # 2026-09-17 跨 tab / 行内定位 / 首行断言用的辅助
                       # [!] 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
                       _Tabs, _click_row_cell, _assert_first_row,
+                      # 2026-10-11 V8.4.6 行下标定位（`row_index`，含 `-1` = 最后一行）：
+                      #   [!] 方案 ③ 框架兜底会**自动补** `row_index=-1` -> 渲染出 `_act_row(...)`，
+                      #   而这里原先漏了它 -> 真跑 `NameError: name '_act_row' is not defined`
+                      #   （2026-10-11 实测：生成期闸门全绿、真跑才红）。模板渲染出的调用
+                      #   与这里的 import 必须**成对**维护 —— 判据 test_generated_helpers_are_imported 兜着。
+                      _act_row,
                       # P22 批 4/5：等待式断言（wait_text；批 5 起支持 selector 限定范围）
                       _assert_wait_text)
 # P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）
@@ -44,60 +50,52 @@ def test_manual_order_create_smoke(page, ctx):
     _goto(page, 'http://localhost:8000/')
     _log(page, "goto", f"打开合同列表页（登录由场景级登录前置完成，无需手工登录）")
 
-    # step 2: 展开右上角角色切换入口
-    _act(page, "click", semantic='超@合同列表页', primary=lambda p: p.get_by_title("点击切换角色 / 退出登录"))
-    _log(page, "click", f"展开右上角角色切换入口")
-
-    # step 3: 切换为订单管理员角色
-    _act(page, "click", semantic='切换为订单管理员@合同列表页', primary=lambda p: p.get_by_role("button", name="切换为订单管理员"))
-    _log(page, "click", f"切换为订单管理员角色")
-
-    # step 4: 等价直达新建订单页并带入合同 HT-1001
+    # step 2: 等价直达新建订单页并带入合同 HT-1001
     _goto(page, 'http://localhost:8000/order_new.html?contract_no=HT-1001')
     _log(page, "goto", f"等价直达新建订单页并带入合同 HT-1001")
 
-    # step 5: 填写订单名称
+    # step 3: 填写订单名称
     _act(page, "fill", semantic='订单名称@新建订单页', primary=lambda p: p.get_by_role("textbox", name="订单名称"), value=_data('fill_0', ctx))
     _log(page, "fill", f"填写订单名称")
 
-    # step 6: 业务单元选第一行
+    # step 4: 业务单元选第一行
     _act(page, "select", semantic='业务单元@新建订单页', primary=lambda p: p.get_by_role("combobox", name="业务单元"), index=0)
     _log(page, "select", f"业务单元选第一行")
 
-    # step 7: 管理单元选第一行
+    # step 5: 管理单元选第一行
     _act(page, "select", semantic='管理单元@新建订单页', primary=lambda p: p.get_by_role("combobox", name="管理单元"), index=0)
     _log(page, "select", f"管理单元选第一行")
 
-    # step 8: 帐套选第一行
+    # step 6: 帐套选第一行
     _act(page, "select", semantic='帐套@新建订单页', primary=lambda p: p.get_by_role("combobox", name="帐套"), index=0)
     _log(page, "select", f"帐套选第一行")
 
-    # step 9: 订单类型选第一项
+    # step 7: 订单类型选第一项
     _act(page, "select", semantic='订单类型@新建订单页', primary=lambda p: p.get_by_role("combobox", name="订单类型"), index=0)
     _log(page, "select", f"订单类型选第一项")
 
-    # step 10: 客户选第一个
+    # step 8: 客户选第一个
     _act(page, "select", semantic='客户@新建订单页', primary=lambda p: p.get_by_role("combobox", name="客户"), index=0)
     _log(page, "select", f"客户选第一个")
 
-    # step 11: 销售员选第一个
+    # step 9: 销售员选第一个
     _act(page, "select", semantic='销售员@新建订单页', primary=lambda p: p.get_by_role("combobox", name="销售员"), index=0)
     _log(page, "select", f"销售员选第一个")
 
-    # step 12: 保存新建订单（id=btn-o-submit）
+    # step 10: 保存新建订单（id=btn-o-submit）
     _act(page, "click", semantic=None, primary=lambda p: p.locator("#btn-o-submit"))
     _log(page, "click", f"保存新建订单（id=btn-o-submit）")
 
-    # step 13: 进入订单列表页（带合同号查询条件，reload 后条件不丢）
+    # step 11: 进入订单列表页（带合同号查询条件，reload 后条件不丢）
     _goto(page, 'http://localhost:8000/orders.html?contract_no=HT-1001')
     _log(page, "goto", f"进入订单列表页（带合同号查询条件，reload 后条件不丢）")
     _assert_text(page, _data('expect_0', ctx), '确认进入订单列表页')
 
-    # step 14: 在订单名称搜索框输入刚填的订单名称
+    # step 12: 在订单名称搜索框输入刚填的订单名称
     _act(page, "fill", semantic='订单名称@订单系统', primary=lambda p: p.get_by_role("textbox", name="订单名称"), value=_data('fill_1', ctx))
     _log(page, "fill", f"在订单名称搜索框输入刚填的订单名称")
 
-    # step 15: 搜索该订单
+    # step 13: 搜索该订单
     _act(page, "click", semantic='搜索@订单列表页', primary=lambda p: p.get_by_role("button", name="搜索"))
     _log(page, "click", f"搜索该订单")
     _assert_first_row(page, 'orderName', _data('expect_1', ctx), '列表首行出现刚创建的订单')

@@ -9,17 +9,6 @@
       "url": "http://localhost:8000/"
     },
     {
-      "op": "click",
-      "desc": "展开右上角角色切换入口",
-      "element": "超@合同列表页",
-      "by": "title"
-    },
-    {
-      "op": "click",
-      "desc": "切换为订单管理员角色",
-      "element": "切换为订单管理员@合同列表页"
-    },
-    {
       "op": "goto",
       "desc": "等价直达新建订单页并带入合同 HT-1001",
       "url": "http://localhost:8000/order_new.html?contract_no=HT-1001"
@@ -99,14 +88,14 @@
     {
       "desc": "确认进入订单列表页",
       "expect": "订单系统",
-      "after_step": 13
+      "after_step": 11
     },
     {
       "kind": "first_row",
       "row_field": "orderName",
       "desc": "列表首行出现刚创建的订单",
       "expect": "全链路-{datetime}",
-      "after_step": 15
+      "after_step": 13
     }
   ],
   "auth": {
@@ -114,5 +103,9 @@
     "username": "super",
     "password": "super@123",
     "token_key": "demo_token"
-  }
+  },
+  "probe_pre": [
+    "超",
+    "切换为订单管理员"
+  ]
 }
