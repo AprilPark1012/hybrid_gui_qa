@@ -161,13 +161,21 @@ def test_explore_collects_row_scope_notes_for_the_retry_loop():
 
 
 def test_retry_loop_actually_reads_row_scope_notes():
-    """闭环接通：`cli._verify_cases_detailed` 必须**读**这份清单，并把它变成给 AI 的要求。
+    """闭环接通：重试闭环必须**拿到**这份清单，并把它变成给 AI 的要求。
 
     这条是 ① 的核心断言 —— 只知道收集（清单写了没人读）就等于白收集，
     项目自己就犯过这个（注释原话：「这两个清单只收集没人读 -> 等于白收集」）。
+
+    [!] P25 片 8（B′ 收口，2026-10-12）：**读法变了** —— 不再由 cli 用 `getattr`
+    **直读** explorer 的私有全局（上游没填/改名/搬家都会静默失效，读不到当没问题），
+    改为经 `ai_output` 闸门返回 `GateResult`。判据跟着改判**闭环是否接通**，
+    而不是"cli 里有没有那个字符串" —— 后者锁的是实现形态，前者锁的是能力。
     """
     cli = (ROOT / "framework" / "features" / "f10_cli" / "cli.py").read_text(encoding="utf-8")
-    assert '_ROW_SCOPE_NOTES' in cli, "重试闭环没读行定位清单 -> 原因还是到不了 AI 手里"
+    assert "AiOutputGate" in cli, "重试闭环没经 ai_output 闸门取缺陷清单 -> 原因还是到不了 AI 手里"
+    gate = (ROOT / "framework" / "features" / "f02_semantic" /
+            "ai_output_gate_explore.py").read_text(encoding="utf-8")
+    assert "_ROW_SCOPE_NOTES" in gate, "ai_output 闸门没读行定位清单（信号源断了）"
     assert "row_index" in cli and "刚新增的空行只能用" in cli, "没把「怎么补」写进给 AI 的要求"
 
 

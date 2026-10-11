@@ -51,10 +51,28 @@ python -m framework.cli all --ai      # 探测 -> 生成 -> 真跑，一条命�
 2. 只跑 `python -m framework.cli ...` 的用法**无需任何改动**。
 3. 场景文件（`scenarios/*.yml`）格式向后兼容；本轮新增的字段都是可选的。
 
-## 6. 已知未完成（如实标注）
+## 6. 闸门统一契约（特性9 · B′）已落地
 
-- **闸门协议注册表**（特性 9 的 B′ 归属）尚未落地：8 个闸门（`ai_output` / `case_quality` / `probe_pre` /
-  `mapping` / `ambiguity` / `is_valid_rescan` / `data_sets` / `consistency`）的实现仍散在
-  explore / generate 侧，未按 B′ 落位到各自特性目录、未实现 `Gate` 协议、未登记进注册表。
-  对应 4 条判据**当前为红**（正是这项工作的验收标准）。
-- 登录步骤化：按决策 D6 排到 **V8.5.1**。
+8 个闸门全部按 B′ 实现 `Gate` 协议并登记进全量注册表（`features/f09_gate/gates.py`）：
+
+| 闸门 | 住址 | 守卫 |
+|---|---|---|
+| `ai_output` | `f02_semantic/ai_output_gate_explore.py` | AI 产出（写死行数据 / 语义误选 / 必填覆盖 / 行定位缺失） |
+| `case_quality` | `f02_semantic/case_quality_gate_generate.py` | 用例质量（假绿红线） |
+| `probe_pre` | `f02_semantic/probe_pre_gate_generate.py` | 用例与场景前置一致性（D9） |
+| `mapping` | `f03_locate/mapping_gate_generate.py` | elementMap 映射完整性 |
+| `is_valid_rescan` | `f03_locate/is_valid_rescan_gate_probe.py` | `isValid=false` 排除计数（D3） |
+| `ambiguity` | `f04_ambiguity/ambiguity_gate_generate.py` | 歧义 / 行定位 |
+| `data_sets` | `f05_layers/data_gate_generate.py` | 数据组 / 悬空数据集 |
+| `consistency` | `f09_gate/consistency_gate.py` | 齐套（elementMap / 录像 / cases / scripts） |
+
+**关键改进**：`cli.py` 不再用 `getattr` **直读 explorer 的私有全局**传闸门结果
+（上游没填 / 改名 / 搬家都会静默失效）—— 现在统一走 `GateResult`（显式返回、单一形状）。
+
+**全量回归**：`1107 passed / 1 skipped / 0 failed`。
+
+## 7. 已知未完成（如实标注）
+
+- **登录步骤化**：按决策 D6 排到 **V8.5.1**。
+- 闸门 `check()` 本轮做的是「搬家 + 统一契约」（委托既有实现），
+  **判定逻辑本身未改**；各闸门的判定口径后续可按特性继续收口到唯一入口。

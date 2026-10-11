@@ -883,32 +883,17 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
     #   试跑它纯属浪费（而且跑过了也只证明"在这批数据上侥幸能过"）。
     #   处置：直接带原因返回 False，让重试闭环让 AI 重生成（不跑 generate / 不试跑）。
     try:
-        from framework.features.f02_semantic import explorer_explore as _exp
-        _prod: list[str] = []
-        if getattr(_exp, "_HARDCODED_NOTES", None):
-            _prod.append("产出里把**表格行数据的具体值写死**了"
-                         "（换数据/换排序就会崩，必须改成行锚 / 首行断言 / {占位符}）：")
-            _prod += ["  · " + x for x in _exp._HARDCODED_NOTES[:5]]
-        if getattr(_exp, "SEMANTIC_MISMATCH_NOTES", None):
-            _prod.append("产出里选中的控件与步骤描述**几乎无关**"
-                         "（语义校准判为严重误选，实跑必然报「元素语义未找到」）：")
-            _prod += ["  · " + x for x in _exp.SEMANTIC_MISMATCH_NOTES[:5]]
-        # V8.4.3+：场景明写的**必填项** AI 漏编排 -> 保存会被前端校验拦下（实跑才炸）
-        if getattr(_exp, "_REQUIRED_COVERAGE_NOTES", None):
-            _prod.append("产出里**漏了场景要求填的必填项**"
-                         "（页面标 * 的必填控件；不填就保存不了，后面的断言必然失败）：")
-            _prod += ["  · " + x for x in _exp._REQUIRED_COVERAGE_NOTES[:5]]
-        # 2026-10-10（他选 ①）：**重复控件没给行定位** -> 运行期同时命中多个必红（实测 3 个）。
-        #   信号与判据都来自探测侧（`multi_match` + 唯一入口 `row_scope_violation`），
-        #   这里只负责**把原因递给 AI**（原来只有生成期闸门说话，那会儿重试闭环已经结束）。
-        if getattr(_exp, "_ROW_SCOPE_NOTES", None):
-            _prod.append("产出里**操作了「每行一个」的重复控件，却没给行定位**"
-                         "（只给语义名会同时命中多个，运行期必红）：")
-            _prod += ["  · " + x for x in _exp._ROW_SCOPE_NOTES[:5]]
+        # [!] P25 片 8（B′ 收口）：原来这里用 `getattr` **直读 explorer 的四个私有全局**
+        #   （写死行数据 / 语义误选 / 必填覆盖 / 行定位四类清单）—— 上游没填 / 改名 /
+        #   闸门搬家都会**静默失效**（读不到就当"没问题"，正是本项目反复吃过的亏）。
+        #   现在统一走 `ai_output` 闸门的 `GateResult`（显式返回、单一形状）。
+        from framework.features.f02_semantic.ai_output_gate_explore import AiOutputGate
+        _res = AiOutputGate().check()
+        _prod: list[str] = list(_res.entries)
         if _prod:
             print("  [NG] 校验不合格：AI 产出有**结构性缺陷** -> 不试跑，直接带原因重生成")
             for line in _prod:
-                print(f"     {line[:170]}")
+                print(f"     · {line[:170]}")
             print("  要求：① 行数据一律用声明式定位（row_text / expect_first_row / cell_field），"
                   "字面编号只允许出现在场景里逐字给出的情形；")
             print("        ② 每个步骤选的控件必须与步骤描述语义相符（不许拿业务数据当控件名）；")

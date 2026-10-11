@@ -132,3 +132,38 @@ def run_gates(gates=None, **kw) -> list:
         if isinstance(res, GateResult):
             out.append(res)
     return out
+
+
+# ============================ 全量闸门导入（唯一入口）============================
+#: B′ 闸门落点（实现跟特性走）。**新增闸门必须同时加到这里 + 判据的 EXPECTED_GATES**。
+GATE_MODULES = (
+    "framework.features.f02_semantic.ai_output_gate_explore",
+    "framework.features.f02_semantic.case_quality_gate_generate",
+    "framework.features.f02_semantic.probe_pre_gate_generate",
+    "framework.features.f03_locate.mapping_gate_generate",
+    "framework.features.f03_locate.is_valid_rescan_gate_probe",
+    "framework.features.f04_ambiguity.ambiguity_gate_generate",
+    "framework.features.f05_layers.data_gate_generate",
+    "framework.features.f09_gate.consistency_gate",
+)
+
+
+def load_all_gates() -> list[str]:
+    """导入全部闸门模块（**import 即登记**），返回失败的模块名清单。
+
+    为什么放在本模块底部而不是 f09_gate/__init__：判据只 import 本模块就要求
+    `GATE_REGISTRY` 非空（"一处可见全部闸门"）—— 注册表必须在**读契约的同时**就填好。
+    闸门模块只 import 契约名（此时已定义），不会形成真环。
+    """
+    import importlib
+    failed = []
+    for mod in GATE_MODULES:
+        try:
+            importlib.import_module(mod)
+        except Exception as e:                          # noqa: BLE001
+            failed.append(f"{mod}: {e}")
+    return failed
+
+
+#: 模块导入即填注册表（失败不抛：`load_all_gates()` 的返回值可被报告层展示）
+GATE_LOAD_ERRORS = load_all_gates()

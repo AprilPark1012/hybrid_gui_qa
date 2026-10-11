@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.4.6）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.5）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.4.6 · 2026-10-11　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.5 · 2026-10-12　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -2012,9 +2012,23 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.4.6</b>（2026-10-11）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.5</b>（2026-10-12）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.4.6</span><span class="cl-date">2026-10-11</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>重复控件的行定位</b> —— 框架确定性兜底（不再指望模型）+ 「混合」口径正名</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.5</span><span class="cl-date">2026-10-12</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>真 AI 链路端到端跑通 + framework 按特性重组</b></span></div>
+      <p class="cl-sum">两条链路（手搓 / 真 AI）端到端全绿：<code>python -m framework.cli all --ai</code> 从探测、生成到真跑一次通过（<code>2 passed</code> / pytest 退出码 0）。<br>期间打穿 8 层真故障，逐层都有实测证据：行下标落盘丢失、录像取到最旧那份、运行期快照丢定位信号、右下角保存按钮拿不到定位信号（探测未采集元素自身 <code>id</code>）、AI 多写一步「回登录页」、兜底读错字段名（<code>value</code> vs <code>url</code>）、断言写在勾选之前、点击「查看订单」是<b>新开标签页</b>而断言仍在旧页。<br><b>口径沉淀</b>：能由场景描述钉死的写进场景；模型不可靠的那部分由框架做<b>确定性兜底</b>（有边界、可审计、判不出来的照旧红）。</p>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">[tool] 改进</span><ul>
+        <li><b>framework 按特性重组</b>（要求 12）：一级目录从「按业务阶段」（<code>tools/probe</code> · <code>explore</code> · <code>generate</code> · <code>run</code>）改为 <b>按特性聚合</b> <code>framework/features/f01..f11/</code>；阶段归属由**文件名后缀**表达（<code>*_explore / _probe / _generate / _run / _verify</code>，无后缀=阶段无关）；跨特性基础设施（配置 / 浏览器 / 登录 / 前置动作 / 文本 IO）收敛到 <code>framework/shared/</code>；<code>python -m framework.cli</code> 这个<b>对外契约</b>由顶层薄壳保住（内部搬目录不改调用方成本）</li>
+        <li><b>逐页探测收敛成唯一入口</b> <code>f03_locate/scan_pages_probe.py</code>：explore 与 generate 原来<b>各写一遍</b>「一个浏览器 + 顺序 goto + 登录前置 + 逐页前置 + 页扫描 + 跨页唯一化」，两处实现必漏一处（V8.3.7 事故就是 generate 侧漏了「可展开容器」那一步）；现在骨架只此一处，explore 侧只剩「本特性特有的三个动作」（<code>_collect_pages_context</code> 121 行 -> 66 行）</li>
+        <li><b>probe 支持单页 / 多页</b>（<code>--scenario-file</code>），产物统一成 elementMap 形态（一页一个对象；单页=长度 1 的数组）—— 探针与 explore 从「两套形状两套读法」变成同形；实测一场景 7 页 470 条控件（含 <code>?no=SO-xxxx</code> 这类运行期 URL）</li>
+        <li><b>定位能力补齐</b>：探测期采集元素**自身** <code>id</code>，全页唯一时优先合成 <code>#id</code>；定位链 <code>test_id &gt; element_id &gt; 锚点下钻 &gt; role+name</code>。这是「右下角保存按钮」这类<b>无语义容器里的按钮</b>拿到定位信号的关键（此前只能靠锚点，拿不到就红）</li>
+        <li><b>框架确定性兜底两处</b>（有边界、可审计）：① 起手页导航纠正（场景声明了前置，AI 又写了「回登录页」的那一步 -> 纠正到前置宿主页，不是删掉，否则页面停在前置结束那一刻）；② 行定位兜底（判得死才补，判不出来照旧红）</li>
+        <li>新增判据：<code>element_id</code> 采集与使用 / elementMap list 契约 / 读取侧兼容三形态 / <code>probe_pre</code> 用例与场景一致性 / 闸门协议注册表 / 交付即验证入口契约 / 行下标落盘 / 录像同结构键取最新</li>
+        <li><b>删除失效物</b>：<code>--mock-fallback</code>（决策 D5）、<code>probe/semantic_locate.py</code>（零代码引用的孤儿模块）</li>
+        <li><b>文档与代码同步</b>：README 扩展指引、培训页目录树、特性地图（11 特性 / 49 子特性）全部按新结构重生成</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.4.6</span><span class="cl-date">2026-10-11</span><span class="cl-tag">上一版本</span><span class="cl-theme"><b>重复控件的行定位</b> —— 框架确定性兜底（不再指望模型）+ 「混合」口径正名</span></div>
       <p class="cl-sum">症状：AI 用例里「刚新增那行」的字段（物料编码/产品编码/数量/行类型）只给了语义名 -> 生成期闸门报「重复出现 3 个 … 请补行定位」-> 用例跑不绿。<br>取证：能力（<code>row_index</code> 契约）、信号（探测期 <code>multi_match</code>）、第 0 位硬清单、生成期闸门、闸门原因喂回重试（方案 ①）<b>全部到位</b>，<code>deepseek-flash</code> 实测仍只给语义名（42 步里 <code>row_index</code> 0 个）。<br><b>口径改为：与其指望模型，不如框架确定性兜底（方案 ③）</b> —— 凡是能由用例自身结构<b>判死</b>的就补上，判不出来的照旧红（宁红不猜）。</p>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">[tool] 改进</span><ul>
         <li><b>新增唯一入口</b> <code>element_map.apply_row_locator_fallback()</code>：只认一条能判死的规则 R1「刚新增的那一行」—— 该步无任何行定位 + 前面存在「新增行」动作 + 自那次新增后<b>没有</b>任何步骤给出过行锚 => 补 <code>row_index: -1</code>（最后一行，引擎已支持）；出现行锚后本批<b>不再兜底</b>（保守原则：宁漏不误伤）</li>
@@ -2758,7 +2772,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.4.6</b>（2026-10-11）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.5</b>（2026-10-12）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
