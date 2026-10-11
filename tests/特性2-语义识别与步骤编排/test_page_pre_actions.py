@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from framework.tools.generate.scenario import ScenarioError, load_scenario_file
+from framework.features.f02_semantic.scenario_generate import ScenarioError, load_scenario_file
 
 _YML = """
 id: t_pre

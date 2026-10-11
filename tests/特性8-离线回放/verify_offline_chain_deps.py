@@ -22,7 +22,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-from framework.tools.common.text_io import UTF8_ENV, force_stdio   # noqa: E402
+from framework.shared.text_io import UTF8_ENV, force_stdio   # noqa: E402
 
 force_stdio()
 _U8 = {**os.environ, **UTF8_ENV}

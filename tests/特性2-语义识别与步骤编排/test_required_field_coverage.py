@@ -19,7 +19,7 @@ import pathlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from framework.tools.explore.explorer import (   # noqa: E402
+from framework.features.f02_semantic.explorer_explore import (   # noqa: E402
     check_required_field_coverage, _LAST_REQUIRED_FIELDS,
 )
 

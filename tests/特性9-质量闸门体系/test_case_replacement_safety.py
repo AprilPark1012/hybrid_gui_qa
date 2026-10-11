@@ -21,7 +21,7 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from framework.tools.generate.case_builder import write_case  # noqa: E402
+from framework.features.f02_semantic.case_builder_generate import write_case  # noqa: E402
 
 
 def _mk(tmp_path: Path):

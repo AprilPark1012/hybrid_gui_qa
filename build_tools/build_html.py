@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent      # build_tools/ 的上一层 = 仓库根
-# 第 6 章的「特性/子特性」直接读单一来源 framework/tools/spec/feature_spec.py 渲染
+# 第 6 章的「特性/子特性」直接读单一来源 framework/features/f09_gate/feature_spec.py 渲染
 # -> 生成时必须能 import 到仓库包（与 build_feature_map.py 同一口径）。
 import sys as _sys
 if str(BASE) not in _sys.path:
@@ -61,11 +61,52 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.4.6"
-VERSION_DATE = "2026-10-11"
+VERSION = "8.5"
+VERSION_DATE = "2026-10-12"
 CHANGELOG = [
     dict(
-        version="8.4.6", date="2026-10-11", tag="当前版本",
+        version="8.5", date="2026-10-12", tag="当前版本",
+        theme="<b>真 AI 链路端到端跑通 + framework 按特性重组</b>",
+        summary="两条链路（手搓 / 真 AI）端到端全绿："
+                "<code>python -m framework.cli all --ai</code> 从探测、生成到真跑一次通过"
+                "（<code>2 passed</code> / pytest 退出码 0）。<br>"
+                "期间打穿 8 层真故障，逐层都有实测证据：行下标落盘丢失、录像取到最旧那份、"
+                "运行期快照丢定位信号、右下角保存按钮拿不到定位信号（探测未采集元素自身 <code>id</code>）、"
+                "AI 多写一步「回登录页」、兜底读错字段名（<code>value</code> vs <code>url</code>）、"
+                "断言写在勾选之前、点击「查看订单」是<b>新开标签页</b>而断言仍在旧页。<br>"
+                "<b>口径沉淀</b>：能由场景描述钉死的写进场景；模型不可靠的那部分由框架做"
+                "<b>确定性兜底</b>（有边界、可审计、判不出来的照旧红）。",
+        changed=[
+            "<b>framework 按特性重组</b>（要求 12）：一级目录从「按业务阶段」"
+            "（<code>tools/probe</code> · <code>explore</code> · <code>generate</code> · <code>run</code>）"
+            "改为 <b>按特性聚合</b> <code>framework/features/f01..f11/</code>；"
+            "阶段归属由**文件名后缀**表达（<code>*_explore / _probe / _generate / _run / _verify</code>，无后缀=阶段无关）；"
+            "跨特性基础设施（配置 / 浏览器 / 登录 / 前置动作 / 文本 IO）收敛到 <code>framework/shared/</code>；"
+            "<code>python -m framework.cli</code> 这个<b>对外契约</b>由顶层薄壳保住（内部搬目录不改调用方成本）",
+            "<b>逐页探测收敛成唯一入口</b> <code>f03_locate/scan_pages_probe.py</code>："
+            "explore 与 generate 原来<b>各写一遍</b>「一个浏览器 + 顺序 goto + 登录前置 + 逐页前置 + 页扫描 + 跨页唯一化」，"
+            "两处实现必漏一处（V8.3.7 事故就是 generate 侧漏了「可展开容器」那一步）；"
+            "现在骨架只此一处，explore 侧只剩「本特性特有的三个动作」（<code>_collect_pages_context</code> 121 行 -> 66 行）",
+            "<b>probe 支持单页 / 多页</b>（<code>--scenario-file</code>），产物统一成 elementMap 形态"
+            "（一页一个对象；单页=长度 1 的数组）—— 探针与 explore 从「两套形状两套读法」变成同形；"
+            "实测一场景 7 页 470 条控件（含 <code>?no=SO-xxxx</code> 这类运行期 URL）",
+            "<b>定位能力补齐</b>：探测期采集元素**自身** <code>id</code>，全页唯一时优先合成 <code>#id</code>；"
+            "定位链 <code>test_id &gt; element_id &gt; 锚点下钻 &gt; role+name</code>。"
+            "这是「右下角保存按钮」这类<b>无语义容器里的按钮</b>拿到定位信号的关键（此前只能靠锚点，拿不到就红）",
+            "<b>框架确定性兜底两处</b>（有边界、可审计）："
+            "① 起手页导航纠正（场景声明了前置，AI 又写了「回登录页」的那一步 -> 纠正到前置宿主页，"
+            "不是删掉，否则页面停在前置结束那一刻）；"
+            "② 行定位兜底（判得死才补，判不出来照旧红）",
+            "新增判据：<code>element_id</code> 采集与使用 / elementMap list 契约 / 读取侧兼容三形态 / "
+            "<code>probe_pre</code> 用例与场景一致性 / 闸门协议注册表 / 交付即验证入口契约 / "
+            "行下标落盘 / 录像同结构键取最新",
+            "<b>删除失效物</b>：<code>--mock-fallback</code>（决策 D5）、"
+            "<code>probe/semantic_locate.py</code>（零代码引用的孤儿模块）",
+            "<b>文档与代码同步</b>：README 扩展指引、培训页目录树、特性地图（11 特性 / 49 子特性）全部按新结构重生成",
+        ],
+    ),
+    dict(
+        version="8.4.6", date="2026-10-11", tag="上一版本",
         theme="<b>重复控件的行定位</b> —— 框架确定性兜底（不再指望模型）+ 「混合」口径正名",
         summary="症状：AI 用例里「刚新增那行」的字段（物料编码/产品编码/数量/行类型）只给了语义名 -> "
                 "生成期闸门报「重复出现 3 个 … 请补行定位」-> 用例跑不绿。<br>"
@@ -92,7 +133,7 @@ CHANGELOG = [
             "修法：两条路径探测前都走<b>同一个引擎</b> <code>run_pre_actions()</code> 应用 <code>probe_pre</code> "
             "（用例自带优先、其次回读场景 yml），并把探测页数由 5 页一并补齐",
             "<b>行内列控件（`_当前行`）收敛成唯一入口</b>：<code>_row_columns_to_items</code> 从 "
-            "<code>explorer</code> 搬到 <code>framework/tools/probe/row_columns.py</code> —— "
+            "<code>explorer</code> 搬到 <code>framework/features/f03_locate/row_columns_locate.py</code> —— "
             "explore 与 generate 现场探测<b>共用同一份</b>（generate 不能 import explorer："
             "explorer 依赖可选包 browser-use，会破坏「无 AI 依赖也能 generate/run」）。"
             "实测效果：缺失项 <b>7 个 -> 1 个 -> 0 个</b>；订单列表页探测覆盖 107 -> <b>155</b> 个控件"
@@ -226,7 +267,7 @@ CHANGELOG = [
             "<code>tests/</code> 按 10 个特性重组（<code>git mv</code> 保留历史，<b>90 个用例文件一个没丢</b>）",
             "<b>错归类归位</b>：<code>test_row_cell_*</code>（2 个）从「三层分离」移到「分层定位」，"
             "<code>test_select_by_index</code> 从「质量闸门」移到「分层定位」",
-            "<b>新增单一来源</b> <code>framework/tools/spec/feature_spec.py</code>：10 特性 / 43 子特性 / 每个子特性挂哪些用例",
+            "<b>新增单一来源</b> <code>framework/features/f09_gate/feature_spec.py</code>：10 特性 / 43 子特性 / 每个子特性挂哪些用例",
             "<b>新增生成器</b> <code>build_tools/build_feature_map.py</code> -> <code>docs/feature_map.md</code>（含统计）",
             "<b>新增判据</b> <code>test_feature_spec_contract.py</code> 8 条：规格与磁盘<b>双向一致</b>，负向自证 4/4 奏效",
             "<code>test_test_layout_contract.py</code> 的特性夹清单改为<b>从规格读</b>，去掉写死的 <code>range(1, 10)</code>",
@@ -406,7 +447,7 @@ CHANGELOG = [
         ],
         notes=[
             "<b>本版不含框架特性实现的变更</b> —— 是测试体系与验证机制的升级（9 特性重组 / 验证闭环 / 报告工具）。",
-            "<b>遗留</b>：特性5「自愈闭环 Healer」<b>零判据</b>（有实现 <code>framework/tools/run/healer.py</code>、"
+            "<b>遗留</b>：特性5「自愈闭环 Healer」<b>零判据</b>（有实现 <code>framework/features/f06_healer/healer_run.py</code>、"
             "无任何行为判据）-> 已在 <code>tests/特性6-自愈闭环Healer/UNVERIFIED.md</code> 显式标记（对应遗留项 L11）；"
             "L22（慢目标下行区就绪信号缺失）仍是 <code>verify_slow_target</code> 的唯一红。",
             "<b>验证真值（本机实测）</b>：一类 <b>677 passed / 0 failed</b>（约 28s）· 二类 <b>15 通过 / 1 失败（L22）</b>"
@@ -603,7 +644,7 @@ CHANGELOG = [
                 "本版把这件事从“靠经验”变成“框架自己会说话”：<b>开跑前先探一次浏览器</b>，"
                 "缺了当场给<b>一行修复命令</b> + exit 2；培训页也把这一步写进必做三件事。",
         added=[
-            "<b>浏览器预检</b>（<code>framework/tools/common/browser.py::ensure_browser_installed</code>）："
+            "<b>浏览器预检</b>（<code>framework/shared/browser.py::ensure_browser_installed</code>）："
             "<code>probe / generate / explore / run / all</code> 开跑前探一次 chromium —— "
             "缺浏览器（或 playwright 升级后浏览器没跟着下）-> 打印<b>缺什么 + 期望路径 + 当前 playwright 版本 + "
             "一行修复命令</b>，<b>exit 2</b>；绝不把 Playwright 的原始异常栈甩给用户",
@@ -685,7 +726,7 @@ CHANGELOG = [
             "<b><code>title</code> 消歧</b>：同名控件/裸图标按钮按 <code>title</code> 或邻近文本区分，"
             "歧义时<b>如实失败</b>（禁止按顺序猜第一个）",
             "<b>元素身份</b>= 容器锚点 + 相对路径 + <code>title</code>/邻近文本；新增 "
-            "<code>framework/tools/probe/semantic_locate.py</code>（语义定位）",
+            "<code>framework/features/f03_locate/semantic_locate.py</code>（语义定位）",
             "<b>弹层收尾兜底</b> <code>_close_open_modal()</code>：框架自己开的弹层自己关，"
             "不让它挡住后续点击",
             "<b>二类预算与并发</b>：单脚本预算 600s-><b>1200s</b>（<code>--timeout-s</code> 可调；"
@@ -774,19 +815,22 @@ CHANGELOG = [
                 "CLI 参数 / 断言体系 / 报告形态 / 用例格式<b>零变化</b>。[!] <b>破坏性变更</b>："
                 "模块 import 路径变了，且<b>不留兼容 shim</b>（升级请读下文「升级须知」）。",
         changed=[
-            "<b>分层结构</b>：<code>framework/tools/{common,probe,explore,generate,run}/</code> —— "
-            "<code>common</code>（config/text_io/limits/retention/browser/target_probe）· "
-            "<code>probe</code>（probe/element_map/locator_bridge）· <code>explore</code>（explorer/llm_cassette）· "
-            "<code>generate</code>（generator/case_builder/scenario/data_driven）· <code>run</code>（runner/healer）；"
-            "<code>framework/</code> 只留 <code>cli.py</code> + <code>tools/</code>",
+            "<b>分层结构</b>：<code>framework/features/f01..f11/</code>（按**特性**聚合，"
+            "波浪名后缀标阶段：<code>*_explore/_probe/_generate/_run/_verify</code>）"
+            " + <code>framework/shared/</code>（跨特性基础设施）—— "
+            "<code>f03_locate</code>（probe/element_map/locator_bridge/anchor/scan_pages …）· "
+            "<code>f02_semantic</code>（explorer/generator/case_builder/scenario）· "
+            "<code>f08_replay</code>（llm_cassette）· <code>f09_gate</code>（gates/feature_spec）· "
+            "<code>f07_concurrency</code>（limits/retention）· <code>f06_healer</code>（healer/runner）；"
+            "<code>framework/</code> 只留 <code>cli.py</code>（薄壳）+ <code>features/</code> + <code>shared/</code>",
             "<b>导入路径变更（唯一破坏点）</b>：<code>from framework.probe import …</code> -> "
-            "<code>from framework.tools.probe.probe import …</code>（17 个模块同构映射）；"
+            "<code>from framework.features.f03_locate.probe import …</code>（17 个模块同构映射）；"
             "<code>scripts/</code> 生成物已重建为新路径",
             "<b>开发期工具进 <code>build_tools/</code></b>（原仓库根 <code>tools/</code>）："
-            "打包器 / 培训页生成器 / 离线一键脚本 —— 避免与运行期的 <code>framework/tools/</code> 混淆",
+            "打包器 / 培训页生成器 / 离线一键脚本 —— 避免与运行期的 <code>framework/</code> 混淆",
             "<b>依赖方向实测无环</b>：<code>common <- probe <- explore <- generate</code>、<code>common <- run</code>、"
             "<code>cli -> 全部</code>（AST 扫描 + import 目标存在性校验，一次抓出所有漏改）",
-            "版本号单一来源位置随之变为 <code>framework/tools/common/config.py::VERSION_SOURCE</code>"
+            "版本号单一来源位置随之变为 <code>framework/shared/config.py::VERSION_SOURCE</code>"
             "（仍是<b>一处定义</b>，<code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 共用）",
         ],
         fixed=[
@@ -887,7 +931,7 @@ CHANGELOG = [
             "仓库 <code>docs/</code> 现在<b>只放唯一的对外文档</b> <code>training.html</code>",
             "<b><code>tools/</code> = 框架自己的工具目录</b>：<code>build_html.py</code> 从仓库根挪入，"
             "与交付打包器 <code>pack_release.py</code> 同列；仓库根不再散放脚本",
-            "<b>版本号来源路径收敛为一处</b>：<code>framework/tools/common/config.py::VERSION_SOURCE</code> —— "
+            "<b>版本号来源路径收敛为一处</b>：<code>framework/shared/config.py::VERSION_SOURCE</code> —— "
             "<code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 三个读者共用"
             "（原先三处各写一遍；漏改一处 <code>--version</code> 会静默变 unknown）",
             "README / 培训页 / 目录树同步，并把「逐条列文件名与数字」改成<b>抗腐烂写法</b>（减少文档漂移面）",
@@ -1295,7 +1339,7 @@ CHANGELOG = [
             "—— <b>2026-09-17 已修掉</b>：提示词禁止 host 片段 + 质量闸红线（拒绝落盘/生成）+ 用例改「目标页独有证据」；"
             "跨页流程 D1~D4（pages 声明 / 原地断言 <code>after_step</code> / 跨页重名消解 / 换页证据闸）已全部落地；"
             "场景 <code>data</code> 参数化仍只解析不展开",
-            "文档口径修正：生成物 <code>scripts/conftest.py</code> 会 <code>import framework.tools.generate.data_driven / framework.tools.run.healer</code> -> "
+            "文档口径修正：生成物 <code>scripts/conftest.py</code> 会 <code>import framework.features.f05_layers.data_driven_generate / framework.features.f06_healer.healer_run</code> -> "
             "<b>要在项目内运行</b>，不是「拷到哪儿都能独立跑」",
         ],
     ),
@@ -1310,7 +1354,7 @@ CHANGELOG = [
                 "并且本机 <b>用 zh_CN.gbk locale 把原始报错复现到「同一个字节、同一个位置」</b>后再修，"
                 "修完同一条命令实测通过。",
         added=[
-            "<b>framework/tools/common/text_io.py</b>：跨平台文本口径的唯一入口 —— `utf8_env()`（给子进程注入 "
+            "<b>framework/shared/text_io.py</b>：跨平台文本口径的唯一入口 —— `utf8_env()`（给子进程注入 "
             "PYTHONUTF8/PYTHONIOENCODING）、`force_stdio()`（本进程 stdio 转 UTF-8 + Windows "
             "控制台代码页切 65001）、`run_capture()`（收子进程输出，显式 UTF-8 解码 + errors=replace）",
             "<b>tests/特性9-质量闸门体系/test_utf8_io.py</b>（10 条）：含<b>用 zh_CN.gbk locale 精确复现AprilPark1012那条报错</b>"
@@ -1430,7 +1474,7 @@ CHANGELOG = [
             "<b>--scenario-file</b>/<b>--scenario-dir --tag --limit</b>（三者互斥，参数错 exit 2）",
             "<b>explore --ai 默认落 cases/ai_&lt;id&gt;_&lt;ts&gt;.json</b>（--no-cases 可关）；<b>--verify</b> 交付即验证："
             "落盘后立刻 generate + pytest 单跑，FAILED -> exit 3（日志 output/verify/）",
-            "<b>cli prune</b> 归档保留策略（framework/tools/common/retention.py，HYBRID_KEEP_SNAPSHOTS 默认 20；explore/probe 结束自动静默执行）",
+            "<b>cli prune</b> 归档保留策略（framework/features/f07_concurrency/retention_run.py，HYBRID_KEEP_SNAPSHOTS 默认 20；explore/probe 结束自动静默执行）",
             "<b>调试开关 --debug</b>（别名 --headed）：开了就「看得见」——有屏幕弹 Chromium 一步步跑；"
             "无屏幕自动录视频(webm) + <b>逐步截图</b> + trace 回放。配套 --case（只跑一条）/ --slowmo（放慢）",
             "<b>资源安全 P0</b>：limits.safe_workers() 按 MemAvailable 自动降并发 + browser.py 收敛启动参数 + 日志 run-id 隔离",
@@ -2045,7 +2089,7 @@ def _svg_two_scenarios() -> str:
 
 
 # ===================== 第 6 章：框架特性设计实现说明（按特性 / 子特性 · 以代码为基准）=====================
-# 数据来源：framework/tools/spec/feature_spec.py（**唯一来源**）——
+# 数据来源：framework/features/f09_gate/feature_spec.py（**唯一来源**）——
 #   编号 / 名称 / 目标 / 判据归属直接读它渲染，保证「页面说的 10 特性 / 45 子特性」与代码一致。
 #   加特性或子特性：只改规格文件；这里补一段「关键实现逻辑 / 函数调用关系 / 图例」即可。
 # GBK 铁律：本段只写 GBK 可编码字符（无 emoji、无 U+26A0、无 U+21D2）；不可编符号一律改用文字。
@@ -2806,7 +2850,7 @@ def _feat_block(f) -> str:
 
 
 def _feature_chapter() -> str:
-    from framework.tools.spec.feature_spec import FEATURES
+    from framework.features.f09_gate.feature_spec import FEATURES
     subs = sum(len(f.get('subs', [])) for f in FEATURES)
     o = ['<!-- ========== 6. 框架特性设计实现说明（按特性/子特性 · 以代码为基准） ========== -->']
     o.append('<section>')
@@ -2815,7 +2859,7 @@ def _feature_chapter() -> str:
     o.append('  <p class="sec-sub">第 5 章 5.2 讲「一条主线上有什么」；本章按 <b>特性 -&gt; 子特性</b> 横向拆开：'
              '每个子特性给「<b>关键实现逻辑</b> + <b>函数调用关系</b> + <b>证据（判据文件）</b>」，并配一张<b>图例</b>。'
              '编号 / 名称 / 目标 / 判据归属<b>直接读单一来源</b> '
-             '<span class="code-inline">framework/tools/spec/feature_spec.py</span> 渲染'
+             '<span class="code-inline">framework/features/f09_gate/feature_spec.py</span> 渲染'
              '（它同时被 <span class="code-inline">build_tools/build_feature_map.py</span> 渲染成 '
              '<span class="code-inline">docs/feature_map.md</span>）；'
              '实现逻辑以 <span class="code-inline">framework/</span> 下的<b>真实代码为准</b>。</p>')
@@ -3621,7 +3665,7 @@ def build() -> str:
       ├─ prompt = explorer.<b>_build_planner_prompt()</b>
       │      目标URL ->「场景原话」->【页面背景 page/preconditions/business_context】
       │      ->【断言护栏 assert_guard】-> 控件清单 items[:60] -> DOM 上下文[:80] -> 规则 1~8
-      ├─ obj = framework/tools/common/config.<b>llm_from_env()</b> -> browser_use.llm.<b>ChatDeepSeek</b>
+      ├─ obj = framework/shared/config.<b>llm_from_env()</b> -> browser_use.llm.<b>ChatDeepSeek</b>
       ├─ 重试≤3: r = await obj.<b>ainvoke(msgs, output_format=_PlanModel)</b>   [here] function calling 结构化步骤
       │      └─ explorer.<b>_plan_to_steps(plan, items)</b> -> <b>_match_item()</b>
       │             (1)精确 (2)规范化唯一模糊对齐 (3)都不中->打印告警+可用清单名（不静默丢元素）
@@ -3822,7 +3866,7 @@ def build() -> str:
          <code>subprocess.run(..., capture_output=True, text=True)</code> 却<b>没指定 encoding</b>，
          于是父进程按系统默认编码（cp936/gbk）去解码子进程的 <b>UTF-8 中文输出</b>。<br>
          <b>规矩</b>：跨进程 / 落盘文本一律显式 UTF-8——
-         收子进程输出用 <code>framework.tools.common.text_io.run_capture()</code>，
+         收子进程输出用 <code>framework.shared.text_io.run_capture()</code>，
          给子进程注入口径用 <code>utf8_env()</code>，本进程 stdio 用 <code>force_stdio()</code>
          （<code>cli.main()</code> 已经默认调了）。<code>tests/特性9-质量闸门体系/test_utf8_io.py</code> 会做 AST 全仓扫描，
          再写出「靠默认编码」的写法直接测试失败。</p></div>

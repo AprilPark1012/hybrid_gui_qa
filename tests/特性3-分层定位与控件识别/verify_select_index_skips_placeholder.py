@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from framework.tools.common.text_io import force_stdio       # noqa: E402
+from framework.shared.text_io import force_stdio       # noqa: E402
 
 force_stdio()
 
@@ -30,7 +30,7 @@ os.chdir(str(Path(__file__).resolve().parents[2]))
 
 from playwright.sync_api import sync_playwright                     # noqa: E402
 
-from framework.tools.run.login import ensure_logged_in              # noqa: E402
+from framework.shared.login import ensure_logged_in              # noqa: E402
 
 BASE = "http://localhost:8000"
 AUTH = {"login_api": "/api/login", "username": "super",

@@ -32,7 +32,7 @@ sys.path.insert(0, str(REPO))
 import importlib
 
 try:
-    _MOD = importlib.import_module("framework.tools.probe.scope_locate")
+    _MOD = importlib.import_module("framework.features.f03_locate.scope_locate")
     _ERR = ""
 except Exception as e:                                                 # noqa: BLE001
     _MOD = None

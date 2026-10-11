@@ -1,6 +1,6 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.4.6**（2026-10-11）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
+> 当前版本 **V8.5**（2026-10-12）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
 > · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/) · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
 
 **一句话**：把 **LLM 语义编排（AI 智能探索）** 和 **Playwright（浏览器采集证据 + 确定性执行）** 组合成一套混合测试框架 ——
@@ -209,7 +209,9 @@ output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 
 - **发行说明 [`releases/RELEASE_NOTES_V*.md`](releases/)**：每版改了什么（**变更日志都在这里**，随交付包一并发出）
 - **字段契约**：`scenarios/README.md`（场景文件）+ 培训页第 4 章（用例文件）
 - **框架判据**：`tests/_helpers/`（框架自验证，`test_*` 秒级、不需要 demo）+ `tests/_runner/`（特性自验证，`verify_*` 端到端且含**负向证伪**）
-- 想动手扩展：模块 docstring 即接口说明，`framework/tools/` 按业务流程分层（probe → explore → generate → run）
+- 想动手扩展：模块 docstring 即接口说明，`framework/features/` 按**特性**聚合（f01..f11），
+  阶段归属看**文件名后缀**（`*_explore/_probe/_generate/_run/_verify`，无后缀=阶段无关）；
+  跨特性的基础设施（配置/浏览器/登录/前置动作）在 `framework/shared/`。同一特性只有 `api.py` 一个入口。
 
 ## 许可
 

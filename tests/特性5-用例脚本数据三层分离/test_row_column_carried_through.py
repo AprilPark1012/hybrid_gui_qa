@@ -28,8 +28,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from framework.tools.generate import case_builder  # noqa: E402
-from framework.tools.probe.element_map import ElementMap, TestStep  # noqa: E402
+from framework.features.f02_semantic import case_builder_generate as case_builder  # noqa: E402
+from framework.features.f03_locate.element_map import ElementMap, TestStep  # noqa: E402
 
 SRC = Path(case_builder.__file__).read_text(encoding="utf-8")
 

@@ -32,10 +32,10 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from framework.tools.probe import locator_bridge as LB            # noqa: E402
-from framework.tools.probe.element_map import ElementRef          # noqa: E402
-from framework.tools.generate.generator import _render_harness     # noqa: E402
-from framework.tools.generate import probe_snapshot as PS         # noqa: E402
+from framework.features.f03_locate import locator_bridge_locate as LB            # noqa: E402
+from framework.features.f03_locate.element_map import ElementRef          # noqa: E402
+from framework.features.f02_semantic.generator_generate import _render_harness     # noqa: E402
+from framework.features.f05_layers import probe_snapshot_generate as PS         # noqa: E402
 
 
 # ---------- 假 page/locator：把浏览器摘掉，只测收窄的**判定逻辑** ----------
@@ -60,7 +60,7 @@ class _FakeItem:
 
 def _containers(monkeypatch, mapping: dict):
     """把 `_nearest_heading` 换成查表（`_narrow_by_container` 函数内 import，故 patch 源模块）。"""
-    monkeypatch.setattr("framework.tools.probe.probe._nearest_heading",
+    monkeypatch.setattr("framework.features.f03_locate.probe._nearest_heading",
                         lambda loc: mapping.get(getattr(loc, "i", -1), ""))
 
 

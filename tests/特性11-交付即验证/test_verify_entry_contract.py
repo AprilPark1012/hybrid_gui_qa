@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from framework import cli
+from framework.features.f10_cli import cli   # P25 片 8：patch 要打在**真实现**上（framework.cli 现在是转发薄壳）
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -63,13 +63,13 @@ def test_retry_is_bounded():
 
 def test_replay_mode_does_not_retry():
     """回放模式下不重试（回放的是同一份录像，转圈无意义）。"""
-    src = (REPO / "framework" / "cli.py").read_text(encoding="utf-8", errors="replace")
+    src = (REPO / "framework" / "features" / "f10_cli" / "cli.py").read_text(encoding="utf-8", errors="replace")
     assert "录像回放模式：重试无意义" in src, (
         "两条重试路径都必须显式跳过回放模式（cli.py 现在有两处：产出档 + 实跑档）")
 
 
 def test_verify_failure_exit_codes_are_distinct():
     """两档失败的退出码必须能区分（产出侧 2 / 实跑侧 3），不许静默成功。"""
-    src = (REPO / "framework" / "cli.py").read_text(encoding="utf-8", errors="replace")
+    src = (REPO / "framework" / "features" / "f10_cli" / "cli.py").read_text(encoding="utf-8", errors="replace")
     assert "raise SystemExit(2)" in src and "raise SystemExit(3)" in src, (
         "两档失败要有不同的非 0 退出码（产出物不合格 2 / 实跑未过 3）")

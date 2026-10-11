@@ -26,9 +26,9 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from framework.tools.generate import probe_snapshot as PS          # noqa: E402
-from framework.tools.generate.generator import generate_scripts    # noqa: E402
-from framework.tools.common.config import CASES_DIR as _CASES       # noqa: E402
+from framework.features.f05_layers import probe_snapshot_generate as PS          # noqa: E402
+from framework.features.f02_semantic.generator_generate import generate_scripts    # noqa: E402
+from framework.shared.config import CASES_DIR as _CASES       # noqa: E402
 
 #: 事故现场的那两个名字（一个来自 explore，一个来自单页重探）
 _EXPLORE_NAME = "保存@订单详情页"
@@ -133,7 +133,7 @@ def test_generate_writes_snapshot_next_to_generated_scripts(tmp_path):
 
 def _harness_code() -> str:
     """渲染后的 harness 文本，**剔掉注释**再断言（注释骗过判据本项目已犯 4 次）。"""
-    from framework.tools.generate.generator import _render_harness
+    from framework.features.f02_semantic.generator_generate import _render_harness
     src = _render_harness()
     return "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("#"))
 

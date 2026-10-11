@@ -11,7 +11,7 @@
 """
 from __future__ import annotations
 
-from framework.tools.generate.generator import _add_payload_refs, _render_assert
+from framework.features.f02_semantic.generator_generate import _add_payload_refs, _render_assert
 
 LOC: dict = {}
 

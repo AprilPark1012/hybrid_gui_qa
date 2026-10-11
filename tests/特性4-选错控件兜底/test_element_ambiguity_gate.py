@@ -17,9 +17,9 @@ import textwrap
 
 import pytest
 
-from framework.tools.probe.probe import assign_semantic_names
-from framework.tools.explore.explorer import _merge_items
-from framework.tools.generate.generator import _record_conflict_bases, UnmappedElementsError
+from framework.features.f03_locate.probe import assign_semantic_names
+from framework.features.f02_semantic.explorer_explore import _merge_items
+from framework.features.f02_semantic.generator_generate import _record_conflict_bases, UnmappedElementsError
 
 
 def _item(name, ctx="", tid=None, base=None, **kw):
@@ -126,7 +126,7 @@ def test_unmapped_error_keeps_only_conflicting_missing_names():
 
 
 def test_record_conflict_bases_only_records_real_groups():
-    import framework.tools.generate.generator as g
+    import framework.features.f02_semantic.generator_generate as g
     g._CONFLICT_BASES.clear()
     try:
         items = [_item("选择客户", ctx="搜索区", tid="a"), _item("选择客户", ctx="新建合同", tid="b")]
@@ -153,7 +153,7 @@ def test_record_conflict_bases_only_records_real_groups():
 def _materialize_harness(tmp_path):
     """把共享辅助（_harness）模板渲染成真文件并加载 —— 得到「生成物里那份」`_item_for`。"""
     import importlib.util
-    import framework.tools.generate.generator as g
+    import framework.features.f02_semantic.generator_generate as g
     path = tmp_path / "_harness_generated.py"
     path.write_text(g._render_harness(), encoding="utf-8")
     spec = importlib.util.spec_from_file_location("_harness_generated", str(path))
@@ -168,7 +168,7 @@ def _materialize_harness(tmp_path):
 def _gen_with_index(tmp_path, monkeypatch, index, strict=None):
     if strict is not None:
         monkeypatch.setenv("HYBRID_STRICT_LOCATE", strict)
-    monkeypatch.setattr("framework.tools.probe.probe.probe_page", lambda page: [])   # 不启浏览器
+    monkeypatch.setattr("framework.features.f03_locate.probe.probe_page", lambda page: [])   # 不启浏览器
     mod = _materialize_harness(tmp_path)
     mod._INDEX.update(index)
     return mod
@@ -226,7 +226,7 @@ def test_s3_wiring_is_locked_between_template_and_artifact():
     import sys
     from pathlib import Path
 
-    import framework.tools.generate.generator as g
+    import framework.features.f02_semantic.generator_generate as g
 
     root = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(Path(__file__).resolve().parent))     # 同目录测试工具

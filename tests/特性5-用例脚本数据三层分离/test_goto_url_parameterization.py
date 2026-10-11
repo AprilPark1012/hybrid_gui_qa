@@ -21,7 +21,7 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from framework.tools.generate.generator import _add_payload_refs, _extract_data  # noqa: E402
+from framework.features.f02_semantic.generator_generate import _add_payload_refs, _extract_data  # noqa: E402
 
 PLACEHOLDER_URL = "http://localhost:8000/contract_detail.html?no={期望编号}"
 LITERAL_URL = "http://localhost:8000/contract_detail.html?no=HT-1005"

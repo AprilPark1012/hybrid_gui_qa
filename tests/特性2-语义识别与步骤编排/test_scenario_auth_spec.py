@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import pytest
 
-from framework.tools.generate.scenario import ScenarioError, load_scenario_file
-from framework.tools.run import login as L
+from framework.features.f02_semantic.scenario_generate import ScenarioError, load_scenario_file
+from framework.shared import login as L
 
 BASE_YML = """
 id: t_auth

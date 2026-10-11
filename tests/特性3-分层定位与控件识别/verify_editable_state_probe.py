@@ -21,7 +21,7 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(BASE))
-from framework.tools.common.text_io import force_stdio  # noqa: E402
+from framework.shared.text_io import force_stdio  # noqa: E402
 
 force_stdio()
 
@@ -99,9 +99,9 @@ def main() -> int:
         return 2
 
     from playwright.sync_api import sync_playwright               # noqa: PLC0415
-    from framework.tools.common.browser import launch_opts        # noqa: PLC0415
-    from framework.tools.probe.probe import probe_page            # noqa: PLC0415
-    from framework.tools.probe.editable import enter_editable_and_collect  # noqa: PLC0415
+    from framework.shared.browser import launch_opts        # noqa: PLC0415
+    from framework.features.f03_locate.probe import probe_page            # noqa: PLC0415
+    from framework.features.f03_locate.editable_probe import enter_editable_and_collect  # noqa: PLC0415
 
     def _ready(page, timeout=8000):
         try:

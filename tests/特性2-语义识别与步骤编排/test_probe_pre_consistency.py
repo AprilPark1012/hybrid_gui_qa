@@ -22,7 +22,7 @@
 
 ## 契约面（新建能力，判据锁的是**契约名与行为**，不是实现）
 
-`framework.tools.generate.scenario` 需提供纯函数：
+`framework.features.f02_semantic.scenario_generate` 需提供纯函数：
 
     probe_pre_conflicts(case: dict, scenario) -> list[str]
         返回空列表 = 一致；非空 = 逐条差异说明（含第几步、两边各是什么）。
@@ -36,7 +36,7 @@ from pathlib import Path
 
 import pytest
 
-from framework.tools.generate.scenario import ScenarioError, load_scenario_file
+from framework.features.f02_semantic.scenario_generate import ScenarioError, load_scenario_file
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -87,7 +87,7 @@ def test_probe_pre_host_valid_is_accepted(tmp_path):
 
 def test_consistency_entry_exists():
     """D9：必须存在不依赖浏览器的一致性判定入口。"""
-    from framework.tools.generate import scenario as sc_mod
+    from framework.features.f02_semantic import scenario_generate as sc_mod
     fn = getattr(sc_mod, "probe_pre_conflicts", None)
     assert callable(fn), (
         "缺一致性判定入口 scenario.probe_pre_conflicts(case, scenario) -> list[str]；"
@@ -96,7 +96,7 @@ def test_consistency_entry_exists():
 
 def test_inconsistent_probe_pre_is_reported(tmp_path):
     """D9：用例与场景不一致 -> 必须报出差异（含第几步）。"""
-    from framework.tools.generate import scenario as sc_mod
+    from framework.features.f02_semantic import scenario_generate as sc_mod
     fn = getattr(sc_mod, "probe_pre_conflicts", None)
     if not callable(fn):
         pytest.fail("probe_pre_conflicts 未实现（见上一条）")
@@ -108,7 +108,7 @@ def test_inconsistent_probe_pre_is_reported(tmp_path):
 
 def test_order_matters(tmp_path):
     """顺序敏感：颠倒顺序也算不一致。"""
-    from framework.tools.generate import scenario as sc_mod
+    from framework.features.f02_semantic import scenario_generate as sc_mod
     fn = getattr(sc_mod, "probe_pre_conflicts", None)
     if not callable(fn):
         pytest.fail("probe_pre_conflicts 未实现（见上文）")
@@ -120,7 +120,7 @@ def test_order_matters(tmp_path):
 
 def test_extra_probe_pre_also_reported(tmp_path):
     """用例多写了一步（场景里没有）同样是不一致。"""
-    from framework.tools.generate import scenario as sc_mod
+    from framework.features.f02_semantic import scenario_generate as sc_mod
     fn = getattr(sc_mod, "probe_pre_conflicts", None)
     if not callable(fn):
         pytest.fail("probe_pre_conflicts 未实现（见上文）")
@@ -132,7 +132,7 @@ def test_extra_probe_pre_also_reported(tmp_path):
 
 def test_no_escape_hatch_flag():
     """D9：不许有"忽略不一致"的逃生开关。"""
-    from framework import cli
+    from framework.features.f10_cli import cli   # P25 片 8：patch 要打在**真实现**上（framework.cli 现在是转发薄壳）
     flags = set(getattr(cli, "FLAG_SPECS", {}))
     bad = {f for f in flags if "stale" in f or "allow-pre" in f or "ignore-pre" in f}
     assert not bad, f"不允许出现放行开关（{sorted(bad)}）；口径是硬红、无逃生口"
@@ -156,7 +156,7 @@ def test_standalone_case_needs_fingerprint():
 
 def test_generator_uses_declared_host_not_business_words():
     """D10 配套：框架层不许再用业务词猜前置 host。"""
-    src = (REPO / "framework" / "tools" / "generate" / "generator.py").read_text(
+    src = (REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(
         encoding="utf-8", errors="replace")
     assert '"login" in _u.lower()' not in src and '"\u767b\u5f55" in _n' not in src, (
         "generator 仍在用 login/登录 猜前置 host（业务词进框架层）；" 

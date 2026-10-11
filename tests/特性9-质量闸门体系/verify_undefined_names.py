@@ -33,7 +33,7 @@ from pathlib import Path
 # [!] 统一 UTF-8 stdio（本项目纪律）：本脚本会往控制台打中文，中文 Windows 默认 cp936
 #   会在 stdout 是管道时 UnicodeEncodeError 崩掉整个入口。
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from framework.tools.common.text_io import force_stdio      # noqa: E402
+from framework.shared.text_io import force_stdio      # noqa: E402
 
 force_stdio()
 

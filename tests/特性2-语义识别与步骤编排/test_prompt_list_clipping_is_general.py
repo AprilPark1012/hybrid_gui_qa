@@ -22,7 +22,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from framework.tools.explore import explorer as EX   # noqa: E402
+from framework.features.f02_semantic import explorer_explore as EX   # noqa: E402
 
 
 def _mk(name, page="页A", role="button", **kw):

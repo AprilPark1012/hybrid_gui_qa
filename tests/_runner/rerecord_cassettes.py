@@ -13,7 +13,7 @@
 **什么时候必须重录**（任何一条命中就要重录）：
   1. 改了 `scenarios/*.yml`（场景文案变了 -> 键变）；
   2. demo app 变了（页面 url / 控件骨架 / 文案变了 -> 键变），例如 `demo/app.py` 改动；
-  3. 升级了 `framework/tools/explore/` 的 prompt / 语义识别逻辑；
+  3. 升级了 `framework/features/f02_semantic/` 的 prompt / 语义识别逻辑；
   4. 新增特性导致页面结构变化。
   反过来：**只改验证脚本、只改用例数据 -> 不需要重录**（录像只覆盖"语义识别"这一步）。
 
@@ -94,7 +94,7 @@ def scenarios() -> list[Path]:
 
 def has_llm_key() -> tuple[bool, str]:
     try:
-        import framework.tools.common.config  # noqa: F401
+        import framework.shared.config  # noqa: F401
     except Exception as e:  # noqa: BLE001
         return False, f"框架 config 导入失败：{e}"
     for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "DEEPSEEK_API_KEY"):

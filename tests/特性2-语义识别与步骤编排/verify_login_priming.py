@@ -23,7 +23,7 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(BASE))
-from framework.tools.common.text_io import force_stdio  # noqa: E402
+from framework.shared.text_io import force_stdio  # noqa: E402
 
 force_stdio()
 
@@ -58,8 +58,8 @@ def main() -> int:
         print(f"[NG] 被测 demo 不可达（{DEMO}）——先跑：python -m demo.app  [{e}]")
         return 2
 
-    from framework.tools.generate.scenario import load_scenario_file   # noqa: PLC0415
-    from framework.tools.run.login import ensure_logged_in, describe    # noqa: PLC0415
+    from framework.features.f02_semantic.scenario_generate import load_scenario_file   # noqa: PLC0415
+    from framework.shared.login import ensure_logged_in, describe    # noqa: PLC0415
 
     sc = load_scenario_file(SCENARIO)
     spec = sc.auth_spec()
@@ -74,8 +74,8 @@ def main() -> int:
         return 3 if not fails else 1
 
     from playwright.sync_api import sync_playwright                 # noqa: PLC0415
-    from framework.tools.common.browser import launch_opts          # noqa: PLC0415
-    from framework.tools.probe.probe import probe_page              # noqa: PLC0415
+    from framework.shared.browser import launch_opts          # noqa: PLC0415
+    from framework.features.f03_locate.probe import probe_page              # noqa: PLC0415
 
     def _open(b, install_spec=None, key_override=None):
         """开一个 context（可选注入 token）→ 访问业务页 → 返回 (url, 控件数)。"""

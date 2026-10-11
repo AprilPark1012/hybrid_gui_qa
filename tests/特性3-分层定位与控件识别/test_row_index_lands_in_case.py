@@ -19,8 +19,8 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 
-from framework.tools.generate.case_builder import elementmap_to_case
-from framework.tools.probe.element_map import ElementMap, ElementRef, TestStep
+from framework.features.f02_semantic.case_builder_generate import elementmap_to_case
+from framework.features.f03_locate.element_map import ElementMap, ElementRef, TestStep
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -59,7 +59,7 @@ def test_absent_row_index_leaves_no_key():
 
 def test_text_fallback_path_keeps_row_fields():
     """文本兜底路径（_parse_steps_text）同样要带全行定位字段（防 schema 漂移）。"""
-    from framework.tools.explore import explorer
+    from framework.features.f02_semantic import explorer_explore as explorer
     src = inspect.getsource(explorer._parse_steps_text)
     for key in ("row_text", "cell_field", "cell_by", "cell_index", "row_index"):
         assert key in src, (
@@ -68,6 +68,6 @@ def test_text_fallback_path_keeps_row_fields():
 
 def test_generator_reads_row_index_from_case_step():
     """生成期必须认 cases 里的 row_index（两个链路共同收口）。"""
-    from framework.tools.generate import generator
+    from framework.features.f02_semantic import generator_generate as generator
     src = inspect.getsource(generator._is_row_index_step)
     assert "row_index" in src, "渲染器没有认 cases 里的 row_index"

@@ -19,7 +19,7 @@ import pathlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from framework.tools.explore.explorer import (   # noqa: E402
+from framework.features.f02_semantic.explorer_explore import (   # noqa: E402
     _semantic_sim, _element_semantics_blob, reject_hardcoded_row_values,
     looks_like_hardcoded_row_value,
 )

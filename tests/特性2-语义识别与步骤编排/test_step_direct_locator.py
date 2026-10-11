@@ -33,12 +33,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from framework.tools.generate.generator import (  # noqa: E402
+from framework.features.f02_semantic.generator_generate import (  # noqa: E402
     _BY_STEP_WHITELIST,
     _step_direct_locator_expr,
 )
 
-GEN_SRC = (ROOT / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+GEN_SRC = (ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
 
 
 # ---- V1：白名单 ----

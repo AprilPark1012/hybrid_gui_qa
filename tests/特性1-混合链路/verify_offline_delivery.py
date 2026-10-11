@@ -79,10 +79,10 @@ def main() -> int:
                 names = z.namelist()
                 broken = z.testzip()
             leaks = [n for n in names if "llm_cassettes/" in n]
-            has_engine = any(n.endswith("framework/tools/explore/llm_cassette.py") for n in names)
+            has_engine = any(n.endswith("framework/features/f08_replay/llm_cassette_explore.py") for n in names)
             has_helper = any(n.endswith("build_tools/offline_explore_chain.py") for n in names)
             print(f"  {'[OK]' if not broken else '[NG]'} (2) 代码包 zip 完整（testzip = {broken}）")
-            print(f"  {'[OK]' if has_engine else '[NG]'} (2) 代码包含回放引擎 framework/tools/explore/llm_cassette.py")
+            print(f"  {'[OK]' if has_engine else '[NG]'} (2) 代码包含回放引擎 framework/features/f08_replay/llm_cassette_explore.py")
             print(f"  {'[OK]' if has_helper else '[NG]'} (2) 代码包含一键脚本 build_tools/offline_explore_chain.py")
             print(f"  {'[OK]' if not leaks else '[NG]'} (3) 代码包**不含录像**（不夹带运行时数据）：命中 {len(leaks)} 条")
             if broken or not has_engine or not has_helper or leaks:

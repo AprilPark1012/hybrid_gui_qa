@@ -26,7 +26,7 @@ import sys
 import pytest
 
 from framework.cli import CMD_FLAGS, FLAG_SPECS, REMOVED_FLAGS, _CMD_FUNCS, _print_help
-from framework.tools.common.text_io import utf8_env
+from framework.shared.text_io import utf8_env
 
 # `--help` / `--version` 由 main() 在校验之前拦截，不在 FLAG_SPECS 里 -> 单独放行
 _UNIVERSAL_FLAGS = {"--help", "--version"}

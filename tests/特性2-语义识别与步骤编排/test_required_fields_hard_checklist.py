@@ -20,7 +20,7 @@ import pathlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from framework.tools.explore import explorer as EX   # noqa: E402
+from framework.features.f02_semantic import explorer_explore as EX   # noqa: E402
 
 
 _SCENARIO = ("4. 在新建订单页填写：订单名称用「全链路-{datetime}」、合同已带入、"

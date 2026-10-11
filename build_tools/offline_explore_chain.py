@@ -170,10 +170,10 @@ def main():
 
     # ---------- 一、前置检查（任一条不满足就别往下跑）----------
     head("一、前置检查")
-    cli_py = repo / "framework" / "cli.py"
-    exp_py = repo / "framework" / "tools" / "explore" / "explorer.py"
+    cli_py = repo / "framework" / "features" / "f10_cli" / "cli.py"
+    exp_py = repo / "framework" / "features" / "f02_semantic" / "explorer_explore.py"
     if not cli_py.exists():
-        bad("找不到 framework/cli.py —— --repo 指错目录了？")
+        bad("找不到 framework/features/f10_cli/cli.py —— --repo 指错目录了？")
         return 2
     blob = cli_py.read_text(encoding="utf-8", errors="replace") + \
         exp_py.read_text(encoding="utf-8", errors="replace")

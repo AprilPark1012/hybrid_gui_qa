@@ -78,9 +78,9 @@ def test_renderer_fingerprint_covers_render_logic_not_only_header():
     """
     import hashlib
     import json as _json
-    import framework.tools.generate.generator as G
+    import framework.features.f02_semantic.generator_generate as G
 
-    src = (REPO / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+    src = (REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
     expect = hashlib.sha256((src + "\x00" + G._MODULE_HEADER).encode("utf-8")).hexdigest()[:16]
     only_header = hashlib.sha256(G._MODULE_HEADER.encode("utf-8")).hexdigest()[:16]
     assert expect != only_header, "指纹与只哈希模块头等价 -> 渲染逻辑改了也不会重写产物"

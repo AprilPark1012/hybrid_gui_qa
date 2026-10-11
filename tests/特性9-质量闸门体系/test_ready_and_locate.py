@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import artifacts  # noqa: E402
 
-GEN = ROOT / "framework" / "tools" / "generate" / "generator.py"
+GEN = ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py"
 # ---- P20（2026-09-24）产物布局：一个用例一个模块，辅助函数放共享运行时 ----
 #   scripts/generated/<scenario_id>/<case_id>.py   一个用例一个脚本（AI 用例 + 手搓用例）
 #   scripts/generated/_harness.py                  共享辅助（原 scripts/conftest.py 内容原样搬）
@@ -33,7 +33,7 @@ GEN = ROOT / "framework" / "tools" / "generate" / "generator.py"
 # scripts/test_cases.py + scripts/conftest.py 换成上面这套。
 GEN_DIR = ROOT / "scripts" / "generated"
 HARNESS = GEN_DIR / "_harness.py"          # 生成物侧的共享运行时（就绪契约/有界等待/分区都在这里）
-CLI = ROOT / "framework" / "cli.py"
+CLI = ROOT / "framework" / "features" / "f10_cli" / "cli.py"
 APP = ROOT / "demo" / "app.py"
 CONTRACTS_HTML = ROOT / "demo" / "contracts.html"
 DETAIL_HTML = ROOT / "demo" / "contract_detail.html"
@@ -226,7 +226,7 @@ def test_cli_downgrade_or_explicit_declaration(extra, expect):
 
 
 def test_target_probe_returns_none_for_unknown_target():
-    from framework.tools.common.target_probe import probe_partitioned, _base_url
+    from framework.shared.target_probe import probe_partitioned, _base_url
     ok, why = probe_partitioned("http://127.0.0.1:9")
     assert ok is None and "未声明" in why
     assert _base_url("http://x:1/") == "http://x:1"

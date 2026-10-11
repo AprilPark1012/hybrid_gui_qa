@@ -16,7 +16,7 @@
   (3) README 里不得再有「变更要点」章（`## 2026-…`）—— 历史归发行说明
   (4) 目录（TOC）与正文 H2 标题**双向一致**（少一项 / 多一项 / 顺序不同都要报）
   (5) 不得写死「当前 N 条」这类状态性数字（会随用例增删漂移）
-  (6) 头部版本号 == 版本单一来源（`framework/tools/common/config.py::read_version`）
+  (6) 头部版本号 == 版本单一来源（`framework/shared/config.py::read_version`）
   (7) README 必须**指路**发行说明，且 `releases/` 下必须有**当前版本**的说明
   (8) **体量预算**：README ≤ 250 行（简洁是硬要求；细节下沉培训页 / 发行说明）
   (9) README 里引用到的**仓库内路径必须真实存在**（防「文档指了个不存在的东西」）
@@ -161,9 +161,9 @@ def changelog_sections(text: str) -> list[str]:
 
 
 def framework_version() -> str:
-    """版本单一来源：`framework/tools/common/config.py::read_version()`。"""
+    """版本单一来源：`framework/shared/config.py::read_version()`。"""
     spec = importlib.util.spec_from_file_location(
-        "hybrid_config_for_readme_test", REPO / "framework" / "tools" / "common" / "config.py")
+        "hybrid_config_for_readme_test", REPO / "framework" / "shared" / "config.py")
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod

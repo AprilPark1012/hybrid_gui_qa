@@ -16,7 +16,7 @@ import sys
 import pytest
 
 from framework.cli import CMD_FLAGS, FLAG_SPECS, _validate_args
-from framework.tools.common.text_io import utf8_env
+from framework.shared.text_io import utf8_env
 
 
 def _cli(*args: str) -> subprocess.CompletedProcess:
@@ -123,17 +123,17 @@ def test_version_matches_build_html_single_source():
 
 
 def test_version_single_source_is_one_path_for_all_readers():
-    """版本来源路径只在 framework/tools/common/config.py 定义一次；三个读者必须读到同一个版本。
+    """版本来源路径只在 framework/shared/config.py 定义一次；三个读者必须读到同一个版本。
 
     背景（2026-09-19 把 build_html.py 挪进 tools/）：读版本的地方有 **3 处**
-    （framework/cli.py / framework/tools/explore/llm_cassette.py / build_tools/pack_release.py）——
+    （framework/features/f10_cli/cli.py / framework/features/f08_replay/llm_cassette_explore.py / build_tools/pack_release.py）——
     漏改任何一处，`--version` 或打包版本号就会**静默变成 unknown**（对外交付最怕这种静默退化）。
     判据：(1) 路径文件存在且含 VERSION；(2) 三个读者读到同一个非 unknown 版本。
     """
     import importlib.util
     from pathlib import Path as _P
-    from framework.tools.common import config
-    from framework.tools.explore import llm_cassette
+    from framework.shared import config
+    from framework.features.f08_replay import llm_cassette_explore as llm_cassette
     from framework.cli import _version
 
     assert config.VERSION_SOURCE.exists(), f"版本来源不存在：{config.VERSION_SOURCE}"
@@ -153,16 +153,18 @@ def test_version_single_source_is_one_path_for_all_readers():
 
 def test_version_source_missing_is_loud_not_faked(monkeypatch, tmp_path):
     """路径失效时必须如实 unknown，**绝不编一个版本号**（负向判据）。"""
-    from framework.tools.common import config
+    from framework.shared import config
     monkeypatch.setattr(config, "VERSION_SOURCE", tmp_path / "nope.py")
     assert config.read_version() == ("unknown", "")
 
 
 # ---------- 四、契约自检：不许留重复定义 ----------
 def test_arg_values_defined_once():
-    from framework import cli
-    src = (cli.__file__)
-    text = open(src, encoding="utf-8").read()
+    # [!] P25 片 8：`framework.cli` 现在是**顶层薄壳**（只转发），实现搬进了
+    #   `framework/features/f10_cli/cli.py`。契约判据要盯**实现**，不能读薄壳
+    #   —— 读薄壳的话 `_arg_values` 恒为 0 次，判据变成"永远红"（或被人改成 >=1 就废了）。
+    from framework.features.f10_cli import cli as _impl
+    text = open(_impl.__file__, encoding="utf-8").read()
     assert text.count("def _arg_values(") == 1, "CLI 里 _arg_values 又出现重复定义了"
 
 

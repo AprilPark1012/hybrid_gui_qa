@@ -25,7 +25,7 @@ import re
 
 import pytest
 
-from framework.tools.generate import generator as G
+from framework.features.f02_semantic import generator_generate as G
 
 _OLD_KINDS = {"text", "visible", "hidden", "count", "attr", "value", "url",
               "checked", "unchecked", "enabled", "disabled", "first_row"}

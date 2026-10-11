@@ -45,7 +45,7 @@ QUICK_SCENARIO = SCEN_DIR / "orders" / "orders_invoice_full_lifecycle.yml"
 sys.path.insert(0, str(REPO))
 
 # 统一 UTF-8：脚本会把子进程输出打回控制台 —— 不拉齐口径时，中文 Windows（cp936）上会显示乱码。
-from framework.tools.common.text_io import force_stdio       # noqa: E402
+from framework.shared.text_io import force_stdio       # noqa: E402
 
 force_stdio()
 
@@ -90,7 +90,7 @@ def scenario_ids() -> set[str]:
 def has_llm_key() -> tuple[bool, str]:
     """LLM key 是否就绪（经 config.py 加载 .env 之后再判断）。"""
     try:
-        import framework.tools.common.config  # noqa: F401  —— 导入即触发 load_dotenv
+        import framework.shared.config  # noqa: F401  —— 导入即触发 load_dotenv
     except Exception as e:  # noqa: BLE001
         return False, f"框架 config 导入失败：{e}"
     for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "DEEPSEEK_API_KEY"):

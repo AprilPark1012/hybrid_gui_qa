@@ -25,7 +25,7 @@ import inspect
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-CLI = REPO / "framework" / "cli.py"
+CLI = REPO / "framework" / "features" / "f10_cli" / "cli.py"
 
 
 def _fn_src(name: str) -> str:

@@ -32,7 +32,7 @@ BASE = Path(__file__).resolve().parents[2]
 if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
-from framework.tools.common.retention import (       # noqa: E402
+from framework.features.f07_concurrency.retention_run import (       # noqa: E402
     prune_runs,
     read_protected_runs,
     read_run_summary,
@@ -247,7 +247,7 @@ def test_summary_contract_only_proven_success_counts(tmp_path):
 def test_summary_writer_contract(tmp_path):
     """`summary.json` 的写入契约（**这条本该挡住一次真实事故**）。
 
-    2026-09-22 实测：`framework/cli.py` 里写 summary 的 helper 用了 `json` 却没 import ->
+    2026-09-22 实测：`framework/features/f10_cli/cli.py` 里写 summary 的 helper 用了 `json` 却没 import ->
     只有真跑 `cli run` 才炸（一类当时全绿、二类是抓出来的）。所以这里直接调那个 helper，
     把「字段齐全 + 失败计数口径 + 不因缺东西而崩」钉在一类里。
     """

@@ -17,7 +17,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from framework.tools.spec.feature_spec import FEATURES, all_subfeatures  # noqa: E402
+from framework.features.f09_gate.feature_spec import FEATURES, all_subfeatures  # noqa: E402
 
 
 def _count_tests(repo: Path, name: str) -> int:

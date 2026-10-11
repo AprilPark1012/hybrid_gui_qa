@@ -69,7 +69,7 @@ STALE = (
      "旧命令写法（少了目录前缀，照抄会失败）",
      "改为 python build_tools/build_html.py"),
     # [!] 试过加一条「裸 tools/ 目录名」模式（匹配 `tools/` 独立出现），**实测误伤 14+ 处**：
-    #    README 里的说明文字、`framework/tools/common/…` 的提及、注释里的历史叙述全中 ——
+    #    README 里的说明文字、`framework/shared/…` 的提及、注释里的历史叙述全中 ——
     #    按「假红与假绿一样会摧毁闸门」的口径**不启用**（一条会天天误报的判据最终会被人关掉）。
     #    这类「说明性文字里的旧目录名」的成本远低于「用户照抄旧命令」（后者已由上面两条
     # r9-legacy-ok（说明性引用：这里必须写出旧写法才能说清覆盖范围）
@@ -168,8 +168,9 @@ def test_exempt_entries_still_exist():
 # ============================ 负向自证：必须抓得到 ============================
 
 def _fake_repo(tmp_path: Path) -> Path:
-    (tmp_path / "framework").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "framework" / "cli.py").write_text("x = 1\n", encoding="utf-8")
+    d = tmp_path / "framework" / "features" / "f10_cli"
+    d.mkdir(parents=True, exist_ok=True)          # P25 片 8：真实现挪进 f10_cli/，随之建全层级
+    (d / "cli.py").write_text("x = 1\n", encoding="utf-8")
     return tmp_path
 
 
@@ -196,13 +197,13 @@ def test_negative_each_stale_form_is_caught(tmp_path, snippet, why_fragment):
 def test_negative_new_paths_are_not_flagged(tmp_path):
     """不能误伤新路径（假红与假绿一样会摧毁闸门）。"""
     good = "\n".join([
-        "from framework.tools.probe.probe import probe_page",
-        "见 framework/tools/run/runner.py",
+        "from framework.features.f03_locate.probe import probe_page",
+        "见 framework/features/f06_healer/runner_unused.py",
         "python build_tools/pack_release.py --with-cassettes",
         "python build_tools/build_html.py",
         "设计见内部设计文档「慢目标与并发修复方案」",
         "见 build_tools/offline_explore_chain.py",
-        "运行期模块在 framework/tools/common/ 下（这条不许被误伤）",
+        "运行期模块在 framework/shared/ 下（这条不许被误伤）",
         "开发期工具都在 build_tools/ 下（这条也不许被误伤）",
     ])
     assert scan_text("ok.md", good) == []

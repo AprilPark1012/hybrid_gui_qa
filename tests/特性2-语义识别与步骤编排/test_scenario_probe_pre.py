@@ -21,7 +21,7 @@ ORDERS = REPO / "scenarios" / "orders" / "orders_invoice_full_lifecycle.yml"
 
 
 def _scenario_from_text(tmp_path: Path, extra: str):
-    from framework.tools.generate.scenario import load_scenario_file
+    from framework.features.f02_semantic.scenario_generate import load_scenario_file
     f = tmp_path / "s.yml"
     f.write_text("id: t" + chr(10) + "title: t" + chr(10) + extra + chr(10)
                  + "scenario: |" + chr(10) + "  打开列表页看订单。" + chr(10), encoding="utf-8")
@@ -45,7 +45,7 @@ def test_probe_pre_absent_is_empty(tmp_path):
 
 
 def test_probe_pre_must_be_list(tmp_path):
-    from framework.tools.generate.scenario import ScenarioError
+    from framework.features.f02_semantic.scenario_generate import ScenarioError
     try:
         _scenario_from_text(tmp_path, "probe_pre: 切换为订单管理员")
     except ScenarioError:
@@ -55,7 +55,7 @@ def test_probe_pre_must_be_list(tmp_path):
 
 def test_orders_scenario_declares_probe_pre():
     """守门：本条业务链要靠它才能采到编辑态控件 —— 谁把它删了必须立刻红。"""
-    from framework.tools.generate.scenario import load_scenario_file
+    from framework.features.f02_semantic.scenario_generate import load_scenario_file
     sc = load_scenario_file(ORDERS)
     assert any("订单管理员" in str(x) for x in sc.probe_pre), (
         f"orders 场景没有声明切身份的探测前置：{sc.probe_pre!r}")
@@ -63,7 +63,7 @@ def test_orders_scenario_declares_probe_pre():
 
 def test_probe_pre_is_threaded_to_ai_explore():
     """接线锁：字段必须一路透传到探测入口（少接一处 -> 静默失效，零报错）。"""
-    from framework.tools.explore.explorer import ai_explore
+    from framework.features.f02_semantic.explorer_explore import ai_explore
     assert "probe_pre" in inspect.signature(ai_explore).parameters
 
 
@@ -75,13 +75,13 @@ def test_probe_pre_runs_before_scan_in_both_paths():
     # [!] 片 3c（2026-10-12，B1 三合一）：**多页路径的这段顺序契约跟着骨架搬到了
     #   `probe/scan_pages.py`**（explorer 侧只剩单页）。判据跟着搬，**要求一字不变**：
     #   场景级前置必须在**页面级前置**与 **scan_page** 之前。
-    src = (REPO / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+    src = (REPO / "framework" / "features" / "f03_locate" / "scan_pages_probe.py").read_text(encoding="utf-8")
     code = chr(10).join(l for l in src.splitlines() if not l.strip().startswith("#"))
     i_pp = code.index("_run_pre(pg, _pp_pending")
     i_page = code.index('_run_pre(pg, _field(spec, "pre"')
     i_scan = code.index("_sc = scan_page(pg")
     assert i_pp < i_page < i_scan, "多页路径顺序不对：场景级前置必须在页面级前置与 scan 之前"
-    src = (REPO / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
+    src = (REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
     code = chr(10).join(l for l in src.splitlines() if not l.strip().startswith("#"))
     # 单页路径同款
     i_spp = code.index("_run_pre_actions(pg, probe_pre")
@@ -99,22 +99,22 @@ def test_probe_pre_runs_before_scan_in_both_paths():
 # ============================================================================
 
 def test_engine_is_the_single_source_for_pre_actions():
-    """唯一引擎：探测期入口只许**委托**（`framework/tools/run/pre_actions.py`），不许再留实现。"""
-    exp = (REPO / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
+    """唯一引擎：探测期入口只许**委托**（`framework/shared/pre_actions_run.py`），不许再留实现。"""
+    exp = (REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
     i = exp.index("def _run_pre_actions(")
     wrapper = exp[i:i + 2600]
-    assert "from framework.tools.run.pre_actions import run_pre_actions" in wrapper, \
+    assert "from framework.shared.pre_actions_run import run_pre_actions" in wrapper, \
         "探测期入口没委托给唯一引擎"
     assert "全不可见 -> 改用 force 点一次" not in exp, \
         "探测期还留着第二份实现（两套口径会漂）"
-    eng = (REPO / "framework" / "tools" / "run" / "pre_actions.py").read_text(encoding="utf-8")
+    eng = (REPO / "framework" / "shared" / "pre_actions_run.py").read_text(encoding="utf-8")
     assert "def run_pre_actions(" in eng and "require_all_resolvable" in eng, \
         "引擎缺整组语义（只跑半个序列会假成功）"
 
 
 def test_execution_harness_runs_declared_identity_pre():
     """接线锁：产物侧 harness 读 `_pre.json`，并在**首次导航之后**跑一次身份前置。"""
-    gen = (REPO / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+    gen = (REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
     assert '"_pre.json"' in gen, "harness 没读身份前置表（声明了也白声明）"
     assert "def _maybe_scene_pre(page):" in gen, "harness 没有执行期身份前置的实现"
     assert "    page.goto(target)\n    _wait_ready(page, target)\n    _maybe_scene_pre(page)" in gen, \
@@ -140,15 +140,15 @@ def test_execution_harness_runs_declared_identity_pre():
 
 def test_generator_reads_declared_probe_pre_from_scenario():
     """行为判据（真值）：生成器回读函数必须取出场景真声明的序列。"""
-    from framework.tools.generate.generator import _scenario_probe_pre_of
+    from framework.features.f02_semantic.generator_generate import _scenario_probe_pre_of
     got = _scenario_probe_pre_of("scenarios/orders/orders_invoice_full_lifecycle.yml")
     assert got == ["超", "切换为订单管理员"], f"回读到的 probe_pre 不对：{got!r}"
 
 
 def test_declared_pre_steps_are_dropped_from_ai_output():
     """行为判据：AI 产出里**重复声明**的身份步骤被移除；不声明时一步不动（负向自证）。"""
-    from framework.tools.explore.explorer import _drop_declared_pre_steps
-    from framework.tools.probe.element_map import ElementRef, TestStep
+    from framework.features.f02_semantic.explorer_explore import _drop_declared_pre_steps
+    from framework.features.f03_locate.element_map import ElementRef, TestStep
     steps = [
         TestStep(1, "goto"),
         TestStep(2, "click", element=ElementRef(semantic_name="切换为订单管理员@合同列表页"),
@@ -165,7 +165,7 @@ def test_declared_pre_steps_are_dropped_from_ai_output():
 
 def test_prompt_tells_ai_the_declared_identity_pre():
     """行为判据：提示词要告诉 AI「身份前置已自动做，不要重复写」；未声明则**不许出现**该块。"""
-    import framework.tools.explore.explorer as ex
+    import framework.features.f02_semantic.explorer_explore as ex
     try:
         ex._CURRENT_PROBE_PRE = ["超", "切换为订单管理员"]
         p = ex._build_planner_prompt("场景原文", [], "http://localhost:8000/orders.html")
@@ -185,7 +185,7 @@ def test_declared_pre_host_is_the_first_business_page():
     `ScenarioPage` **dataclass**，静默拿到空串 => `url` 全空 => 前置主路径整体不生效
     （用例照红，但红得莫名其妙）。这条判据直接对**真场景**取真值，能当场抓住这类静默空值。
     """
-    from framework.tools.generate.generator import _scenario_pre_host_of
+    from framework.features.f02_semantic.generator_generate import _scenario_pre_host_of
 
     host = _scenario_pre_host_of("scenarios/orders/orders_invoice_full_lifecycle.yml")
     assert host == "http://localhost:8000/", f"前置 host 取错了：{host!r}（登录页？还是空？）"
@@ -202,7 +202,7 @@ def test_scene_pre_done_is_initialized_before_use():
     把陈旧名字当成"本页已点击"（假证据，实测让「切换为订单管理员」在两个页面上都成了合成条目）。
     """
     # [!] 片 3c（2026-10-12）：`_pp_done` 的初始化契约跟着骨架搬到了 `probe/scan_pages.py`。
-    src = (REPO / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+    src = (REPO / "framework" / "features" / "f03_locate" / "scan_pages_probe.py").read_text(encoding="utf-8")
     i_init = src.index("_pp_done: list = []")
     i_if = src.index("if _pp_pending:", i_init)
     i_use = src.index("list(_pp_done)", i_init)
@@ -220,16 +220,16 @@ def test_generate_live_probe_applies_declared_probe_pre():
     explore 侧 2026-10-10 就修了这条链条（见模块 docstring），**generate 的现场探测漏了** ——
     同一个能力有两条实现路径却没逐条对齐（本项目铁律 13）。
     """
-    src = (REPO / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+    src = (REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
     # [!] 片 3c（2026-10-12）：**声明页现场探测**的 probe_pre 应用跟着骨架搬到了 scan_pages
     #   （generator 只把 `pre` 传进去）。所以"清单页那两条断言"改查 scan_pages；
     #   "回到 generator 侧"的三条（回读场景 probe_pre / 形参 / 传参）**不变**。
-    sp = (REPO / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+    sp = (REPO / "framework" / "features" / "f03_locate" / "scan_pages_probe.py").read_text(encoding="utf-8")
     # [!] 片 3c 后的实际形态：scan_pages 里经 `_run_pre(...)` 转发（`_run_pre` 只做委托，
     #   真正引擎仍是 `run.pre_actions.run_pre_actions`）。断言"声明页前置被应用 + 转发到唯一引擎"。
     assert '_run_pre(pg, _field(spec, "pre"' in sp, \
         "声明页现场探测没应用 probe_pre（骨架侧）-> 探测到的是只读态 -> 编辑态控件采集不到"
-    assert "from framework.tools.run.pre_actions import run_pre_actions" in sp, \
+    assert "from framework.shared.pre_actions_run import run_pre_actions" in sp, \
         "scan_pages 里的前置没转发到唯一引擎 run.pre_actions（会漂成第二套点击逻辑）"
     assert "_scenario_probe_pre_of(" in src, "generate 没有回读场景的 probe_pre"
     assert "_decl_pre" in src, "generate 没有解析身份前置（_decl_pre）"
@@ -241,7 +241,7 @@ def test_generate_live_probe_applies_declared_probe_pre():
 
 def test_generate_probe_pre_priority_matches_auth():
     """优先级口径与 auth 一致：**用例自带优先，其次场景回读**（手搓用例的常见形态）。"""
-    src = (REPO / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+    src = (REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
     i = src.index("_decl_pre: list = []")
     blk = src[i:i + 700]
     assert 'list(_c0.get("probe_pre") or [])' in blk, "没先认用例自带的 probe_pre"

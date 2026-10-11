@@ -21,8 +21,8 @@ import ast
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-PROBE = REPO / "framework" / "tools" / "probe" / "probe.py"
-EXPANDABLE = REPO / "framework" / "tools" / "probe" / "expandable.py"
+PROBE = REPO / "framework" / "features" / "f03_locate" / "probe.py"
+EXPANDABLE = REPO / "framework" / "features" / "f03_locate" / "expandable_probe.py"
 
 
 def _src(p: Path) -> str:
@@ -114,7 +114,7 @@ def _scan_count(monkeypatch, monkeypatch_n, total, only_indexes):
     为什么选它：probe_page 的循环体是一整段（没有可 patch 的单元素构造函数），
     而 `_visible` 是循环里**第一个**每元素必过的调用，且被 patch 掉后不会碰真实 DOM。
     """
-    import framework.tools.probe.probe as P
+    import framework.features.f03_locate.probe as P
 
     calls: list[int] = []
     monkeypatch.setattr(P, "_visible", lambda page, loc: (calls.append(1), False)[1])

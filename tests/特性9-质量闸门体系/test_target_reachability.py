@@ -29,8 +29,8 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from framework import cli
-from framework.tools.common.target_probe import probe_partitioned, reachability   # noqa: E402
+from framework.features.f10_cli import cli   # P25 片 8：patch 要打在**真实现**上（framework.cli 现在是转发薄壳）
+from framework.shared.target_probe import probe_partitioned, reachability   # noqa: E402
 
 
 def _free_port() -> int:

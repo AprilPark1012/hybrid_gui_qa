@@ -24,11 +24,11 @@ BASE = Path(__file__).resolve().parents[2]
 if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
-from framework.tools.generate.generator import (                     # noqa: E402
+from framework.features.f02_semantic.generator_generate import (                     # noqa: E402
     DataSetsError, _add_payload_refs, _brace_safe, _render_pytest_case,
     _validate_data_sets, placeholder_names_ordered,
 )
-from framework.tools.generate.scenario import ScenarioError, load_scenario_file   # noqa: E402
+from framework.features.f02_semantic.scenario_generate import ScenarioError, load_scenario_file   # noqa: E402
 
 
 def _mini_case(**kw) -> dict:
@@ -183,7 +183,7 @@ def test_generated_conftest_strips_param_suffix():
     P20（2026-09-24）：这两处 fixture 在共享辅助里，渲染函数由 `_render_conftest()` 改名为
     `_render_harness()`（→ 生成物 `scripts/generated/_harness.py`）—— 判据内容一个字没改。
     """
-    from framework.tools.generate import generator as G
+    from framework.features.f02_semantic import generator_generate as G
     text = G._render_harness()
     bad = text.count('re.search(r"test_(.+)"') + text.count('_re.search(r"test_(.+)"')
     assert bad == 0, f"还有 {bad} 处用 re.search(\'test_(.+)\') -> 参数化后会把 [组名] 当 case_id 的一部分"

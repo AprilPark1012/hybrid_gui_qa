@@ -35,7 +35,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from framework.tools.explore.llm_cassette import default_dir, normalize_values   # noqa: E402
+from framework.features.f08_replay.llm_cassette_explore import default_dir, normalize_values   # noqa: E402
 
 OK, FAIL, USAGE, SKIP = 0, 1, 2, 3
 # [!] 2026-09-22 实测修的坑：原来是非贪婪 `([\s\S]*?)[」』”"]` -> 场景文案里**自带内层引号**

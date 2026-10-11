@@ -53,8 +53,8 @@ def _discover_case() -> str:
 CASE = _discover_case()      # 单条用例（秒级，够验证 run 目录与 summary）
 sys.path.insert(0, str(BASE))
 
-from framework.tools.common.config import LOG_DIR                                  # noqa: E402
-from framework.tools.common.retention import auto_prune_runs, prune_runs           # noqa: E402
+from framework.shared.config import LOG_DIR                                  # noqa: E402
+from framework.features.f07_concurrency.retention_run import auto_prune_runs, prune_runs           # noqa: E402
 
 _fail: list[str] = []
 
@@ -204,7 +204,7 @@ def main() -> int:
     ck(isinstance(got, dict), "auto_prune_runs() 正常返回结果（= 未设开关时会执行）")
     off = subprocess.run([PY, "-c",
                           "import os,sys; sys.path.insert(0,'.'); "
-                          "from framework.tools.common.retention import auto_prune_runs as a; "
+                          "from framework.features.f07_concurrency.retention_run import auto_prune_runs as a; "
                           "print(a(quiet_if_none=True))"],
                          cwd=str(BASE), capture_output=True, text=True, encoding="utf-8",
                          errors="replace", env={**os.environ, "HYBRID_NO_AUTO_PRUNE": "1"})

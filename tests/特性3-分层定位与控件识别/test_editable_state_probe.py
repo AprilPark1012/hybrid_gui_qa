@@ -30,11 +30,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from framework.tools.probe import editable as E                                       # noqa: E402
+from framework.features.f03_locate import editable_probe as E                                       # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
-SCAN = REPO / "framework" / "tools" / "probe" / "page_scan.py"
-CLI = REPO / "framework" / "cli.py"
+SCAN = REPO / "framework" / "features" / "f03_locate" / "page_scan_probe.py"
+CLI = REPO / "framework" / "features" / "f10_cli" / "cli.py"
 
 
 def _code_only(text: str) -> str:
@@ -92,7 +92,7 @@ def test_e8_wired_into_scan_pipeline():
 
 
 def test_e9_restore_is_mandatory():
-    code = _code_only((REPO / "framework" / "tools" / "probe" / "editable.py").read_text(encoding="utf-8"))
+    code = _code_only((REPO / "framework" / "features" / "f03_locate" / "editable_probe.py").read_text(encoding="utf-8"))
     assert "_restore(page" in code, "没有收尾复原（框架开的必须由框架关）"
     assert "reload(" in code, "取不到取消类触发器时必须 reload 兜底"
 
@@ -123,5 +123,5 @@ def test_e12_click_has_force_fallback():
     本 demo 的口径是「置灰但仍可点、点了弹提示」（verify_role_switch_click.py 判据 1c 已钉死），
     所以探测期 force 一次是安全的。
     """
-    code = _code_only((REPO / "framework" / "tools" / "probe" / "editable.py").read_text(encoding="utf-8"))
+    code = _code_only((REPO / "framework" / "features" / "f03_locate" / "editable_probe.py").read_text(encoding="utf-8"))
     assert "force=True" in code, "没有 force 回退 -> 探测期遇到置灰按钮会直接放弃补探"

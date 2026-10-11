@@ -1,0 +1,445 @@
+"""scenario 文件（scenarios/**.yml）的解析、校验与发现。
+
+设计（2026-09-11，见内部设计文档「scenario 文件设计」）
+---------------------------------------------------
+一个文件 = 一个场景；字段按「谁读它」分五组：
+    人读   id / title / description / owner / updated / notes
+    框架读 tags / priority / target.url
+    AI 读  target.page / target.preconditions / business_context / scenario(必填)
+    质量闸 assert_guard.must_contain / assert_guard.forbidden
+    数据读 data（一期只解析不展开）
+**只有 scenario 必填**，其余全可选 -> `explore --ai --scenario "…"`（内联）等价于"只给 scenario 字段"，
+两条路共用同一套下游（ElementMap → cases → generate → run），不存在两套实现。
+格式 YAML：多行中文块标量免转义 + 可写注释 + pyyaml 已在依赖里。
+"""
+from __future__ import annotations
+
+import re
+import json
+import hashlib
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import yaml
+
+from framework.shared.config import SCENARIOS_DIR
+
+_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+_EXTS = (".yml", ".yaml")
+_PRIO_ORDER = {"p0": 0, "p1": 1, "p2": 2, "p3": 3}
+
+
+class ScenarioError(RuntimeError):
+    """场景文件不合法（缺字段 / 类型错 / YAML 语法错）—— 消息带文件路径，便于定位。"""
+
+
+@dataclass
+class ScenarioPage:
+    """场景里的一个页面（P3 跨页流程）：name 是人/AI 都看的页名，url 是该页直连地址。
+
+    P22 批 5（缺口 (4)(5)）：`pre` = **该页的前置动作**，按控件的 accessibility name 依次点。
+    为什么需要：有些控件只在"做了某个动作之后"才存在 ——
+      · 合同列表页的「新建订单」弹层：不先选中合同，点了只弹「请选择某个合同」，弹层压根不开；
+      · 订单详情页的行控件（数量/单位/行类型/收入）：只在「编辑 + 新增行」之后才有。
+    探针默认"打开页面就看一遍"永远看不到它们 -> AI 拿不到语义名、用例引用不了
+    （批 5 实测：行必填没填 -> 保存无效 -> 提交被拦，状态永远停在「已新建」）。
+    """
+    name: str
+    url: str
+    page: str = ""            # 该页的页面说明（给 AI 的领域知识）
+    pre: list = field(default_factory=list)   # 该页探测前要做的动作，如 ["编辑", "新增行"]
+    # P22 批 5：**探测期用的地址**（可选）。页面 url 带运行期才有的值（订单号之类）时，
+    # 探测期那个对象还不存在 -> 场景另给一个"探测时去哪个地址"。
+    # [!] 框架只认「探测地址」这个概念，**不认识任何具体业务值** —— 值由场景给
+    # （AprilPark1012 2026-09-30 口径：补能力要与场景解耦、不能写死）。
+    probe_url: str = ""
+
+    def probe_url_for(self) -> str:
+        """探测该页时实际访问的地址：声明了就用它，否则用执行地址（向后兼容）。"""
+        return self.probe_url or self.url
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "url": self.url, "page": self.page,
+                "pre": list(self.pre or []), "probe_url": self.probe_url}
+
+
+@dataclass
+class Scenario:
+    path: Path
+    id: str
+    scenario: str
+    title: str = ""
+    description: str = ""
+    tags: list = field(default_factory=list)
+    priority: str = ""
+    owner: str = ""
+    updated: str = ""
+    url: str = ""
+    page: str = ""
+    preconditions: list = field(default_factory=list)
+    business_context: str = ""
+    must_contain: list = field(default_factory=list)
+    forbidden: list = field(default_factory=list)
+    data: list = field(default_factory=list)
+    notes: str = ""
+    warnings: list = field(default_factory=list)
+    pages: list = field(default_factory=list)      # list[ScenarioPage]（跨页；空 = 单页老写法）
+    # P22 批 5（方案 H）：**登录前置声明** —— 探测与执行两侧共用的唯一来源（见 references/design/P22 §十）
+    auth: dict = field(default_factory=dict)
+    # 2026-10-10（A 方案 S1）：**场景级探测前置** —— 探测期一开始就要处的状态（登录、切身份）。
+    #   与页面级 pages[].pre 是**两个层级**、**同一个执行引擎**（_run_pre_actions），
+    #   不是第二套机制（铁律 13：同一能力收敛成唯一入口）。
+    probe_pre: list = field(default_factory=list)
+    # P25 片 6（D10 · AprilPark1012 2026-10-11 拍定）：**前置在哪一页执行** —— 引用 `pages[].name`。
+    #   [!] 这是为了取代框架原来用 `"login" in url` / 页名含「登录」**猜** host 的做法：
+    #   框架层不许出现业务词（口径：补能力要与场景解耦、不能写死、不拿观测值当地基）。
+    #   声明了 `probe_pre` 就必须声明它 —— 缺了在 **加载期**硬红，不允许"猜一个"。
+    probe_pre_host: str = ""
+
+    def auth_spec(self) -> dict:
+        """登录前置参数（空 dict = 该场景不需要登录）。"""
+        return dict(self.auth or {})
+
+    @property
+    def name(self) -> str:
+        return self.title or self.id
+
+    @property
+    def is_multi_page(self) -> bool:
+        return len(self.pages) > 1
+
+    def all_pages(self) -> list["ScenarioPage"]:
+        """统一视图：单页写法也返回一个元素的列表（下游只认这一个入口，避免两套实现）。"""
+        if self.pages:
+            return list(self.pages)
+        if self.url:
+            return [ScenarioPage(name="页面1", url=self.url, page=self.page)]
+        return []
+
+    def page_bg(self) -> str:
+        """给 AI 的【页面背景】块（页面说明 + 前置条件 + 领域上下文）。"""
+        lines: list[str] = []
+        if self.page:
+            lines.append(f"页面说明：{self.page}")
+        if self.preconditions:
+            lines.append("前置条件：" + "；".join(str(x) for x in self.preconditions))
+        if self.business_context:
+            lines.append("领域上下文：\n" + self.business_context.strip())
+        return "\n".join(lines)
+
+    def guard_text(self) -> str:
+        """给 AI 的【本场景护栏】块（断言必须围绕的稳定文本 / 不得出现的内容）。"""
+        lines: list[str] = []
+        if self.must_contain:
+            lines.append("断言必须围绕这些【稳定文本】（操作前即可确定）："
+                         + "、".join(str(x) for x in self.must_contain))
+        if self.forbidden:
+            lines.append("断言中不得出现：" + "、".join(str(x) for x in self.forbidden))
+        return "\n".join(lines)
+
+    def guard_spec(self) -> dict:
+        """给质量闸（case_warnings）的结构化护栏。"""
+        return {"must_contain": list(self.must_contain), "forbidden": list(self.forbidden)}
+
+    def case_extra(self) -> dict:
+        """回写进 case 的溯源字段（generator 只读 case_id/steps/asserts，多余字段安全）。"""
+        try:
+            rel = str(self.path.resolve().relative_to(SCENARIOS_DIR.resolve().parent))
+        except Exception:
+            rel = str(self.path)
+        extra = {"scenario_id": self.id, "source_scenario": rel}
+        # D3（2026-09-24 他定）：记下**当时场景文件的内容指纹**。
+        # 场景一改（指纹变）-> 判据当场红 -> 必须重新生成，保证用例与场景同步。
+        try:
+            _raw = self.path.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n")
+            extra["scenario_fingerprint"] = hashlib.sha256(_raw.encode("utf-8")).hexdigest()[:16]
+        except Exception as _e:  # 绝不静默：指纹写不进去 = D3 的同步判据会失效
+            import sys as _sys
+            print(f"  [!] [scenario] 场景指纹计算失败（{type(_e).__name__}: {_e}）"
+                  f"-> D3 同步判据将失效，必须修", file=_sys.stderr)
+        if self.pages:                      # P3 跨页：把页面清单带进用例（质量闸与溯源都用）
+            extra["pages"] = [p.to_dict() for p in self.pages]
+        # [!] P25 片 6（修 10-A · 两条链路不同源）：**场景级探测前置也要落进用例**。
+        #   原来只写 scenario_id/pages，probe_pre 只在**手搓用例**里手工写 ——
+        #   于是 AI 用例的 `probe_pre` 恒为 None，只能靠 `source_scenario` 回读，
+        #   而回读失败时**只打印不抛**（静默降级成"没有前置"）=> 两条链路同名不同源。
+        #   现在：用例落盘即带场景声明的**逐字副本**（同一权威来源），下游读哪一份都一致。
+        if self.probe_pre:
+            extra["probe_pre"] = list(self.probe_pre)
+        if self.probe_pre_host:
+            extra["probe_pre_host"] = self.probe_pre_host
+        return extra
+
+
+def _as_list(value, field_name: str, path) -> list:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    raise ScenarioError(f"{path}: 字段 {field_name} 应为列表，实际是 {type(value).__name__}")
+
+
+def load_scenario_file(path) -> Scenario:
+    """读 + 校验一个场景文件；任何不合法都抛 ScenarioError（绝不静默兜底）。"""
+    p = Path(path)
+    if not p.exists():
+        raise ScenarioError(f"场景文件不存在: {p}")
+    try:
+        raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise ScenarioError(f"{p}: YAML 语法错误 → {e}") from None
+    if raw is None:
+        raise ScenarioError(f"{p}: 文件为空（没有可解析的字段）")
+    if not isinstance(raw, dict):
+        raise ScenarioError(f"{p}: 顶层应为映射（key: value），实际是 {type(raw).__name__}")
+
+    warns: list[str] = []
+    text = str(raw.get("scenario") or "").strip()
+    if not text:
+        raise ScenarioError(f"{p}: 缺少必填字段 scenario（自然语言动作流）")
+
+    sid = str(raw.get("id") or p.stem).strip()
+    if not _ID_RE.match(sid):
+        raise ScenarioError(f"{p}: id {sid!r} 不合法（要求小写蛇形，正则 ^[a-z][a-z0-9_]*$）")
+    if sid != p.stem:
+        warns.append(f"id({sid}) 与文件名({p.stem}) 不一致 → 以 id 为准（建议改成一致，避免溯源断裂）")
+
+    target = raw.get("target") or {}
+    if not isinstance(target, dict):
+        raise ScenarioError(f"{p}: target 应为映射（url / page / preconditions）")
+    # ---- 跨页流程（P3）：pages 列表 ----
+    raw_pages = raw.get("pages")
+    pages: list[ScenarioPage] = []
+    if raw_pages is not None:
+        if not isinstance(raw_pages, list):
+            raise ScenarioError(f"{p}: pages 应为列表（每项含 name / url / page）")
+        if target.get("url"):
+            raise ScenarioError(
+                f"{p}: pages 与 target.url 互斥 —— 多页写 pages，单页写 target.url（不猜你的意图）")
+        for i, pg in enumerate(raw_pages, 1):
+            if not isinstance(pg, dict):
+                raise ScenarioError(f"{p}: pages[{i}] 应为映射（name / url / page）")
+            pname = str(pg.get("name") or "").strip()
+            purl = str(pg.get("url") or "").strip()
+            if not pname:
+                raise ScenarioError(f"{p}: pages[{i}] 缺少 name（页名，AI 与日志都靠它区分页面）")
+            if not purl.startswith("http"):
+                raise ScenarioError(f"{p}: pages[{i}].url 必须是完整 http(s) 地址，实际 {purl!r}"
+                                    f"（跨页要能直连，否则 AI 只能靠点、不可靠）")
+            if any(x.name == pname for x in pages):
+                raise ScenarioError(f"{p}: pages 里页名重复：{pname!r}（页名是元素唯一化的依据，必须唯一）")
+            raw_pre = pg.get("pre")
+            pre_list: list[str] = []
+            if raw_pre is not None:
+                if (not isinstance(raw_pre, list)
+                        or any(not str(x).strip() for x in raw_pre)):
+                    raise ScenarioError(
+                        f"{p}: pages[{i}].pre 应为**操控名列表**（每项是一个控件的可访问名，"
+                        f"如 [编辑, 新增行]），实际是 {type(raw_pre).__name__}")
+                pre_list = [str(x).strip() for x in raw_pre]
+            _probe_url = str(pg.get("probe_url") or "").strip()
+            if _probe_url and not _probe_url.startswith("http"):
+                raise ScenarioError(
+                    f"{p}: pages[{i}].probe_url 必须是完整 http(s) 地址（探测要能直连），"
+                    f"实际 {_probe_url!r}")
+            pages.append(ScenarioPage(name=pname, url=purl, page=str(pg.get("page") or ""),
+                                      pre=pre_list, probe_url=_probe_url))
+        if len(pages) == 1:
+            warns.append("pages 只给了一个页面 —— 等价于单页场景（跨页至少 2 页）")
+    # ---- P22 批 5：登录前置（可选段）----
+    raw_auth = raw.get("auth")
+    auth: dict = {}
+    if raw_auth is not None:
+        if not isinstance(raw_auth, dict):
+            raise ScenarioError(
+                f"{p}: auth 应为映射（login_api / username / password|password_env / token_key）"
+                f"，实际是 {type(raw_auth).__name__}")
+        uname = str(raw_auth.get("username") or "").strip()
+        if not uname:
+            raise ScenarioError(f"{p}: auth 缺少 username（登录账号）")
+        pwd = raw_auth.get("password")
+        pwd_env = str(raw_auth.get("password_env") or "").strip()
+        if not pwd and not pwd_env:
+            raise ScenarioError(
+                f"{p}: auth 需要 password 或 password_env 之一"
+                f"（真实系统请用 password_env，别把口令写进场景文件）")
+        api = str(raw_auth.get("login_api") or "/api/login").strip()
+        if not api:
+            raise ScenarioError(f"{p}: auth.login_api 不能为空")
+        key = str(raw_auth.get("token_key") or "").strip()
+        auth = {"login_api": api, "username": uname,
+                "password": str(pwd) if pwd else "", "password_env": pwd_env, "token_key": key}
+        if not key:
+            warns.append("auth 未声明 token_key -> 只做接口登录、不注入 localStorage"
+                         "（页面若靠 localStorage 认身份，会仍然显示未登录）")
+    guard = raw.get("assert_guard") or {}
+    if not isinstance(guard, dict):
+        raise ScenarioError(f"{p}: assert_guard 应为映射（must_contain / forbidden）")
+    data = raw.get("data") or []
+    if not isinstance(data, list):
+        raise ScenarioError(f"{p}: data 应为列表（每组数据一项）")
+    # 2026-09-21 L1「真展开」：data 是真用的了（一组数据 = 一条用例），所以校验必须严格 ——
+    # 写错了不能静默忽略，否则会出现「改了 data、报告里还是只有一条」这种没人发现的假象。
+    seen_ids: list[str] = []
+    for i, item in enumerate(data, 1):
+        if not isinstance(item, dict):
+            raise ScenarioError(
+                f"{p}: data 第 {i} 组应为映射（占位符名: 值），实际是 {type(item).__name__}"
+                f"；例：- {{关键词: \"1007\"}}")
+        for k in item:
+            if not isinstance(k, str) or not k.strip():
+                raise ScenarioError(f"{p}: data 第 {i} 组的键必须是占位符名（非空字符串）")
+        if "id" in item:
+            if not isinstance(item["id"], str) or not item["id"].strip():
+                raise ScenarioError(f"{p}: data 第 {i} 组的 id 必须是非空字符串（它进报告里的用例名）")
+            seen_ids.append(item["id"].strip())
+    dup = sorted({x for x in seen_ids if seen_ids.count(x) > 1})
+    if dup:
+        raise ScenarioError(
+            f"{p}: data 的 id 重复：{dup} —— 参数名会撞车，报告里分不出是哪组数据")
+
+    # 场景级探测前置（2026-10-10 · A 方案 S1）：探测期一开始就要做的动作（登录、切身份）。
+    #   形态与 pages[].pre **同构**（语义名列表），后续 S2 扩成 goto/fill/click 三类动作。
+    probe_pre: list = []
+    raw_pp = raw.get("probe_pre")
+    if raw_pp is not None:
+        if not isinstance(raw_pp, list):
+            raise ScenarioError(f"{p}: probe_pre 应为列表（如 [切换为订单管理员]）"
+                                f"，实际是 {type(raw_pp).__name__}")
+        for _it in raw_pp:
+            if isinstance(_it, str) and _it.strip():
+                probe_pre.append(_it.strip())
+            elif isinstance(_it, dict):
+                probe_pre.append(_it)
+            else:
+                raise ScenarioError(f"{p}: probe_pre 的每一项应为控件语义名或动作映射，"
+                                    f"实际是 {type(_it).__name__}")
+        if probe_pre and auth:
+            warns.append("同时声明了 auth 与 probe_pre：探测期用 probe_pre（更新），"
+                         "auth 仅作兼容，建议逐步迁移到「场景级探测前置」")
+
+    # 场景级前置的**宿主页**（D10，2026-10-11 AprilPark1012拍定）：
+    #   [!] 声明了 probe_pre 却不说"在哪一页做" -> **硬红**。为什么不能兜：
+    #     前置是"在某个页面的上下文里点几下"，点错页 = 前置等于没做（而日志看起来像做了）；
+    #     框架以前用 `login`/`登录` 猜 host（业务词进框架层），既脆弱又不通用。
+    probe_pre_host = str(raw.get("probe_pre_host") or "").strip()
+    if probe_pre and not probe_pre_host:
+        raise ScenarioError(
+            f"{p}: 声明了 probe_pre（{' -> '.join(str(x) for x in probe_pre[:3])}）"
+            f"但**没有** probe_pre_host —— 必须写明这批前置在哪一页执行，"
+            f"取值是 pages[].name 里的页名（框架不许用 login/登录 这类业务词去猜宿主页）")
+    if probe_pre_host and pages:
+        _names = [x.name for x in pages]
+        if probe_pre_host not in _names:
+            raise ScenarioError(
+                f"{p}: probe_pre_host={probe_pre_host!r} 不是 pages 里声明过的页名"
+                f"（现有页名：{'、'.join(_names)}）—— 页名对不上就找不到宿主页，"
+                f"前置会在错误页面静默执行")
+
+
+    return Scenario(
+        path=p, id=sid, scenario=text,
+        title=str(raw.get("title") or ""),
+        description=str(raw.get("description") or ""),
+        tags=[str(t) for t in _as_list(raw.get("tags"), "tags", p)],
+        priority=str(raw.get("priority") or ""),
+        owner=str(raw.get("owner") or ""),
+        updated=str(raw.get("updated") or ""),
+        url=str(target.get("url") or ""),
+        page=str(target.get("page") or ""),
+        preconditions=_as_list(target.get("preconditions"), "target.preconditions", p),
+        business_context=str(raw.get("business_context") or ""),
+        must_contain=[str(x) for x in _as_list(guard.get("must_contain"), "assert_guard.must_contain", p)],
+        forbidden=[str(x) for x in _as_list(guard.get("forbidden"), "assert_guard.forbidden", p)],
+        data=data,
+        notes=str(raw.get("notes") or ""),
+        warnings=warns,
+        pages=pages,
+        auth=auth,
+        probe_pre=probe_pre,
+        probe_pre_host=probe_pre_host,
+    )
+
+
+def probe_pre_fingerprint(probe_pre) -> str:
+    """独立用例自带 `probe_pre` 时的**自证指纹**（D11）。
+
+    为什么需要：绑定场景的用例有"与场景逐字一致"这条判据守着；**独立于场景**的用例没人守 ——
+    前置悄悄改一个字，没有任何东西会发现（而它照样"跑过了"）。
+    指纹 = sha256(前置序列的 JSON)：内容一变指纹就不匹配，判据当场红。
+    """
+    payload = json.dumps(list(probe_pre or []), ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def probe_pre_conflicts(case: dict, scenario: "Scenario | None") -> list[str]:
+    """用例级 `probe_pre` 与场景声明的一致性判定 —— **唯一入口**（D9）。
+
+    口径（2026-10-11 AprilPark1012拍定）：**场景声明是唯一权威**，用例里的 `probe_pre`
+    唯一合法状态 = 它的**逐字副本（有序）**。
+
+    为什么**顺序敏感**：前置是**状态迁移序列**（先点开下拉，才能点到它的子项）。
+    `[A, B]` 与 `[B, A]` 不是"差异不大"，而是**第二个动作根本点不到**
+    （菜单没开）。同理多一步/少一步都会让后续步骤在错误状态下执行。
+
+    为什么必须**报出第几步**：只说"不一致"的话，改的人无从下手（要在两份清单之间人肉 diff）。
+
+    两类用例（D11）：
+      · 绑定场景的（带 `scenario_id`）-> 走本函数（逐字一致）；
+      · 独立的（不带）-> 本函数返回空（它不受场景约束），由调用方改判
+        `probe_pre_fingerprint` 自证（见 `generator` 的闸门）。
+    返回空列表 = 一致；非空 = 逐条差异说明。
+    """
+    if scenario is None:
+        return []
+    declared = list(getattr(scenario, "probe_pre", None) or [])
+    got = list((case or {}).get("probe_pre") or [])
+    if not declared and not got:
+        return []
+    diffs: list[str] = []
+    if len(declared) != len(got):
+        diffs.append(f"步数不一致：场景声明 {len(declared)} 步 {declared!r}，"
+                     f"用例写了 {len(got)} 步 {got!r}")
+    for i, (want, have) in enumerate(zip(declared, got), 1):
+        if want != have:
+            diffs.append(f"第 {i} 步不一致：用例 {have!r} != 场景 {want!r}")
+    if not declared and got:
+        diffs.append(f"场景没声明任何前置，用例却写了 {got!r}（会做场景没约定的事）")
+    return diffs
+
+
+def discover_scenarios(root=None, tags=None, limit: int | None = None) -> list[Scenario]:
+    """递归扫 scenarios/ 下的 *.yml/*.yaml（跳过 README*），按 tags 过滤、priority 排序。
+
+    - 任一文件不合法 → 直接抛 ScenarioError（批量模式更要早失败，别跑一半才发现）
+    - tags：OR 语义（命中任一 tag 即入选）
+    """
+    r = Path(root or SCENARIOS_DIR)
+    if not r.exists():
+        raise ScenarioError(f"场景目录不存在: {r}")
+    files = [f for f in sorted(r.rglob("*"))
+             if f.is_file() and f.suffix.lower() in _EXTS and not f.name.upper().startswith("README")]
+    if not files:
+        raise ScenarioError(f"{r} 下没有找到 *.yml / *.yaml 场景文件")
+
+    scenarios: list[Scenario] = []
+    errors: list[str] = []
+    for f in files:
+        try:
+            scenarios.append(load_scenario_file(f))
+        except ScenarioError as e:
+            errors.append(str(e))
+    if errors:
+        raise ScenarioError("以下场景文件不合法，已中止：\n  - " + "\n  - ".join(errors))
+
+    if tags:
+        want = {str(t).lower() for t in tags}
+        hit = [s for s in scenarios if want & {str(t).lower() for t in s.tags}]
+        if not hit:
+            raise ScenarioError(f"{r} 下没有 tag 命中 {sorted(want)} 的场景")
+        scenarios = hit
+
+    scenarios.sort(key=lambda s: (_PRIO_ORDER.get(s.priority.lower(), 9), str(s.path)))
+    if limit:
+        scenarios = scenarios[: int(limit)]
+    return scenarios

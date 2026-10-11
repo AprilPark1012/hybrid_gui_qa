@@ -49,7 +49,7 @@ if str(REPO) not in sys.path:
 # [!] 2026-10-07：入口自拉平 stdio（理由同 run_acceptance.py）—— stdout 被捕获成管道 +
 #    中文 Windows(cp936) 时，非 GBK 字符会让 print 崩掉整个入口。
 try:
-    from framework.tools.common.text_io import force_stdio
+    from framework.shared.text_io import force_stdio
     force_stdio()
 except Exception:
     pass

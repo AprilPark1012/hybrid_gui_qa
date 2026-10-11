@@ -101,7 +101,7 @@ def target_scenarios(args) -> list[Path]:
     if args.missing_only:
         try:
             from check_cassettes import check, load_cassettes, scenario_text_of      # noqa: F401
-            from framework.tools.explore.llm_cassette import default_dir
+            from framework.features.f08_replay.llm_cassette_explore import default_dir
             covered, missing = check(files, load_cassettes(default_dir()))
             miss_names = {Path(str(m["scenario"])).name for m in missing}
             files = [f for f in files if f.name in miss_names]

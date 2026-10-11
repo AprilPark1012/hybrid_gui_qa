@@ -30,8 +30,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from framework.tools.common import config
-from framework.tools.common.text_io import force_stdio, run_capture      # noqa: E402
+from framework.shared import config
+from framework.shared.text_io import force_stdio, run_capture      # noqa: E402
 
 # 不进包的东西（与 .gitignore 口径一致 + 交付无关产物）
 EXCLUDE_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache", "log", "output",
@@ -44,8 +44,8 @@ RELEASES_DIRNAME = "releases"
 RELEASE_NOTES_GLOB = "RELEASE_NOTES_*.md"
 EXCLUDE_SUFFIX = {".zip", ".tar.gz", ".pyc", ".pyo"}
 # 包里必须有的东西（少一个说明包不完整）
-REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "framework/cli.py",
-            "framework/tools/common/text_io.py",
+REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "framework/features/f10_cli/cli.py",
+            "framework/shared/text_io.py",
             # P20（2026-09-24）：产物改成 scripts/generated/<场景>/<用例>.py（一个用例一个文件）
             "scripts/generated", "scripts/generated/index.json", "scripts/generated/_harness.py",
             "scripts/generated/conftest.py",
@@ -62,7 +62,7 @@ REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "fra
 LEGACY_ALIASES = {
     # 键 = 当前 REQUIRED 路径；值 = 历史形态候选（结构变更前的包里可能是这些）
     "build_tools/build_html.py": ("tools/build_html.py", "build_html.py"),
-    "framework/tools/common/text_io.py": ("framework/text_io.py",),
+    "framework/shared/text_io.py": ("framework/text_io.py",),
     "docs/training.html": ("training.html",),
     #   tests/ 两大类 → tests/{frameworkTest,featureTest}/  （2026-09-23/24：R7 两类验证分目录，tests/ 作容器保留）
     "tests/_helpers": ("tests",),
@@ -92,7 +92,7 @@ REQUIRED_CONFTEST = ("_act", "_goto", "_reset_target_data", "_assert_text", "_as
 
 
 def _version() -> tuple[str, str]:
-    """版本号从 `build_tools/build_html.py` 读（**版本单一来源**，路径定义在 framework/tools/common/config.py）；读不到就如实说 unknown。"""
+    """版本号从 `build_tools/build_html.py` 读（**版本单一来源**，路径定义在 framework/shared/config.py）；读不到就如实说 unknown。"""
     v, d = config.read_version()
     return (v, d or date.today().isoformat())
 
@@ -300,7 +300,7 @@ CASSETTE_README = """# hybrid_gui_qa · LLM 录像包（在**连不上外网**�
 而且**不需要 API key、全程不联网**。
 
 ## 交付形态 = 两件套（都用上才完整）
-1. **代码包** `hybrid_gui_qa_V<版本>_<日期>.zip` —— 含回放引擎 `framework/tools/explore/llm_cassette.py`
+1. **代码包** `hybrid_gui_qa_V<版本>_<日期>.zip` —— 含回放引擎 `framework/features/f08_replay/llm_cassette_explore.py`
    与一键脚本 `build_tools/offline_explore_chain.py`
 2. **本录像包** —— 含录像数据 `llm_cassettes/` + 一份用法说明
 

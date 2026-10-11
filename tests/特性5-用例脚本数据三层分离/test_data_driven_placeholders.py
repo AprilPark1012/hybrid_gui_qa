@@ -21,8 +21,8 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from framework.tools.generate.case_builder import restore_data_placeholders  # noqa: E402
-from framework.tools.generate.scenario import discover_scenarios            # noqa: E402
+from framework.features.f02_semantic.case_builder_generate import restore_data_placeholders  # noqa: E402
+from framework.features.f02_semantic.scenario_generate import discover_scenarios            # noqa: E402
 
 CASES = REPO / "cases"
 

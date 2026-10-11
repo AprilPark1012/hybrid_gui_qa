@@ -20,11 +20,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 REPO = Path(__file__).resolve().parents[2]
-EXPLORER = REPO / "framework" / "tools" / "explore" / "explorer.py"
-# [!] 2026-10-10 A 方案：前置动作引擎搬进 `framework/tools/run/pre_actions.py` ——
+EXPLORER = REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py"
+# [!] 2026-10-10 A 方案：前置动作引擎搬进 `framework/shared/pre_actions_run.py` ——
 #   探测期与执行期共用**同一引擎**（探测期的 `_run_pre_actions` 现在只是委托）。
 #   判据**跟着权威源走**：钉引擎，不钉调用方（钉调用方会在换实现时变成假绿）。
-PRE_ACTIONS = REPO / "framework" / "tools" / "run" / "pre_actions.py"
+PRE_ACTIONS = REPO / "framework" / "shared" / "pre_actions_run.py"
 
 
 def _code_only(text: str) -> str:

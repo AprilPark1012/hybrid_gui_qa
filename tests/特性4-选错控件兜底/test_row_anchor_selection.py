@@ -27,7 +27,9 @@ from pathlib import Path
 
 import pytest
 
-from framework.tools.probe import anchor, scope_locate
+from framework.features.f03_locate import anchor_locate as anchor
+from framework.features.f03_locate import anchor_locate as anchor
+from framework.features.f03_locate import scope_locate
 
 REPO = Path(__file__).resolve().parents[2]
 ELEMENT_MAP_DIR = REPO / "output" / "element_maps"

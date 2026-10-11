@@ -36,12 +36,12 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCAN_PAGES = (ROOT / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+SCAN_PAGES = (ROOT / "framework" / "features" / "f03_locate" / "scan_pages_probe.py").read_text(encoding="utf-8")
                  # 片 3c（2026-10-12）：跨页探测骨架的唯一入口，登录/前置/行内列都在它里面
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from framework.tools.explore import explorer  # noqa: E402
+from framework.features.f02_semantic import explorer_explore as explorer  # noqa: E402
 
 SRC = Path(explorer.__file__).read_text(encoding="utf-8")
 
@@ -126,7 +126,7 @@ def test_teststep_carries_cell_by_through_dict_roundtrip():
         -> AI 写了也在这一步**静默丢掉**（生成器那份读 cell_by 的代码永远拿不到值）。
         只加 schema 不改链路 = 假修。
     """
-    from framework.tools.probe.element_map import TestStep
+    from framework.features.f03_locate.element_map import TestStep
 
     st = TestStep(order=26, action="check", description="选中该订单行",
                   row_text="全链路-{datetime}", cell_by="index", cell_index=1)
@@ -163,7 +163,7 @@ def test_explorer_wiring_passes_cell_by():
 
 def test_generator_reads_cell_by_from_step_dict():
     """**反向自证**：生成器那一侧本来就在读（框架早支持），别退化。"""
-    gsrc = (ROOT / "framework/tools/generate/generator.py").read_text(encoding="utf-8")
+    gsrc = (ROOT / "framework/features/f02_semantic/generator_generate.py").read_text(encoding="utf-8")
     assert "cell_by" in gsrc and "cell_index" in gsrc, "生成器丢了 cell_by 读取？框架本来就支持它"
 
 
@@ -196,7 +196,7 @@ def test_output_format_forbids_inventing_key_names():
 
 def test_fill_missing_row_column_fills_unique_checkbox():
     """`row_text` 有、列缺失，且表里**只有一个**勾选列 -> 补上（唯一解，不是猜）。"""
-    from framework.tools.probe.element_map import TestStep
+    from framework.features.f03_locate.element_map import TestStep
 
     steps = [TestStep(order=36, action="check", description="勾选该订单行",
                       row_text="全链路-{datetime}")]
@@ -211,7 +211,7 @@ def test_fill_missing_row_column_fills_unique_checkbox():
 
 def test_fill_missing_row_column_refuses_when_ambiguous():
     """**反向自证**：有**多个**勾选列候选 -> **不许**补（诚实降级，交给重试）。"""
-    from framework.tools.probe.element_map import TestStep
+    from framework.features.f03_locate.element_map import TestStep
 
     steps = [TestStep(order=36, action="check", description="勾选该订单行",
                       row_text="全链路-{datetime}")]
@@ -223,7 +223,7 @@ def test_fill_missing_row_column_refuses_when_ambiguous():
 
 def test_fill_missing_row_column_leaves_normal_steps_alone():
     """普通步骤（没有 row_text / 不是勾选语义）**不许动**。"""
-    from framework.tools.probe.element_map import TestStep
+    from framework.features.f03_locate.element_map import TestStep
 
     steps = [TestStep(order=3, action="click", description="点击搜索", row_text=None),
              TestStep(order=9, action="click", description="点该行订单名称",

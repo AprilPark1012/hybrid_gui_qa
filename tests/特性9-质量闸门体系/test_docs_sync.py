@@ -377,7 +377,7 @@ def test_repo_never_imports_browser_use_agent():
 
 def test_generator_is_pure_deterministic_no_llm():
     """generate 不含 LLM 调用（口径：缺 elementMap 时是**现场探测补**，不是再叫 AI）。"""
-    gen = REPO / "framework" / "tools" / "generate" / "generator.py"
+    gen = REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py"
     src = gen.read_text(encoding="utf-8")
     for m in re.finditer(r"^[ \t]*(?:from|import)[ \t]+([^\n]*)", src, re.M):
         mod = m.group(1)

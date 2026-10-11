@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from framework.tools.probe import probe as probe_mod  # noqa: E402
+from framework.features.f03_locate import probe as probe_mod  # noqa: E402
 
 SRC = Path(probe_mod.__file__).read_text(encoding="utf-8")
 
@@ -95,7 +95,7 @@ def test_row_fields_mark_checkbox_kind():
 
 def test_prompt_tells_ai_about_column_index():
     """提示词必须把列的 `index` 交给 AI（光有 cell_by 字段名不够）。"""
-    from framework.tools.explore import explorer
+    from framework.features.f02_semantic import explorer_explore as explorer
 
     src = Path(explorer.__file__).read_text(encoding="utf-8")
     # [!] 必须在 `_build_planner_prompt` **函数体内**找：文件名里 "表格行内列清单" 另有一处

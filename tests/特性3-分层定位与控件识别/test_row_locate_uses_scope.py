@@ -14,7 +14,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-GEN = (ROOT / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+GEN = (ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
 
 
 def _act_row_body() -> str:
@@ -59,7 +59,7 @@ def test_row_select_without_value_matches_non_row_semantics():
 
 def test_scope_locate_is_the_single_shared_entry():
     """`scope_locate` 必须是**共用**入口：resolve_locator 与行内定位都走它，不各写一份。"""
-    bridge = (ROOT / "framework" / "tools" / "probe" / "locator_bridge.py").read_text(encoding="utf-8")
+    bridge = (ROOT / "framework" / "features" / "f03_locate" / "locator_bridge_locate.py").read_text(encoding="utf-8")
     assert "scope_locate(" in bridge, "resolve_locator 没走 scope_locate（会出现第二套锚点解析）"
-    assert "def scope_locate(" in (ROOT / "framework" / "tools" / "probe" / "scope_locate.py").read_text(
+    assert "def scope_locate(" in (ROOT / "framework" / "features" / "f03_locate" / "scope_locate.py").read_text(
         encoding="utf-8"), "scope_locate 不在 probe/scope_locate.py（被谁私藏了一份？）"

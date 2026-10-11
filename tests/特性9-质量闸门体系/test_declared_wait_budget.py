@@ -31,7 +31,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from framework.tools.common.declared_wait import (          # noqa: E402
+from framework.shared.declared_wait import (          # noqa: E402
     declared_wait_ms, effective_wait_ms, wait_shortfall, _MAX_DECLARED_MS,
 )
 
@@ -163,14 +163,14 @@ def _code_of(path: pathlib.Path, start: str, end: str = "") -> str:
 
 def test_generator_applies_the_declared_wait():
     """生成期必须**按场景声明**给等待断言定时长（AI 链路唯一能供给它的地方）。"""
-    seg = _code_of(ROOT / "framework" / "tools" / "generate" / "generator.py",
+    seg = _code_of(ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py",
                    "def apply_kind_defaults")
     assert "effective_wait_ms(" in seg, "等待时长没走 declared_wait -> L27 复发（又写死 30s）"
 
 
 def test_generator_reads_the_scenario_text_into_the_assert_pass():
     """`_extract_data` 必须把**场景原文**递给断言处理 —— 不递就等于没有声明可依。"""
-    seg = _code_of(ROOT / "framework" / "tools" / "generate" / "generator.py",
+    seg = _code_of(ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py",
                    "def _extract_data")
     assert "_scenario_text_of(" in seg and "apply_kind_defaults(_a, _sctext)" in seg, \
         "场景原文没进断言处理链路"
@@ -178,25 +178,25 @@ def test_generator_reads_the_scenario_text_into_the_assert_pass():
 
 def test_renderer_uses_the_tunable_default_not_a_frozen_number():
     """渲染处缺失超时时，必须用**可调**默认（`HYBRID_WAIT_DEFAULT_MS`），不是冻死的数字。"""
-    src = (ROOT / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+    src = (ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
     assert 'a.get("timeout_ms", _wait_default_ms())' in src, \
         "渲染处又退回写死默认值"
 
 
 def test_wait_default_knob_is_discoverable():
     """可调项必须**可发现**：登记进 `cli config`（不写死在源码里）。"""
-    cli = (ROOT / "framework" / "cli.py").read_text(encoding="utf-8")
+    cli = (ROOT / "framework" / "features" / "f10_cli" / "cli.py").read_text(encoding="utf-8")
     assert '"HYBRID_WAIT_DEFAULT_MS"' in cli, "旋钮没登记 cli config -> 用户只能翻源码"
 
 
 def test_declared_wait_is_told_to_the_ai():
     """要在提示词里把「本场景声明的等待时长」告诉 AI —— 它看不到框架默认值，不说就只能瞎猜。"""
-    seg = _code_of(ROOT / "framework" / "tools" / "explore" / "explorer.py",
+    seg = _code_of(ROOT / "framework" / "features" / "f02_semantic" / "explorer_explore.py",
                    "def _declared_wait_block", "def _build_planner_prompt")
     assert "declared_wait_ms(" in seg, "没复用唯一解析入口"
     assert "场景声明的业务等待时长" in seg, "没把声明时长讲给 AI"
 
-    from framework.tools.explore.explorer import _declared_wait_block
+    from framework.features.f02_semantic.explorer_explore import _declared_wait_block
     text = SCENARIO.read_text(encoding="utf-8")
     blk = _declared_wait_block(text)
     assert "150000" in blk or "150" in blk, "块里必须带上声明的时长数值"
@@ -205,7 +205,7 @@ def test_declared_wait_is_told_to_the_ai():
 
 def test_declared_wait_block_is_wired_into_the_prompt():
     """接线：这个块必须真的拼进 planner prompt（写了函数不调用 = 能力空转）。"""
-    src = (ROOT / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
+    src = (ROOT / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
     assert "_declared_wait_block(scenario)" in src, "块没拼进 prompt"
     i = src.index("_declared_wait_block(scenario)")
     j = src.rindex("return (_OUTPUT_CONTRACT", 0, i)
@@ -224,7 +224,7 @@ def _fill_and_render(a: dict, scenario_text: str = "") -> str:
         `_render_assert` 的契约是「不写 refresh 就不出参数」（`test_wait_text_refresh_policy`
         的判据 2 守着）—— 两处职责不同，判据也得对着各自的入口测。
     """
-    from framework.tools.generate.generator import apply_kind_defaults, _render_assert
+    from framework.features.f02_semantic.generator_generate import apply_kind_defaults, _render_assert
     a = dict(a)
     apply_kind_defaults(a, scenario_text)
     a.setdefault("_payload_ref", "expect_0")
@@ -238,7 +238,7 @@ def _render_wait(a: dict) -> str:
         `datasets/<case_id>.json`），不是直接读 `expect` —— 一开始漏了这个键，
         渲染出来是「缺少 expect」的 fail 行，判据反而"看起来通过了相反的结论"。
     """
-    from framework.tools.generate.generator import _render_assert
+    from framework.features.f02_semantic.generator_generate import _render_assert
     a = dict(a)
     a.setdefault("_payload_ref", "expect_0")
     return "\n".join(_render_assert(a, {}))
@@ -266,7 +266,7 @@ def test_explicit_refresh_is_respected():
 
 def test_wait_polls_visible_matches_not_only_the_first():
     """等待断言必须**只认可见的匹配** —— demo 的隐藏 `<option>` 排在表格前面，只看 first 永远等不到。"""
-    trap = (ROOT / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+    trap = (ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
     i = trap.index("def _assert_wait_text")
     seg = "\n".join(l for l in trap[i:i + 2200].splitlines() if not l.lstrip().startswith("#"))
     assert "loc.first.is_visible()" not in seg, "又退回「只看第一个匹配」-> 隐藏项会永久挡住等待"

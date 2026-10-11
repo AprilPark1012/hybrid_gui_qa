@@ -18,9 +18,9 @@ import asyncio
 
 import pytest
 
-from framework.tools.common import config
-from framework.tools.explore import explorer
-from framework.tools.explore.explorer import AiExploreError, _ai_explore_async
+from framework.shared import config
+from framework.features.f02_semantic import explorer_explore as explorer
+from framework.features.f02_semantic.explorer_explore import AiExploreError, _ai_explore_async
 
 ITEMS = [{"semantic_name": "搜索", "role": "button", "name": "搜索", "test_id": "btn-search"}]
 

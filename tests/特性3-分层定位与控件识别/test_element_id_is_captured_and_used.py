@@ -21,11 +21,11 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-PROBE = REPO / "framework" / "tools" / "probe" / "probe.py"
-EMAP = REPO / "framework" / "tools" / "probe" / "element_map.py"
-BRIDGE = REPO / "framework" / "tools" / "probe" / "locator_bridge.py"
-SNAP = REPO / "framework" / "tools" / "generate" / "probe_snapshot.py"
-GEN = REPO / "framework" / "tools" / "generate" / "generator.py"
+PROBE = REPO / "framework" / "features" / "f03_locate" / "probe.py"
+EMAP = REPO / "framework" / "features" / "f03_locate" / "element_map.py"
+BRIDGE = REPO / "framework" / "features" / "f03_locate" / "locator_bridge_locate.py"
+SNAP = REPO / "framework" / "features" / "f05_layers" / "probe_snapshot_generate.py"
+GEN = REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py"
 
 
 def _code(path: Path) -> str:
@@ -47,13 +47,13 @@ def test_probe_captures_element_id():
 # ---------------- ② 数据模型 + 快照白名单 ----------------
 
 def test_element_ref_has_element_id_field():
-    from framework.tools.probe.element_map import ElementRef
+    from framework.features.f03_locate.element_map import ElementRef
     assert "element_id" in ElementRef.__dataclass_fields__, "ElementRef 缺 element_id 字段"
 
 
 def test_from_dict_tolerates_missing_element_id():
     """老产物 / 老录像没有这个键 -> 留 None，绝不 KeyError（向后兼容铁律）。"""
-    from framework.tools.probe.element_map import ElementRef
+    from framework.features.f03_locate.element_map import ElementRef
     el = ElementRef.from_dict({"semantic_name": "x", "role": "button"})
     assert el.element_id is None
     el2 = ElementRef.from_dict({"semantic_name": "x", "element_id": "btn-a"})

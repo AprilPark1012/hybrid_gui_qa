@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import pytest
 
-from framework.tools.generate import generator as G
+from framework.features.f02_semantic import generator_generate as G
 
 
 def _render(a: dict) -> str:

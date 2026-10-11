@@ -11,7 +11,7 @@
 
 ## 契约面（新建能力，本判据锁契约名与行为）
 
-`framework/core/gates.py`：
+`framework/features/f09_gate/gates.py`：
 
     @dataclass
     class GateResult:
@@ -89,18 +89,18 @@ def _module_exists(name: str) -> bool:
 
 def _gates_mod():
     """拿 core.gates（不存在就 skip，避免 import 崩成不合格红态）。"""
-    if not _module_exists("framework.core.gates"):
-        pytest.skip("framework.core.gates 尚未实现（见 test_gate_contract_module_exists）")
-    # [!] 必须走**运行期字符串导入**：写成静态 `from framework.core import gates` 会被
+    if not _module_exists("framework.features.f09_gate.gates"):
+        pytest.skip("framework.features.f09_gate.gates 尚未实现（见 test_gate_contract_module_exists）")
+    # [!] 必须走**运行期字符串导入**：写成静态 `from framework.features.f09_gate import gates` 会被
     #     test_import_targets（全仓 import 解析契约）抓到 -> 判据自己制造一条红（片 0 实测踩到）。
     import importlib
-    return importlib.import_module("framework.core.gates")
+    return importlib.import_module("framework.features.f09_gate.gates")
 
 
 def test_gate_contract_module_exists():
     """契约模块必须存在（统一契约 + 全量注册表的唯一住址）。"""
-    assert _module_exists("framework.core.gates"), (
-        "缺 framework/core/gates.py：统一 Gate 协议 + 全量注册表 + GateResult 应住这里；"
+    assert _module_exists("framework.features.f09_gate.gates"), (
+        "缺 framework/features/f09_gate/gates.py：统一 Gate 协议 + 全量注册表 + GateResult 应住这里；"
         "现状闸门散在 cli.py/generator.py/case_builder.py/explorer.py 四处，"
         "结果靠模块级全局传递（cli.py:767-786 直读 explorer 私有名）")
 
@@ -154,7 +154,7 @@ def test_gate_files_live_with_their_feature():
 
 def test_no_cross_module_private_globals_for_gate_results():
     """结果不许再靠模块级全局跨模块传递（现状 cli.py 直读 explorer 私有名）。"""
-    src = (REPO / "framework" / "cli.py").read_text(encoding="utf-8", errors="replace")
+    src = (REPO / "framework" / "features" / "f10_cli" / "cli.py").read_text(encoding="utf-8", errors="replace")
     for bad in ("_HARDCODED_NOTES", "SEMANTIC_MISMATCH_NOTES",
                 "_REQUIRED_COVERAGE_NOTES", "_ROW_SCOPE_NOTES"):
         assert bad not in src, (

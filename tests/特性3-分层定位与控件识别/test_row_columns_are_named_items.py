@@ -28,8 +28,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from framework.tools.explore import explorer  # noqa: E402
-from framework.tools.probe import row_columns as _row_columns_mod  # noqa: E402
+from framework.features.f02_semantic import explorer_explore as explorer  # noqa: E402
+from framework.features.f03_locate import row_columns_locate as _row_columns_mod  # noqa: E402
 
 # 2026-10-11 V8.4.6：这个函数已从 explorer **搬进 probe 层**（`probe/row_columns.py`）——
 #   原因：generate 的现场探测也要造这些条目，而 generate **不能** import explorer
@@ -43,8 +43,8 @@ EXPLORER_SRC = Path(explorer.__file__).read_text(encoding="utf-8")
 
 def test_row_columns_helper_is_single_source_for_both_paths():
     """唯一入口（铁律 13）：explore 与 generate 现场探测必须用**同一个**函数对象。"""
-    gsrc = (ROOT / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
-    assert "from framework.tools.probe.row_columns import row_columns_to_items" in gsrc, \
+    gsrc = (ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
+    assert "from framework.features.f03_locate.row_columns_locate import row_columns_to_items" in gsrc, \
         "generate 的现场探测没走唯一入口（会与 explore 造出不同的行内列控件名）"
     assert explorer.row_columns_to_items is _row_columns_mod.row_columns_to_items, \
         "explorer 与 probe 层的行内列构造函数不是同一个对象（说明存在两份实现）"

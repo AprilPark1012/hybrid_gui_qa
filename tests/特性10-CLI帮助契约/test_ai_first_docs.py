@@ -18,7 +18,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 README = REPO / "README.md"
-CLI = REPO / "framework" / "cli.py"
+CLI = REPO / "framework" / "features" / "f10_cli" / "cli.py"
 HTML_GEN = REPO / "build_tools" / "build_html.py"
 
 

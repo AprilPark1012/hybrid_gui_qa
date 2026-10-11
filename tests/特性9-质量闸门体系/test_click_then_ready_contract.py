@@ -22,9 +22,9 @@ from __future__ import annotations
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-SRC = (REPO / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+SRC = (REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
 # P22 批 3：等待逻辑的**唯一实现**在框架侧（生成物模板只转发）-> 判据钉在这里
-WAITS = (REPO / "framework" / "tools" / "run" / "waits.py").read_text(encoding="utf-8")
+WAITS = (REPO / "framework" / "shared" / "waits_run.py").read_text(encoding="utf-8")
 READY_TOKEN = "body[data-hybrid-ready='1']"
 
 
@@ -58,13 +58,13 @@ def test_act_click_waits_after_action():
 def test_wait_uses_navigation_event_not_sleep():
     """判据 2/3（正向）：唯一实现用导航事件判定 + 就绪契约与 `_goto` 同源。"""
     assert _has_nav_event_wait(WAITS), (
-        "框架侧 `framework/tools/run/waits.py` 必须用 framenavigated 事件判定导航、并等 "
+        "框架侧 `framework/shared/waits_run.py` 必须用 framenavigated 事件判定导航、并等 "
         f"{READY_TOKEN}（与 _goto 同源）；用固定 sleep 顶替是不允许的")
 
 
 def test_template_forwards_instead_of_reimplementing():
     """判据 3b：模板里**不许有第二份实现**（只许转发到框架唯一实现）。"""
-    assert "from framework.tools.run.waits import wait_after_action" in SRC, (
+    assert "from framework.shared.waits_run import wait_after_action" in SRC, (
         "生成物模板没有转发到框架唯一实现 -> 又变成两份实现，迟早漂移")
     assert not _template_has_second_impl(SRC), (
         "生成物模板里出现了 framenavigated 等待实现 -> 第二份实现，违反单一来源")
@@ -112,7 +112,7 @@ def test_relative_goto_url_is_absolutized():
     playwright 只吃绝对 URL -> `Cannot navigate to invalid URL` 整条红，报错完全指不到
     「要补 base」这件事（排查绕了一圈）。渲染期补齐 + harness 相对地址报**看得懂的错**。
     """
-    from framework.tools.generate.generator import _abs_url
+    from framework.features.f02_semantic.generator_generate import _abs_url
 
     # 正向：相对 -> 按 base 补齐（**base 是文件地址时按 RFC 丢最后一段**，见下）
     assert _abs_url("order_new.html?contract_no=HT-1001", "http://localhost:8000") == \

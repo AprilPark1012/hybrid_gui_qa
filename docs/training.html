@@ -1090,7 +1090,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       ├─ prompt = explorer.<b>_build_planner_prompt()</b>
       │      目标URL ->「场景原话」->【页面背景 page/preconditions/business_context】
       │      ->【断言护栏 assert_guard】-> 控件清单 items[:60] -> DOM 上下文[:80] -> 规则 1~8
-      ├─ obj = framework/tools/common/config.<b>llm_from_env()</b> -> browser_use.llm.<b>ChatDeepSeek</b>
+      ├─ obj = framework/shared/config.<b>llm_from_env()</b> -> browser_use.llm.<b>ChatDeepSeek</b>
       ├─ 重试≤3: r = await obj.<b>ainvoke(msgs, output_format=_PlanModel)</b>   [here] function calling 结构化步骤
       │      └─ explorer.<b>_plan_to_steps(plan, items)</b> -> <b>_match_item()</b>
       │             (1)精确 (2)规范化唯一模糊对齐 (3)都不中->打印告警+可用清单名（不静默丢元素）
@@ -1263,7 +1263,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 <!-- ========== 6. 框架特性设计实现说明（按特性/子特性 · 以代码为基准） ========== -->
 <section>
   <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 49 子特性）</h2>
-  <p class="sec-sub">第 5 章 5.2 讲「一条主线上有什么」；本章按 <b>特性 -&gt; 子特性</b> 横向拆开：每个子特性给「<b>关键实现逻辑</b> + <b>函数调用关系</b> + <b>证据（判据文件）</b>」，并配一张<b>图例</b>。编号 / 名称 / 目标 / 判据归属<b>直接读单一来源</b> <span class="code-inline">framework/tools/spec/feature_spec.py</span> 渲染（它同时被 <span class="code-inline">build_tools/build_feature_map.py</span> 渲染成 <span class="code-inline">docs/feature_map.md</span>）；实现逻辑以 <span class="code-inline">framework/</span> 下的<b>真实代码为准</b>。</p>
+  <p class="sec-sub">第 5 章 5.2 讲「一条主线上有什么」；本章按 <b>特性 -&gt; 子特性</b> 横向拆开：每个子特性给「<b>关键实现逻辑</b> + <b>函数调用关系</b> + <b>证据（判据文件）</b>」，并配一张<b>图例</b>。编号 / 名称 / 目标 / 判据归属<b>直接读单一来源</b> <span class="code-inline">framework/features/f09_gate/feature_spec.py</span> 渲染（它同时被 <span class="code-inline">build_tools/build_feature_map.py</span> 渲染成 <span class="code-inline">docs/feature_map.md</span>）；实现逻辑以 <span class="code-inline">framework/</span> 下的<b>真实代码为准</b>。</p>
   <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 49 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
   <div class="card"><h4 style="margin-bottom:8px">图例 0 · 端到端函数调用地图（cli 是总入口，三条链共用同一条确定性下游）</h4><svg viewBox="0 0 920 252" width="100%" height="auto" role="img" style="background:#0d1117;border-radius:10px;padding:4px;display:block"><defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#64748b"/></marker></defs><rect x="40" y="14" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="40" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">python -m framework.cli  ->  main()</text><rect x="40" y="76" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="102" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_explore()  ->  explorer.ai_explore()</text><rect x="40" y="138" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="164" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_generate()  ->  generator.generate_scripts()</text><rect x="40" y="200" width="560" height="42" rx="9" fill="#0f2a20" stroke="#22c55e" stroke-width="1.2"/><text x="320" y="226" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_run()  ->  pytest  ->  生成物 _harness._act / _loc / _assert_*</text><line x1="320" y1="56" x2="320" y2="74" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="118" x2="320" y2="136" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="180" x2="320" y2="198" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><rect x="648" y="86" width="252" height="94" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="110" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">probe 层（只描述、不定位）</text><text x="774" y="132" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">scan_page / probe_page</text><text x="774" y="150" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">expandable / editable / modal</text><text x="774" y="168" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">anchor + path（容器下钻）</text><line x1="648" y1="110" x2="602" y2="104" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><line x1="648" y1="158" x2="602" y2="162" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><rect x="648" y="198" width="252" height="46" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="218" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">locator_bridge.resolve_locator()</text><text x="774" y="235" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">Tier1 精确 -> Tier2 指纹（唯一性校验）</text><line x1="648" y1="221" x2="602" y2="221" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/></svg></div>
   <div class="card">
@@ -1759,7 +1759,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
          <code>subprocess.run(..., capture_output=True, text=True)</code> 却<b>没指定 encoding</b>，
          于是父进程按系统默认编码（cp936/gbk）去解码子进程的 <b>UTF-8 中文输出</b>。<br>
          <b>规矩</b>：跨进程 / 落盘文本一律显式 UTF-8——
-         收子进程输出用 <code>framework.tools.common.text_io.run_capture()</code>，
+         收子进程输出用 <code>framework.shared.text_io.run_capture()</code>，
          给子进程注入口径用 <code>utf8_env()</code>，本进程 stdio 用 <code>force_stdio()</code>
          （<code>cli.main()</code> 已经默认调了）。<code>tests/特性9-质量闸门体系/test_utf8_io.py</code> 会做 AST 全仓扫描，
          再写出「靠默认编码」的写法直接测试失败。</p></div>
@@ -2021,7 +2021,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         <li><b>两处调用、一段判据</b>：explore 产出成型时补（<code>row_index</code> 直接落进用例 JSON，可审）+ generate 渲染入口补（手搓用例与 AI 用例<b>共同的收口</b>）</li>
         <li><b>只认精确键</b>：兜底不走基名兜底 —— 实测「开票页的 <code>单位</code>/<code>数量</code>」会被订单详情页的同名重复控件带下水、补出错误的 <code>-1</code>；判据（只读报红）误伤看得见，兜底是<b>直接改用例</b>，必须宁漏不误伤</li>
         <li><b>真 bug 修复（现场探测没对齐场景约定）</b>：全新环境（没有 element_map 落盘）跑 <code>cli all</code> 时，<code>generate</code> 的<b>两条现场探测路径都没应用</b>场景声明的 <code>probe_pre</code>（explore 侧 2026-10-10 就修了）-> 探测还是超管身份 -> 详情页「编辑/新增行」置灰（只 force 点一下、不变状态）-> <b>编辑态控件根本没渲染</b> -> 7 个语义名探不到 -> <code>映射质量闸拦下：拒绝产出任何产物</code>（用户 2026-10-11 实测复现）。修法：两条路径探测前都走<b>同一个引擎</b> <code>run_pre_actions()</code> 应用 <code>probe_pre</code> （用例自带优先、其次回读场景 yml），并把探测页数由 5 页一并补齐</li>
-        <li><b>行内列控件（`_当前行`）收敛成唯一入口</b>：<code>_row_columns_to_items</code> 从 <code>explorer</code> 搬到 <code>framework/tools/probe/row_columns.py</code> —— explore 与 generate 现场探测<b>共用同一份</b>（generate 不能 import explorer：explorer 依赖可选包 browser-use，会破坏「无 AI 依赖也能 generate/run」）。实测效果：缺失项 <b>7 个 -> 1 个 -> 0 个</b>；订单列表页探测覆盖 107 -> <b>155</b> 个控件（含弹层 52 个）</li>
+        <li><b>行内列控件（`_当前行`）收敛成唯一入口</b>：<code>_row_columns_to_items</code> 从 <code>explorer</code> 搬到 <code>framework/features/f03_locate/row_columns_locate.py</code> —— explore 与 generate 现场探测<b>共用同一份</b>（generate 不能 import explorer：explorer 依赖可选包 browser-use，会破坏「无 AI 依赖也能 generate/run」）。实测效果：缺失项 <b>7 个 -> 1 个 -> 0 个</b>；订单列表页探测覆盖 107 -> <b>155</b> 个控件（含弹层 52 个）</li>
         <li><b>字段口径收敛成一处</b>：<code>ROW_LOCATOR_FIELDS</code> + <code>has_row_locator()</code>，判据与兜底共用（此前两处各写一份 = 日后只改一处）</li>
         <li><b>真 bug 修复</b>：模板渲染出 <code>_act_row(...)</code> 但 harness import 名单<b>漏了它</b> -> 生成期全绿、真跑 <code>NameError</code>；并加判据 <code>test_generated_case_scripts_import_every_harness_helper_they_call</code> 锁住「模板调用 vs import 名单」成对维护</li>
         <li><b>口径正名（A+B）</b>：培训页第 1 章原先写「Browser Use（AI）/Browser Use 负责思考」-> 读者以为框架用 browser-use 的 <b>Agent</b> 驱动浏览器。事实是只用它的 <b>LLM 客户端</b>（<code>browser_use.llm.ChatDeepSeek</code>）直连编排、<b>从未 import Agent</b>，且 <code>browser-use</code> 是<b>可选</b>依赖。已改培训页 + README，并新增「四段闭环」证据表（浏览器出证据 -> LLM 出编排 -> 确定性执行 -> 浏览器裁决）与「命令 -> 职责 -> 是否用 AI」对照表</li>
@@ -2076,7 +2076,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         <li><b>特性2 一分为二</b>：特性2 语义识别与步骤编排 / 特性3 分层定位与控件识别；原 3~9 顺延为 4~10</li>
         <li><code>tests/</code> 按 10 个特性重组（<code>git mv</code> 保留历史，<b>90 个用例文件一个没丢</b>）</li>
         <li><b>错归类归位</b>：<code>test_row_cell_*</code>（2 个）从「三层分离」移到「分层定位」，<code>test_select_by_index</code> 从「质量闸门」移到「分层定位」</li>
-        <li><b>新增单一来源</b> <code>framework/tools/spec/feature_spec.py</code>：10 特性 / 43 子特性 / 每个子特性挂哪些用例</li>
+        <li><b>新增单一来源</b> <code>framework/features/f09_gate/feature_spec.py</code>：10 特性 / 43 子特性 / 每个子特性挂哪些用例</li>
         <li><b>新增生成器</b> <code>build_tools/build_feature_map.py</code> -> <code>docs/feature_map.md</code>（含统计）</li>
         <li><b>新增判据</b> <code>test_feature_spec_contract.py</code> 8 条：规格与磁盘<b>双向一致</b>，负向自证 4/4 奏效</li>
         <li><code>test_test_layout_contract.py</code> 的特性夹清单改为<b>从规格读</b>，去掉写死的 <code>range(1, 10)</code></li>
@@ -2174,7 +2174,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
         <li><b>本版不含框架特性实现的变更</b> —— 是测试体系与验证机制的升级（9 特性重组 / 验证闭环 / 报告工具）。</li>
-        <li><b>遗留</b>：特性5「自愈闭环 Healer」<b>零判据</b>（有实现 <code>framework/tools/run/healer.py</code>、无任何行为判据）-> 已在 <code>tests/特性6-自愈闭环Healer/UNVERIFIED.md</code> 显式标记（对应遗留项 L11）；L22（慢目标下行区就绪信号缺失）仍是 <code>verify_slow_target</code> 的唯一红。</li>
+        <li><b>遗留</b>：特性5「自愈闭环 Healer」<b>零判据</b>（有实现 <code>framework/features/f06_healer/healer_run.py</code>、无任何行为判据）-> 已在 <code>tests/特性6-自愈闭环Healer/UNVERIFIED.md</code> 显式标记（对应遗留项 L11）；L22（慢目标下行区就绪信号缺失）仍是 <code>verify_slow_target</code> 的唯一红。</li>
         <li><b>验证真值（本机实测）</b>：一类 <b>677 passed / 0 failed</b>（约 28s）· 二类 <b>15 通过 / 1 失败（L22）</b>（约 11 min）· 场景2 E2E <b>6/6 通过</b> -> 合计 <b>≈12 分钟</b>（上限 30 分钟 v）。</li>
       </ul></div>
     </div>
@@ -2288,7 +2288,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <div class="cl-head"><span class="cl-ver">V8.2.2</span><span class="cl-date">2026-09-23</span><span class="cl-tag">上一版本</span><span class="cl-theme">开箱即用：<b>浏览器预检</b>（缺了就给人话 + 一行修复命令）· 培训页补「装环境三件事」</span></div>
       <p class="cl-sum">真机踩坑驱动的一版 —— 在新机器（Windows 首次部署）上跑 <code>explore</code> / <code>generate</code> / <code>run</code>，三条命令<b>各炸一次</b>，抛的都是 Playwright 原始异常栈：<code>BrowserType.launch: Executable doesn't exist at …ms-playwright\chromium_headless_shell-1243\…</code>。真因是<b>没装浏览器</b>（依赖装完 ≠ 浏览器装好），但报错完全不提「该跑哪条命令」。<br>本版把这件事从“靠经验”变成“框架自己会说话”：<b>开跑前先探一次浏览器</b>，缺了当场给<b>一行修复命令</b> + exit 2；培训页也把这一步写进必做三件事。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">[go] 新增</span><ul>
-        <li><b>浏览器预检</b>（<code>framework/tools/common/browser.py::ensure_browser_installed</code>）：<code>probe / generate / explore / run / all</code> 开跑前探一次 chromium —— 缺浏览器（或 playwright 升级后浏览器没跟着下）-> 打印<b>缺什么 + 期望路径 + 当前 playwright 版本 + 一行修复命令</b>，<b>exit 2</b>；绝不把 Playwright 的原始异常栈甩给用户</li>
+        <li><b>浏览器预检</b>（<code>framework/shared/browser.py::ensure_browser_installed</code>）：<code>probe / generate / explore / run / all</code> 开跑前探一次 chromium —— 缺浏览器（或 playwright 升级后浏览器没跟着下）-> 打印<b>缺什么 + 期望路径 + 当前 playwright 版本 + 一行修复命令</b>，<b>exit 2</b>；绝不把 Playwright 的原始异常栈甩给用户</li>
         <li><b>可跳过</b>：<code>HYBRID_SKIP_BROWSER_CHECK=1</code>（已确认环境可用时用）</li>
         <li><b>培训页 9.0「装环境三件事」</b>：venv -> 依赖 -> <b>浏览器</b>（标注“最容易漏、漏了必报错”）+ 自检命令（<code>playwright install --list</code> / <code>cli probe</code>）</li>
         <li><b>培训页「报错 -> 怎么办」对照表</b>：Executable doesn't exist / revision 号变了 / ModuleNotFoundError / Target crashed（内存）/ Windows 控制台乱码，逐条给原因与改法</li>
@@ -2329,7 +2329,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         <li><b>判据规则 (5)(6)</b>（<code>tests/_helpers/testid_policy.py</code>）：交互控件（<code>input/select/textarea/button/a/label/option</code>）<b>无论层级</b>一律不许有 <code>testid</code>；弹层<b>内部</b>（非容器本身）一律不许；<b>只有顶层容器</b>可保留埋点</li>
         <li><b>字段步定位</b>：工具栏「…」按钮这类<b>无文本、无埋点</b>的入口，用「同容器内相邻字段（输入框/下拉）的语义」作为定位信号，并能<b>下钻</b>到目标控件</li>
         <li><b><code>title</code> 消歧</b>：同名控件/裸图标按钮按 <code>title</code> 或邻近文本区分，歧义时<b>如实失败</b>（禁止按顺序猜第一个）</li>
-        <li><b>元素身份</b>= 容器锚点 + 相对路径 + <code>title</code>/邻近文本；新增 <code>framework/tools/probe/semantic_locate.py</code>（语义定位）</li>
+        <li><b>元素身份</b>= 容器锚点 + 相对路径 + <code>title</code>/邻近文本；新增 <code>framework/features/f03_locate/semantic_locate.py</code>（语义定位）</li>
         <li><b>弹层收尾兜底</b> <code>_close_open_modal()</code>：框架自己开的弹层自己关，不让它挡住后续点击</li>
         <li><b>二类预算与并发</b>：单脚本预算 600s-><b>1200s</b>（<code>--timeout-s</code> 可调；长用例此前是被预算杀掉的，不是断言失败）；新增 <code>--jobs N</code> 并发（默认 1 与原行为一致）—— <b>浏览器脚本必须过内存闸</b>（≥550MB × 已跑浏览器数，差一点绝不硬闯）、<b>独占屏障</b>（会重写共享产物的脚本独占，跑时谁也别起、要起时等场上清空）</li>
         <li><b>产物质检</b>：<code>generate</code> 生成后<b>自洽闸</b>（引用了不存在的数据集 -> 抛 <code>DanglingDatasetError</code>、<b>拒绝落盘</b>）+ <b>陈旧数据集自愈</b>；二类 runner <b>每个脚本之间</b>做产物质检 -> 弄脏产物的脚本<b>当场点名</b>；每个脚本的<b>完整日志落盘</b> <code>log/verify_logs/</code>（红项可自取证据）</li>
@@ -2375,11 +2375,11 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <div class="cl-head"><span class="cl-ver">V8.0</span><span class="cl-date">2026-09-21</span><span class="cl-tag">上一版本</span><span class="cl-theme">结构重构：framework/ 按业务流程分层（破坏性变更）· 开发期工具进 build_tools/</span></div>
       <p class="cl-sum">本版<b>不加新能力</b>，只把 <code>framework/</code> 从「平铺 17 个模块」改成<b>按业务流程分层</b>，让目录结构自己讲清链路顺序（探测 -> AI 识别 -> 生成 -> 执行）。CLI 参数 / 断言体系 / 报告形态 / 用例格式<b>零变化</b>。[!] <b>破坏性变更</b>：模块 import 路径变了，且<b>不留兼容 shim</b>（升级请读下文「升级须知」）。</p>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">[tool] 改进</span><ul>
-        <li><b>分层结构</b>：<code>framework/tools/{common,probe,explore,generate,run}/</code> —— <code>common</code>（config/text_io/limits/retention/browser/target_probe）· <code>probe</code>（probe/element_map/locator_bridge）· <code>explore</code>（explorer/llm_cassette）· <code>generate</code>（generator/case_builder/scenario/data_driven）· <code>run</code>（runner/healer）；<code>framework/</code> 只留 <code>cli.py</code> + <code>tools/</code></li>
-        <li><b>导入路径变更（唯一破坏点）</b>：<code>from framework.probe import …</code> -> <code>from framework.tools.probe.probe import …</code>（17 个模块同构映射）；<code>scripts/</code> 生成物已重建为新路径</li>
-        <li><b>开发期工具进 <code>build_tools/</code></b>（原仓库根 <code>tools/</code>）：打包器 / 培训页生成器 / 离线一键脚本 —— 避免与运行期的 <code>framework/tools/</code> 混淆</li>
+        <li><b>分层结构</b>：<code>framework/features/f01..f11/</code>（按**特性**聚合，波浪名后缀标阶段：<code>*_explore/_probe/_generate/_run/_verify</code>） + <code>framework/shared/</code>（跨特性基础设施）—— <code>f03_locate</code>（probe/element_map/locator_bridge/anchor/scan_pages …）· <code>f02_semantic</code>（explorer/generator/case_builder/scenario）· <code>f08_replay</code>（llm_cassette）· <code>f09_gate</code>（gates/feature_spec）· <code>f07_concurrency</code>（limits/retention）· <code>f06_healer</code>（healer/runner）；<code>framework/</code> 只留 <code>cli.py</code>（薄壳）+ <code>features/</code> + <code>shared/</code></li>
+        <li><b>导入路径变更（唯一破坏点）</b>：<code>from framework.probe import …</code> -> <code>from framework.features.f03_locate.probe import …</code>（17 个模块同构映射）；<code>scripts/</code> 生成物已重建为新路径</li>
+        <li><b>开发期工具进 <code>build_tools/</code></b>（原仓库根 <code>tools/</code>）：打包器 / 培训页生成器 / 离线一键脚本 —— 避免与运行期的 <code>framework/</code> 混淆</li>
         <li><b>依赖方向实测无环</b>：<code>common <- probe <- explore <- generate</code>、<code>common <- run</code>、<code>cli -> 全部</code>（AST 扫描 + import 目标存在性校验，一次抓出所有漏改）</li>
-        <li>版本号单一来源位置随之变为 <code>framework/tools/common/config.py::VERSION_SOURCE</code>（仍是<b>一处定义</b>，<code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 共用）</li>
+        <li>版本号单一来源位置随之变为 <code>framework/shared/config.py::VERSION_SOURCE</code>（仍是<b>一处定义</b>，<code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 共用）</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">[bug] 修复</span><ul>
         <li><b>__file__ 层级推导随结构漂移</b>：<code>config.py::BASE</code> 原按 <code>parent.parent</code> 推目录，模块挪深两层后会<b>静默指错</b>（不报错、只指到错地方）-> 改为「向上找 <code>pyproject.toml</code>」的标记法</li>
@@ -2429,7 +2429,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">[tool] 改进</span><ul>
         <li><b>仓库结构三层分离</b>：框架代码在仓库；项目台账与设计文档移出仓库（住 skill）；仓库 <code>docs/</code> 现在<b>只放唯一的对外文档</b> <code>training.html</code></li>
         <li><b><code>tools/</code> = 框架自己的工具目录</b>：<code>build_html.py</code> 从仓库根挪入，与交付打包器 <code>pack_release.py</code> 同列；仓库根不再散放脚本</li>
-        <li><b>版本号来源路径收敛为一处</b>：<code>framework/tools/common/config.py::VERSION_SOURCE</code> —— <code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 三个读者共用（原先三处各写一遍；漏改一处 <code>--version</code> 会静默变 unknown）</li>
+        <li><b>版本号来源路径收敛为一处</b>：<code>framework/shared/config.py::VERSION_SOURCE</code> —— <code>cli</code> / <code>llm_cassette</code> / <code>pack_release</code> 三个读者共用（原先三处各写一遍；漏改一处 <code>--version</code> 会静默变 unknown）</li>
         <li>README / 培训页 / 目录树同步，并把「逐条列文件名与数字」改成<b>抗腐烂写法</b>（减少文档漂移面）</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">[bug] 修复</span><ul>
@@ -2628,14 +2628,14 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         <li>测试基线：<b>16 用例全绿</b>（12 条手写 + 4 条 AI）；框架自测 <b>86 条</b>；三个 verify 脚本全过（跨页四段 / 弹层回归 / 断言正负向）</li>
         <li>反证留痕：塞一条脏数据 + <code>HYBRID_RESET_URL=off</code> 跑跨页用例 -> 「20 行」断言 <b>FAILED</b>（说明复位确实在起作用）；看门狗用 <code>HYBRID_CASE_TIMEOUT=1</code> 实测 -> 进程 exit 1 + 调用栈落盘</li>
         <li>已知待办（诚实清单）：AI 给「返回列表」产的 url 断言只是 host（两页 URL 都含 -> 等于没验换页）—— <b>2026-09-17 已修掉</b>：提示词禁止 host 片段 + 质量闸红线（拒绝落盘/生成）+ 用例改「目标页独有证据」；跨页流程 D1~D4（pages 声明 / 原地断言 <code>after_step</code> / 跨页重名消解 / 换页证据闸）已全部落地；场景 <code>data</code> 参数化仍只解析不展开</li>
-        <li>文档口径修正：生成物 <code>scripts/conftest.py</code> 会 <code>import framework.tools.generate.data_driven / framework.tools.run.healer</code> -> <b>要在项目内运行</b>，不是「拷到哪儿都能独立跑」</li>
+        <li>文档口径修正：生成物 <code>scripts/conftest.py</code> 会 <code>import framework.features.f05_layers.data_driven_generate / framework.features.f06_healer.healer_run</code> -> <b>要在项目内运行</b>，不是「拷到哪儿都能独立跑」</li>
       </ul></div>
     </div>
     <div class="card cl">
       <div class="cl-head"><span class="cl-ver">V7.3</span><span class="cl-date">2026-09-13</span><span class="cl-tag">上一版本</span><span class="cl-theme">统一 UTF-8 · 跨平台文本口径</span></div>
       <p class="cl-sum">修掉一个「在中文 Windows 上必崩」的编码缺陷：`explore --ai` 默认带 --verify，而 --verify 里用 subprocess 收子进程输出时没指定编码 -> 父进程按系统默认编码（中文 Windows = cp936/gbk）去解码子进程的 <b>UTF-8 中文输出</b>，报 `UnicodeDecodeError: 'gbk' codec can't decode byte 0xbb in position 13`（用例和脚本都生成了，偏偏校验这一步炸）。现在全链路显式 UTF-8，并且本机 <b>用 zh_CN.gbk locale 把原始报错复现到「同一个字节、同一个位置」</b>后再修，修完同一条命令实测通过。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">[go] 新增</span><ul>
-        <li><b>framework/tools/common/text_io.py</b>：跨平台文本口径的唯一入口 —— `utf8_env()`（给子进程注入 PYTHONUTF8/PYTHONIOENCODING）、`force_stdio()`（本进程 stdio 转 UTF-8 + Windows 控制台代码页切 65001）、`run_capture()`（收子进程输出，显式 UTF-8 解码 + errors=replace）</li>
+        <li><b>framework/shared/text_io.py</b>：跨平台文本口径的唯一入口 —— `utf8_env()`（给子进程注入 PYTHONUTF8/PYTHONIOENCODING）、`force_stdio()`（本进程 stdio 转 UTF-8 + Windows 控制台代码页切 65001）、`run_capture()`（收子进程输出，显式 UTF-8 解码 + errors=replace）</li>
         <li><b>tests/特性9-质量闸门体系/test_utf8_io.py</b>（10 条）：含<b>用 zh_CN.gbk locale 精确复现AprilPark1012那条报错</b>（断言里就写着 `byte 0xbb in position 13`）+ <b>AST 全仓扫描</b>（谁再写出「靠系统默认编码」的 subprocess/read_text/open 就直接测试失败）</li>
         <li>生成的 scripts/conftest.py 自带 UTF-8 自举：裸跑 pytest（不经 cli）也不会因中文/v 崩或乱码</li>
         <li>limits.py 在 Windows 上用 GlobalMemoryStatusEx 读可用内存（以前读不到 /proc 就恒判 1 并发）</li>
@@ -2715,7 +2715,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">[go] 新增</span><ul>
         <li>场景库 <b>scenarios/*.yml</b>（一个文件 = 一个场景）+ 三个入口：<b>--scenario</b>（内联）/<b>--scenario-file</b>/<b>--scenario-dir --tag --limit</b>（三者互斥，参数错 exit 2）</li>
         <li><b>explore --ai 默认落 cases/ai_&lt;id&gt;_&lt;ts&gt;.json</b>（--no-cases 可关）；<b>--verify</b> 交付即验证：落盘后立刻 generate + pytest 单跑，FAILED -> exit 3（日志 output/verify/）</li>
-        <li><b>cli prune</b> 归档保留策略（framework/tools/common/retention.py，HYBRID_KEEP_SNAPSHOTS 默认 20；explore/probe 结束自动静默执行）</li>
+        <li><b>cli prune</b> 归档保留策略（framework/features/f07_concurrency/retention_run.py，HYBRID_KEEP_SNAPSHOTS 默认 20；explore/probe 结束自动静默执行）</li>
         <li><b>调试开关 --debug</b>（别名 --headed）：开了就「看得见」——有屏幕弹 Chromium 一步步跑；无屏幕自动录视频(webm) + <b>逐步截图</b> + trace 回放。配套 --case（只跑一条）/ --slowmo（放慢）</li>
         <li><b>资源安全 P0</b>：limits.safe_workers() 按 MemAvailable 自动降并发 + browser.py 收敛启动参数 + 日志 run-id 隔离</li>
         <li>本文档新增「版本与更新记录」；第 4 节新增<b>函数级调用链路图</b>（图 A 图形化泳道图 + 图 B 明细）</li>

@@ -22,7 +22,7 @@ import ast
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-GENERATOR = REPO / "framework" / "tools" / "generate" / "generator.py"
+GENERATOR = REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py"
 
 
 def _src() -> str:
@@ -72,7 +72,7 @@ def test_render_case_without_value_does_not_raise():
     """
     import sys
     sys.path.insert(0, str(REPO))
-    from framework.tools.generate.generator import _add_payload_refs
+    from framework.features.f02_semantic.generator_generate import _add_payload_refs
 
     case = {
         "case_id": "t_no_value",

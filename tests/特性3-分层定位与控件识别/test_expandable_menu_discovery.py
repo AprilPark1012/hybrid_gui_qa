@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import pytest
 
-from framework.tools.probe.expandable import pick_expandable_opener
+from framework.features.f03_locate.expandable_probe import pick_expandable_opener
 
 
 def _node(key, tag, *, visible, interactive=False, contains_interactive=False,

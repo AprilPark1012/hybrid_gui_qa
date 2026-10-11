@@ -247,7 +247,7 @@ def test_generated_artifacts_are_syntactically_valid():
        （转发层），两个都判；(2) 磁盘产物本身（共享层 + 每一条用例模块）。
     """
     import ast
-    from framework.tools.generate import generator as G
+    from framework.features.f02_semantic import generator_generate as G
     ast.parse(G._render_harness(), filename="<渲染出的 _harness>")
     ast.parse(G._render_generated_conftest(), filename="<渲染出的 conftest>")
     gen = _gen_dir()

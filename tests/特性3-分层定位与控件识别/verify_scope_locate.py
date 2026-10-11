@@ -7,7 +7,7 @@ demo 又几乎每个控件都埋了 -> **这条能力从来没被真实触发过
 本脚本就是它的判据：用**零 testid 的夹具页**（`tests/_runner/fixtures/zero_testid_page.html`）当真环境。
 
 **被测契约（批 2/3 要实现）**：
-    framework.tools.probe.scope_locate(page, anchor, path) -> dict
+    framework.features.f03_locate.scope_locate(page, anchor, path) -> dict
       anchor = {"kind": "table|dialog|region|form", "by": "test_id|heading|aria_label|role", "value": ...}
       path   = [{"axis": "row", "by": "text|nth",  "value": ...},
                 {"axis": "col", "by": "header|field|index", "value": ...},
@@ -27,7 +27,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "tests" / "_helpers"))
-from framework.tools.common.text_io import force_stdio          # noqa: E402
+from framework.shared.text_io import force_stdio          # noqa: E402
 
 force_stdio()
 
@@ -58,7 +58,7 @@ def main() -> int:
     # （tests/特性9-质量闸门体系/test_import_targets.py）报「import 目标不存在」——那会掩盖真正的搬家漏改，属于污染判据。
     import importlib
     try:
-        scope_locate = importlib.import_module("framework.tools.probe.scope_locate").scope_locate
+        scope_locate = importlib.import_module("framework.features.f03_locate.scope_locate").scope_locate
         have_api = True
         err = ""
     except Exception as e:                                             # noqa: BLE001
@@ -85,7 +85,7 @@ def main() -> int:
 
         # (0) P16 批 2 判据：probe 采集 —— 零 testid 页上必须能采集出「锚点 + 相对路径」
         # （本批已实现 -> 这条应当**绿**；下面 (1)~(6) 要等批 3 的 scope_locate 能力 -> 红）
-        from framework.tools.probe.probe import probe_page
+        from framework.features.f03_locate.probe import probe_page
         items = probe_page(page)
         row_items = [it for it in items if it.get("path")]
         row_links = [it for it in row_items

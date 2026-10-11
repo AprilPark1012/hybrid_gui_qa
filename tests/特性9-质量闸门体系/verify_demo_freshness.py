@@ -24,7 +24,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "tests" / "_helpers"))
 # 统一 UTF-8（R7 判据强制每个 verify_*.py 都调；Windows cp936 控制台否则中文乱码 —— 2026-09-15 实测过）
-from framework.tools.common.text_io import UTF8_ENV, force_stdio   # noqa: E402
+from framework.shared.text_io import UTF8_ENV, force_stdio   # noqa: E402
 import demo_freshness as df          # noqa: E402
 
 force_stdio()

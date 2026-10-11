@@ -22,7 +22,7 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from framework.tools.common.text_io import force_stdio  # noqa: E402
+from framework.shared.text_io import force_stdio  # noqa: E402
 
 force_stdio()
 
@@ -55,8 +55,8 @@ def _auth() -> dict:
 
 def _scan_role_menu_items(with_expand: bool) -> list[str]:
     """调真实那条路径（generate 现场探测），返回探测到的「切换为...」控件名。"""
-    from framework.tools.generate.generator import _probe_declared_pages
-    import framework.tools.probe.page_scan as ps
+    from framework.features.f02_semantic.generator_generate import _probe_declared_pages
+    import framework.features.f03_locate.page_scan_probe as ps
 
     saved = ps.expand_and_collect
     if not with_expand:

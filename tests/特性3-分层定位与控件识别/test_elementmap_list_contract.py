@@ -33,7 +33,7 @@ from pathlib import Path
 
 import pytest
 
-from framework.tools.probe.element_map import ElementMap, ElementRef, TestStep
+from framework.features.f03_locate.element_map import ElementMap, ElementRef, TestStep
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -124,7 +124,7 @@ def test_steps_are_partitioned_by_page():
 
 def test_probe_and_explore_products_share_one_shape():
     """probe 产物与 elementMap 必须同形（否则下游要写两套读法）。"""
-    from framework.tools.generate import probe_snapshot
+    from framework.features.f05_layers import probe_snapshot_generate as probe_snapshot
     import inspect
     src = inspect.getsource(probe_snapshot.items_from_element_map)
     assert "probe_items" in src, "probe_snapshot 必须读 probe_items（同形前提）"
@@ -143,7 +143,7 @@ def test_legacy_dict_product_still_readable():
 
 def test_invalid_item_is_excluded_from_mapping():
     """isValid=false 的条目必须被排除在定位映射之外（D3）。"""
-    from framework.tools.generate import generator
+    from framework.features.f02_semantic import generator_generate as generator
     src_ok = any("isValid" in (fn or "") for fn in
                  (getattr(generator, "_load_loc_map_from_element_map", None) and
                   __import__("inspect").getsource(generator._load_loc_map_from_element_map), ""))
@@ -152,7 +152,7 @@ def test_invalid_item_is_excluded_from_mapping():
 
 def test_invalid_items_do_not_enter_prompt():
     """isValid=false 的条目**不进 AI 提示词**（D3：省 token，AprilPark1012明确要求）。"""
-    from framework.tools.explore import explorer
+    from framework.features.f02_semantic import explorer_explore as explorer
     fn = getattr(explorer, "_compact_item", None)
     assert fn is not None, "提示词出站白名单 _compact_item 必须存在"
     src = __import__("inspect").getsource(fn)

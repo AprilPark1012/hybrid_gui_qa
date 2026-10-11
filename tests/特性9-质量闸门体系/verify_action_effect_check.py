@@ -26,7 +26,7 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(BASE))
-from framework.tools.common.text_io import force_stdio  # noqa: E402
+from framework.shared.text_io import force_stdio  # noqa: E402
 
 force_stdio()
 
@@ -90,7 +90,7 @@ def main() -> int:
         return 2
 
     from playwright.sync_api import sync_playwright               # noqa: PLC0415
-    from framework.tools.common.browser import launch_opts        # noqa: PLC0415
+    from framework.shared.browser import launch_opts        # noqa: PLC0415
 
     spec = importlib.util.spec_from_file_location("_hybrid_harness", HARNESS)
     h = importlib.util.module_from_spec(spec)

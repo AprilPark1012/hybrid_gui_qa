@@ -20,7 +20,7 @@ import ast
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-EXPLORER = REPO / "framework" / "tools" / "explore" / "explorer.py"
+EXPLORER = REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py"
 
 
 def _fn_src(name: str) -> str:

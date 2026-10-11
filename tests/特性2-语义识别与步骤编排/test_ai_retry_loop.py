@@ -26,8 +26,8 @@ import ast
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-CLI = REPO / "framework" / "cli.py"
-EXPLORER = REPO / "framework" / "tools" / "explore" / "explorer.py"
+CLI = REPO / "framework" / "features" / "f10_cli" / "cli.py"
+EXPLORER = REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py"
 
 
 def _src(p: Path) -> str:
@@ -108,7 +108,7 @@ def test_prompt_includes_retry_feedback_text():
     """传了失败原因，它必须真的出现在提示词里（且醒目：告诉 AI 这是**上次被拦**的原因）。"""
     import sys
     sys.path.insert(0, str(REPO))
-    from framework.tools.explore.explorer import _build_planner_prompt
+    from framework.features.f02_semantic.explorer_explore import _build_planner_prompt
 
     txt = "换页证据 'index' 只是 host[:端口]，跨页用例里每个页面都含它"
     prompt = _build_planner_prompt("随便", [], "http://x/", auth={"username": "u"},
@@ -126,7 +126,7 @@ def test_prompt_without_feedback_is_clean():
     """**负向的另一面**：不给失败原因时，不许凭空出现「上一轮失败」这类字样（避免误导）。"""
     import sys
     sys.path.insert(0, str(REPO))
-    from framework.tools.explore.explorer import _build_planner_prompt
+    from framework.features.f02_semantic.explorer_explore import _build_planner_prompt
 
     prompt = _build_planner_prompt("随便", [], "http://x/", auth={"username": "u"})
     flat = prompt.replace("\n", "")

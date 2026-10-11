@@ -20,11 +20,11 @@ from __future__ import annotations
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-SCAN_PAGES = (REPO / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+SCAN_PAGES = (REPO / "framework" / "features" / "f03_locate" / "scan_pages_probe.py").read_text(encoding="utf-8")
                  # 片 3c（2026-10-12）：跨页探测骨架的唯一入口，登录/前置/行内列都在它里面
-EXPL = (REPO / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
-GEN = (REPO / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
-LOGIN = (REPO / "framework" / "tools" / "run" / "login.py").read_text(encoding="utf-8")
+EXPL = (REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
+GEN = (REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
+LOGIN = (REPO / "framework" / "shared" / "login.py").read_text(encoding="utf-8")
 
 # [!] 判据口径必须跟着实现走：批 5 把 generate 侧的两处调用收成了统一入口 `_ensure_login_for`，
 #    这里就要同步（我第一次没改 -> 判据自己变成假红 —— 与 pitfalls 里"判据口径随重构走"同一条）。
@@ -82,7 +82,7 @@ def test_execution_side_installs_login():
 
 
 def test_login_module_is_the_single_source():
-    """判据 3：登录实现在 `framework/tools/run/login.py` 一处（别处不许再写一份）。"""
+    """判据 3：登录实现在 `framework/shared/login.py` 一处（别处不许再写一份）。"""
     assert "def ensure_logged_in(" in LOGIN and "def login_token(" in LOGIN, "登录唯一实现缺函数"
     # 只允许"转发/导入"用，不允许别处再实现登录请求
     assert "urlopen" not in EXPL, "explorer 里不该自己发登录请求（应走 run/login.py）"
@@ -92,7 +92,7 @@ def test_login_module_is_the_single_source():
     #   generate 侧的登录前置必须走 `run/login.py`（`_ensure_login_for` 是它的统一入口），
     #   不许自实现一套登录请求。
     assert "def _ensure_login_for(" in GEN, "generate 侧登录前置的统一入口 `_ensure_login_for` 不见了"
-    assert ("from framework.tools.run.login import" in GEN) or ("run.login" in GEN), \
+    assert ("from framework.shared.login import" in GEN) or ("run.login" in GEN), \
         "generate 侧登录前置没走 run/login.py（会漂成第二份实现）"
 
 

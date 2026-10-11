@@ -22,8 +22,8 @@ import ast
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-GENERATOR = REPO / "framework" / "tools" / "generate" / "generator.py"
-RUNNER = REPO / "framework" / "tools" / "run" / "runner.py"
+GENERATOR = REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py"
+RUNNER = REPO / "framework" / "features" / "f06_healer" / "runner_unused.py"
 
 
 def _harness_select_segment() -> str:

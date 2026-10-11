@@ -40,9 +40,9 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from framework.tools.generate import probe_snapshot as PS                       # noqa: E402
-from framework.tools.generate.generator import generate_scripts                # noqa: E402
-from framework.tools.probe.element_map import ElementMap, ElementRef            # noqa: E402
+from framework.features.f05_layers import probe_snapshot_generate as PS                       # noqa: E402
+from framework.features.f02_semantic.generator_generate import generate_scripts                # noqa: E402
+from framework.features.f03_locate.element_map import ElementMap, ElementRef            # noqa: E402
 
 #: 事故里的两个名字：前者只出现在「清单」（AI 没用过），后者是页内消歧的真实名
 MANIFEST_ONLY = "超@合同列表页"
@@ -71,7 +71,7 @@ def _emap_file(tmp_path: Path, *, steps: list[str], manifest: list[dict] | None)
 @pytest.fixture(autouse=True)
 def _isolate_element_map_residue(monkeypatch, tmp_path):
     """把 `ELEMENT_MAP_DIR` 指到空目录 —— 判据不许随仓库 `output/` 的残留飘。"""
-    monkeypatch.setattr("framework.tools.common.config.ELEMENT_MAP_DIR",
+    monkeypatch.setattr("framework.shared.config.ELEMENT_MAP_DIR",
                         tmp_path / "_isolated_element_maps")
 
 
@@ -148,7 +148,7 @@ def test_snapshot_keeps_steps_priority_on_duplicate(tmp_path):
 
 
 def test_loc_map_includes_manifest_names(tmp_path):
-    from framework.tools.generate.generator import _load_loc_map_from_element_map
+    from framework.features.f02_semantic.generator_generate import _load_loc_map_from_element_map
     p = _emap_file(tmp_path, steps=[AI_USED], manifest=[_item(MANIFEST_ONLY), _item(AI_USED)])
     got = _load_loc_map_from_element_map(p)
     assert AI_USED in got, "steps 侧行为不变"
@@ -160,7 +160,7 @@ def test_manifest_only_name_would_be_missing_without_manifest(tmp_path):
 
     证明上一条不是靠「别的路数」碰巧通过：**去掉清单就必须回到缺失状态**。
     """
-    from framework.tools.generate.generator import _load_loc_map_from_element_map
+    from framework.features.f02_semantic.generator_generate import _load_loc_map_from_element_map
     p = _emap_file(tmp_path, steps=[AI_USED], manifest=None)
     got = _load_loc_map_from_element_map(p)
     assert MANIFEST_ONLY not in got
@@ -207,8 +207,8 @@ def _code(path: Path) -> str:
 
 
 def test_manifest_is_threaded_through_explorer():
-    from framework.tools.explore import explorer as EX
-    code = _code(REPO / "framework" / "tools" / "explore" / "explorer.py")
+    from framework.features.f02_semantic import explorer_explore as EX
+    code = _code(REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py")
 
     sig = inspect.signature(EX._finalize_map)
     assert "manifest" in sig.parameters, "唯一出口 `_finalize_map` 必须能收下清单（否则填不进 ElementMap）"
@@ -257,7 +257,7 @@ def test_synthetic_pre_action_items_keep_anchor_shape():
     实况：`超@合同列表页` 只由合成条目提供（探针没探到它的锚），合成条目只写 name/role/text 时，
     手搓用例的 `by: title` 取不到锚 -> 存根。
     """
-    code = _code(REPO / "framework" / "tools" / "explore" / "explorer.py")
+    code = _code(REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py")
     assert "_anchor_fields_of(" in code, "合成条目没取锚 -> by 直定位必然拿不到值"
     i = code.index("def _anchor_fields_of")
     helper = code[i:i + 1800]
@@ -269,15 +269,15 @@ def test_synthetic_pre_action_items_keep_anchor_shape():
     assert "_anchor_fields_of(pg" in seg, "`_register_pre_action_items` 没调用取锚逻辑"
     assert "anchors" in seg, "`_register_pre_action_items` 没接「点击那一刻记下的锚」"
     # [!] 「取锚必须在点击之前」的顺序契约在**唯一引擎**里 —— 2026-10-10 A 方案把实现抽到
-    #   `framework/tools/run/pre_actions.py`（探测期与执行期共用同一引擎：同一个"怎么到达这个身份"
+    #   `framework/shared/pre_actions_run.py`（探测期与执行期共用同一引擎：同一个"怎么到达这个身份"
     #   的知识只许有一个入口）。探测期入口 `_run_pre_actions` 只许委托，不许再留第二份实现。
-    eng = _code(REPO / "framework" / "tools" / "run" / "pre_actions.py")
+    eng = _code(REPO / "framework" / "shared" / "pre_actions_run.py")
     i_cap = eng.index("on_clicked(nm, loc.first)")
     i_click = eng.index("loc.first.click(")
     assert i_cap < i_click, "取锚必须**在点击之前**（点完控件的可访问名会变，事后取不到）"
     k = code.index("def _run_pre_actions")
     wrapper = code[k:k + 2600]
-    assert "from framework.tools.run.pre_actions import run_pre_actions" in wrapper, \
+    assert "from framework.shared.pre_actions_run import run_pre_actions" in wrapper, \
         "探测期入口没委托给唯一引擎（会漂成两套口径）"
     assert "全不可见 -> 改用 force 点一次" not in code, \
         "explorer 里还留着前置动作的第二份实现（只该在引擎里）"
@@ -290,9 +290,9 @@ def test_synthetic_pre_action_items_keep_anchor_shape():
 
 
 def test_manifest_is_threaded_through_generator():
-    code = _code(REPO / "framework" / "tools" / "generate" / "generator.py")
+    code = _code(REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py")
     assert "probe_items" in code, "generate 侧没有任何地方读清单 -> 落盘的清单等于白落"
-    snap = _code(REPO / "framework" / "tools" / "generate" / "probe_snapshot.py")
+    snap = _code(REPO / "framework" / "features" / "f05_layers" / "probe_snapshot_generate.py")
     assert "probe_items" in snap, "快照侧没读清单 -> 运行时索引仍然缺名"
 
 
@@ -305,7 +305,7 @@ def test_locator_source_picked_by_coverage_not_by_newest_file():
     """
     import json as _json
     import tempfile
-    from framework.tools.generate.generator import _pick_loc_map_source
+    from framework.features.f02_semantic.generator_generate import _pick_loc_map_source
 
     need = {"A", "B", "C"}
     with tempfile.TemporaryDirectory() as d:
@@ -325,6 +325,6 @@ def test_locator_source_picked_by_coverage_not_by_newest_file():
         assert len(got[4]) == 3, f"命中数不对：{got[4]}"
         assert len(parts) == 2, "候选没全部留痕（挑来源这件事必须可审计）"
 
-    code = _code(REPO / "framework" / "tools" / "generate" / "generator.py")
+    code = _code(REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py")
     assert "_pick_loc_map_source(candidates, needed, src_parts)" in code, \
         "调用点没走『按覆盖度选』这个唯一入口"

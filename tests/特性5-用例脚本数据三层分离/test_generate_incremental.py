@@ -19,7 +19,7 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from framework.tools.generate.generator import generate_scripts  # noqa: E402
+from framework.features.f02_semantic.generator_generate import generate_scripts  # noqa: E402
 
 
 def _mk_case(cid: str, sid: str, name: str) -> dict:

@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-GENERATOR = REPO / "framework" / "tools" / "generate" / "generator.py"
+GENERATOR = REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py"
 
 
 def _fn_source(path: Path, name: str) -> str:
@@ -45,7 +45,7 @@ def test_page_scope_helper_exists():
 
 def test_page_scope_single_only_when_bare_name_missing():
     """缺「裸名」时才需要单页惯例探测；缺的都是 `x@页名` 则不需要。"""
-    from framework.tools.generate.generator import _pages_to_probe
+    from framework.features.f02_semantic.generator_generate import _pages_to_probe
 
     # 造两份缺口（不写死任何业务名）
     p0, u0 = "页面甲", "http://x/a"
@@ -63,7 +63,7 @@ def test_page_scope_single_only_when_bare_name_missing():
 
 def test_page_scope_only_probes_pages_that_own_the_gap():
     """多个页、只有一个页有缺口 -> 只探那一页（这是省时的大头）。"""
-    from framework.tools.generate.generator import _pages_to_probe
+    from framework.features.f02_semantic.generator_generate import _pages_to_probe
 
     declared = [(f"页{n}", f"http://x/{n}") for n in range(5)]
     gaps = {"控件@" + declared[2][0]}
@@ -73,7 +73,7 @@ def test_page_scope_only_probes_pages_that_own_the_gap():
 
 def test_page_scope_unknown_page_is_not_probed():
     """缺口指向的页不在声明的页面里 -> 不探（探了也补不上，纯浪费）。"""
-    from framework.tools.generate.generator import _pages_to_probe
+    from framework.features.f02_semantic.generator_generate import _pages_to_probe
 
     declared = [("页面甲", "http://x/a")]
     _, pages = _pages_to_probe({"控件@不存在的页"}, declared)
@@ -82,7 +82,7 @@ def test_page_scope_unknown_page_is_not_probed():
 
 def test_page_scope_keeps_order_and_dedupes():
     """多个缺口落在同一页 -> 该页只出现一次，且保持声明顺序（可复现）。"""
-    from framework.tools.generate.generator import _pages_to_probe
+    from framework.features.f02_semantic.generator_generate import _pages_to_probe
 
     declared = [("甲", "http://x/a"), ("乙", "http://x/b"), ("丙", "http://x/c")]
     gaps = {"A@丙", "B@甲", "C@丙", "D@甲"}
@@ -92,7 +92,7 @@ def test_page_scope_keeps_order_and_dedupes():
 
 def test_page_scope_empty_gaps_implies_nothing_to_probe():
     """没有缺口 -> 不探任何页（调用方据此整体跳过，不走现场探测）。"""
-    from framework.tools.generate.generator import _pages_to_probe
+    from framework.features.f02_semantic.generator_generate import _pages_to_probe
 
     need_single, pages = _pages_to_probe(set(), [("甲", "http://x/a")])
     assert need_single is False and pages == [], "无缺口时不该产生任何探测动作"

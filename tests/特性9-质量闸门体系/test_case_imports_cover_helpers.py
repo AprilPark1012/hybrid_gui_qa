@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import framework.tools.generate.generator as gen
+import framework.features.f02_semantic.generator_generate as gen
 
 SRC = Path(gen.__file__).read_text(encoding="utf-8")
 

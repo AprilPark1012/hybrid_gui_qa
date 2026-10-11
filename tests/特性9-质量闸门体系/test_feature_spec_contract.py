@@ -2,7 +2,7 @@
 
 背景（为什么单独一个文件）：
   V8.3.6 把「特性2 语义识别与分层定位」一分为二（语义识别 / 分层定位），其后顺延，
-  共 10 个大特性 / 42 个子特性。规格落在 `framework/tools/spec/feature_spec.py`（单一来源），
+  共 10 个大特性 / 42 个子特性。规格落在 `framework/features/f09_gate/feature_spec.py`（单一来源），
   文档由 `build_tools/build_feature_map.py` 生成。
 
   但「单一来源」只有配上**校验**才成立 —— 否则加一个特性、忘了挂用例，
@@ -32,7 +32,7 @@ REPO = Path(__file__).resolve().parents[2]
 TESTS = REPO / "tests"
 sys.path.insert(0, str(REPO))
 
-from framework.tools.spec.feature_spec import FEATURES, all_subfeatures, owner_index  # noqa: E402
+from framework.features.f09_gate.feature_spec import FEATURES, all_subfeatures, owner_index  # noqa: E402
 
 
 def _disk_test_files() -> set[str]:
@@ -61,7 +61,7 @@ def test_every_spec_file_exists_on_disk():
     missing = sorted(_spec_files() - disk_names)
     assert not missing, (
         f"规格里列了这些文件，但磁盘上找不到：{missing}\n"
-        f"=> 要么文件名写错，要么文件被删了。改规格 framework/tools/spec/feature_spec.py 或补回文件。"
+        f"=> 要么文件名写错，要么文件被删了。改规格 framework/features/f09_gate/feature_spec.py 或补回文件。"
     )
 
 
@@ -74,7 +74,7 @@ def test_every_disk_case_has_an_owner():
                     if p.name.startswith(("test_", "verify_"))} - owned)
     assert not stray, (
         f"这些用例文件没有归属（规格里查不到）：{stray}\n"
-        f"=> 在 framework/tools/spec/feature_spec.py 里给它们挂上子特性，"
+        f"=> 在 framework/features/f09_gate/feature_spec.py 里给它们挂上子特性，"
         f"否则「特性变更 => 用例同步」这条纪律就是个空话。"
     )
 

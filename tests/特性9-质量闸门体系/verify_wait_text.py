@@ -26,7 +26,7 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(BASE))
-from framework.tools.common.text_io import force_stdio  # noqa: E402
+from framework.shared.text_io import force_stdio  # noqa: E402
 
 force_stdio()
 
@@ -66,7 +66,7 @@ def api(path: str, body=None, method: str = "POST", role: str = "order_admin"):
 
 def load_harness():
     """渲染生成物侧的 harness（唯一实现）并 import —— 与用户跑生成的脚本时**同一份代码**。"""
-    from framework.tools.generate import generator as G  # noqa: PLC0415
+    from framework.features.f02_semantic import generator_generate as G  # noqa: PLC0415
     tmp = Path("/tmp/p22_rendered_harness.py")
     tmp.write_text(G._render_harness(), encoding="utf-8")
     spec = importlib.util.spec_from_file_location("p22_rendered_harness", tmp)
@@ -97,7 +97,7 @@ def main() -> int:
           "前置：生成物侧存在 _assert_wait_text（否则用户拿到的脚本根本用不了这个断言）")
 
     from playwright.sync_api import sync_playwright               # noqa: PLC0415
-    from framework.tools.common.browser import launch_opts        # noqa: PLC0415
+    from framework.shared.browser import launch_opts        # noqa: PLC0415
 
     created_name = f"P22等待验证-{int(time.time())}"
     with sync_playwright() as p:

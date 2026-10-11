@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from framework.tools.common.text_io import force_stdio       # noqa: E402
+from framework.shared.text_io import force_stdio       # noqa: E402
 
 force_stdio()
 
@@ -26,7 +26,7 @@ import sys
 # cwd 归位到仓库根（sys.path 上面已按 __file__ 自动定位；这里同样不写死本机路径）
 os.chdir(str(Path(__file__).resolve().parents[2]))
 
-from framework.tools.explore.explorer import _collect_pages_context          # noqa: E402
+from framework.features.f02_semantic.explorer_explore import _collect_pages_context          # noqa: E402
 
 BASE = "http://localhost:8000"
 AUTH = {"login_api": "/api/login", "username": "super",

@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from framework.tools.explore.llm_cassette import Cassette, MODE_REPLAY
+from framework.features.f08_replay.llm_cassette_explore import Cassette, MODE_REPLAY
 
 
 def _write(root: Path, fname: str, completion: str, created: str, key_struct: str = "SK-TIE"):
@@ -75,7 +75,7 @@ def test_single_hit_stays_quiet(tmp_path, capsys):
 
 def test_strict_key_still_wins(tmp_path):
     """严格键（prompt 逐字相同）仍优先于结构键 —— 别把这条改坏。"""
-    from framework.tools.explore.llm_cassette import cassette_key
+    from framework.features.f08_replay.llm_cassette_explore import cassette_key
     root = tmp_path / "cas4"
     root.mkdir()
     prompt = "P" * 20

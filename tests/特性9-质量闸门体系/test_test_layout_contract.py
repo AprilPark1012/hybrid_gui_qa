@@ -31,13 +31,13 @@ HELPERS = TESTS_DIR / "_helpers"                    # 公共模块（artifacts /
 RUNNER_DIR = TESTS_DIR / "_runner"                  # runner 工具（入口 / 重录 / fixtures）
 RUNNER = RUNNER_DIR / "run_verifications.py"
 
-# 特性夹清单：**从规格读**（单一来源 framework/tools/spec/feature_spec.py）。
+# 特性夹清单：**从规格读**（单一来源 framework/features/f09_gate/feature_spec.py）。
 # 2026-10-08（V8.3.6）：原先这里手写清单 + 下游写死 range(1, 10)，加第 10 个特性就断了。
 # 现在改一处规格，判据自动跟随。
 import sys as _sys
 
 _sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from framework.tools.spec.feature_spec import FEATURES as _FEATURES  # noqa: E402
+from framework.features.f09_gate.feature_spec import FEATURES as _FEATURES  # noqa: E402
 
 FEATURE_DIRS = [f["dir"] for f in _FEATURES]
 

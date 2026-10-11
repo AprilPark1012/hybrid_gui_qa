@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from framework.tools.generate import generator as gen  # noqa: E402
+from framework.features.f02_semantic import generator_generate as gen  # noqa: E402
 
 
 def _kind_of(desc: str, kind=None, expect: str = "已关闭") -> str:

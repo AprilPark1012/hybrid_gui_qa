@@ -48,7 +48,7 @@ def _write(tmp_path: Path, data) -> Path:
 @pytest.mark.parametrize("data", [DATA_LIST, DATA_DICT], ids=["list_form", "dict_form"])
 def test_items_from_source_reads_both_forms(tmp_path, data):
     """`_items_from_source`（锚的唯一来源）：两种形态都要读得到、且不许炸。"""
-    from framework.tools.generate.generator import _items_from_source
+    from framework.features.f02_semantic.generator_generate import _items_from_source
     got = _items_from_source(_write(tmp_path, data), "element")
     assert NAME in got, f"读不到控件（实际 {sorted(got)[:5]}）—— 形态变了就要在**每个读取器**都改到"
 
@@ -59,7 +59,7 @@ def test_multi_match_from_source_reads_both_forms(tmp_path, data):
 
     [!] 这条尤其重要：它坏了**不报错**，只是信号变空 -> 闸门静默失效。
     """
-    from framework.tools.generate.generator import _multi_match_from_source
+    from framework.features.f02_semantic.generator_generate import _multi_match_from_source
     got = _multi_match_from_source(_write(tmp_path, data), "element")
     assert got.get(NAME) == 3, (
         f"重复控件信号取不到（实际 {got}）—— 闸门会静默失效；"
@@ -69,6 +69,6 @@ def test_multi_match_from_source_reads_both_forms(tmp_path, data):
 @pytest.mark.parametrize("data", [DATA_LIST, DATA_DICT], ids=["list_form", "dict_form"])
 def test_loc_map_from_element_map_reads_both_forms(tmp_path, data):
     """`_load_loc_map_from_element_map`（定位映射）：两种形态都要建出映射。"""
-    from framework.tools.generate.generator import _load_loc_map_from_element_map
+    from framework.features.f02_semantic.generator_generate import _load_loc_map_from_element_map
     got = _load_loc_map_from_element_map(_write(tmp_path, data))
     assert NAME in got, f"定位映射没建出来（实际 {sorted(got)[:5]}）"

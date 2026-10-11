@@ -19,7 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 REPO = Path(__file__).resolve().parents[2]
-EXPLORER = REPO / "framework" / "tools" / "explore" / "explorer.py"
+EXPLORER = REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py"
 
 # demo（场景）里真实存在的具体名 —— 它们只能来自数据，不许写进提示词模板
 DEMO_LITERALS = ["订单系统", "HT_1001", "SO_2301", "新建订单页", "合同列表页",

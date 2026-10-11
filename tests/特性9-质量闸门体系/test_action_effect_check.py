@@ -21,8 +21,8 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-GEN = REPO / "framework" / "tools" / "generate" / "generator.py"
-CLI = REPO / "framework" / "cli.py"
+GEN = REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py"
+CLI = REPO / "framework" / "features" / "f10_cli" / "cli.py"
 
 
 def _tmpl() -> str:

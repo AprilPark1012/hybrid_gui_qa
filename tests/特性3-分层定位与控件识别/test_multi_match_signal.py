@@ -31,8 +31,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from framework.tools.explore import explorer as EX                        # noqa: E402
-from framework.tools.generate import generator as G                       # noqa: E402
+from framework.features.f02_semantic import explorer_explore as EX                        # noqa: E402
+from framework.features.f02_semantic import generator_generate as G                       # noqa: E402
 
 
 def _it(name: str, *, ctx: str = "详细信息", tag: str = "input", role: str = "textbox",
@@ -86,7 +86,7 @@ def test_multi_match_hard_block_is_at_prompt_position_zero():
     import inspect
     sig = inspect.signature(EX._multi_match_block)
     assert "items" in sig.parameters, "硬清单必须接受「送 AI 的那份清单」作为输入"
-    src = (ROOT / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
+    src = (ROOT / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
     assert "_multi_match_block(items)" in src, "prompt 组装处没有把清单传进去（名字会对不上）"
     assert "_OUTPUT_CONTRACT + _multi_match_block(items)" in src, \
         "硬清单没挂在 prompt 第 0 位（字段级提示会被长 prompt 稀释，实测 AI 会忽略）"
@@ -96,7 +96,7 @@ def test_multi_match_hard_block_is_at_prompt_position_zero():
 
 
 def test_gate_refuses_rows_without_row_locator():
-    src = (ROOT / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+    src = (ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
     assert "缺行定位" in src, "生成期没有拦下「引用重复控件却没给行定位」的步骤"
     i = src.index("_mm = int(_MULTI_MATCH.get(elem)")
     block = src[i:i + 900]
@@ -111,7 +111,7 @@ def test_gate_signal_comes_from_manifest_not_from_it_map():
     """信号必须从**清单条目**取：`it_map` 同名先到先得，`steps[].element` 在前且没有这个键。"""
     mm = G._multi_match_from_source
     assert callable(mm), "缺少 `_multi_match_from_source`（信号来源）"
-    src = (ROOT / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+    src = (ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
     assert "_MULTI_MATCH.update(_multi_match_from_source(f, kind))" in src, \
         "信号没有与 loc_map/锚**同源**加载（会用错来源、闸门哑掉）"
 
@@ -123,7 +123,7 @@ def test_row_scope_violation_is_the_single_source_of_truth():
     explore 阶段，**原因到不了 AI 手里**；修法是把判据抽成唯一入口、两个阶段共用。
     两处各写一份的话，措辞会漂、判据会不一致（一边拦一边放）。
     """
-    from framework.tools.probe.element_map import row_scope_violation as rsv
+    from framework.features.f03_locate.element_map import row_scope_violation as rsv
     # 重复控件 + 只给语义名 -> 必须给出可改原因
     bad = rsv({"element": "物料编码@订单详情页"}, 3)
     assert bad and "重复出现 3 个" in bad and "row_index" in bad, "重复控件没给行定位必须报"
@@ -138,8 +138,8 @@ def test_row_scope_violation_is_the_single_source_of_truth():
 
 def test_gate_and_explore_share_the_single_source():
     """生成期闸门 + explore 产出校验**共用**同一个判据函数（不许各写一份）。"""
-    gen = (ROOT / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
-    exp = (ROOT / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
+    gen = (ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
+    exp = (ROOT / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
     assert "row_scope_violation(st, _mm)" in gen, "生成期闸门没走唯一入口"
     assert "_has_row_scope" not in gen, "生成期还留着旧的inline判据（两处各写一份 = 会漂）"
     assert "row_scope_violation(_st, multi_match_of_name(_mm_of, _elem))" in exp, \
@@ -148,7 +148,7 @@ def test_gate_and_explore_share_the_single_source():
 
 def test_explore_collects_row_scope_notes_for_the_retry_loop():
     """explore 必须在**产出成型时**收集「行定位缺失」，且从清单条目取 `multi_match`（同源）。"""
-    src = (ROOT / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
+    src = (ROOT / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
     assert "_ROW_SCOPE_NOTES: list[str] = []" in src, "没声明收集清单"
     assert "_ROW_SCOPE_NOTES.clear()" in src, "没无条件清（留旧账 -> 下一轮报上一轮的缺陷）"
     assert 'it.get("multi_match")' in src and "_mm_of" in src, \
@@ -166,7 +166,7 @@ def test_retry_loop_actually_reads_row_scope_notes():
     这条是 ① 的核心断言 —— 只知道收集（清单写了没人读）就等于白收集，
     项目自己就犯过这个（注释原话：「这两个清单只收集没人读 -> 等于白收集」）。
     """
-    cli = (ROOT / "framework" / "cli.py").read_text(encoding="utf-8")
+    cli = (ROOT / "framework" / "features" / "f10_cli" / "cli.py").read_text(encoding="utf-8")
     assert '_ROW_SCOPE_NOTES' in cli, "重试闭环没读行定位清单 -> 原因还是到不了 AI 手里"
     assert "row_index" in cli and "刚新增的空行只能用" in cli, "没把「怎么补」写进给 AI 的要求"
 
@@ -178,19 +178,19 @@ def test_both_manifest_exits_enforce_collapse():
     （实测：`物料编码_2`/`_3` 与主条目签名**完全相同**却仍在清单里 -> 重复信号只标到一条，
     AI 可能引用到没标的那条）。
     """
-    src = (ROOT / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
+    src = (ROOT / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
     assert "_collapse_row_repeats(manifest)" in src, "清单成型口没收敛（落盘的清单会有残渣）"
     # [!] 片 3c（2026-10-12，B1 三合一）：**跨页聚合口的收敛跟着骨架搬到了 `probe/scan_pages.py`**
     #   （原在 explorer 的 `_collect_pages_context` 里）。判据跟着搬 —— **不是放宽**：
     #   两个出口仍然各要一处收敛，只是位置变了。
-    sp = (ROOT / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+    sp = (ROOT / "framework" / "features" / "f03_locate" / "scan_pages_probe.py").read_text(encoding="utf-8")
     assert "_collapse(merged)" in sp, "跨页聚合口没收敛（给 AI 的清单会有残渣）"
     assert "collapse" in sp, "scan_pages 没有 collapse 开关（调用方无法表达该出口要不要收敛）"
 
 
 def test_collapse_is_actually_wired_into_merge():
     """收敛必须真的接在合并链上（只定义不调用 = 死代码）。"""
-    src = (ROOT / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
+    src = (ROOT / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
     assert "_collapse_row_repeats(out)" in src, "收敛函数没有接进 `_merge_items`"
     i = src.index("_collapse_row_repeats(out)")
     assert src.index("assign_semantic_names(out)") > i, \
@@ -242,7 +242,7 @@ def _mm_map():
 
 def test_row_locator_fallback_fills_last_added_row():
     """① 该补的补对：两批各 4 个行内字段 -> 全部 row_index=-1。"""
-    from framework.tools.probe.element_map import apply_row_locator_fallback
+    from framework.features.f03_locate.element_map import apply_row_locator_fallback
     steps = _real_shape_case()
     notes = apply_row_locator_fallback(steps, _mm_map())
     names = [n["name"] for n in notes]
@@ -254,7 +254,7 @@ def test_row_locator_fallback_fills_last_added_row():
 
 def test_row_locator_fallback_is_exact_key_only():
     """② 跨页同名不许被带下水：`数量@开票页`/`单位@开票页` 不是清单精确键 -> 不补。"""
-    from framework.tools.probe.element_map import apply_row_locator_fallback
+    from framework.features.f03_locate.element_map import apply_row_locator_fallback
     steps = _real_shape_case()
     apply_row_locator_fallback(steps, _mm_map())
     for st in steps:
@@ -265,7 +265,7 @@ def test_row_locator_fallback_is_exact_key_only():
 
 def test_row_locator_fallback_refuses_without_row_add():
     """② 没有「新增行」这个前提事实 -> 一处都不许补（否则会盖住真缺陷）。"""
-    from framework.tools.probe.element_map import apply_row_locator_fallback
+    from framework.features.f03_locate.element_map import apply_row_locator_fallback
     steps = [_fill("物料编码@订单详情页"), _fill("产品编码@订单详情页")]
     assert apply_row_locator_fallback(steps, _mm_map()) == [], "没有新增行却补了"
     assert steps[0].get("row_index") is None
@@ -273,7 +273,7 @@ def test_row_locator_fallback_refuses_without_row_add():
 
 def test_row_locator_fallback_stops_after_explicit_anchor():
     """② 本批一旦出现过行锚就不许再兜底（那时「是不是同一行」已经说不准）。"""
-    from framework.tools.probe.element_map import apply_row_locator_fallback
+    from framework.features.f03_locate.element_map import apply_row_locator_fallback
     steps = [
         _row_add_step(),
         _fill("物料编码@订单详情页", row_text="全链路-X", cell_field="materialCode"),
@@ -286,7 +286,7 @@ def test_row_locator_fallback_stops_after_explicit_anchor():
 
 def test_row_locator_fallback_shares_the_scope_field_catalog():
     """③ 字段口径只有一处：判据与兜底都读 `ROW_LOCATOR_FIELDS` / `has_row_locator`。"""
-    src = (ROOT / "framework" / "tools" / "probe" / "element_map.py").read_text(encoding="utf-8")
+    src = (ROOT / "framework" / "features" / "f03_locate" / "element_map.py").read_text(encoding="utf-8")
     assert "ROW_LOCATOR_FIELDS" in src and "def has_row_locator" in src
     assert 'step_get(step, "row_text") or step_get(step, "row_index")' not in src, \
         "判据里又内联写了一份字段清单（口径分裂 -> 日后只改一处）"

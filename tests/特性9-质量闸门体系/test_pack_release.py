@@ -125,8 +125,8 @@ def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
         "pkg/README.md": "# x\n",
         "pkg/build_tools/build_html.py": 'VERSION = "9.9"\n',
         "pkg/docs/training.html": "<html></html>",
-        "pkg/framework/cli.py": "\n",
-        "pkg/framework/tools/common/text_io.py": "\n",
+        "pkg/framework/features/f10_cli/cli.py": "\n",
+        "pkg/framework/shared/text_io.py": "\n",
         # P20：产物 = scripts/generated/<场景>/<用例>.py（一个用例一个文件）
         #   -> "坏产物"注入点仍在"用例脚本"这一层（产物检查拼读全部生成模块）
         "pkg/scripts/generated/demo/x.py": tests_src + unmapped_extra,
@@ -143,7 +143,7 @@ def _make_zip(tmp_path: Path, tests_src: str, *, notes: bool = True,
     if legacy_layout:
         entries.pop("pkg/build_tools/build_html.py", None)
         entries.pop("pkg/docs/training.html", None)
-        entries.pop("pkg/framework/tools/common/text_io.py", None)
+        entries.pop("pkg/framework/shared/text_io.py", None)
         entries["pkg/build_html.py"] = 'VERSION = "9.9"\n'
         entries["pkg/training.html"] = "<html></html>"
         entries["pkg/framework/text_io.py"] = "\n"
@@ -305,7 +305,7 @@ def test_refresh_sums_drops_line_of_deleted_package(tmp_path):
 def test_collect_files_keeps_sources_and_drops_runtime_cruft():
     """打包收集：源代码/用例/生成物要进包，运行时证据与虚拟环境不得进包。"""
     rel = {p.relative_to(REPO).as_posix() for p in pack_release.collect_files()}
-    for must in ("README.md", "build_tools/build_html.py", "framework/cli.py", "framework/tools/common/text_io.py",
+    for must in ("README.md", "build_tools/build_html.py", "framework/features/f10_cli/cli.py", "framework/shared/text_io.py",
                  "scripts/generated", "scripts/generated/index.json", "demo/app.py",
                  "tests/特性9-质量闸门体系/test_artifacts_health.py", "tests/特性9-质量闸门体系/verify_html_sync.py", "cases", "scenarios"):
         assert any(r == must or r.startswith(must + "/") for r in rel), f"漏了 {must}"

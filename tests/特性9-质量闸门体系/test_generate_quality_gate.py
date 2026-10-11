@@ -22,8 +22,8 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from framework import cli
-from framework.tools.generate.generator import UnmappedElementsError, generate_scripts      # noqa: E402
+from framework.features.f10_cli import cli   # P25 片 8：patch 要打在**真实现**上（framework.cli 现在是转发薄壳）
+from framework.features.f02_semantic.generator_generate import UnmappedElementsError, generate_scripts      # noqa: E402
 
 CASES = REPO / "cases"
 
@@ -38,7 +38,7 @@ def _isolate_element_map_residue(monkeypatch, tmp_path):
         判据随环境飘 = 红灯会被当成噪音、**大家学会忽略它** —— 那比红灯本身更危险。
     （`generate_scripts` 是函数内 import，patch `config` 源模块即生效。）
     """
-    monkeypatch.setattr("framework.tools.common.config.ELEMENT_MAP_DIR",
+    monkeypatch.setattr("framework.shared.config.ELEMENT_MAP_DIR",
                         tmp_path / "_isolated_element_maps")
 
 
@@ -51,7 +51,7 @@ def probe_down(monkeypatch):
         raise RuntimeError("模拟：目标连不上 / 探测不可用（ERR_CONNECTION_REFUSED）")
 
     setattr(fake, "sync_playwright", _boom)
-    setattr(fake, "Page", type("Page", (), {}))     # framework.tools.probe.probe 模块级 `from ... import Page`
+    setattr(fake, "Page", type("Page", (), {}))     # framework.features.f03_locate.probe 模块级 `from ... import Page`
     setattr(fake, "expect", lambda *a, **k: None)
     setattr(fake, "__getattr__", lambda name: type(name, (), {}))   # 其余名字给哑类
     pkg = types.ModuleType("playwright")
@@ -114,7 +114,7 @@ def test_normal_run_reports_zero_unmapped(probe_down, tmp_path, monkeypatch):
 
     目的：证明闸门只在**真有缺口**时才拦 —— 别把正常生成也误杀。
     """
-    from framework.tools.generate import generator
+    from framework.features.f02_semantic import generator_generate as generator
 
     real_needed = {st.get("element") for c in _load_cases() for st in c.get("steps", [])}
     real_needed |= {a.get("element") for c in _load_cases() for a in c.get("asserts", [])}
@@ -140,8 +140,8 @@ def test_cli_generate_exits_2_with_actionable_message(probe_down, tmp_path, monk
     [!] 这里把「可达性预检」也钉成「不可达」：否则本机 demo 正在跑时，消息会走「目标可达」分支，
     断言就失真了（测试要点是**目标没起**时的那段话）。
     """
-    monkeypatch.setattr("framework.tools.generate.generator.SCRIPTS_DIR", tmp_path / "scripts")
-    monkeypatch.setattr("framework.tools.common.target_probe.reachability",
+    monkeypatch.setattr("framework.features.f02_semantic.generator_generate.SCRIPTS_DIR", tmp_path / "scripts")
+    monkeypatch.setattr("framework.shared.target_probe.reachability",
                         lambda url=None, timeout=1.5: (False,
                                                        "连不上 http://localhost:8000（ConnectionRefused）"
                                                        "-> 被测目标没起：另开一个窗口跑 `python -m demo.app`"))
@@ -177,7 +177,7 @@ def test_element_map_dir_is_isolated_from_repo_residue():
     不加这条，将来有人删掉 fixture（或新增判据忘了 autouse 覆盖）就会悄悄退回
     「结果随仓库 output/ 残留漂」——本机实测表现就是 3 红/4 绿两种结果。
     """
-    from framework.tools.common.config import ELEMENT_MAP_DIR
+    from framework.shared.config import ELEMENT_MAP_DIR
     real = sorted(ELEMENT_MAP_DIR.glob("element_map_*.json")) + sorted(ELEMENT_MAP_DIR.glob("probe_*.json"))
     assert not real, (
         f"判据没隔离 ELEMENT_MAP_DIR -> 会随仓库 output/ 残留漂（现在看到 {len(real)} 份快照）；"

@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-CLI = REPO / "framework" / "cli.py"
+CLI = REPO / "framework" / "features" / "f10_cli" / "cli.py"
 
 
 def _src() -> str:

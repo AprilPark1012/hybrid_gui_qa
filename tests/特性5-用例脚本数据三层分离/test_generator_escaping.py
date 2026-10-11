@@ -28,7 +28,7 @@ import sys
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from framework.tools.generate.generator import _semantic_to_locator_expr  # noqa: E402
+from framework.features.f02_semantic.generator_generate import _semantic_to_locator_expr  # noqa: E402
 
 # 恶劣输入：换行（真实事故）、双引号、单引号、反斜杠、制表符、中文与 emoji
 NASTY = [
@@ -89,7 +89,7 @@ def test_role_name_needle_is_whitespace_normalized():
 
 def test_no_raw_interpolation_into_quotes_in_generator():
     """(2) 源码守门：不许再出现把 `{it[...]}` 直接塞进引号的裸拼写法。"""
-    src = (REPO / "framework" / "tools" / "generate" / "generator.py").read_text(
+    src = (REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(
         encoding="utf-8", errors="replace"
     )
     # 允许 `!r`（repr，安全）；禁止 `"...{it[..."` 与 `'{it[...'` 这种裸塞

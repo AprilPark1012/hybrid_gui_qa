@@ -32,7 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from framework.tools.generate.generator import (  # noqa: E402
+from framework.features.f02_semantic.generator_generate import (  # noqa: E402
     _BY_WHITELIST,
     _semantic_to_locator_expr,
     _validate_by,

@@ -22,9 +22,9 @@ import pathlib
 import pytest
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-SCAN_MOD = REPO / "framework" / "tools" / "probe" / "page_scan.py"
-EXPLORER = REPO / "framework" / "tools" / "explore" / "explorer.py"
-GENERATOR = REPO / "framework" / "tools" / "generate" / "generator.py"
+SCAN_MOD = REPO / "framework" / "features" / "f03_locate" / "page_scan_probe.py"
+EXPLORER = REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py"
+GENERATOR = REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py"
 
 
 # ---------------------------------------------------------------- 结构：入口存在
@@ -35,7 +35,7 @@ def test_scan_page_module_exists():
 
 
 def test_scan_page_is_importable():
-    from framework.tools.probe.page_scan import scan_page  # noqa: F401
+    from framework.features.f03_locate.page_scan_probe import scan_page  # noqa: F401
     assert callable(scan_page)
 
 
@@ -75,7 +75,7 @@ class _FakePage:
 
 def _patch_layers(monkeypatch, calls):
     """把入口依赖的三个底层步骤换成记录器；返回各自被调用时的入参快照。"""
-    import framework.tools.probe.page_scan as ps
+    import framework.features.f03_locate.page_scan_probe as ps
 
     def fake_probe(page, **kw):
         calls.append(("probe_page", kw))
@@ -101,7 +101,7 @@ def _patch_layers(monkeypatch, calls):
 
 def test_scan_page_runs_all_four_steps(monkeypatch):
     """入口一次调用要把四步都跑到：基础探测 -> 可展开容器 -> 弹窗/弹层 -> 合并。"""
-    from framework.tools.probe.page_scan import scan_page
+    from framework.features.f03_locate.page_scan_probe import scan_page
     calls = []
     _patch_layers(monkeypatch, calls)
     res = scan_page(_FakePage())
@@ -115,7 +115,7 @@ def test_scan_page_runs_all_four_steps(monkeypatch):
 
 def test_modal_step_sees_menu_items(monkeypatch):
     """弹窗那步必须吃到「基础 + 菜单」的并集 —— 这是事故里第 3 条路径的第二处偏差。"""
-    from framework.tools.probe.page_scan import scan_page
+    from framework.features.f03_locate.page_scan_probe import scan_page
     calls = []
     _patch_layers(monkeypatch, calls)
     scan_page(_FakePage())
@@ -127,7 +127,7 @@ def test_modal_step_sees_menu_items(monkeypatch):
 
 def test_with_expand_false_skips_expand(monkeypatch):
     """负向自证：关掉 expand 开关后，入口就不许再调 expand_and_collect。"""
-    from framework.tools.probe.page_scan import scan_page
+    from framework.features.f03_locate.page_scan_probe import scan_page
     calls = []
     _patch_layers(monkeypatch, calls)
     scan_page(_FakePage(), with_expand=False)
@@ -136,7 +136,7 @@ def test_with_expand_false_skips_expand(monkeypatch):
 
 def test_tag_page_marks_every_item(monkeypatch):
     """跨页路径要求 menu/modal 两项都带 page 标签（base 的页名由 probe_page 自己处理）。"""
-    from framework.tools.probe.page_scan import scan_page
+    from framework.features.f03_locate.page_scan_probe import scan_page
     calls = []
     _patch_layers(monkeypatch, calls)
     res = scan_page(_FakePage(), page_name="某页", tag_page=True)
@@ -148,7 +148,7 @@ def test_tag_page_marks_every_item(monkeypatch):
 
 def test_scan_pages_delegates_to_scan_page():
     """`scan_pages`（多页骨架）内部必须委托 `scan_page`（每页步骤）—— 同一份知识不重复。"""
-    src = (REPO / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+    src = (REPO / "framework" / "features" / "f03_locate" / "scan_pages_probe.py").read_text(encoding="utf-8")
     assert "scan_page(" in src, "scan_pages 没调 scan_page（步骤知识被抄了第二份）"
 
 
@@ -229,7 +229,7 @@ def test_cli_probe_stage_goes_through_entry():
 
     同样不许 skip：直接断言 cli 里不再手写探测链。
     """
-    cli = REPO / "framework" / "cli.py"
+    cli = REPO / "framework" / "features" / "f10_cli" / "cli.py"
     src = cli.read_text(encoding="utf-8")
     assert "expand_and_collect(" not in src, (
         "cli.py 仍在手写可展开容器步骤 —— 必须走 scan_page()"
@@ -309,7 +309,7 @@ def test_expand_wait_scans_then_only_new(monkeypatch):
       · 之后：必须**只**给新增的索引（本判据让第 2 轮多出 1 个 key，索引 2）。
     负向含义：若实现退回「每轮全页重扫」，本判据必红（第 2/3 轮会是 None）。
     """
-    import framework.tools.probe.expandable as ex
+    import framework.features.f03_locate.expandable_probe as ex
 
     calls = []
 
@@ -318,7 +318,7 @@ def test_expand_wait_scans_then_only_new(monkeypatch):
         # 首轮不给新控件（逼循环继续），之后才给 -> 才能观察到「增量」那一轮
         return [] if len(calls) == 1 else [{"semantic_name": "菜单项甲", "text": "菜单项甲"}]
 
-    monkeypatch.setattr("framework.tools.probe.probe.probe_page", fake_probe)
+    monkeypatch.setattr("framework.features.f03_locate.probe.probe_page", fake_probe)
     # key 表按**轮次**演进（不能拿 calls 计轮数：无新增的轮次不会触发探测）：
     # 第 1 轮 2 个 key（首轮全探）-> 第 2 轮多出索引 2（必须只探它）
     rounds = {"n": 0}
@@ -327,7 +327,7 @@ def test_expand_wait_scans_then_only_new(monkeypatch):
         rounds["n"] += 1
         return {"a": 0, "b": 1} if rounds["n"] == 1 else {"a": 0, "b": 1, "c": 2}
 
-    monkeypatch.setattr("framework.tools.probe.probe.visible_key_map", _km)
+    monkeypatch.setattr("framework.features.f03_locate.probe.visible_key_map", _km)
 
     page = _CountingPage([], scan_result=_expand_cand())
     ex.expand_and_collect(page, [], settle_s=0.7)
@@ -342,7 +342,7 @@ def test_expand_wait_scans_then_only_new(monkeypatch):
 
 def test_expand_wait_skips_when_nothing_new(monkeypatch):
     """A：key 表始终不变 -> 除兜底外不再探测（不许每轮空转全页扫描）。"""
-    import framework.tools.probe.expandable as ex
+    import framework.features.f03_locate.expandable_probe as ex
 
     calls = []
 
@@ -350,8 +350,8 @@ def test_expand_wait_skips_when_nothing_new(monkeypatch):
         calls.append(only_indexes)
         return []
 
-    monkeypatch.setattr("framework.tools.probe.probe.probe_page", fake_probe)
-    monkeypatch.setattr("framework.tools.probe.probe.visible_key_map", lambda page: {"a": 0})
+    monkeypatch.setattr("framework.features.f03_locate.probe.probe_page", fake_probe)
+    monkeypatch.setattr("framework.features.f03_locate.probe.visible_key_map", lambda page: {"a": 0})
 
     ex.expand_and_collect(_CountingPage([], scan_result=_expand_cand()), [], settle_s=0.7)
     # 首轮全探 1 次；之后 key 没变 -> 不再探（兜底也只在「一次都没扫过」时才触发，这里已扫过）
@@ -363,7 +363,7 @@ def test_cli_probe_stage_goes_through_entry():
 
     同样不许 skip：直接断言 cli 里不再手写探测链。
     """
-    cli = REPO / "framework" / "cli.py"
+    cli = REPO / "framework" / "features" / "f10_cli" / "cli.py"
     src = cli.read_text(encoding="utf-8")
     assert "expand_and_collect(" not in src, (
         "cli.py 仍在手写可展开容器步骤 —— 必须走 scan_page()"

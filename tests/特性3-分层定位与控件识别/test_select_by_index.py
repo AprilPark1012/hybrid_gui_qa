@@ -13,8 +13,8 @@
 """
 from __future__ import annotations
 
-import framework.tools.generate.generator as gen
-from framework.tools.generate.generator import _add_payload_refs, _render_pytest_case
+import framework.features.f02_semantic.generator_generate as gen
+from framework.features.f02_semantic.generator_generate import _add_payload_refs, _render_pytest_case
 
 LOC = {"业务单元": 'get_by_role("combobox", name="业务单元")'}
 

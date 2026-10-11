@@ -29,9 +29,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from framework.tools.generate.generator import _ROW_CELL_OPS  # noqa: E402
+from framework.features.f02_semantic.generator_generate import _ROW_CELL_OPS  # noqa: E402
 
-HARNESS = ROOT / "framework" / "tools" / "generate" / "generator.py"
+HARNESS = ROOT / "framework" / "features" / "f02_semantic" / "generator_generate.py"
 GEN_SRC = HARNESS.read_text(encoding="utf-8")
 
 # ---- 2026-10-10（方案 2）：**按行下标**的行内定位（row_index）----
@@ -43,20 +43,20 @@ GEN_SRC = HARNESS.read_text(encoding="utf-8")
 
 def test_row_index_is_in_the_case_schema():
     """`row_index` 必须能从用例 JSON 一路落到 TestStep（漏一处 = AI 写对也静默消失）。"""
-    from framework.tools.probe.element_map import TestStep
+    from framework.features.f03_locate.element_map import TestStep
 
     st = TestStep(order=1, action="fill", value="M001", row_index=-1)
     d = st.to_dict()
     assert d.get("row_index") == -1, "to_dict 丢了 row_index"
     assert TestStep.from_dict(d).row_index == -1, "from_dict 丢了 row_index"
     # 透传点（explorer 把 AI 产出转 TestStep 的地方）也必须带上
-    exp = (ROOT / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
+    exp = (ROOT / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
     assert "row_index=getattr(s, " in exp, "explorer 透传丢了 row_index（AI 写对也白写）"
 
 
 def test_row_index_step_is_rendered_as_act_row():
     """生成器：带 row_index 的步骤 -> emit `_act_row(...)`；白名单外的 op -> 明确失败。"""
-    from framework.tools.generate.generator import _is_row_index_step, _ROW_INDEX_OPS
+    from framework.features.f02_semantic.generator_generate import _is_row_index_step, _ROW_INDEX_OPS
 
     assert _is_row_index_step({"row_index": -1, "element": "物料编码@订单详情页"})
     assert not _is_row_index_step({"element": "物料编码@订单详情页"}), "没有 row_index 不许走这条分支"
@@ -87,7 +87,7 @@ def test_ambiguity_error_tells_you_to_use_row_index():
 
 def test_prompt_contract_teaches_row_index():
     """提示词契约里必须教 AI 用 row_index（否则能力有了、AI 不会用）。"""
-    exp = (ROOT / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
+    exp = (ROOT / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
     assert "row_index" in exp, "AI 输出契约里没有 row_index"
     i = exp.index("_OUTPUT_CONTRACT = (")
     block = exp[i:i + 4200]

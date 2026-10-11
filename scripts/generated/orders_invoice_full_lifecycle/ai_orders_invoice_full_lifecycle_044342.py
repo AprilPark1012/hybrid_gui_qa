@@ -31,7 +31,7 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       # P22 批 4/5：等待式断言（wait_text；批 5 起支持 selector 限定范围）
                       _assert_wait_text)
 # P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）
-from framework.tools.probe.scope_locate import drill as _drill
+from framework.features.f03_locate.scope_locate import drill as _drill
 import pytest
 from playwright.sync_api import expect as _pw_expect
 

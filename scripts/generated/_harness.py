@@ -6,7 +6,7 @@
 但省掉「每条用例重启浏览器」的 ≈0.6s/条（实测 9 用例 setup 由 5.4s → 若干毫秒）。
 case.vars 变量池（运行过程数据）+ 动态占位符 {datetime} 解析（一次解析固化，填表名==断言名，重跑不重名）。
 """
-# ---- 统一 UTF-8（生成物自带，裸跑 pytest 也不炸；与 framework/tools/common/text_io.py 同口径）----
+# ---- 统一 UTF-8（生成物自带，裸跑 pytest 也不炸；与 framework/shared/text_io.py 同口径）----
 # 为什么：Windows 控制台是 cp936 时，本文件里的 v/[!] 会 UnicodeEncodeError（跑到一半崩）；
 # 而 pytest 的 fd 捕获把输出写回真实 fd 时**硬编码 UTF-8**（_pytest/capture.py），
 # 只要外层按 locale 解码就 UnicodeDecodeError。这里把本进程 stdio 拉齐到 UTF-8，
@@ -46,7 +46,7 @@ import os
 RUN_ID = os.environ.get("HYBRID_RUN_ID", "latest")
 RUN_LOG_DIR = LOG_DIR / RUN_ID
 
-# ---- Chromium 启动参数（内联自 framework/tools/common/browser.py:CHROMIUM_ARGS；生成物自包含）----
+# ---- Chromium 启动参数（内联自 framework/shared/browser.py:CHROMIUM_ARGS；生成物自包含）----
 CHROMIUM_ARGS = [
     '--disable-dev-shm-usage',
     '--disable-gpu',
@@ -76,8 +76,8 @@ def _launch_opts(headless):
 
 import sys
 sys.path.insert(0, str(BASE))
-from framework.tools.generate.data_driven import resolve_dynamic_inputs, format_template  # noqa
-from framework.tools.run.healer import Healer  # noqa: E402
+from framework.features.f05_layers.data_driven_generate import resolve_dynamic_inputs, format_template  # noqa
+from framework.features.f06_healer.healer_run import Healer  # noqa: E402
 
 # ---- 自愈开关（Q1 决策：默认开，可用 HYBRID_SELF_HEAL=0 关）----
 # 0 → 确定性 locator 失效即报错，不做语义兜底/自愈（CI 里常要"失败即报"）
@@ -314,7 +314,7 @@ def _maybe_scene_pre(page):
     steps, _host = _pre_steps_of(cid)
     if not steps or cid in _SCENE_PRE_DONE:
         return
-    from framework.tools.run.pre_actions import run_pre_actions
+    from framework.shared.pre_actions_run import run_pre_actions
     # [!] `resolvable_wait_ms=15000`：执行期**首次导航后立刻查 count 必然为 0** ——
     #   身份菜单是 auth.js 拿 /api/me 之后异步注入的；不给等待就会判"整组留到后面的页"、
     #   一步都不跑（2026-10-10 实测：两个用例都因此当场抛）。探测期保持 0（即时，逐页不浪费）。
@@ -519,7 +519,7 @@ def _click_row_cell(page, row_text, cell_field, tabs=None, op="click", value=Non
     **同一条通道**（同一套唯一性口径、同一套表达式拼法），不再各写一份列逻辑。
     函数名与签名保持不变 -> **既有生成物零改动可跑**。
     """
-    from framework.tools.probe.scope_locate import locate_in_scope
+    from framework.features.f03_locate.scope_locate import locate_in_scope
 
     rows = page.locator("tbody tr").filter(has_text=row_text)
     n = _count_attached(rows)
@@ -646,7 +646,7 @@ class _BrowserPool:
             if self.browser is not None:
                 self.restarts += 1
                 print(f"[browser] [!] 会话级浏览器已断开（第 {self.restarts} 次）→ 重启。"
-                      f"若 dmesg 有 OOM 记录，说明内存不够（见 framework/tools/common/limits.py 的并发降级）",
+                      f"若 dmesg 有 OOM 记录，说明内存不够（见 framework/features/f07_concurrency/limits.py 的并发降级）",
                       flush=True)
             self.browser = self._p.chromium.launch(**self._opts)
         return self.browser
@@ -704,7 +704,7 @@ def _install_login(context, auth_spec=None):
     """
     if not auth_spec:
         return
-    from framework.tools.run.login import ensure_logged_in
+    from framework.shared.login import ensure_logged_in
     r = ensure_logged_in(context, _HYBRID_BASE or "http://localhost:8000", auth_spec)
     if not r.get("ok"):
         raise RuntimeError(
@@ -761,7 +761,7 @@ def page(request, _pool):
         try:
             pg.goto(_host)
             _wait_ready(pg, _host)
-            from framework.tools.run.pre_actions import run_pre_actions
+            from framework.shared.pre_actions_run import run_pre_actions
             _done = run_pre_actions(pg, _steps, "场景身份前置", require_all_resolvable=True,
                                     resolvable_wait_ms=15000, log_tag="setup")
             if len(_done) == len(_steps):
@@ -856,7 +856,7 @@ def _seed_index_from_snapshot() -> None:
     _SNAPSHOT_LOADED = True
     try:
         from pathlib import Path as _P
-        from framework.tools.generate.probe_snapshot import load_snapshot
+        from framework.features.f05_layers.probe_snapshot_generate import load_snapshot
         snap = load_snapshot(_P(__file__).resolve().parent)
         for _k, _v in (snap or {}).items():
             _INDEX.setdefault(_k, _v)
@@ -873,7 +873,7 @@ def _item_for(hint, page):
     [!] 2026-09-18 批次 2 S3：逐字名不存在时不再「随便挑一个」—— 见 `_fuzzy_lookup`。
     [!] V8.4.3+：先读 explore 快照（`_seed_index_from_snapshot`）—— 见那里的说明。
     """
-    from framework.tools.probe.probe import probe_page
+    from framework.features.f03_locate.probe import probe_page
     _seed_index_from_snapshot()
     it = _INDEX.get(hint)
     if it is None:
@@ -928,7 +928,7 @@ def _fuzzy_lookup(hint):
 
 
 def _to_ref(it):
-    from framework.tools.probe.element_map import ElementRef
+    from framework.features.f03_locate.element_map import ElementRef
     return ElementRef(
         semantic_name=it["semantic_name"],
         test_id=it.get("test_id"),
@@ -951,8 +951,8 @@ def _loc(hint, page):
 
     HYBRID_SELF_HEAL=0 → 关闭自愈（CI 语义：失败即报，不做任何猜测性定位）。
     """
-    from framework.tools.probe.locator_bridge import resolve_locator
-    from framework.tools.probe.element_map import TestStep
+    from framework.features.f03_locate.locator_bridge_locate import resolve_locator
+    from framework.features.f03_locate.element_map import TestStep
     it = _item_for(hint, page)
     if it is None:
         raise RuntimeError(
@@ -1004,10 +1004,10 @@ def _shot(page, tag):
 def _wait_after_action(page) -> None:
     """（P22 批 3）动作后若页面发生导航/重载，等它就绪。
 
-    [!] **唯一实现在 `framework.tools.run.waits`** —— 这里只转发：生成物与框架二类脚本共用同一份
+    [!] **唯一实现在 `framework.shared.waits_run`** —— 这里只转发：生成物与框架二类脚本共用同一份
     逻辑，避免"两处各写一份、慢慢漂移"（本项目已因这类漂移栽过）。
     """
-    from framework.tools.run.waits import wait_after_action
+    from framework.shared.waits_run import wait_after_action
     return wait_after_action(page)
 
 
@@ -1269,7 +1269,7 @@ def _act_row(page, semantic, row_index, op="click", value=None):
     try:
         _it = _item_for(semantic, page)
         if _it and _it.get("anchor") and _it.get("path"):
-            from framework.tools.probe.scope_locate import scope_locate
+            from framework.features.f03_locate.scope_locate import scope_locate
             _r = scope_locate(page, _it["anchor"], _it["path"])
             if _r.get("ok") and _r.get("locator_obj") is not None:
                 _all = _r["locator_obj"]

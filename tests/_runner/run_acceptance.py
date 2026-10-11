@@ -50,7 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # [!] 2026-10-07：入口必须自拉平 stdio —— 否则在「stdout 被捕获成管道 + 中文 Windows(cp936)」时，
 #    任何非 GBK 字符（emoji/箭头之类）都会让 print 直接 UnicodeEncodeError 崩掉整个入口。
 #    （V8.3.1 内网 Windows 实测：`--list --skip-ai` 就是这么崩的。）
-from framework.tools.common.text_io import force_stdio      # noqa: E402
+from framework.shared.text_io import force_stdio      # noqa: E402
 force_stdio()
 
 import run_verifications as rv          # 复用：解释器定位 / 内存探测 / 北京时间（同目录工具）

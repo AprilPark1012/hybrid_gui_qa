@@ -21,12 +21,12 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "tests" / "_helpers"))
 
-from framework.tools.probe.element_map import ElementRef       # noqa: E402
+from framework.features.f03_locate.element_map import ElementRef       # noqa: E402
 
 
 def _anchor_mod():
     import importlib
-    return importlib.import_module("framework.tools.probe.anchor")
+    return importlib.import_module("framework.features.f03_locate.anchor_locate")
 
 
 # ---------------- (1) 契约字段：往返 + 向后兼容 ----------------

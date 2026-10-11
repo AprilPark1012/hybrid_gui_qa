@@ -19,9 +19,9 @@ from pathlib import Path
 
 import pytest
 
-from framework import cli
-from framework.tools.common import config
-from framework.tools.generate import generator
+from framework.features.f10_cli import cli   # P25 片 8：patch 要打在**真实现**上（framework.cli 现在是转发薄壳）
+from framework.shared import config
+from framework.features.f02_semantic import generator_generate as generator
 
 
 def test_run_without_generated_scripts_exits_2(monkeypatch, tmp_path):
@@ -94,7 +94,10 @@ def test_ensure_dirs_covers_runtime_dirs():
 
 def test_no_stdio_exit_zero_paths_in_run():
     """源码级防复发：cmd_run 里不许再出现「只 print 一句 + return」这种静默成功写法。"""
-    src = open(cli.__file__, encoding="utf-8").read()
+    # [!] P25 片 8：判据要盯**实现**（`framework.cli` 现在是只转发的薄壳，
+    #   薄壳里没有 run/退出码逻辑 -> 读它会恒红或被迫放宽）。
+    from framework.features.f10_cli import cli as _impl
+    src = open(_impl.__file__, encoding="utf-8").read()
     assert "先跑 generate\")\n        return" not in src, "run 的静默成功写法又回来了"
     assert "raise SystemExit(r.returncode)" in src, "run 必须如实传递 pytest 退出码"
 

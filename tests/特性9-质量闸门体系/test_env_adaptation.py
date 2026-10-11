@@ -22,18 +22,22 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).resolve().parent))       # 同目录测试工具
+# [!] P25 片 8：`run_verifications` 住在 `tests/_runner/`（不是包，无 __init__.py），
+#   判据里 `import run_verifications` 需要它显式在 sys.path 上 —— 以前是靠收集顺序
+#   偶然成立，跨环境/换 pytest 版本就会 ModuleNotFoundError（属"靠运气"的隐式前提）。
+sys.path.insert(0, str(REPO / "tests" / "_runner"))
 
 import artifacts                                              # noqa: E402
 import repo_files                                            # noqa: E402
-from framework.tools.common import target_probe              # noqa: E402
+from framework.shared import target_probe              # noqa: E402
 
 
 # ==================== (1) 文件清单：非 git 环境等效降级 ====================
 
 def _fake_pkg_repo(tmp: Path) -> Path:
     """造一个像「交付包解压目录」的树：无 .git，另带第三方树与运行时目录。"""
-    (tmp / "framework").mkdir(parents=True, exist_ok=True)
-    (tmp / "framework" / "cli.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp / "framework" / "features" / "f10_cli").mkdir(parents=True, exist_ok=True)   # P25 片 8 新结构
+    (tmp / "framework" / "features" / "f10_cli" / "cli.py").write_text("x = 1\n", encoding="utf-8")
     (tmp / "note.md").write_text("新写的说明（模拟未跟踪的新文件）\n", encoding="utf-8")
     for d in (".venv/lib/site-packages", "log/run1", "output/verify", "__pycache__"):
         (tmp / d).mkdir(parents=True, exist_ok=True)
@@ -50,7 +54,7 @@ def test_file_list_falls_back_outside_git_repo(tmp_path):
     assert files, "降级扫描返回空清单 -> 团队用户在交付包现场又会看到红"
     assert "文件树扫描" in source, source
     assert "note.md" in files, "★ 新增（未跟踪）文件必须被扫到 —— 否则又是「提交后才发现」的假绿"
-    assert "framework/cli.py" in files
+    assert "framework/features/f10_cli/cli.py" in files
 
 
 def test_file_list_fallback_skips_third_party_and_runtime(tmp_path):

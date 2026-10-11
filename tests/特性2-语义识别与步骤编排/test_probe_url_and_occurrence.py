@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import pytest
 
-import framework.tools.generate.generator as gen
-from framework.tools.generate.generator import _add_payload_refs, _render_pytest_case
-from framework.tools.generate.scenario import ScenarioError, load_scenario_file
+import framework.features.f02_semantic.generator_generate as gen
+from framework.features.f02_semantic.generator_generate import _add_payload_refs, _render_pytest_case
+from framework.features.f02_semantic.scenario_generate import ScenarioError, load_scenario_file
 
 _YML = """
 id: t_gen

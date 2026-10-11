@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-EXPLORER = REPO / "framework" / "tools" / "explore" / "explorer.py"
+EXPLORER = REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py"
 
 
 def _src() -> str:
@@ -57,7 +57,7 @@ def test_prompt_accepts_auth():
 
 def test_prompt_forbids_login_steps_when_auth_declared():
     """声明了 `auth:` -> 提示词必须**明确禁止** AI 生成任何登录步骤。"""
-    from framework.tools.explore.explorer import _build_planner_prompt
+    from framework.features.f02_semantic.explorer_explore import _build_planner_prompt
 
     prompt = _build_planner_prompt(
         "打开合同列表页，选中第一行合同", [], "http://x/",
@@ -76,7 +76,7 @@ def test_prompt_forbids_login_steps_when_auth_declared():
 
 def test_prompt_has_no_login_ban_without_auth():
     """**负向的另一面**：没声明 `auth:` 的场景，不该被塞进这条约束（避免过度约束误伤）。"""
-    from framework.tools.explore.explorer import _build_planner_prompt
+    from framework.features.f02_semantic.explorer_explore import _build_planner_prompt
 
     prompt = _build_planner_prompt("打开待办页，添加一条待办", [], "http://x/", auth=None)
     flat = prompt.replace("\n", "")
@@ -87,7 +87,7 @@ def test_prompt_has_no_login_ban_without_auth():
 
 def test_prompt_requires_grounded_business_values():
     """提示词必须要求「业务数据一律照抄场景/清单，不许自己编」——治幻觉密码那类问题。"""
-    from framework.tools.explore.explorer import _build_planner_prompt
+    from framework.features.f02_semantic.explorer_explore import _build_planner_prompt
 
     prompt = _build_planner_prompt("随便什么场景", [], "http://x/", auth={"username": "u"})
     flat = prompt.replace("\n", "")
@@ -105,7 +105,7 @@ def test_prompt_grounds_select_value():
     根因：AI **看不到**真实选项的 value（探测清单里只有控件、没有 option 列表），
     而提示词只要求「select 必须给 semantic_name」，**没规定值从哪来** -> 它只能猜。
     """
-    from framework.tools.explore.explorer import _build_planner_prompt
+    from framework.features.f02_semantic.explorer_explore import _build_planner_prompt
 
     prompt = _build_planner_prompt("打开新建订单页，业务单元选第一行", [], "http://x/",
                                    auth={"username": "u"})
@@ -132,7 +132,7 @@ def test_login_step_gate_exists():
 
 def test_login_step_gate_rejects_login_flow():
     """给一段**含登录流程**的产出 -> 闸门必须拒绝。"""
-    from framework.tools.explore.explorer import _reject_login_steps
+    from framework.features.f02_semantic.explorer_explore import _reject_login_steps
 
     bad = [
         {"op": "goto", "desc": "打开登录页", "value": "http://x/login.html"},
@@ -151,7 +151,7 @@ def test_login_step_gate_allows_normal_steps():
 
     口径：判定看的是「打开的是登录页 / 填的是账号密码这类登录专用字段」，不是"描述里出现登录"。
     """
-    from framework.tools.explore.explorer import _reject_login_steps
+    from framework.features.f02_semantic.explorer_explore import _reject_login_steps
 
     good = [
         {"op": "goto", "desc": "打开合同列表页（登录由场景级登录前置完成）", "value": "http://x/"},

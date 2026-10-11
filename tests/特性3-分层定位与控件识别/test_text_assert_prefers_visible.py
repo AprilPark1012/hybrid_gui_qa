@@ -21,7 +21,7 @@ import ast
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-GEN = REPO / "framework" / "tools" / "generate" / "generator.py"
+GEN = REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py"
 
 
 def _tmpl_seg(name: str, span: int = 1400) -> str:

@@ -35,7 +35,7 @@ def _empty_browsers(tmp_path) -> str:
 
 def test_missing_browser_raises_with_actionable_message(tmp_path, monkeypatch):
     """★负向（核心）：浏览器不可用 -> 必须抛错，且文案里必须有可照抄的修复命令。"""
-    from framework.tools.common.browser import BrowserNotInstalledError, ensure_browser_installed
+    from framework.shared.browser import BrowserNotInstalledError, ensure_browser_installed
 
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", _empty_browsers(tmp_path))
     monkeypatch.delenv("HYBRID_SKIP_BROWSER_CHECK", raising=False)
@@ -52,7 +52,7 @@ def test_missing_browser_raises_with_actionable_message(tmp_path, monkeypatch):
 
 def test_skip_env_does_not_block(tmp_path, monkeypatch):
     """不误伤：用户显式跳过 -> 不许再拦。"""
-    from framework.tools.common.browser import ensure_browser_installed
+    from framework.shared.browser import ensure_browser_installed
 
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", _empty_browsers(tmp_path))
     monkeypatch.setenv("HYBRID_SKIP_BROWSER_CHECK", "1")
@@ -61,7 +61,7 @@ def test_skip_env_does_not_block(tmp_path, monkeypatch):
 
 def test_normal_env_passes_through():
     """不误伤：浏览器可用时不许抛（正常环境永远看不到这条提示）。"""
-    from framework.tools.common.browser import ensure_browser_installed
+    from framework.shared.browser import ensure_browser_installed
 
     if os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
         pytest.skip("本机被显式指了浏览器目录，交给负向用例覆盖")
