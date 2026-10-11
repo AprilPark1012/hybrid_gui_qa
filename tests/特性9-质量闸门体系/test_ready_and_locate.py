@@ -96,7 +96,10 @@ def test_generator_source_uses_goto_helper():
     """模板侧（唯一真源）也必须 emit _goto —— 只改生成物会被下次 generate 抹掉。"""
     src = _read(GEN)
     assert "    _goto(page, {case.get(" in src
-    assert "    _goto(page, {st.get('url'" in src
+    # [!] 2026-10-10：goto 步骤的值先经 `_abs_url` 补齐**相对地址**，再 emit `_goto(page, {_u!r})`
+    #   （判据跟着实现走，但**实质**不变：步骤导航必须走 _goto 统一入口）。
+    assert "_abs_url(_raw_u" in src, "goto 步骤没按用例 base 补齐相对地址"
+    assert "    _goto(page, {_u!r})" in src, "goto 步骤没有 emit _goto（导航绕过了统一入口）"
     assert "    page.goto({case.get(" not in src and "page.goto({st.get(" not in src
 
 

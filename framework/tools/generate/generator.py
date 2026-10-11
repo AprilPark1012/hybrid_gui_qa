@@ -17,6 +17,8 @@ import re
 from pathlib import Path
 
 from framework.tools.common.config import BASE, CASES_DIR, SCRIPTS_DIR
+from framework.tools.probe.element_map import (row_scope_violation,         # 行定位判据的唯一入口
+                                               apply_row_locator_fallback)  # 框架兜底的唯一入口
 from framework.tools.generate import probe_snapshot   # explore 快照的唯一读写入口（V8.4.3+）
 from framework.tools.common.browser import CHROMIUM_ARGS
 from framework.tools.generate.case_builder import CaseQualityError, case_errors
@@ -34,6 +36,31 @@ def _gate_false_green(cases: list[dict]) -> None:
     bad = [(cid, errs) for cid, errs in bad if errs]
     if bad:
         raise CaseQualityError(bad)
+
+
+def _abs_url(url, base: str) -> str:
+    """把步骤里的**相对地址**按用例 base 补齐成绝对地址（2026-10-10 实测）。
+
+    为什么必须补：AI 生成的 goto 会写 `order_new.html?contract_no=HT-1001` 这种相对地址
+    （人写场景也常见），而 playwright 的 `page.goto` 只吃绝对 URL ->
+    `Protocol error (Page.navigate): Cannot navigate to invalid URL`，整条用例红，
+    且报错完全指不到「要补 base」这件事（本次排查绕了一圈才见真因）。
+    口径：**只补相对**（带协议的 `http/https/file/about/data` 原样返回）；
+    调用方负责在真的补过时**出声**（不静默改输入）。
+    """
+    from urllib.parse import urljoin
+
+    u = str(url or "").strip()
+    if not u:
+        return u
+    if re.match(r"^(?:https?|file|about|data):", u, re.I):
+        return u
+    b = str(base or "").strip() or "http://localhost:8000"
+    # [!] **不要手动给 base 补 `/`**（我犯过）：用例的 base_url 常是 `.../login.html` 这种**文件**地址，
+    #   补成 `.../login.html/` 会被 urljoin 当目录 -> `.../login.html/orders.html`（垃圾地址，
+    #   实测把 AI 用例导航到不存在的 URL）。RFC 3986 语义本来就对：urljoin 把 base 的**最后一段**
+    #   当文件丢掉 -> `urljoin("http://h/login.html", "orders.html") == "http://h/orders.html"` [OK]
+    return urljoin(b, u)
 
 
 def _chromium_args_literal() -> str:
@@ -407,6 +434,11 @@ def _validate_by(by) -> str | None:
 # -> 补 check/uncheck/fill。这是行内定位的**通用**缺口，不是某个用例的特例。
 _ROW_CELL_OPS = ("click", "click_new_tab", "check", "uncheck", "fill")
 
+# 行内定位（**按下标** `row_index`）支持的 op —— 2026-10-10 方案 2 新增。
+# 与 `_ROW_CELL_OPS` 的区别：那条按**行内容**锚行（锚不住"刚新增的空行"），这条按**位置**。
+# 白名单口径与 `_ROW_CELL_OPS` 尽量对齐（运行期 `_act_row` 只认这些）。
+_ROW_INDEX_OPS = ("click", "fill", "select", "check", "uncheck", "press_enter")
+
 # ---- 用例步骤的「直接定位」（2026-09-30 P22 批 5）----
 # 为什么需要：探测**覆盖不到**的控件（实测：开票页 element_map 里只有 3 个元素，
 # 客户/销售员/发票行字段一个都没探到）-> AI 看不见它们、用例没法用语义名引用。
@@ -448,6 +480,15 @@ def _step_direct_locator_expr(by, value, role_name):
 # 为什么需要 header/index：有些列**没有 data-field** —— 实测订单列表的勾选列是
 # `<td class="pick-cell">`，表头 `<th class="pick-head">` 还没文本 -> 只能按列序定位。
 _CELL_BY_WHITELIST = ("field", "header", "index")
+
+
+def _is_row_index_step(st: dict) -> bool:
+    """是不是「**按行下标**定位」步骤（2026-10-10 方案 2）：有 `row_index` + 语义名。
+
+    与 `_is_row_cell_step`（按行内容锚）**互补**：内容锚锚不住「刚新增的空行」，
+    下标锚表达不了"含某文本的那一行" —— 两条都是行内定位，按用例能拿到什么选哪条。
+    """
+    return st.get("row_index") is not None and bool(st.get("element"))
 
 
 def _is_row_cell_step(st: dict) -> bool:
@@ -634,6 +675,22 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
     #     里面可能有 U+26A0/U+21D2（yml 合法）—— 抄进 docstring 前降级，别让产物违规。
     name = _gbk_safe(case.get("name") or cid).replace('"', '\\"')
     steps = case.get("steps", [])
+    # 2026-10-11 V8.4.6（方案 ③ 框架兜底）：**能判死**的「行定位缺失」在这里补上。
+    #   为什么放渲染入口：这是两条链路（手搓用例 / AI 用例）**唯一的共同收口**；
+    #   只补能判死的情形（见 `apply_row_locator_fallback` 的 R1），推不出来的照旧
+    #   走到下面的闸门报红 —— 宁红不猜。信号来源与闸门**同源**（不另立一份）：
+    #   `_MULTI_MATCH`（定位来源文件）+ `it_map`（含现场探测条目），只收 >1 的取值，
+    #   避免把 `it_map` 里同名先到先得、没有该键的 `steps[].element` 条目当信号。
+    _mm_fb = dict(_MULTI_MATCH)
+    for _n, _it2 in (it_map or {}).items():
+        _v2 = int((_it2 or {}).get("multi_match") or 1)
+        if _v2 > 1:
+            _mm_fb.setdefault(str(_n), _v2)
+    _fb = apply_row_locator_fallback(steps, _mm_fb)
+    if _fb:
+        print(f"[generate] [key] 框架兜底补行定位 {len(_fb)} 处"
+              f"（规则 R1：刚新增行 -> row_index=-1）· 用例 {cid}: "
+              f"{', '.join(n['name'] for n in _fb[:8])}")
     asserts = case.get("asserts", [])
     is_cross_page = len(case.get("pages") or []) > 1
     dup_raw = _dup_raw_names_for_case(case)      # 只认「本用例自己声明的页面」里的重名（见函数注释）
@@ -678,7 +735,33 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
                 # 判"组值没被用到" -> generate exit 2。三处一起补才是完整的 v）
                 lines.append(f"    _goto(page, _data({_gref!r}, ctx))")
             else:
-                lines.append(f"    _goto(page, {st.get('url', case.get('base_url'))!r})")
+                # 2026-10-10 实测：AI 会写**相对地址**（`order_new.html?contract_no=HT-1001`）——
+                #   playwright 直接 `Cannot navigate to invalid URL`，整条用例红，而报错完全
+                #   指不到「要补 base」这件事。渲染期就按用例 base 补齐（补了**出声**，可审计）。
+                _raw_u = st.get("url", case.get("base_url"))
+                _u = _abs_url(_raw_u, case.get("base_url") or "")
+                if st.get("url") and _u != st.get("url"):
+                    print(f"[generate] [key] 步骤 {i + 1} goto 是相对地址 -> 按 base 补齐："
+                          f"{st.get('url')!r} -> {_u!r}")
+                lines.append(f"    _goto(page, {_u!r})")
+        elif _is_row_index_step(st):
+            # ---- 行内**按下标**定位（2026-10-10 方案 2）----
+            # 为什么单独一条：`_click_row_cell` 靠**行内容**锚行，而「刚刚新增的那一行」是空的、
+            # 没有内容可锚 —— 实测（详情页 3 行 -> 同名输入框 3 个，全部可见可用）只给语义名
+            # 必然多匹配歧义。`row_index` 表达"第 N 行 / 最后一行"，与内容锚**互补**。
+            if op not in _ROW_INDEX_OPS:
+                _msg = f"行下标定位不支持该 op={op!r}（白名单：{_ROW_INDEX_OPS}）"
+                lines.append(f"    pytest.fail({_msg!r}, pytrace=False)")
+            else:
+                _val = ""
+                if op in ("fill", "select"):
+                    _ref = st.get("_payload_ref")
+                    if _ref:
+                        _val = f", value=_data({_ref!r}, ctx)"
+                    elif st.get("value") is not None:
+                        _val = f", value={str(st['value'])!r}"
+                lines.append(f'    _act_row(page, {str(st.get("element"))!r}, '
+                             f'{int(st["row_index"])}, op={op!r}{_val})')
         elif _is_row_cell_step(st):
             # ---- 行内定位步骤（按行内容锚行 + 取该行某列）----
             # 为什么需要：新建记录的编号是**服务端动态分配**的 -> AI 无法按语义名引用那一条，
@@ -755,6 +838,19 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
                         lines.append(f"    _log(page, \"bad_by\", {str(_by)!r})")
                         lines.append(f"    pytest.fail({msg!r}, pytrace=False)")
                         continue
+            # 2026-10-10（方案 1）：**重复出现的控件**（每行/每条一个，探测期测得 `multi_match`）
+            #   必须给行定位。为什么在**生成期**就拦：运行期它必然同时命中多个（实测 3 个），
+            #   等跑完一条用例才红、而且报错点离"你少写了行定位"很远；这里直接给出可改的原因。
+            #   判据/措辞走**唯一入口** `element_map.row_scope_violation()` —— 与 explore 的产出校验
+            #   共用同一段（2026-10-10 他选 ①：闸门只在生成期说话时，原因到不了 AI 手里，
+            #   重试闭环已经结束 -> AI 没有第二次机会）。
+            _mm = int(_MULTI_MATCH.get(elem)
+                      or ((it_map or {}).get(elem) or {}).get("multi_match") or 1)
+            reason = row_scope_violation(st, _mm)
+            if reason:
+                lines.append(f"    _log(page, \"multi_match\", '缺行定位: {elem}')")
+                lines.append(f"    pytest.fail({reason!r}, pytrace=False)")
+                continue
             if _scope != "page" and elem in _AMBIGUOUS_NAMES:
                 reason = (f"语义名歧义：{elem!r} 在多页命中不同 locator → 无法确定该用哪一个"
                           f"（generate 日志有 [!] 多页命中）→ 请改成唯一名，或改用 selector 精确定位；"
@@ -859,6 +955,32 @@ def _load_loc_map_from_probe_snapshot(path: Path) -> dict:
     return out
 
 
+_MULTI_MATCH: dict[str, int] = {}      # 名字 -> 重复个数（探测期测得的 `multi_match`，方案 1 生成期闸门用）
+
+
+def _multi_match_from_source(path: Path, kind: str) -> dict[str, int]:
+    """从**定位来源文件**取「名字 -> 重复个数」。
+
+    为什么单独取、不从 `it_map` 里顺手拿：`it_map` 是 `steps[].element` + `probe_items` 同名
+    **先到先得**，而 `steps[].element` 排在前面、那份字典**没有** `multi_match`（它是探测步骤的
+    元素引用，不是清单条目）-> 实测直接导致闸门**永远不生效**（第一版就是这么哑的）。
+    信号必须有**唯一权威来源**：清单条目（`probe_items` / probe 的 `items`）。
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    entries = (list((data.get("items") if isinstance(data, dict) else data) or [])
+               if kind == "probe"
+               else list((data or {}).get("probe_items") or []))
+    out: dict[str, int] = {}
+    # 名字同时认 `semantic_name` 与 `base_name`（唯一化前的基础名）—— 与 explore 侧共用
+    # `item_multi_match_map()`（2026-10-10：两处各写一份键名口径 -> 一边静默失效）。
+    from framework.tools.probe.element_map import item_multi_match_map
+    out = {k: v for k, v in item_multi_match_map(entries).items()}
+    return out
+
+
 def _items_from_source(path: Path, kind: str) -> dict[str, dict]:
     """从**定位来源文件**建「名字 → 元素字典」（步骤级 `by` 直定位要从这里取锚）。
 
@@ -930,6 +1052,33 @@ _DUP_PAGES: dict[str, set[str]] = {}    # 原始名 → 出现过的页名集合
 #    实测把它写成探测块内的局部变量 -> 走快照路径（不现场探测）时渲染处 `UnboundLocalError`
 #    （判据 test_generate_quality_gate 当场抓到）。与 `_DUP_PAGES` 同模式：探测前 clear、读处直接用。
 _LIVE_IT: dict[str, dict] = {}
+
+
+def _pick_loc_map_source(candidates: list, needed: set, src_parts: list | None = None):
+    """在候选「定位来源」里挑**覆盖度最高**的一份（并列取更靠前的 = 更新的）。
+
+    为什么不是「文件名最新、一有命中就 break」（2026-10-10 实测的脆弱点）：
+      任何 ad-hoc 小场景 explore（例如为验证一个 bug 随手跑的一次
+      `explore --ai --scenario "x"`，只探到登录页）都会写出一份新的 `element_map_*.json`。
+      按「最新」取 == 让无关小产物顶掉真正的权威清单 -> generate 报「缺失项」拒绝产出
+      （判据全绿、真跑才红；这次就是被自己的诊断命令毒到的）。
+    口径：**谁能覆盖住本轮要用的名字，谁就是权威**；一个都覆盖不住才交给现场探测补。
+
+    返回 `(label, path, kind, got, hit)`；没有可用候选 -> `None`。
+    每个候选的命中数都会写进 `src_parts`（可审计：这次比了哪几份、各命中多少）。
+    """
+    best = None
+    for label, f, kind in candidates:
+        if not f.exists():
+            continue
+        got = (_load_loc_map_from_element_map(f) if kind == "element"
+               else _load_loc_map_from_probe_snapshot(f))
+        hit = {k: v for k, v in got.items() if k in needed}
+        if src_parts is not None:                       # 全部候选留痕（不静默挑一份）
+            src_parts.append(f"{label} 命中 {len(hit)}/{len(needed)}")
+        if hit and (best is None or len(hit) > len(best[4])):
+            best = (label, f, kind, got, hit)
+    return best
 
 #: 名字 → 元素字典（**定位来源文件里的权威条目**：element_map 的 steps + probe_items / probe 快照的 items）。
 #: [!] 为什么必须有它（2026-10-10 S1 收口时踩到）：`by: title` 这类**属性直定位**是从元素字典里取锚的
@@ -1049,6 +1198,69 @@ def _scenario_auth_of(rel_path: str) -> dict:
         return {}
 
 
+def _scenario_pre_host_of(rel_path: str) -> str:
+    """场景声明的**身份前置该在哪一页跑** = `pages` 里第一个**业务页**的 url。
+
+    为什么必须声明出来（2026-10-10 实测）：身份菜单入口（`超`）只在**带导航的页面**上存在 ——
+    实测 `order_new.html` 上头像节点是 `NONE`、`切换为订单管理员` 也解析不到。
+    AI 的路线是「登录 → 等价直达 order_new.html」，**全程没经过带导航的页** ->
+    前置永远没机会跑 -> 保存按钮置灰、整条红。
+    -> 口径：前置的 host 由场景声明（第一个业务页），执行期**在用例体之前**先导航过去把它做掉，
+      不依赖用例自己的路线（用例怎么走都行）。
+    跳过登录页的判据 = url 含 `login` 或页名含「登录」（结构约定，与业务无关）；认不出来就用第一页。
+    """
+    rel = (rel_path or "").strip()
+    if not rel:
+        return ""
+    try:
+        from framework.tools.generate.scenario import load_scenario_file
+        from framework.tools.common.config import SCENARIOS_DIR
+        _pages = list(getattr(load_scenario_file(SCENARIOS_DIR.resolve().parent / rel), "pages", None) or [])
+        _cand = ""
+        for p in _pages:
+            # [!] `pages` 是 **ScenarioPage dataclass**（不是 dict）—— 第一版按 dict 取 `p.get("url")`
+            #   静默拿到空串（url 全空、前置主路径直接不生效）。两种形状都认：
+            #   dict（老写法/测试桩）与 dataclass；有 `probe_url_for()` 就用它（探测期可达地址）。
+            if isinstance(p, dict):
+                _u, _n = str(p.get("url") or "").strip(), str(p.get("name") or "")
+            else:
+                _fn = getattr(p, "probe_url_for", None)
+                _u = str((_fn() if callable(_fn) else getattr(p, "url", "")) or "").strip()
+                _n = str(getattr(p, "name", "") or "")
+            if not _u:
+                continue
+            if not _cand:
+                _cand = _u
+            if "login" in _u.lower() or "登录" in _n:
+                continue                       # 登录页没有业务导航 -> 不是前置的 host
+            return _u
+        return _cand
+    except Exception as e:                                          # noqa: BLE001
+        print(f"[generate] [!] 读场景 {rel} 的 pages（定前置 host）失败：{type(e).__name__}: {e}")
+        return ""
+
+
+def _scenario_probe_pre_of(rel_path: str) -> list:
+    """按 case 的 `source_scenario` 回读场景的**场景级探测前置**（`probe_pre:`）序列。
+
+    2026-10-10 A 方案：这份声明是"怎么到达这个身份"的**唯一权威** —— 探测期与执行期都要用它
+    （执行期由产物侧 harness 读 `_pre.json` → 调**同一引擎** `run_pre_actions`）。
+    与 `_scenario_auth_of` 同源同路径（一个读 auth 段、一个读 probe_pre 段）：唯一实现，不各写一份。
+    """
+    rel = (rel_path or "").strip()
+    if not rel:
+        return []
+    try:
+        from framework.tools.generate.scenario import load_scenario_file
+        from framework.tools.common.config import SCENARIOS_DIR
+        return list(load_scenario_file(SCENARIOS_DIR.resolve().parent / rel).probe_pre or [])
+    except Exception as e:                                          # noqa: BLE001
+        # 出声但不抛：与 `_scenario_auth_of` 同口径（读不到 -> 执行期就没有这条前置，
+        # 用例会在身份那步失败，日志里能看到这行原因）。
+        print(f"[generate] [!] 读场景 {rel} 的 probe_pre 失败：{type(e).__name__}: {e}")
+        return []
+
+
 def _scenario_text_of(rel_path: str) -> str:
     """按 case 的 `source_scenario` 回读**场景原文**（L27：等待时长要从原文里读）。
 
@@ -1106,7 +1318,8 @@ def _pages_to_probe(gaps: set[str],
 
 
 def _probe_declared_pages(pages: list[tuple[str, str]],
-                          auth: dict | None = None) -> tuple[dict, set[str], dict[str, set[str]], dict]:
+                          auth: dict | None = None,
+                          pre: list | None = None) -> tuple[dict, set[str], dict[str, set[str]], dict]:
     """按用例声明的页面逐页现场探测（P3 跨页补齐），返回 (loc_map, ambiguous_names, dup_pages, it_map)。
 
     · 一个浏览器 + 一个 context 顺序 goto（本机 1.87G 无 swap，绝不为多页多开/并发）；
@@ -1134,6 +1347,14 @@ def _probe_declared_pages(pages: list[tuple[str, str]],
         # 不做这一步，现场探测只会拿到登录页那 7 个控件 -> 手写用例集体报「元素未映射」。
         _ensure_login_for(ctx, (pages or [("", "")])[0][1], auth)         # P22 批 5：统一入口
         pg = ctx.new_page()
+        # 身份前置必须在**每个探测页自己的标签页**里跑一次。
+        # [!] 2026-10-11 纠错（我先改成"只跑一次"-> 直接复现了用户报的失败）：
+        #   这个 demo 的"当前角色"是**按标签页**生效的 —— 单页探测在它的标签页里切好了，
+        #   声明页探测**新开一个标签页**（`ctx.new_page()`）=> 新页又是超管 =>
+        #   详情页「编辑/新增行」置灰 => 编辑态控件探不到 => 6~7 个语义名缺失 => 质量闸拒产。
+        #   （当时我把"切换后再按旧名找「超」会失败"的重试噪声当成了危害 —— 那只是安静跳过，
+        #     `quiet_missing=True` 不阻断，代价可以接受；而"漏切身份"是致命错误。）
+        #   代价：每页多一次前置（几十毫秒）—— 换来的是一条真能兜住场景约定的路。
         for pname, url in pages:
             pg.goto(url, wait_until="domcontentloaded")
             # P22 批 3：别用 networkidle（本 demo 页面里的 fetch 会挂着 -> 永不 idle -> 30s 超时）；
@@ -1142,6 +1363,14 @@ def _probe_declared_pages(pages: list[tuple[str, str]],
                 pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
             except Exception:                                      # noqa: BLE001
                 pg.wait_for_timeout(500)
+            # V8.4.6（真 bug 修复）：每页探测前**先应用场景声明的身份前置** `probe_pre`
+            #   —— 与单页路径、explore 侧**同一个引擎**（`run_pre_actions`）。
+            #   不做这一步的实测后果：超管身份下详情页「编辑/新增行」置灰 -> 编辑态控件探不到
+            #   -> 映射质量闸拒绝产出（2026-10-11 全新环境 `cli all` 实测复现）。
+            #   探测期用 quiet_missing：前置项探不到不阻断（可能是页面差异），但会留痕。
+            if pre:
+                from framework.tools.run.pre_actions import run_pre_actions
+                run_pre_actions(pg, pre, "场景探测前置", quiet_missing=True)
             # V8.3.7（2026-10-08 事故修复）：**改走唯一入口** scan_page()。
             # 原来这里手写「基础探测 + 弹窗/弹层」两步，**漏了「可展开容器」那一步**
             # （而 explore 侧两条路径都有）—— 后果：干净环境下拿不到右上角角色菜单里的控件
@@ -1159,6 +1388,22 @@ def _probe_declared_pages(pages: list[tuple[str, str]],
             _sc = scan_page(pg, page_name=pname or None, tag_page=True)   # 基础+可展开容器+弹窗/弹层+合并
             layer = _sc.modal_items
             merged_list = _sc.items
+            # V8.4.6：**行内列控件**（`_当前行`）也要在这里造 —— 与 explore 侧**同一个唯一入口**
+            #   （`probe.row_columns`）。不造的实测后果：全新环境下 AI 用例引用的
+            #   `选择订单_当前行` 映射不上 -> 映射质量闸拒绝产出（2026-10-11：7 个缺失修到剩它 1 个）。
+            try:
+                from framework.tools.probe.probe import probe_row_fields
+                from framework.tools.probe.row_columns import row_columns_to_items
+                _rfs = probe_row_fields(pg)
+                if _rfs:
+                    _synth = row_columns_to_items(pname or "", _rfs, list(merged_list))
+                    if _synth:
+                        print(f"[generate] 现场探测 [{pname or '页面1'}] 追加行内列控件 "
+                              f"{len(_synth)} 个（无 data-field 的列 -> `_当前行` 形态）")
+                        merged_list = list(merged_list) + list(_synth)
+            except Exception as _e:                                  # noqa: BLE001
+                print(f"[generate] [!] 构造行内列控件失败（不阻断，但该页 `_当前行` 控件会缺）："
+                      f"{type(_e).__name__}: {_e}")
             merged = {i["semantic_name"]: i for i in merged_list}
             print(f"[generate] 现场探测 [{pname or '页面1'}] {url} → {len(merged)} 个控件"
                   f"（含弹窗/弹层 {len(layer)} 个）")
@@ -1365,19 +1610,26 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             snaps = sorted(ELEMENT_MAP_DIR.glob("probe_*.json"))
             if snaps:
                 candidates.append((f"probe快照({snaps[-1].name})", snaps[-1], "probe"))
-        for label, f, kind in candidates:
-            if not f.exists():
-                continue
-            got = (_load_loc_map_from_element_map(f) if kind == "element"
-                   else _load_loc_map_from_probe_snapshot(f))
-            hit = {k: v for k, v in got.items() if k in needed}
-            if hit:
-                loc_map.update(hit)
-                # 锚与名字**同源**：条目字典也从这份来源取（`by: title/testid` 这类属性直定位要用）
-                _SRC_IT.update(_items_from_source(f, kind))
-                src_parts.append(f"{label} 命中 {len(hit)}/{len(needed)}")
-                _src_file, _src_kind = f, kind      # V8.4.3+：记下来源，用于落 explore 快照
-                break
+        # [!] 2026-10-10 实测的脆弱点（评审现场追问出来的）：原来是「取文件名最新的那份、
+        #   一有命中就 break」—— 任何 **ad-hoc 小场景 explore**（例如为验证某个 bug 随手跑的
+        #   一次 `explore --ai --scenario "x"`，只探到登录页）都会写出新的 `element_map_*.json`，
+        #   顶掉真正的权威清单 -> 随后 generate 满屏「跨页同名唯一化」然后报「缺失项」拒绝产出
+        #   （这次就是这么被自己的诊断命令毒到的）。
+        #   口径改为**按覆盖度选**：在全部候选里挑对本轮 `needed` 命中最多的一份（并列取更新的）。
+        #   `_SRC_IT`（锚/条目字典）**必须与 loc_map 来自同一份来源** —— 锚与名字同源。
+        picked = _pick_loc_map_source(candidates, needed, src_parts)
+        if picked is not None:
+            label, f, kind, got, _hit = picked
+            loc_map.update({k: v for k, v in got.items() if k in needed})
+            _SRC_IT.update(_items_from_source(f, kind))
+            # 信号与 loc_map/锚 **同一份来源**（同源纪律）：重复个数只在清单条目里，
+            # 而 `it_map` 的同名先到先得会拿到 `steps[].element`（没有这个键）-> 必须单独取。
+            _MULTI_MATCH.clear()
+            _MULTI_MATCH.update(_multi_match_from_source(f, kind))
+            _src_file, _src_kind = f, kind
+            if len(_hit) < len(needed):
+                print(f"[generate] [key] 定位来源选定：{label}（命中 {len(_hit)}/{len(needed)}；"
+                      f"缺 {len(needed) - len(_hit)} 项 -> 交现场探测补）")
 
     missing = needed - set(loc_map)
     declared_pages = _collect_declared_pages(cases)
@@ -1394,6 +1646,24 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             break
     if _decl_auth:
         print(f"[generate] [key] 场景声明了登录前置（{_decl_auth.get('username')}）-> 现场探测将带登录态")
+    # 2026-10-11 V8.4.6（真 bug 修复）：现场探测必须**一并应用场景声明的身份前置** `probe_pre`。
+    #   症状（用户 2026-10-11 实测复现）：全新环境（没有 element_map 落盘）跑 `cli all` ->
+    #   现场探测**没切角色**（还是超管）-> 详情页「编辑」「新增行」是置灰态 ->
+    #   常规点击被拒、只能 force 点一下（只弹提示、不变状态）-> **编辑态控件根本没渲染** ->
+    #   7 个语义名（物料编码/产品编码/行类型@订单详情页 · 保存@详细信息 · 选择订单_当前行 …）探不到
+    #   -> `映射质量闸拦下：7 个语义名映射不上 -> 拒绝产出任何产物`。
+    #   [!] 场景里**已经写了** `probe_pre`（约定了），是**框架没用**（explore 路径用了、generate 的
+    #   现场探测没用）—— 属于铁律 13「一个能力多条实现路径要逐条对齐」的漏网。
+    #   口径：用例自带 `probe_pre` 优先，其次按 `source_scenario` 回读场景 yml（与 auth 同一优先级口径）。
+    _decl_pre: list = []
+    for _c0 in cases:
+        _decl_pre = (list(_c0.get("probe_pre") or [])
+                     or _scenario_probe_pre_of(str(_c0.get("source_scenario") or "")))
+        if _decl_pre:
+            break
+    if _decl_pre:
+        print(f"[generate] [key] 场景声明了身份前置（{len(_decl_pre)} 步："
+              f"{' -> '.join(str(x) for x in _decl_pre[:3])}）-> 现场探测将先切身份")
     probe_error: str | None = None
     if live_probe or missing:
         # C（V8.3.7 性能治理）：把「该探哪几页」由**真正缺的语义名**推导出来（口径见 `_pages_to_probe`）。
@@ -1429,6 +1699,12 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
                         pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
                     except Exception:                                  # noqa: BLE001
                         pg.wait_for_timeout(500)
+                    # V8.4.6（真 bug 修复）：探测前**先应用场景声明的身份前置** `probe_pre`
+                    #   —— 与 explore 侧**同一个引擎**（`run_pre_actions`），不各写一份。
+                    #   不做的后果：还是超管身份 -> 编辑/新增行置灰 -> 编辑态控件探不到（实测见上）。
+                    if _decl_pre:
+                        from framework.tools.run.pre_actions import run_pre_actions
+                        run_pre_actions(pg, _decl_pre, "场景探测前置", quiet_missing=True)
                     # 弹窗/弹层补充：**与 explore 共用同一套探测**（_try_collect_modal_items —— 含嵌套
                     # picker 层、探完逐层关闭、无名「...」按钮也能识别）。
                     # [!] 2026-09-17 实测的坑：这里原来自己点一遍「新建」按钮、**只探一层**
@@ -1443,6 +1719,20 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
                     # 里的控件（如右上角「切换为XX管理员」）永远补不上，手写用例集体报「元素未映射」。
                     _sc = scan_page(pg)
                     merged_items = _sc.items
+                    # V8.4.6：单页路径同样要造**行内列控件**（`_当前行`）—— 与声明页路径、
+                    #   explore 侧共用唯一入口 `probe.row_columns`（铁律 13：两条路径逐条对齐）。
+                    try:
+                        from framework.tools.probe.probe import probe_row_fields
+                        from framework.tools.probe.row_columns import row_columns_to_items
+                        _rfs1 = probe_row_fields(pg)
+                        if _rfs1:
+                            _synth1 = row_columns_to_items("", _rfs1, list(merged_items))
+                            if _synth1:
+                                print(f"[generate] 单页现场探测追加行内列控件 {len(_synth1)} 个"
+                                      f"（无 data-field 的列 -> `_当前行` 形态）")
+                                merged_items = list(merged_items) + list(_synth1)
+                    except Exception as _e:                              # noqa: BLE001
+                        print(f"[generate] [!] 构造行内列控件失败（不阻断）：{type(_e).__name__}: {_e}")
                     _record_conflict_bases(merged_items)
                     for it in merged_items:
                         live.setdefault(it["semantic_name"], _semantic_to_locator_expr(it))
@@ -1450,7 +1740,8 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
                     b.close()
             # (2) 跨页用例：额外按声明的页面逐页探测（补 `原名@页名` 形式的跨页元素）
             if _pages_need:
-                page_live, amb, dup_pages, _it_map = _probe_declared_pages(_pages_need, auth=_decl_auth)
+                page_live, amb, dup_pages, _it_map = _probe_declared_pages(
+                    _pages_need, auth=_decl_auth, pre=_decl_pre)
                 for k, v in page_live.items():
                     live.setdefault(k, v)
                 live_it.update(_it_map)
@@ -1589,10 +1880,22 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     _probe_fp = hashlib.sha256(
         (locator_sources + "|" + (probe_error or "") + "|" + str(len(loc_map))).encode("utf-8")
     ).hexdigest()[:16]
-    # 渲染器（模块头模板）指纹：**改了模板就必须重写全部模块** ——
+    # 渲染器指纹：**改了渲染器就必须重写全部模块** ——
     # 否则"改了生成逻辑、产物却不刷新"会静默不生效（今天实测的教训：docstring 修好了、
-    # 增量却因为用例没变而全部跳过 X）
-    _tpl_fp = hashlib.sha256(_MODULE_HEADER.encode("utf-8")).hexdigest()[:16]
+    # 增量却因为用例没变而全部跳过 X）。
+    # [!] 2026-10-10 又栽一次（同类第二回）：原来只哈希 `_MODULE_HEADER`（**模块头**模板），
+    #   而渲染**步骤体**的逻辑在别的函数里 —— 给 goto 加"相对地址补齐"后照样报
+    #   `重写 0 · 跳过（无变化）2`，生成物里还是旧代码，一整轮排查被静默吞掉。
+    #   口径：把**本文件源码**（渲染逻辑全在这里）+ 模块头模板一起哈希 ——
+    #   宁可多写一次产物，也绝不许"改了却没生效"。
+    try:
+        _renderer_src = Path(__file__).read_text(encoding="utf-8")
+    except Exception as _e:                 # 读不到源码（冻结/打包）也不许静默
+        _renderer_src = ""
+        print(f"[generate] [!] 读不到生成器源码（{type(_e).__name__}）-> 渲染器指纹只覆盖模块头模板，"
+              f"改渲染逻辑可能不重写产物（不许静默）")
+    _tpl_fp = hashlib.sha256(
+        (_renderer_src + "\x00" + _MODULE_HEADER).encode("utf-8")).hexdigest()[:16]
 
     old_index: dict = {}
     if index_path.exists():
@@ -1702,6 +2005,48 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     elif _auth_path.exists():
         _auth_path.unlink()                                        # 场景都不需要登录 -> 不留死文件
 
+    # ---- 2026-10-10 A 方案：写「场景身份前置表」（case_id → `probe_pre` 序列）----
+    # 与 `_auth.json` 同款（合并式写 + 按现存用例裁剪 + 没人声明就不留死文件）：
+    # 执行侧 harness 读它 → 在**首次导航之后**跑**同一引擎**，把声明式身份前置在执行期复现。
+    # 为什么必须有：只探测期跑、执行期不跑 -> AI 只写序列的后半段（漏"点开菜单"那步）
+    #   -> `Locator.click: Element is not visible`（2026-10-10 干净环境 E2E 实录）。
+    _pre_path = gen_dir / "_pre.json"
+    try:
+        _pre_tbl: dict = (json.loads(_pre_path.read_text(encoding="utf-8"))
+                          if _pre_path.exists() else {})
+    except Exception:                                              # noqa: BLE001
+        _pre_tbl = {}
+    _scen_pre_cache: dict[str, list] = {}
+    _scen_host_cache: dict[str, str] = {}
+    _pre_added: list[str] = []
+    for _c in cases:
+        _cid, _rel = _c.get("case_id"), str(_c.get("source_scenario") or "")
+        if not _cid:
+            continue
+        if _rel and _rel not in _scen_pre_cache:
+            _scen_pre_cache[_rel] = _scenario_probe_pre_of(_rel)
+            _scen_host_cache[_rel] = _scenario_pre_host_of(_rel)
+        # 用例自带（手搓用例）优先，其次场景声明 —— 与 auth 同一优先级口径
+        _pp = list(_c.get("probe_pre") or []) or list(_scen_pre_cache.get(_rel) or [])
+        if not _pp:
+            continue
+        # host = 前置该在哪一页跑（带业务导航的页）：执行期**用例体之前**先去那儿把身份建立好，
+        # 不依赖用例自己的路线（AI 会「等价直达」，可能全程不经过带导航的页）
+        _host = str(_c.get("probe_pre_url") or _scen_host_cache.get(_rel) or "").strip()
+        _entry = {"steps": _pp, "url": _host}
+        if _pre_tbl.get(_cid) != _entry:
+            _pre_tbl[_cid] = _entry
+            _pre_added.append(_cid)
+    _pre_tbl = {k: v for k, v in _pre_tbl.items() if k in _live_ids}   # 表不许越攒越大
+    if _pre_tbl:
+        _pre_path.write_text(json.dumps(_pre_tbl, ensure_ascii=False, indent=2, sort_keys=True),
+                             encoding="utf-8")
+        if _pre_added:
+            print(f"[generate] [key] 场景身份前置写入 {len(_pre_added)} 条：{_pre_added[:4]}"
+                  f"{'…' if len(_pre_added) > 4 else ''}")
+    elif _pre_path.exists():
+        _pre_path.unlink()                                         # 场景都没声明 -> 不留死文件
+
     # ---- 产物自洽闸（2026-09-22；P20 扩到分模块产物）：引用的 dataset 必须真实存在 ----
     # 见 DanglingDatasetError 的事故经过：「产物看着合法但跑不通」必须在**生成期**拦住
     # （运行期的 FileNotFoundError 会被当成环境问题，实测被误判成 flaky）。
@@ -1775,6 +2120,12 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       # 2026-09-17 跨 tab / 行内定位 / 首行断言用的辅助
                       # [!] 模板里渲染出的调用必须**同时**在这里 import —— 漏一个就是运行时 NameError
                       _Tabs, _click_row_cell, _assert_first_row,
+                      # 2026-10-11 V8.4.6 行下标定位（`row_index`，含 `-1` = 最后一行）：
+                      #   [!] 方案 ③ 框架兜底会**自动补** `row_index=-1` -> 渲染出 `_act_row(...)`，
+                      #   而这里原先漏了它 -> 真跑 `NameError: name '_act_row' is not defined`
+                      #   （2026-10-11 实测：生成期闸门全绿、真跑才红）。模板渲染出的调用
+                      #   与这里的 import 必须**成对**维护 —— 判据 test_generated_helpers_are_imported 兜着。
+                      _act_row,
                       # P22 批 4/5：等待式断言（wait_text；批 5 起支持 selector 限定范围）
                       _assert_wait_text)
 # P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）
@@ -2065,16 +2416,69 @@ def _count_attached(cand, timeout_ms=None):
     return cand.count()
 
 
+def _pre_steps_of(cid):
+    """取本用例声明的身份前置 -> (steps, host_url)。
+
+    形状（`_pre.json`，2026-10-10 A 方案）：`{cid: {"steps": [...], "url": "<前置该在哪页跑>"}}`；
+    兼容早期纯列表形状（`{cid: [...]}` -> host 为空，走 `_goto` 兜底路径）。
+    为什么要有 host（实测）：身份菜单入口只在**带业务导航的页面**上存在 —— `order_new.html` 上
+    头像节点是 `NONE`、`切换为订单管理员` 也解析不到；AI 的「等价直达」路线可能全程不过这种页
+    => 前置永远没机会跑 => 保存按钮置灰、整条红。
+    """
+    _e = _PRE_TABLE.get(cid) or _PRE_TABLE.get("*") or {}
+    if isinstance(_e, list):
+        return list(_e), ""
+    return list(_e.get("steps") or []), str(_e.get("url") or "")
+
+
+def _maybe_scene_pre(page):
+    """**执行期的场景身份前置 · 兜底路径** —— 与探测期共用唯一引擎。
+
+    [!] 主路径在 `page` fixture 里（**用例体之前**先导航到声明的那一页把它做掉，见 fixture）；
+    这里只在载荷**没声明 host** 时兜底：每次导航后试一次，能解析到整组就跑（跑全即标记完成）。
+    没跑全**不在这里抛**：产物脚本的第一次导航可能是登录页，在那里抛会把「还没到业务页」
+    误判成「声明失效」；由 `page` fixture 收尾处判红（整条用例都没成功才红）。
+    """
+    cid = _CURRENT_CASE.get("cid") or ""
+    steps, _host = _pre_steps_of(cid)
+    if not steps or cid in _SCENE_PRE_DONE:
+        return
+    from framework.tools.run.pre_actions import run_pre_actions
+    # [!] `resolvable_wait_ms=15000`：执行期**首次导航后立刻查 count 必然为 0** ——
+    #   身份菜单是 auth.js 拿 /api/me 之后异步注入的；不给等待就会判"整组留到后面的页"、
+    #   一步都不跑（2026-10-10 实测：两个用例都因此当场抛）。探测期保持 0（即时，逐页不浪费）。
+    done = run_pre_actions(page, steps, "场景身份前置", require_all_resolvable=True,
+                           resolvable_wait_ms=15000, log_tag="setup")
+    if len(done) == len(steps):
+        _SCENE_PRE_DONE.add(cid)
+        return
+    # [!] **这里不许抛**（2026-10-10 实测教训）：产物脚本的**第一次导航往往就是登录页**
+    #   （登录前置那一步），那一页当然解析不到身份控件 —— 在这里抛就是把"还没到业务页"
+    #   误判成"声明失效"（两个用例都因此整条红）。
+    #   口径：**每次导航都试**；整条用例结束仍未跑全 -> 由 `page` fixture 收尾处当场红。
+    print(f"      [setup] [info] 身份前置本页没跑全（完成 {len(done)}/{len(steps)}）"
+          f"-> 留到后面的导航再试（尚未到业务页是正常的）")
+
+
 def _goto(page, url):
     """统一导航入口：(1) 支持 HYBRID_BASE_URL 覆盖目标（同一套用例跑本机/慢代理/预发）
-    (2) goto 之后等页面数据就绪（F1）。生成脚本里的每个 goto 都走这里。"""
+    (2) goto 之后等页面数据就绪（F1）。生成脚本里的每个 goto 都走这里。
+    (3) 2026-10-10 A 方案：首次导航后补跑**场景身份前置**（与探测期同一引擎）。
+    (4) 2026-10-10：相对地址直接报**能看懂的错**（生成器本应按用例 base 补齐；漏补时别让
+        playwright 的 `Cannot navigate to invalid URL` 把人带偏）。"""
     target = url
+    _t = str(target or "").strip()
+    if _t and not _t.startswith(("http://", "https://", "file://", "about:", "data:")):
+        raise RuntimeError(
+            f"_goto 收到**相对地址** {target!r}（没补 base）—— 生成器应按用例 base_url 补齐；"
+            f"手写脚本请写全 `http://host/path`（相对地址在 playwright 里必然导航失败）")
     if _HYBRID_BASE:
         import urllib.parse as _up
         u, o = _up.urlsplit(url), _up.urlsplit(_HYBRID_BASE)
         target = _up.urlunsplit((o.scheme, o.netloc, u.path, u.query, u.fragment))
     page.goto(target)
     _wait_ready(page, target)
+    _maybe_scene_pre(page)
 
 
 def _wait_ready(page, url=""):
@@ -2402,6 +2806,23 @@ except Exception as _e_auth:
         f"_auth.json 读取失败（{type(_e_auth).__name__}: {_e_auth}）"
         f" —— 登录前置无法生效，用例会整条跑在登录页上，故当场失败（不静默降级）") from _e_auth
 
+# 场景级**身份前置表**（case_id -> `probe_pre` 序列 · 2026-10-10 A 方案）。
+# 与 `_auth.json` 同款：generate 按场景声明写进同目录 `_pre.json`；没有该文件 -> 空表 -> 行为与从前一致。
+# [!] 为什么执行期也要跑：声明式的前置是"怎么到达这个身份"的**唯一权威**。
+#   只探测期跑、执行期不跑 -> AI 只写序列的后半段（漏了"点开菜单"那步）=> `Element is not visible`。
+_PRE_TABLE: dict = {}
+try:
+    _pl_pre = Path(__file__).resolve().parent / "_pre.json"
+    if _pl_pre.exists():
+        _PRE_TABLE = _json_auth.loads(_pl_pre.read_text(encoding="utf-8")) or {}
+except Exception as _e_pre:
+    raise RuntimeError(
+        f"_pre.json 读取失败（{type(_e_pre).__name__}: {_e_pre}）"
+        f" —— 场景声明的身份前置无法生效，用例会在错误身份下整条跑错，故当场失败（不静默降级）") from _e_pre
+
+_SCENE_PRE_DONE: set = set()
+_CURRENT_CASE: dict = {"cid": ""}
+
 
 def _install_login(context, auth_spec=None):
     """**登录前置**：context 建好后立刻把 token 注入 localStorage（P22 批 5 · 方案 H）。
@@ -2445,6 +2866,9 @@ def page(request, _pool):
     #（否则 trace 文件名变成 xxx[编号-1005]_trace.zip，且并发/多次运行的文件名口径不一致）
     _m = _re.match(r"test_([^\\[]+)", request.node.name)
     _cid = _m.group(1) if _m else request.node.name
+    # 2026-10-10 A 方案：把当前用例告诉 `_goto` —— 场景**身份前置**只在本用例首次导航后跑一次
+    _CURRENT_CASE["cid"] = _cid
+    _SCENE_PRE_DONE.discard(_cid)
     browser = _pool.get()                      # 会话级浏览器（崩了由 pool 重启 + 告警）
     _ctx_kw = {}
     if _DEBUG_VIDEO:                           # 调试·录制：整条用例录成 webm
@@ -2457,8 +2881,37 @@ def page(request, _pool):
         context.add_init_script("window.__HYBRID_W = " + repr(_PARTITION) + ";")
     context.tracing.start(screenshots=True, snapshots=True)
     pg = context.new_page()
+    # ---- 2026-10-10 A 方案主路径：**用例体之前**先把声明的身份建立好 ----
+    # 先导航到声明的那一页（带业务导航的页），再按**唯一引擎**跑前置；不依赖用例自己的路线
+    # （AI 会「等价直达 order_new.html」，实测那页连头像节点都没有 -> 前置永远没机会跑）。
+    # 身份是**会话级**的（服务端按 token 记角色）=> 建好之后用例怎么走都还在。
+    _steps, _host = _pre_steps_of(_cid)
+    if _steps and _host:
+        try:
+            pg.goto(_host)
+            _wait_ready(pg, _host)
+            from framework.tools.run.pre_actions import run_pre_actions
+            _done = run_pre_actions(pg, _steps, "场景身份前置", require_all_resolvable=True,
+                                    resolvable_wait_ms=15000, log_tag="setup")
+            if len(_done) == len(_steps):
+                _SCENE_PRE_DONE.add(_cid)
+                print(f"      [setup] [key] 身份前置已建立：{_done} @ {_host}")
+            else:
+                print(f"      [setup] [!] 身份前置在声明的 host 上没跑全"
+                      f"（完成 {_done} / 声明 {_steps}）-> 交给收尾闸判红（不静默）")
+        except Exception as _e_pre:            # noqa: BLE001
+            print(f"      [setup] [!] 身份前置执行异常：{type(_e_pre).__name__}: {_e_pre}"
+                  f" -> 交给收尾闸判红（不静默）")
     try:
         yield pg
+        # 2026-10-10 A 方案收尾闸：整条用例都没能把声明的**身份前置**跑全 -> 当场红（不静默）。
+        #   为什么不在 `_maybe_scene_pre` 里抛：产物脚本**第一次导航可能是登录页**，
+        #   那一页解析不到身份控件是正常的；只有"整条用例走完都没成功"才是真问题。
+        _pend, _ = _pre_steps_of(_cid)
+        if _pend and _cid not in _SCENE_PRE_DONE:
+            raise RuntimeError(
+                f"场景声明的身份前置整条用例都没能执行（声明 {_pend}，用例 {_cid}）"
+                f" —— 后续步骤会在错误身份下跑（保存按钮置灰/菜单项不可见），故判红（不静默降级）")
     finally:
         trace_dir = RUN_LOG_DIR / "traces"
         trace_dir.mkdir(parents=True, exist_ok=True)
@@ -2837,6 +3290,7 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
     HYBRID_SELF_HEAL=0 → 不做语义兜底（要"失败即报"时用）。
     """
     loc = None
+    _amb = 0                                       # primary 的非唯一命中数（多匹配歧义信号，供报错用）
     if primary is not None:
         try:
             cand = primary(page)
@@ -2846,6 +3300,7 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
             elif n == 0:
                 _log(page, "warn", f"primary 等了 {_LOCATE_TIMEOUT_MS}ms 仍是 0 个 → 语义兜底 {semantic}")
             else:
+                _amb = n
                 _log(page, "warn", f"primary 命中 {n} 个(非唯一) → 语义兜底 {semantic}")
         except Exception as e:
             _log(page, "warn", f"primary 失效 → 语义兜底 {semantic} ({type(e).__name__})")
@@ -2854,7 +3309,23 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
             raise RuntimeError(f"确定性 locator 失效且 HYBRID_SELF_HEAL=0（不做推测性定位）: {semantic or action}")
         if not semantic:
             raise RuntimeError(f"确定性 locator 失效且无语义兜底: {action}")
-        loc = _loc(semantic, page)
+        try:
+            loc = _loc(semantic, page)
+        except Exception as _e_loc:                # noqa: BLE001
+            # 2026-10-10（方案 1）：**多匹配歧义**必须报成"能照着改"的话，别只说"自愈未成功"。
+            # 实测事故：详情页每个订单行都有一个同名 `物料编码` 输入框（当时 3 行 = 3 个），
+            #   只给语义名的定位必然多匹配 -> 旧文案「元素定位失败且自愈未成功」把排查带偏
+            #   （真因是"没表达是哪一行"，不是"元素不存在"）。
+            if _amb > 1:
+                raise RuntimeError(
+                    f"定位失败：本页有 **{_amb} 个同名匹配**（{semantic}）—— 这通常是「同一控件在每一行"
+                    f"重复出现」（如详情页每个订单行都有一个 `物料编码` 输入框）。\\n"
+                    f"  请指明**哪一行**：`row_index`（第 N 行，从 1 起；`-1` = 最后一行）"
+                    f"或 `row_text`（行锚文本）+ 列指定；\\n"
+                    f"  框架**不会**替你猜一个（猜错 = 填到别的行，静默污染数据）。\\n"
+                    f"  原始错误：{_e_loc}"
+                ) from _e_loc
+            raise
     if action == "click":
         _eff_pre = _effect_snapshot(page, semantic)
         # P22 批 3：(1) force 只由**手写用例**显式声明（AI 链路被质量闸拦住）；
@@ -2901,6 +3372,94 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
     else:
         raise NotImplementedError(f"未知动作: {action}")
     _shot(page, f"{action}_{semantic or ''}")      # 调试模式：动作执行后存一张图
+
+
+def _act_row(page, semantic, row_index, op="click", value=None):
+    """**按行下标定位**（2026-10-10 方案 2）：语义名在页面上**重复出现**（每行一个）时取第 N 个。
+
+    为什么必须补这条能力（实测铁证）：订单详情页「编辑 + 新增行」后，行内 `物料编码` 在**每一行**
+    都有一个同名输入框（实测 3 行 = 3 个，全部 visible/enabled）-> 只给语义名的定位**必然歧义**，
+    `_act` 会拒绝（拒绝是对的：**宁可失败也不填错行**）。
+    而既有的 `_click_row_cell` 靠**行内容**锚行（row_text）——「刚刚新增的那一行」是**空的**，
+    没有内容可锚 -> 表达不了「填我刚加的这一行」这个真实需求。
+
+    `row_index`：**从 1 起**；`-1` = 最后一行（新增行通常在最后，也是最常用的写法）。
+    越界 / 一个都没匹配 -> **明确报错**：不猜、不静默退化成"取第一个"（那会填错行）。
+    """
+    # [!] V8.4.6（2026-10-11 真 bug 修复）：**行内控件必须走"多命中 + 按行取第 N"**，
+    #   不能先走 `_loc()` —— 那条路要求语义**唯一**，而行内同名列控件**必然多个**，
+    #   于是它以"不唯一"为由直接判死；可我们**明明已经带着行号**。
+    #   实测铁证：详情页 `物料编码@订单详情页` 页面匹配 **2 个** -> `resolve_locator` 返回
+    #   `Tier1 语义 & Tier2 指纹均无法唯一确定` -> 整步 RuntimeError（即使 row_index=-1
+    #   完全能表达"取最后一行"）。优先用探测期录下的「锚点 + 容器内相对语义」
+    #   （`scope_locate` 本来就是干这个的，见其 docstring），拿**多命中 locator** 再 `.nth()`；
+    #   它不可用时才退回 `_loc()`（非行内控件本来就走那条）。
+    _all = None
+    try:
+        _it = _item_for(semantic, page)
+        if _it and _it.get("anchor") and _it.get("path"):
+            from framework.tools.probe.scope_locate import scope_locate
+            _r = scope_locate(page, _it["anchor"], _it["path"])
+            if _r.get("ok") and _r.get("locator_obj") is not None:
+                _all = _r["locator_obj"]
+                _log(page, "row", f"{semantic} 行内定位（锚点+容器内相对语义）命中 "
+                                  f"{_r.get('count')} 个 -> 按 row_index={row_index} 取行")
+    except Exception as _e:                                       # noqa: BLE001
+        _log(page, "warn", f"{semantic} 行内定位（锚点+相对语义）不可用：{type(_e).__name__}: {_e}")
+    if _all is None:
+        _all = _loc(semantic, page)
+    _n = _all.count()
+    if _n == 0:
+        raise RuntimeError(
+            f"按行定位失败：语义名 {semantic!r} 在本页匹配 **0 个**"
+            f"（页面还在异步取数 / 名字过期 / 该控件没渲染出来）")
+    _i = int(row_index)
+    _i = (_n + _i) if _i < 0 else (_i - 1)          # -1 = 最后一行
+    if not (0 <= _i < _n):
+        raise RuntimeError(
+            f"按行定位**越界**：{semantic!r} 本页只匹配 {_n} 个，row_index={row_index} 指到了第 "
+            f"{int(row_index) if int(row_index) > 0 else _n + int(row_index) + 1} 行 —— 不猜、不静默取第一个")
+    el = _all.nth(_i)
+    if op == "click":
+        _eff_pre = _effect_snapshot(page, semantic)
+        el.click()
+        _wait_after_action(page)
+        _check_effect(page, _eff_pre, semantic)
+    elif op == "fill":
+        el.fill(value if value is not None else "")
+    elif op == "check":
+        el.check()
+    elif op == "uncheck":
+        el.uncheck()
+    elif op == "select":
+        # [!] V8.4.6（2026-10-11 真跑实测）：**与非行内的 `_act` select 同口径** ——
+        #   没给 value 视为「选第一项」（跳过空占位 `<option value="">请选择</option>`），
+        #   不再硬报错。事故链：AI 产出的行内 select 只给 element（desc 写「选第一行行类型」）
+        #   -> 旧实现抛 `按行定位的 select 必须给 value` -> 真跑红；而**同一个语义**在非行内
+        #   路径上 V8.4 就定成「选第一项」了 => 一处能跑、一处必炸，看起来像"框架不支持"。
+        #   留痕：选了什么要打出来（可审计）；真没选项才报错（不静默）。
+        if value is None or not str(value).strip():
+            _opts = el.locator("option")
+            _real = [i for i in range(_opts.count())
+                     if (_opts.nth(i).get_attribute("value") or "").strip() != ""]
+            if not _real:
+                raise RuntimeError(
+                    f"按行定位的 select 未给 value，且该控件没有任何可选选项"
+                    f"（{semantic!r} 第 {row_index} 行）—— 请在场景/用例里写清要选哪一项")
+            _log(page, "row", f"{semantic} 行内 select 未给 value -> 按「选第一项」"
+                              f"选第 {_real[0]} 个真选项（共 {_opts.count()} 个，跳过空占位）")
+            el.select_option(index=_real[0])
+        else:
+            try:
+                el.select_option(label=str(value))
+            except Exception:                                      # noqa: BLE001
+                el.select_option(value=str(value))
+    elif op == "press_enter":
+        el.press("Enter")
+    else:
+        raise RuntimeError(f"按行定位不支持的 op={op!r}（支持 click/fill/select/check/uncheck/press_enter）")
+    _shot(page, f"row{row_index}_{op}_{semantic or ''}")
+    _log(page, "row_index", f"{op} 第 {row_index} 行 {semantic}（本页共 {_n} 个同名匹配）")
 
 
 def _click(page, hint):

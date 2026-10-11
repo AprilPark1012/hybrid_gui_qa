@@ -208,7 +208,7 @@ def test_declared_wait_block_is_wired_into_the_prompt():
     src = (ROOT / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
     assert "_declared_wait_block(scenario)" in src, "块没拼进 prompt"
     i = src.index("_declared_wait_block(scenario)")
-    j = src.index("return _OUTPUT_CONTRACT", 0)
+    j = src.rindex("return (_OUTPUT_CONTRACT", 0, i)
     assert j < i, "拼接位置不对（应在 return 的那一行里）"
 
 # ---------- ⑤ L27b：等待断言还得能「重新取数」+ 只认可见匹配 ----------

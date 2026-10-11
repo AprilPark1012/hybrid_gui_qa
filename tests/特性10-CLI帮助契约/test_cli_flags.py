@@ -171,3 +171,20 @@ def test_flag_specs_and_cmd_flags_consistent():
     for cmd, flags in CMD_FLAGS.items():
         for f in flags:
             assert f in FLAG_SPECS, f"{cmd} 声明了未定义的参数 {f}"
+
+
+def test_prune_int_flags_parse_for_real():
+    """`prune` 的整数参数要**真能解析**（2026-10-10 抓到：`_int_flag` 里写了 `cast(raw)`，
+    `cast` 全文件从未定义 -> 带值必 NameError。老代码躺了很久，静态闸门一扫就露）。
+
+    判据按「真行为」验：三种写法都要返回值，不能只看源码里有没有 `int(`。
+    """
+    from framework.cli import _int_flag
+    assert _int_flag(["--keep", "7"], "--keep", 30) == 7
+    assert _int_flag(["--keep=7"], "--keep", 30) == 7
+    assert _int_flag([], "--keep", 30) == 30
+    assert _int_flag(["--max-delete=0"], "--max-delete", 50) == 0
+    # 非法取值 -> 走参数错误（exit 2），不许静默回默认值
+    with pytest.raises(SystemExit) as e:
+        _int_flag(["--keep", "abc"], "--keep", 30)
+    assert e.value.code == 2

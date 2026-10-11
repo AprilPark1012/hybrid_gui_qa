@@ -1,4 +1,4 @@
-"""【Browser Use】AI 探索与规划
+"""【LLM 编排】AI 探索与规划（DeepSeek 直连；**不是** browser-use 的 Agent）
 
 职责：理解自然语言测试意图 → 规划步骤 → 从 probe 探测出的交互元素里
 挑出每个动作的目标元素 → 产出 ElementMap（步骤 + 元素语义引用）。
@@ -23,7 +23,10 @@ import json
 import re               # 2026-09-18：_field_identity 归一化字段名（去「*」/去结尾「（全模糊）」）
 import time             # 2026-09-14：弹层/弹窗探测改成「有界轮询等新控件出现」，需要单调时钟
 from pydantic import BaseModel, Field
-from framework.tools.probe.element_map import ElementMap, TestStep, ElementRef
+from framework.tools.probe.element_map import (ElementMap, TestStep, ElementRef,
+                                              row_scope_violation, step_get,
+                                              item_multi_match_map, multi_match_of_name,
+                                              apply_row_locator_fallback, has_row_locator)
 from framework.tools.common.browser import launch_opts
 from framework.tools.run.login import ensure_logged_in      # P22 批 5：登录前置
 from framework.tools.common.textutil import collapse_ws  # 事故(2)：accessible name 口径归一化
@@ -51,6 +54,9 @@ class _StepModel(BaseModel):
     #   框架本来就支持这两种列指定方式（generator._row_col_step 白名单），只是没告诉 AI。
     cell_by: str | None = Field(default=None, description="行内定位的列指定方式：field(默认,按 data-field) / header(按表头文案) / index(按第几列,从1起)")
     cell_index: int | None = Field(default=None, description="cell_by=index 时的列序号（**从 1 起**，第 1 列 = 表格最左的勾选列）")
+    row_index: int | None = Field(default=None, description=(
+        "行内定位（**按行下标**，从 1 起；-1 = 最后一行）：行锚 `row_text` 表达不了「**刚刚新增的空行**」"
+        "（新行没有内容可当锚）时用它 —— 例如详情页点「新增行」后要填这一行的字段"))
     description: str = Field(default="", description="一句话说明")
 
 
@@ -234,66 +240,9 @@ def _match_item(sn: str, items: list[dict]) -> tuple[dict | None, str]:
     return None, "未命中"
 
 
-def _row_columns_to_items(page_name: str, row_fields: list[dict],
-                          page_items: list[dict] | None = None) -> list[dict]:
-    """把「**没有 data-field 的行内列**」转成**有名字的控件条目**（V8.4.3 · A 方案）。
+from framework.tools.probe.row_columns import row_columns_to_items   # V8.4.6：行内列控件唯一入口
 
-    为什么走这条路（Windows 实测追了 7 个提交才收敛）：
-      勾选列 `<td><input type=checkbox></td>` 没有 data-field，用 `cell_field` 表达不了。
-      我把 `cell_by`/`cell_index` 一路补进 Schema、提示词、格式示例、prompt 首位，
-      **AI 仍然不填** —— 真实链路走**结构化输出**，而模型对 Schema 里新加的可选字段
-      倾向**最小填充**（它把 `semantic_name` 这类旧字段用得滚瓜烂熟，新字段一律省略）。
-      => 与其让 AI 学新字段，不如**让这个勾选框成为一个真实存在的控件**：
-         AI 用它**已经会**的 `semantic_name` 引用它，由框架翻译成 cell_by=index/cell_index。
-      这样与「AI 填不填新字段 / 结构化还是纯文本 / 探针时序」**全部解耦**。
-
-    只转**没有 field** 的列：
-      · 有 field 的列本来就靠 `cell_field` 表达（AI 对它很熟）—— 多造条目会污染控件清单、
-        改变同名唯一化结果、并让 42 份录像的结构键漂移；
-      · 无 field 的列才是「语言表达不了」的那一类（勾选列/操作列…）。
-    """
-    out: list[dict] = []
-    seen: set[tuple[str, int]] = set()
-    # 推断「行控件前缀」：该页 role=checkbox 的已有控件里，取 `前缀_后缀` 的公共前缀
-    #   （实测：选择订单_SO_2301 / 选择订单_SO_1001 -> 前缀 = 选择订单）
-    _row_prefix = ""
-    _names = [str(i.get("semantic_name") or "") for i in (page_items or [])
-              if str(i.get("role")) in ("checkbox", "radio")]
-    _pre = [n.split("_")[0] for n in _names if "_" in n]
-    if _pre:
-        cand = min(_pre, key=len)
-        if all(p.startswith(cand) for p in _pre):
-            _row_prefix = cand.strip()
-    for rf in row_fields or []:
-        if str(rf.get("field") or "").strip():
-            continue                      # 有 field -> 交给 cell_field，不造条目
-        kind = str(rf.get("kind") or "").strip()
-        try:
-            idx = int(rf.get("index"))
-        except (TypeError, ValueError):
-            continue
-        key = (str(rf.get("table") or ""), idx)
-        if key in seen:
-            continue
-        seen.add(key)
-        # 命名要**贴合这一页已有的行控件语义模式**：
-        #   实测该页每一行的勾选框都叫「选择订单_SO_2301」这种（前缀 + 行标识），
-        #   而新建的那一行探测时还不存在 -> AI 手上没有它的名字。
-        #   所以行内列控件要叫「<同前缀>_当前行」，AI 才会把它当作「选当前这一行」。
-        label = {"checkbox": "勾选列", "radio": "选择列"}.get(kind, "列")
-        _prefix = _row_prefix or label
-        out.append({
-            "semantic_name": f"{_prefix}_当前行" if kind == "checkbox" else f"{label}{idx}",
-            "role": "checkbox" if kind == "checkbox" else "cell",
-            "page": page_name,
-            # 框架据此把「引用了这个控件」翻译成行内定位：
-            "row_table": rf.get("table"),
-            "row_column_index": idx,
-            "row_column_kind": kind,
-            "nearby_text": f"{page_name} 表格第{idx}列（{label}，无 data-field）",
-        })
-    return out
-
+_row_columns_to_items = row_columns_to_items     # 兼容既有调用点（同口径别名，不是第二份实现）
 
 def _plan_to_steps(plan, items: list[dict]) -> list[TestStep]:
     """把 ChatDeepSeek 结构化输出(_PlanModel)转成 TestStep 列表。
@@ -357,6 +306,9 @@ def _plan_to_steps(plan, items: list[dict]) -> list[TestStep]:
             row_text=getattr(s, "row_text", None), cell_field=getattr(s, "cell_field", None),
             # V8.4.3：列指定方式也要落盘 —— 否则 AI 写了 cell_by/cell_index 也在这一步被丢掉
             cell_by=cb, cell_index=ci,
+            # 2026-10-10（方案 2）：**行内下标定位**同样要落盘 —— 漏了这一处，
+            # AI 在用例里写对 `row_index` 也会**静默消失**（本项目的老坑：一处加、多处查）
+            row_index=getattr(s, "row_index", None),
         ))
 
     if unmatched:
@@ -495,8 +447,16 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
             row_fields = probe_row_fields(pg)                    # 行内列清单（供 AI 做「行内定位」）
             # V8.4.3 · A 方案：无 data-field 的列（勾选列）转成**有名字的控件**并进清单，
             #   这样 AI 用它会写的 semantic_name 就能表达，无需学 cell_by（实测它不学）。
-            _remember_required_fields(page_items, page_name or "")   # 必填项覆盖校验的输入（唯一入口）
-            _rc_items = _row_columns_to_items(page_name or "", row_fields, items)
+            # [!] 页名只有一个来源（scenarios 的 `pages[].name`）；单页路径没有 `page_name` 变量
+            #     —— 2026-10-10 干净环境 E2E 抓到：S1 收口把多页路径这两行拷进来后，这里直接
+            #     引用未绑定的 `page_name` -> **NameError 被下面的 except 兜成「探测失败 -> 0 项」**，
+            #     整条单页探测静默失效（判据全绿时看不出来，只有真跑才暴露）。
+            #     口径：单页时取 `pages[0].name`，未声明页名则空串（与改造前行为一致）。
+            _single_page_name = ""
+            if pages and isinstance(pages[0], dict):
+                _single_page_name = pages[0].get("name") or ""
+            _remember_required_fields(page_items, _single_page_name)   # 必填项覆盖校验的输入（唯一入口）
+            _rc_items = _row_columns_to_items(_single_page_name, row_fields, items)
             if _rc_items:
                 # [!] 必须**插到最前**：提示词里控件清单有 `items[:60]` 上限，而本页有 100+ 个
                 #     控件 -> 追加到末尾等于**没给 AI 看**（实测 AI 因此一直不知道有这个控件，
@@ -611,127 +571,30 @@ def _register_pre_action_items(page_name: str, names, page_items: list[dict],
     return out
 
 def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: int = 5000,
-                    quiet_missing: bool = False, require_all_resolvable: bool = False,
-                    seen: dict | None = None) -> list[str]:
-    """探测前执行该页声明的**前置动作**（P22 批 5 缺口 (4)(5)）。
+                     quiet_missing: bool = False, require_all_resolvable: bool = False,
+                     seen: dict | None = None) -> list[str]:
+    """**探测期入口**：委托给唯一引擎 `framework.tools.run.pre_actions.run_pre_actions`。
 
-    为什么需要：有些控件只在"做了某个动作之后"才存在 ——
-      · 合同列表页的「新建订单」弹层：不先选中合同，点它只弹「请选择某个合同」，弹层压根不开；
-      · 订单详情页的行控件：要先点「编辑」进编辑态、再点「新增行」才出现。
-    探针默认"打开页面就看一遍"永远看不到它们 -> AI 拿不到语义名 -> 用例引用不了
-    （批 5 实测：行必填没填 -> 保存无效 -> 提交被拦，状态恒「已新建」）。
+    [!] 这里**只做委托**，不再持有实现（2026-10-10 A 方案）：
+    同一个「怎么到达这个身份」的知识，探测期与执行期必须**同一套口径** ——
+    曾经探测期会按 `probe_pre` 序列执行、执行期什么都没有，于是 AI 只生成序列的第 2 步
+    （`切换为订单管理员`）而漏了第 1 步（点开头像菜单「超」），执行期直接
+    `Locator.click: Element is not visible`。引擎已抽到执行层，探测层反过来依赖它（方向正确：
+    `framework/tools/explore` 本来就 import `framework.tools.run.login`）。
 
-    口径（宁可少一份清单，也不乱点）：
-      · 每项只按**控件的 accessibility name** 找（button 优先，其次文本）；
-        **不接受 CSS selector** —— 与"不给 AI 猜 CSS"同一条铁律；
-      · 找不到/点不动 -> **如实告警并继续**（不猜别的控件、不换做法）；
-      · 有界：最多 5 步、每步有界超时。
-    返回：实际点成功的名字（给日志与判据用）。
+    `seen`：探测期专有的"点击那一刻的定位锚"记录（合成条目要靠它才带上锚，
+    否则产物里的 `by:` 定位取不到值）。实现即引擎的 `on_clicked` 回调 —— 引擎保证**点击前**调用。
     """
-    done: list[str] = []
-    steps = [str(x).strip() for x in (pre or []) if str(x).strip()]
-    if not steps:
-        return done
-    if len(steps) > 5:
-        print(f"      [explore] [!] [{page_name}] pre 声明了 {len(steps)} 步（上限 5）→ 只执行前 5 步")
-        steps = steps[:5]
-    # [!] 场景级前置的**整组语义**（2026-10-10 实测踩到的真根因）：
-    #   原来"逐页尝试、每步只跑一次"会让**半个序列**在错误页面上"假成功" ——
-    #   第 1 页是登录页时，`get_by_role(button, name=超)` 命中 0，退到**子串**匹配命中了
-    #   登录页上的「超级管理员」=> 报"已执行"却毫无效果，而「超」已被移出待办 =>
-    #   到了真正的业务页只剩第 2 步，菜单没被点开 => 菜单项**永远不可见**。
-    #   => 场景级前置：**只有当本页能解析到全部名字时，才整组执行**；否则整组留给后面的页。
-    #   （页面级 `pages[].pre` 不启用这条 —— 它本来就只在该页做，行为保持不变。）
-    if require_all_resolvable and steps:
-        _unresolved = []
-        for _nm in steps:
-            _l = pg.get_by_role("button", name=_nm)
-            if not _l.count():
-                _l = pg.get_by_text(_nm, exact=True)
-            if not _l.count():
-                _unresolved.append(_nm)
-        if _unresolved:
-            if not quiet_missing:
-                print(f"      [explore] [info] [{page_name}] 场景级前置「{'、'.join(_unresolved)}」"
-                      f"本页解析不到 -> **整组留到后面的页**（不许只跑半个序列：假成功会污染后续步骤）")
-            return done
-    for nm in steps:
-        try:
-            loc = pg.get_by_role("button", name=nm)
-            if not loc.count():
-                # [!] 先**精确**文本匹配（2026-10-10 实测）：`get_by_text` 默认子串匹配，
-                #   页面还没注入异步内容时会命中"**碰巧含这个字**"的无关元素 ——
-                #   实测点了「超」报"已执行"，其实点的是别的元素（菜单一点没动）。
-                loc = pg.get_by_text(nm, exact=True)
-            if not loc.count():
-                loc = pg.get_by_text(nm)
-            if not loc.count():
-                if not quiet_missing:
-                    print(f"      [explore] [!] [{page_name}] 前置动作「{nm}」没找到 → 跳过"
-                      f"（不猜别的控件去点）")
-                continue
-            # [!] 点击前先**等目标就绪**（2026-10-10 实测根因）：页面"就绪契约"达成
-            #   != 前置动作要点的东西已经存在 —— demo 的导航（含身份菜单）是 auth.js 拿
-            #   /api/me 之后**异步注入**的，实测那一刻 `#nu-avatar` 还不存在（count=0）。
-            #   不等就点 => 要么点到无关元素（报"已执行"却无效），要么永远 Element is not visible。
-            #   有界等待：最多 6s；等待期间**只观察不动作**（不猜控件、不换做法）。
-            #   等待上限**由环境变量给**（HYBRID_PRE_ACTION_WAIT_MS，默认 15000）。
-            #   [!] 更正（2026-10-10 当天自我纠错）：一度以为"这个 demo 的导航注入 >6s"，
-            #     那是**我的诊断脚本把 auth.token_key 凭记忆写成 nu_token**（yml 真值 demo_token）
-            #     -> /api/me 失败 -> 导航压根不注入造成的假象。用真值实测：**0.1s 就出现**。
-            #     有界等待本身仍然要留（异步内容就绪晚于骨架就绪是普遍现象），但别把它
-            #     当成这个 demo 的"特性"。
-            _wait_ms = 15000
-            try:
-                _wait_ms = int(__import__("os").environ.get("HYBRID_PRE_ACTION_WAIT_MS") or 15000)
-            except Exception:                                          # noqa: BLE001
-                pass
-            _w = 0
-            while _w < _wait_ms:
-                if any(loc.nth(_k).is_visible() for _k in range(loc.count())):
-                    break
-                pg.wait_for_timeout(300)
-                _w += 300
-            # [!] 锚必须在**点击之前**取（点了之后控件的可访问名会变，事后再找就找不到）：
-            #   实测 demo 的右上角头像 `button.nu-avatar`（name=超、title=点击切换角色 / 退出登录），
-            #   点完之后 `get_by_role("button", name="超")` 不再命中 -> 事后取锚恒为空。
-            if seen is not None:
-                try:
-                    seen[nm] = _anchor_fields_of_locator(pg, loc.first)
-                except Exception:                                     # noqa: BLE001
-                    pass
-            try:
-                loc.first.click(timeout=per_step_ms)
-            except Exception as _first:                               # noqa: BLE001
-                # 常规点击被拒的**两条**真实成因（2026-10-10 实测各踩一次）：
-                #   (a) 权限上下文不同：探测期比执行期早（场景里"切角色"是后面一步）=> 目标
-                #       `aria-disabled` => TimeoutError（「编辑」就是这种，判据 1c 已钉死
-                #       「置灰但**仍可点**、点了弹提示」=> 探测期 force 一次是安全的）；
-                #   (b) **同名隐藏项挡路**：菜单项在 DOM 里有未展开的副本 => `.first` 命中
-                #       不可见元素 => `Element is not visible`（「切换为订单管理员」就是这种，
-                #       与 L27 的隐藏 <option> 同款教训）。
-                #   => 先**挑可见的那个**（只排除、不猜：同名里可见的就是用户能点的那个），
-                #      全不可见再退 force。
-                # [!] 提示必须印在**尝试之前** —— 旧写法印在 force 之后，force 也失败时
-                #     这行根本不出现，日志会误导人以为 force 没触发（实测踩到）。
-                _n = loc.count()
-                _vis = [i for i in range(_n) if loc.nth(i).is_visible()]
-                print(f"      [explore] [info] [{page_name}] 前置动作「{nm}」常规点击被拒"
-                      f"（{type(_first).__name__}）-> 同名 {_n} 个 / 可见 {len(_vis)} 个")
-                if _vis:
-                    loc.nth(_vis[0]).click(timeout=per_step_ms)
-                    print(f"      [explore] [info] [{page_name}] 前置动作「{nm}」已改用可见项点一次")
-                else:
-                    loc.first.click(timeout=per_step_ms, force=True)
-                    print(f"      [explore] [info] [{page_name}] 前置动作「{nm}」全不可见 -> 改用 force 点一次")
-            pg.wait_for_timeout(350)
-            done.append(nm)
-        except Exception as e:                                        # noqa: BLE001
-            print(f"      [explore] [!] [{page_name}] 前置动作「{nm}」执行失败"
-                  f"（{type(e).__name__}: {str(e)[:80]}）→ 继续后面的步骤")
-    if done:
-        print(f"      [explore] [fast] [{page_name}] 前置动作已执行：{done}")
-    return done
+    from framework.tools.run.pre_actions import run_pre_actions
+
+    def _capture(nm, locator):
+        if seen is not None:
+            seen[nm] = _anchor_fields_of_locator(pg, locator)
+
+    return run_pre_actions(pg, pre, page_name, per_step_ms=per_step_ms,
+                           quiet_missing=quiet_missing,
+                           require_all_resolvable=require_all_resolvable,
+                           on_clicked=_capture, log_tag="explore")
 
 
 def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | None = None,
@@ -785,6 +648,11 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                 #   **绝不猜别的控件去点**（本项目铁律：不让框架猜控件）。
                 #   必须在 scan_page **之前**：前置动作常改变权限上下文（切角色），
                 #   扫在它之后才拿得到编辑态/动态新增的控件。
+                # [!] `_pp_done` 必须**先初始化再进 if**：没声明 probe_pre 的场景 `_pp_pending`
+                #   一开始就是空 -> 旧写法（只在 if 里赋值、下一行无条件读 `_pp_done`）会对
+                #   **任何没声明 probe_pre 的跨页场景**抛 UnboundLocalError（被兜住 = 探测静默退化）；
+                #   有声明时则每页复用上一页的陈旧值 -> 陈旧名字被当成"本页已点击"（假证据）。
+                _pp_done: list = []
                 if _pp_pending:
                     _pp_done = _run_pre_actions(pg, _pp_pending, "场景探测前置", quiet_missing=True,
                                                require_all_resolvable=True, seen=_pp_seen)
@@ -832,6 +700,11 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
                       f"{len(merged_one)} 个控件（弹窗补充 {len(modal_items)}）")
             b.close()
         merged, collisions = uniquify_across_pages(per_page)
+        # 2026-10-10（方案 1+2）：**跨页聚合口也要过重复控件收敛** —— 这里是给 AI 的那份清单的
+        #   唯一汇合点；`_merge_items` 的收敛只管它自己那一次合并，跨页拼接会把残渣带回来
+        #   （实测：同一控件的 `_2/_3` 与主条目签名完全相同却仍在清单里）-> AI 可能引用到没标
+        #   重复信号的那一条。清单不变量要落在**每个对外出口**上（两处：这里 + `_finalize_map`）。
+        _collapse_row_repeats(merged)
         for c in collisions:
             print(f"      [explore] [!] 跨页同名元素 {c['semantic_name']!r} 出现在 "
                   f"{'、'.join(c['pages'])} → 已唯一化为 "
@@ -879,6 +752,8 @@ def ai_explore(
     _LAST_REQUIRED_FIELDS.clear()
     _LAST_ROW_FIELDS.clear()
     globals()["_CURRENT_SCENARIO"] = scenario or ""
+    # 2026-10-10 A 方案：把本次声明的**身份前置**记进全局（提示词 + 产出兜底两处读）
+    globals()["_CURRENT_PROBE_PRE"] = [str(x).strip() for x in (probe_pre or []) if str(x).strip()]
     ctx = _collect_page_context(items, url, pages=pages, auth=auth or {}, probe_pre=probe_pre)
     page_items, dom_ctx, err = ctx[0], ctx[1], ctx[2]
     collisions = ctx[3] if len(ctx) > 3 else []
@@ -1317,6 +1192,42 @@ def _reject_login_steps(steps: list[TestStep]) -> None:
         )
 
 
+def _base_of_semantic_name(nm) -> str:
+    """取语义名的**基名**（去掉 `@页名` 后缀）。比对"AI 产出"与"场景声明"时用：
+    AI 会写 `切换为订单管理员@合同列表页`，而声明里是不带页名的。"""
+    return str(nm or "").split("@", 1)[0].strip()
+
+
+def _drop_declared_pre_steps(steps: list[TestStep], probe_pre: list | None) -> list[TestStep]:
+    """把 AI 产出里**与场景声明重复**的身份前置步骤移除（2026-10-10 A 方案）。
+
+    为什么移除而不是像登录那样拒绝：`probe_pre` 是"怎么到达这个身份"的**声明式权威**，
+    执行期会先按它整组跑一遍（`run_pre_actions` 同一引擎）。AI 再写一遍既多余，又常在
+    **"点开容器/菜单"那一步漏写**（实测只写「切换为订单管理员」而漏了头像「超」）
+    -> 菜单项未展开 -> `Locator.click: Element is not visible` -> 整条用例白跑。
+
+    口径：
+      · 只按**基名**匹配（页名后缀不参与，见 `_base_of_semantic_name`）；
+      · 移除**出声**（改变了 AI 的产出就要说清，不做静默改动）；
+      · 声明为空 -> 原样返回（行为与改造前**逐字一致**）。
+    """
+    names = {_base_of_semantic_name(x) for x in (probe_pre or []) if str(x).strip()}
+    if not names or not steps:
+        return steps
+    kept, dropped = [], []
+    for s in steps:
+        el = getattr(s, "element", None)
+        nm = _base_of_semantic_name(getattr(el, "semantic_name", "") or "")
+        if nm and nm in names:
+            dropped.append(f"第{getattr(s, 'order', '?')}步:{nm}")
+            continue
+        kept.append(s)
+    if dropped:
+        print(f"      [explore] [key] 场景已声明的身份前置，从 AI 产出里移除 {len(dropped)} 步："
+              f"{dropped}（执行期会按声明先跑一遍；重复生成会在'点开容器'那步漏写）")
+    return kept
+
+
 # ---- P0-1 (V8.4.1, Windows 实测): AI 不许把**表格行数据的具体值**写死 ----
 # 事故: 场景说「选中第一行合同」, AI 写成 `contract_no=HT-1001` / `选择合同_HT_1001`
 #       -- 现在能过只因当前 demo 第一行恰好是它; 换数据/换排序立刻崩.
@@ -1324,12 +1235,25 @@ def _reject_login_steps(steps: list[TestStep]) -> None:
 # V8.4.3：最近一次探测到的「行内列清单」—— 供 `_finalize_map` 的确定性兜底读
 #   （勾选列没有 data-field，AI 常常不给列指定；候选唯一时可以安全补全）
 _LAST_ROW_FIELDS: list[dict] = []
+# 本场景探到的**全部清单条目**（跨页累积）。用途：`multi_match` 硬清单（重复控件）——
+# 与 `_LAST_REQUIRED_FIELDS` **共用同一个单一入口** `_remember_required_fields`（见那里的纪律说明：
+# 探测有单页/跨页两条路径，缓存只在一边写就会静默失效，这个坑本项目已经犯过两次）。
+_LAST_PAGE_ITEMS: list[dict] = []
 _HARDCODED_NOTES: list[str] = []   # 最近一次 _finalize_map 收集到的写死项(供校验/重试读)
 # V8.4.3+：探测到的「页面必填控件」清单（跨页累积）—— 供「必填项覆盖校验」读。
 #   信号来源：探针的 `ctx_token`（必填控件形如 `*客户`），**不写死任何业务词**。
 _LAST_REQUIRED_FIELDS: list[dict] = []
 _CURRENT_SCENARIO: str = ""   # 本次 explore 的场景原文（清单块与覆盖校验共用口径）
+# 2026-10-10 A 方案：本次场景声明的**身份前置**（`probe_pre`）—— 声明式权威。
+#   两处读它：① 提示词告诉 AI「这些已自动完成、不要重复生成」；
+#   ② `_drop_declared_pre_steps` 落地兜底（提示不生效时也不允许重复）。
+_CURRENT_PROBE_PRE: list = []
 _REQUIRED_COVERAGE_NOTES: list[str] = []   # 场景提到但 AI 没编排的必填项(供重试闭环读)
+# 2026-10-10（他选 ①）：**行定位缺失**清单 —— AI 步骤引用了「同容器重复出现」的控件（探测期
+#   实测 `multi_match`）却没给行定位。收集在这里（`_finalize_map` 单点收口）由
+#   `cli._verify_cases_detailed` 读走 -> 带原因让 AI 重生成。
+#   为什么必须提前到 explore 阶段：生成期闸门说不了话给 AI（那时重试闭环已经结束了）。
+_ROW_SCOPE_NOTES: list[str] = []
 # [!] 不能用 `\b`: 中文是 \w, `选择合同_HT_1001` 里「同」与「H」之间**没有词边界**
 #     -> 漏检(实测第一版就漏了这条, 被自己的判据抓出来). 改用「前面不是 ASCII 字母」.
 _HARDCODE_ID_RE = re.compile(
@@ -1437,6 +1361,9 @@ def _remember_required_fields(page_items: list | None, page_name: str = "") -> N
     [!] 跨页要**累积**，不许每页 clear（否则只剩最后一页）。
     """
     for it in (page_items or []):
+        # 累积全部条目（multi_match 硬清单用）—— 与必填项共用本单一入口，别在别处另起一份
+        if it not in _LAST_PAGE_ITEMS:
+            _LAST_PAGE_ITEMS.append(it)
         tok = str(it.get("ctx_token") or "")
         if tok.startswith("*"):
             _LAST_REQUIRED_FIELDS.append({
@@ -1567,6 +1494,9 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
     # 无条件执行的理由：AI 自己编的登录步骤**必然失败**（它拿不到真实凭据，只会编一个 ——
     # 实测写了 123456 而真值是 super@123）。真需要登录的场景应该用场景级 `auth:` 声明。
     _reject_login_steps(steps)
+    # 2026-10-10 A 方案：场景声明的**身份前置**由框架在探测期与执行期各跑一遍（同一引擎），
+    #   AI 产出里若重复写它 -> 移除（不出声的改动是不允许的，函数内部有话）。
+    steps = _drop_declared_pre_steps(steps, globals().get("_CURRENT_PROBE_PRE") or [])
     # P0-1: 写死行数据 -- **收集式**闸门(不抛), 把原因记下来供 L1/重试闭环使用.
     hard = reject_hardcoded_row_values(steps, scenario_text=scenario)
     # 确定性兜底：row_text 有但列缺失（AI 对「没有 data-field 的列」不写列）
@@ -1604,6 +1534,76 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
     if steps and steps[0].action != "goto":
         label = f"【{first['name']}】{first_url}" if first else first_url
         steps.insert(0, TestStep(0, "goto", value=first_url, description=f"打开 {label}"))
+    # 2026-10-10（方案 1+2）**清单不变量**：重复控件收敛必须在这里再兜一次。
+    #   为什么：探测是**多轮 + 跨页拼接**的（基础/弹层/编辑态/各页），`_merge_items` 里的收敛只覆盖
+    #   它自己那一次合并 —— 实测漏网：同一个控件的两条残渣（`物料编码_2`/`_3`，签名与主条目**完全
+    #   相同**）在拼接后仍留在清单里，于是"重复信号"只标到一条、AI 可能引用到没标的那条。
+    #   本函数是**所有产出路径的单点收口**（见上方注释：实测 3 处调用），不变量放这里才收得住。
+    if manifest:
+        _collapse_row_repeats(manifest)
+    # 2026-10-10（他选 ①）：**行定位缺失**在这里收集（喂回 AI 重试闭环）。
+    #   判据与措辞来自**唯一入口** `row_scope_violation()`（生成期闸门共用同一段）；
+    #   `multi_match` 从**清单条目**取（同源纪律：不另立一份信号来源）。
+    #   [!] 名字必须**同时认 `semantic_name` 与 `base_name`**：探测期这一刻步骤引用的还是
+    #   基础名（唯一化之后才带 `@页名`）—— 2026-10-10 实测只按 semantic_name 查 => 零重合 =>
+    #   判据静默失效（遥测：重复控件 10 个、撞上 0 个）。
+    _ROW_SCOPE_NOTES.clear()          # [!] 无条件清：留旧账会让下一轮报上一轮的缺陷
+    _mm_of = item_multi_match_map(manifest)
+    # 2026-10-11 V8.4.6（方案 ③ 框架兜底）：**能判死**的行定位缺失先补上 ——
+    #   走唯一入口 `apply_row_locator_fallback()`；补出来的 row_index 会**落进用例 JSON**
+    #   （可审计、可复核），补不出来的仍由下面的判据报红并喂回重试（① 那层保留）。
+    _fb = apply_row_locator_fallback(steps, _mm_of)
+    if _fb:
+        print(f"  [explore] [key] 框架兜底补行定位 {len(_fb)} 处（规则 R1：刚新增行 -> row_index=-1）: "
+              f"{', '.join(n['name'] for n in _fb[:8])}")
+    for _st in (steps or []):
+        _elem = step_get(_st, "element")
+        _elem = getattr(_elem, "semantic_name", _elem) or ""
+        _reason = row_scope_violation(_st, multi_match_of_name(_mm_of, _elem))
+        if _reason:
+            _ROW_SCOPE_NOTES.append(_reason)
+    if _ROW_SCOPE_NOTES:
+        print(f"  [explore] [!] 行定位缺失 {len(_ROW_SCOPE_NOTES)} 处"
+              f"（重复控件没给行定位 -> 带去重试让 AI 补）")
+    elif _mm_of:
+        # 诚实的遥测（不是日志噪声）：清单里**有**重复控件、但一步都没违规 —— 两种可能：
+        #   ① 本次 AI 每步都给了行定位（正常）；② 步骤引用的名字与清单名字**对不上**
+        #   （2026-10-10 踩过：`_mm_of` 用错键名/名字口径不一致 -> 判据永远静默失效）。
+        # 所以这里把"两个集合各自多大"打出来：一眼能分辨是"真没违规"还是"根本对不上号"。
+        _step_names = set()
+        for _st in (steps or []):
+            _e = step_get(_st, "element")
+            _step_names.add(getattr(_e, "semantic_name", _e) or "")
+        _step_names.discard("")
+        _sample = sorted(_step_names)
+        print(f"  [explore] [info] 重复控件 {len(_mm_of)} 个 · 行定位缺失 0 处"
+              f"（步骤引用 {len(_step_names)} 个名字，其中撞上重复控件的 "
+              f"{len(_step_names & set(_mm_of))} 个；框架兜底补了 {len(_fb)} 处）")
+        print(f"  [explore] [info] 步骤名字全量={_sample}")
+        print(f"  [explore] [info] 重复控件名字全量={sorted(_mm_of)}")
+        # L30 诊断（2026-10-11）：把「判为有行定位」的每一步**摊开** —— 名字 / multi_match 取值 /
+        #   现有定位字段。为什么需要：两侧对同一条用例给出相反结论（explore 说 0 处、生成期闸门说
+        #   3 处），光靠"撞上 4 个"分不清是"AI 真给了定位"还是"判据看走了眼"。
+        #   [!] 结论要按 `has_row_locator()`（判定用的真正口径）报，不能只看 multi_match ——
+        #   否则框架兜底补完之后会打印成"判为【违规】"（2026-10-11 实测的误导）。
+        for _st in (steps or []):
+            _e2 = getattr(step_get(_st, "element"), "semantic_name", None)
+            if _e2 is None:
+                _e2 = step_get(_st, "element") or ""
+            _mm2 = multi_match_of_name(_mm_of, _e2)
+            # [!] 打印门槛**不放 multi_match>1**：正是"看起来撞上了、取值却是 1"这种
+            #   两侧不一致的情形最需要看见（L30：裸集合交集 4 个、判定却 0 处）。
+            if not _mm2 and str(_e2) not in _mm_of:
+                continue
+            _verdict = "有行定位" if (has_row_locator(_st) or not _mm2 or _mm2 <= 1) else "违规"
+            print(f"  [explore] [info] 命中 {_e2!r}（名字是清单键={str(_e2) in _mm_of}、"
+                  f"multi_match_of_name={_mm2}）-> 判为【{_verdict}】"
+                  f"｜action={step_get(_st, 'action')!r}"
+                  f" row_index={step_get(_st, 'row_index')!r}"
+                  f" row_text={step_get(_st, 'row_text')!r}"
+                  f" cell_field={step_get(_st, 'cell_field')!r}"
+                  f" cell_by={step_get(_st, 'cell_by')!r}"
+                  f" cell_index={step_get(_st, 'cell_index')!r}")
     return ElementMap(url=first_url, scenario=scenario, steps=steps,
                       probe_items=list(manifest or []))
 
@@ -2050,8 +2050,61 @@ def _merge_items(base: list[dict], extra: list[dict]) -> list[dict]:
         if tid:
             seen_tid.add(tid)
         out.append(it)
+    _collapse_row_repeats(out)          # 2026-10-10：同容器重复项收敛成一条 + 记 multi_match
     assign_semantic_names(out)
     return out
+
+
+def _collapse_row_repeats(items: list[dict]) -> None:
+    """把「同一容器里**同一个控件重复出现**」（表格每行一个、列表每行一个）收敛成**一条**并记 `multi_match`。
+
+    为什么必须做（2026-10-10 实测，方案 1+2 的信号源）：
+      详情页「编辑 + 新增行」后，行内 `物料编码` 在**每一行**都有一个同名输入框。探针在**有数据的
+      真实单据**上能看到 3 个 —— 但旧行为是给它们各起一个名字（`物料编码@详细信息` / `_2` / `_3`），
+      其中 `_2/_3` 是**序号名 = DOM 顺序**，项目早已定性为脆弱（行序一变就指向别的行），
+      AI 也读不出"这是同一控件的重复"。
+      更关键的是：**AI 没有这个信号就不会用 `row_index`**（实测：提示词教了也不写 —— 因为它
+      不可能知道"这个控件每行一个"，这是 DOM 事实、不该让它猜）。
+
+    收敛口径（**同容器内**才算重复）：
+      签名 = (page, container_heading/ctx_token, tag, role, 可识别名(name/title/help_text/placeholder))。
+      为什么必须带容器：弹层里的「保存」与工具栏里的「保存」是**两个不同控件**，靠 `@上下文`
+      后缀区分 —— 那不是"重复"，不能合并（合了就等于把两个控件当成一个）。
+
+    留痕：
+      · `multi_match` = 收敛掉的同类项个数（≥2 才是重复；1 = 唯一控件，不写这个键）；
+      · 打印一行 —— 收敛是**出声**的，不静默改变清单。
+
+    下游怎么用：
+      · 提示词：`multi_match>1` 的名字**必须**给行定位（`row_index` / `row_text`）；
+      · 生成期质量闸：引用了它却没给行定位的步骤 -> **拒绝产出**（带原因让 AI 重生成）；
+      · 运行期（`_act`）：多匹配时明确报"本页 N 个同名匹配 -> 请指明哪一行"。
+    """
+    by_sig: dict[tuple, dict] = {}
+    kept: list[dict] = []
+    for it in items:
+        _name = (it.get("help_text") or it.get("name") or it.get("placeholder")
+                 or it.get("text") or "")
+        sig = (str(it.get("page") or ""), str(it.get("container_heading") or ""),
+               str(it.get("ctx_token") or ""), str(it.get("tag") or ""),
+               str(it.get("role") or ""), str(_name).strip())
+        if not str(_name).strip():          # 没有可识别名 -> 谈不上"同一个控件重复"，原样保留
+            kept.append(it)
+            continue
+        keep = by_sig.get(sig)
+        if keep is None:
+            by_sig[sig] = it
+            kept.append(it)
+        else:
+            keep["multi_match"] = int(keep.get("multi_match") or 1) + 1
+    # [!] **原地改写**：调用方传进来的是它自己要用的那一份 list。返回一个新 list 而不改原列表
+    #     = 收敛只打印、清单里一条都没少（实测就这么静默失效过一轮：`_2/_3` 残渣就是这么留下的）。
+    items[:] = kept
+    for it in kept:
+        if int(it.get("multi_match") or 1) > 1:
+            print(f"      [explore] [key] 同容器重复控件「{it.get('help_text') or it.get('name')}」"
+                  f"（{it.get('page')}）-> 收敛成 1 条，multi_match={it['multi_match']}"
+                  f"（用例操作它时**必须**给行定位：row_index / row_text）")
 
 
 # 采集"完整版 DOM 上下文"用的交互元素选择器（加上 dropdown/select/combobox 等）
@@ -2124,6 +2177,17 @@ _OUTPUT_CONTRACT = (
     "      不要用探测时就存在的那些行的名字（如 `选择订单_SO_2301`）—— 新行探测时还没有名字。\n"
     '      完整例子（勾选刚建的那一行）：{"order":36,"action":"check","row_text":"全链路-20260101",'
     '"cell_by":"index","cell_index":1,"description":"勾选该订单行"}\n'
+    "  · **要操作的行是「刚刚新增的空行」（没有内容可当行锚）时，改用行下标定位**：\n"
+    '      `"row_index":-1` = 最后一行（新增行通常在最后，**最常用**）；`"row_index":2` = 第 2 行。\n'
+    "      为什么必须用下标：行锚要靠**那一行里已有的文本**，而刚新增的行是**空的** —— "
+    "只给语义名会同时命中多行（实测：详情页 3 行 -> 同名输入框 3 个）-> 框架**明确拒绝**"
+    "（宁可不做，也绝不填错行）。\n"
+    '      例子（新增行后填这一行的物料编码）：{"order":17,"action":"fill",'
+    '"semantic_name":"物料编码@订单详情页","row_index":-1,"value":"M001"}\n'
+    "  · `row_index` 与 `row_text` **二选一**（不要同时写）；两个都不给时按普通控件定位。\n"
+    "  · **清单里标了 `multi_match` 的控件 = 它在页面上重复出现（每行/每条一个，值是重复个数）**：\n"
+    "      操作它**必须**给行定位（`row_index` 或 `row_text`+列），**只给语义名一定会失败**（同时命中多个）——\n"
+    "      框架会在生成期直接拦下这种步骤并告诉你原因。\n"
     "  · **不许发明字段名**（`cell_selector`、`pick`、`checkbox` 这类自造名一律无效，"
     "框架不认、会被当成没给列）；用不着的字段**整个键省略**，不要写空串。\n\n"
 )
@@ -2137,6 +2201,38 @@ _OUTPUT_CONTRACT = (
 #   把契约放在 user prompt 第 0 位仍然会被 14 万字符稀释（lost in the middle）。
 #   system 是"常驻角色指令"，模型当成必须遵守的人设 -> 抗力最强；user 侧保留作双保险。
 _PLANNER_SYSTEM = _PLANNER_SYSTEM + "\n\n===== 输出契约（必须遵守，优先级最高）=====\n" + _OUTPUT_CONTRACT
+
+def _multi_match_block(items: list[dict] | None = None) -> str:
+    """**重复控件硬清单**（2026-10-10 方案 1+2）：探测期实测「同一容器内重复出现」的控件清单。
+
+    为什么要提成**第 0 位硬约束**（实测教训）：在这之前 `multi_match` 只作为清单条目里的一个
+    字段送到 AI —— 实测 AI（deepseek-flash）**引用了带该字段的名字却依然不给行定位**
+    （用例第 18 步 `物料编码@详细信息`，`multi_match: 7` 就在同一行 JSON 里）。
+    这与「必填字段」当年一模一样的病：**长 prompt 里的字段级提示会被稀释**（lost in the middle），
+    提成第 0 位的硬清单才治得住（见 `_required_fields_block` 的实测记录）。
+
+    口径：名字逐字从清单里来；每条只说"必须给行定位"，不说怎么定位（那是契约的事）。
+
+    [!] 2026-10-10 修正：**必须从「送 AI 的那份清单」生成**（`items` 参数），不能用探测期累积的
+    `_LAST_PAGE_ITEMS` —— 那份是**跨页唯一化之前**的，名字与 AI 看到的对不上
+    （实测：硬清单写 `物料编码@详细信息（重复 7 个）`，而 AI 清单里叫 `物料编码@订单详情页`
+     -> AI 对不上号，硬清单等于白写）。
+    """
+    items = items if items is not None else (_LAST_PAGE_ITEMS or [])
+    mm = [(str(it.get("semantic_name") or ""), int(it.get("multi_match") or 1))
+          for it in items if int(it.get("multi_match") or 1) > 1]
+    if not mm:
+        return ""
+    out = ["===== 重复出现的控件（探测期实测：同一容器里每行/每条各一个）=====",
+           "[!] 下面每个控件在页面上都有**多个**（个数已给出），**操作它们必须给行定位** ——",
+           "    `row_index`（第 N 行，从 1 起；`-1` = 最后一行；**刚新增的空行只能用这个**）",
+           "    或 `row_text`（行锚文本）+ 列字段。",
+           "    **只给语义名一定会失败**（同时命中多个）；框架会在生成期直接拦下这种步骤。"]
+    for nm, n in mm[:40]:
+        out.append(f"  - {nm}（重复 {n} 个）")
+    out.append("（不在上面的控件不受此约束。）")
+    return "\n".join(out) + "\n\n"
+
 
 def _required_fields_block() -> str:
     """把「本场景必须操作的必填字段」做成硬清单，挂在 prompt **最前**。
@@ -2245,6 +2341,11 @@ def _compact_item(it: dict, ambiguous: set[str] | None = None) -> dict:
             v = it.get(f)
             if v not in (None, "", False):
                 out[f] = v
+    # 2026-10-10（方案 1+2）：**同容器内重复出现**的控件（每行/每条一个）—— 这个事实必须让 AI 看到，
+    #   否则它不会用 `row_index`（实测：提示词教了也不写 ——"这个控件每行一个"是 DOM 事实，
+    #   不该让 AI 猜；框架测得就给它）。
+    if int(it.get("multi_match") or 1) > 1:
+        out["multi_match"] = int(it["multi_match"])
     return out
 
 
@@ -2425,6 +2526,16 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
 
     # 控件清单：**单页 / 跨页共用同一选取入口**（过去两条路径各写一段配额，同一个 bug 两边轮流复发）。
     # 选取口径见 select_controls_for_prompt：必给层全给 + 字符预算 + 页间轮转 + 裁剪明示。
+    # 2026-10-10 A 方案：**场景已声明的身份前置**必须告诉 AI ——
+    #   执行期会先按声明整组跑一遍（同一引擎）；AI 若再写一遍，常在"点开容器/菜单"那一步漏写
+    #   （实测只写「切换为订单管理员」而漏了头像「超」）-> 菜单项未展开 -> `Element is not visible`。
+    #   产出侧另有 `_drop_declared_pre_steps` 兜底：**两道**（提示 + 落地），提示不生效也不许重复。
+    _pp_now = [str(x).strip() for x in (globals().get("_CURRENT_PROBE_PRE") or []) if str(x).strip()]
+    if _pp_now:
+        prompt += ("[!] 场景已声明【身份前置】（探测期与**执行期都会自动先做**，不需要你写进步骤）："
+                   + "、".join(f"「{x}」" for x in _pp_now) + "\n"
+                   "  —— 请从**该身份已就绪之后**的页面开始规划；**不要**再生成这些动作的步骤"
+                   "（重复生成会在'点开容器/菜单'那一步漏写，导致整条用例失败）。\n\n")
     _sel = select_controls_for_prompt(items, pages if multi else None, scenario)
     _amb = globals().get("_LAST_AMBIGUOUS_NAMES") or set()
     prompt += ("页面已探测出以下可交互控件（只有这些可用，绝不自己编造 selector；"
@@ -2618,7 +2729,8 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         "    但 `HT-1001`、`SO-1011` 这种**字面编号**一律不许出现在任何字段里.\n"
         "  · 例外: 场景里**明确逐字给出了**该编号(如「输入合同编号 HT-1001 后搜索」)时可以照抄.\n"
     )
-    return _OUTPUT_CONTRACT + _required_fields_block() + _declared_wait_block(scenario) + prompt
+    return (_OUTPUT_CONTRACT + _multi_match_block(items) + _required_fields_block()
+            + _declared_wait_block(scenario) + prompt)
 
 
 def _parse_steps_text(text: str, items: list[dict]) -> list[TestStep]:

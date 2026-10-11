@@ -261,11 +261,19 @@ def test_synthetic_pre_action_items_keep_anchor_shape():
     seg = code[j:j + 2600]
     assert "_anchor_fields_of(pg" in seg, "`_register_pre_action_items` 没调用取锚逻辑"
     assert "anchors" in seg, "`_register_pre_action_items` 没接「点击那一刻记下的锚」"
-    k = code.index("def _run_pre_actions")
-    runner = code[k:k + 5200]
-    assert "seen" in runner, "`_run_pre_actions` 没把点击时的锚记下来"
-    i_cap, i_click = runner.index("seen[nm] = _anchor_fields_of_locator"), runner.index("loc.first.click(")
+    # [!] 「取锚必须在点击之前」的顺序契约在**唯一引擎**里 —— 2026-10-10 A 方案把实现抽到
+    #   `framework/tools/run/pre_actions.py`（探测期与执行期共用同一引擎：同一个"怎么到达这个身份"
+    #   的知识只许有一个入口）。探测期入口 `_run_pre_actions` 只许委托，不许再留第二份实现。
+    eng = _code(REPO / "framework" / "tools" / "run" / "pre_actions.py")
+    i_cap = eng.index("on_clicked(nm, loc.first)")
+    i_click = eng.index("loc.first.click(")
     assert i_cap < i_click, "取锚必须**在点击之前**（点完控件的可访问名会变，事后取不到）"
+    k = code.index("def _run_pre_actions")
+    wrapper = code[k:k + 2600]
+    assert "from framework.tools.run.pre_actions import run_pre_actions" in wrapper, \
+        "探测期入口没委托给唯一引擎（会漂成两套口径）"
+    assert "全不可见 -> 改用 force 点一次" not in code, \
+        "explorer 里还留着前置动作的第二份实现（只该在引擎里）"
     assert "_register_pre_action_items(spec[\"name\"], _pp_clicked, merged_one" in code, \
         "调用点没把 page/锚传进去 -> 取不了锚"
     assert "anchors=_pp_seen" in code, "调用点没把点击时记下的锚传进去"
@@ -276,3 +284,37 @@ def test_manifest_is_threaded_through_generator():
     assert "probe_items" in code, "generate 侧没有任何地方读清单 -> 落盘的清单等于白落"
     snap = _code(REPO / "framework" / "tools" / "generate" / "probe_snapshot.py")
     assert "probe_items" in snap, "快照侧没读清单 -> 运行时索引仍然缺名"
+
+
+def test_locator_source_picked_by_coverage_not_by_newest_file():
+    """权威来源按**覆盖度**选，不按「文件名最新」。
+
+    2026-10-10 实测的脆弱点：为验证一个 bug 随手跑的 `explore --ai --scenario "x"`
+    （只探到登录页）会写出一份新的 `element_map_*.json`；旧的「取最新、一有命中就 break」
+    让它顶掉了真正的权威清单 -> generate 满屏跨页唯一化后报「缺失项」拒绝产出。
+    """
+    import json as _json
+    import tempfile
+    from framework.tools.generate.generator import _pick_loc_map_source
+
+    need = {"A", "B", "C"}
+    with tempfile.TemporaryDirectory() as d:
+        dd = Path(d)
+        newer = dd / "element_map_20260101_120000.json"      # 更新的那份：只覆盖 1 个
+        older = dd / "element_map_20260101_110000.json"      # 旧的那份：覆盖 3 个
+        for p, names in ((newer, ["A"]), (older, ["A", "B", "C"])):
+            items = [{"semantic_name": n, "role": "button", "name": n} for n in names]
+            p.write_text(_json.dumps({"url": "http://x", "probe_items": items}, ensure_ascii=False),
+                         encoding="utf-8")
+        cands = [(f"element_map({newer.name})", newer, "element"),
+                 (f"element_map({older.name})", older, "element")]
+        parts: list = []
+        got = _pick_loc_map_source(cands, need, parts)
+        assert got is not None, "一个候选都没选出来"
+        assert got[1] == older, "选了覆盖少的那份（还是按『最新』而不是覆盖度）"
+        assert len(got[4]) == 3, f"命中数不对：{got[4]}"
+        assert len(parts) == 2, "候选没全部留痕（挑来源这件事必须可审计）"
+
+    code = _code(REPO / "framework" / "tools" / "generate" / "generator.py")
+    assert "_pick_loc_map_source(candidates, needed, src_parts)" in code, \
+        "调用点没走『按覆盖度选』这个唯一入口"

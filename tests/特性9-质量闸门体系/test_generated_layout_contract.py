@@ -68,6 +68,28 @@ def test_index_records_three_fingerprints():
         missing = need - set(meta)
         assert not missing, f"X {cid} 的 index 条目缺字段：{sorted(missing)}"
 
+
+def test_renderer_fingerprint_covers_render_logic_not_only_header():
+    """渲染器指纹必须覆盖**渲染逻辑**，不能只哈希模块头模板。
+
+    为什么（2026-10-10 实测，同类栽第二回）：只哈希 `_MODULE_HEADER` 时，改了**步骤体渲染逻辑**
+    （给 goto 加相对地址补齐）后 generate 照报 `重写 0 · 跳过（无变化）`，生成物里还是旧代码 ——
+    "改了却没生效"被静默吞掉一整轮排查。现在指纹 = 生成器源码 + 模块头模板。
+    """
+    import hashlib
+    import json as _json
+    import framework.tools.generate.generator as G
+
+    src = (REPO / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+    expect = hashlib.sha256((src + "\x00" + G._MODULE_HEADER).encode("utf-8")).hexdigest()[:16]
+    only_header = hashlib.sha256(G._MODULE_HEADER.encode("utf-8")).hexdigest()[:16]
+    assert expect != only_header, "指纹与只哈希模块头等价 -> 渲染逻辑改了也不会重写产物"
+    idx = _index()
+    bad = [cid for cid, m in idx.items() if m.get("template_fingerprint") != expect]
+    assert not bad, (f"X 这些用例的 template_fingerprint 不是「渲染器源码 + 模块头」的哈希：{bad[:5]}"
+                     f" —— 要么重跑 generate，要么指纹退回了只覆盖模块头")
+    assert "template_fingerprint" in _json.dumps(idx, ensure_ascii=False), "index 里没有渲染器指纹字段"
+
 def test_no_flat_case_files_in_cases_root():
     """P20：用例必须按场景分目录（AI 进 <scenario_id>/，手搓进 manual/）=> cases/ 根下不许有 .json。
 
@@ -77,3 +99,37 @@ def test_no_flat_case_files_in_cases_root():
     """
     flat = sorted(p.name for p in (REPO / "cases").glob("*.json"))
     assert not flat, f"X cases/ 根下有平铺用例（旧布局残留，应进 <场景>/ 或 manual/）：{flat[:5]}"
+
+
+def test_generated_case_scripts_import_every_harness_helper_they_call():
+    """生成的用例脚本里调用的 `_xxx()` 辅助，必须都在 `from _harness import (...)` 名单里。
+
+    为什么（2026-10-11 实测）：方案 ③ 框架兜底补出 `row_index=-1` -> 渲染成 `_act_row(...)`，
+    而 import 名单里漏了 `_act_row` -> **生成期闸门全绿、真跑 `NameError`**（跑起来才知道）。
+    「模板渲染出的调用」与「import 名单」必须成对维护 —— 靠人眼守不住，判据来守。
+    """
+    import re
+    harness = (GEN / "_harness.py").read_text(encoding="utf-8")
+    helpers = set(re.findall(r"^def (_[A-Za-z_][A-Za-z0-9_]*)", harness, re.M))
+    assert helpers, "没解析出 harness 的辅助函数 -> 判据前提失效，需人工确认"
+    bad: list[str] = []
+    for py in sorted(GEN.rglob("*.py")):
+        if py.name in ("_harness.py", "conftest.py") or "__pycache__" in str(py):
+            continue
+        src = py.read_text(encoding="utf-8")
+        imported: set[str] = set()
+        # [!] 跨行 `from _harness import (` 块里**可能有带 ASCII `)` 的注释**（如"（夹具靠它暴露）"），
+        #   用 `\(([^)]*)\)` 会在那个注释处**提前截断** -> 名单后半段的名字被判成"没 import"
+        #   （2026-10-11 实测：把 `_assert_wait_text` 误报成漏 import）。所以按"行首的 `)`"收块。
+        i_imp = src.find("from _harness import (")
+        if i_imp >= 0:
+            j_end = src.find("\n)", i_imp)
+            block = src[i_imp:(j_end if j_end > 0 else len(src))]
+            imported |= set(re.findall(r"(_[A-Za-z_][A-Za-z0-9_]*)", block))
+        for line in re.findall(r"^from _harness import ([^(\n]+)$", src, re.M):   # 单行形式
+            imported |= {x.strip() for x in line.split(",") if x.strip()}
+        for call in set(re.findall(r"(?<![\w.])(_[A-Za-z_][A-Za-z0-9_]*)\s*\(", src)):
+            if call in helpers and call not in imported:
+                bad.append(f"{py.name}: 调了 harness 的 {call}() 却没 import")
+    assert not bad, ("生成的用例脚本漏 import 辅助函数（真跑必 NameError）:\n"
+                     + "\n".join(sorted(set(bad))))

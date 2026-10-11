@@ -117,8 +117,15 @@ class Healer:
                   f"页面候选: {_json.dumps(candidates[:30], ensure_ascii=False)}\n"
                   f"请挑出最匹配目标语义的候选 semantic_name，只输出一个名字。")
         # 这里用 LLM 的文本返回挑一个最接近候选；再走唯一性。
-        # （教学骨架：真实可用 structured_output 拿可控对象。无 key 环境此步不被触发。）
-        return {"ok": False, "reason": "LLM 重猜路径已预留（需 key 才能启用）"}
+        # [!] V8.4.6（2026-10-11 诚实用词修正）：本方法是**未实现的骨架** —— 不管有没有 key
+        #   都返回同一句。旧文案「需 key 才能启用」会把人送去查 key/额度（实测就发生了），
+        #   所以按事实改写：说清"未实现"，并指向真正可用的两条路。
+        #   按框架原则「兜底不许无限」：这里**不**打算把 LLM 重猜做成通用兜底 ——
+        #   该由**场景声明**（行区结构/控件稳定属性）让主定位直接命中，而不是靠猜。
+        return {"ok": False,
+                "reason": "LLM 重猜为**未实现的预留路径**（骨架）：任何环境都不会启用，"
+                          "别按「配 key」排查。请走：(1) 场景里声明行区结构/控件稳定属性，"
+                          "让主定位直接命中；(2) 若页面结构变了，重跑 probe/generate 刷新映射"}
 
     def _record(self, step: TestStep, resolved: dict, recovered: bool,
                 business_ok: bool | None, result: str) -> dict:

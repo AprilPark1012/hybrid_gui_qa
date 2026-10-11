@@ -80,6 +80,19 @@ FEATURES = [
             dict(no="3.7", name="行内单元格定位", goal="行锚 + 单元格：列的指定方式（多列 by）与支持的 op（不只 click）",
                  class1=["test_row_cell_col_by.py", "test_row_cell_ops.py"],
                  class2=[]),
+            dict(no="3.8", name="重复控件信号与行定位闸门",
+                 goal="同一容器内重复出现的控件（表格每行一个）收敛成一条并标 `multi_match`，"
+                      "AI 据此给行定位（`row_index`）；生成期拦下「引用重复控件却没给行定位」的步骤。"
+                      "**框架确定性兜底（V8.4.6）**：模型不写也不阻塞 —— 能由用例结构判死的"
+                      "（刚新增行 -> `row_index=-1`）由 `apply_row_locator_fallback()` 补上"
+                      "（只认精确键、宁漏不误伤、出现行锚后不再兜底），判不出来的照旧报红；"
+                      "字段口径只有一处（`ROW_LOCATOR_FIELDS` + `has_row_locator()`）"
+                      "**行内定位走多命中（V8.4.6）**：`_act_row` 不再先走要求语义唯一的 `_loc()`"
+                      "（行内同名列控件必然多个 -> 会被判死），改走探测期录下的"
+                      "「锚点 + 容器内相对语义」（`scope_locate`）拿多命中 locator 再 `.nth(行号)`；"
+                      "行内 `select` 未给 value 时与非行内**同口径**（选第一个真选项、留痕、无选项才报错）",
+                 class1=["test_multi_match_signal.py", "test_row_locate_uses_scope.py"],
+                 class2=[]),
         ],
     ),
 
@@ -188,10 +201,11 @@ FEATURES = [
                          # V8.4.3：Windows 实测两次误拦（语义校准漏 help_text / 写死检测不对照场景原文）
                          "test_no_false_positive_blocks_ai.py"],
                  class2=["verify_demo_freshness.py"]),
-            dict(no="9.3", name="环境与编码适配", goal="跨平台路径/内存探测/UTF-8 与 cp936 —— 源码不许出现 GBK 编不了的字符",
+            dict(no="9.3", name="环境与编码适配", goal="跨平台路径/内存探测/UTF-8 与 cp936 —— 源码不许出现 GBK 编不了的字符；"
+                                                      "**源码不许有未绑定名**（拷代码漏作用域会被 except 兜成静默降级）",
                  class1=["test_env_adaptation.py", "test_utf8_io.py", "test_browser_preflight.py",
-                         "test_no_stale_paths.py"],
-                 class2=[]),
+                         "test_no_stale_paths.py", "test_no_undefined_names.py"],
+                 class2=["verify_undefined_names.py"]),
             dict(no="9.4", name="交付包与文档同步", goal="打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README",
                  class1=["test_pack_release.py", "test_pack_release_requires_generated_dir.py",
                          "test_readme_structure.py", "test_docs_sync.py", "test_build_html_hl.py"],

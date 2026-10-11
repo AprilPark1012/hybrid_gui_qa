@@ -304,22 +304,35 @@ _AI_POSITIONING_REQUIRED = (
 
 
 def _positioning_docs():
-    """口径要查的全部对外文档（培训页 + README）—— 一处加多处查，别只盯一个文件。"""
-    return (("docs/training.html", HTML), ("README.md", README))
+    """口径要查的全部对外文档（培训页 + README）—— 一处加多处查，别只盯一个文件。
+
+    [!] 培训页的「**版本与更新记录**」是**冻结的历史**（R9 口径：历史记录原样保留）：
+    里面会**引用**旧说法（例如"原先写的是 Browser Use（AI）"）—— 那不算现行口径，
+    所以这一段先切掉再查。否则判据会逼着人去改历史（本判据 2026-10-11 第一次跑就误报了）。
+    """
+    html = HTML.read_text(encoding="utf-8")
+    # [!] 切点用**区块锚点** `id="changelog"`（唯一、且随目录注入稳定）：
+    #   先前用标题文本匹配连错两次 —— 标题实际是「版本与更新记录（Changelog）」，
+    #   少个后缀就切不掉，于是 CHANGELOG 里**引用旧说法**的那段被当成"现行口径"误报
+    #   （2026-10-11 实测；R9 口径：版本史是冻结历史，里面引用旧写法是正常的）。
+    i = html.find('id="changelog"')
+    if i < 0:
+        i = html.find("版本与更新记录")
+    if i > 0:
+        html = html[:i]
+    return (("docs/training.html（除版本史）", html), ("README.md", README.read_text(encoding="utf-8")))
 
 
 def test_training_page_does_not_claim_browser_use_drives_browser():
     """对外文档不得再用「Browser Use 驱动浏览器」这类会被一戳就破的口径。"""
-    for label, path in _positioning_docs():
-        txt = path.read_text(encoding="utf-8")
+    for label, txt in _positioning_docs():
         hits = [bad for bad in _AI_POSITIONING_FORBIDDEN if bad in txt]
         assert not hits, f"{label} 仍在用误导口径：{hits}"
 
 
 def test_training_page_states_the_accurate_positioning():
     """对外文档必须写明「非 Agent」+ 四段闭环（浏览器在两端）。"""
-    for label, path in _positioning_docs():
-        txt = path.read_text(encoding="utf-8")
+    for label, txt in _positioning_docs():
         miss = [m for m in _AI_POSITIONING_REQUIRED if m not in txt]
         assert not miss, f"{label} 缺口径说明：{miss}"
 

@@ -29,14 +29,33 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from framework.tools.explore import explorer  # noqa: E402
+from framework.tools.probe import row_columns as _row_columns_mod  # noqa: E402
 
-SRC = Path(explorer.__file__).read_text(encoding="utf-8")
+# 2026-10-11 V8.4.6：这个函数已从 explorer **搬进 probe 层**（`probe/row_columns.py`）——
+#   原因：generate 的现场探测也要造这些条目，而 generate **不能** import explorer
+#   （explorer 依赖可选包 browser-use，会破坏「无 AI 依赖也能 generate/run」）。
+#   判据跟着搬到新家，并加一条「唯一入口」断言（否则两条路径会造出不同的名字）。
+SRC = Path(_row_columns_mod.__file__).read_text(encoding="utf-8")
+# 本文件还要查 explorer 侧的函数（plan -> steps 的翻译等），两份源码都留着 ——
+# `_fn_src` 按"函数在哪一份里"自动选（2026-10-11：只留一份会把 explorer 的函数查成找不到）。
+EXPLORER_SRC = Path(explorer.__file__).read_text(encoding="utf-8")
+
+
+def test_row_columns_helper_is_single_source_for_both_paths():
+    """唯一入口（铁律 13）：explore 与 generate 现场探测必须用**同一个**函数对象。"""
+    gsrc = (ROOT / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+    assert "from framework.tools.probe.row_columns import row_columns_to_items" in gsrc, \
+        "generate 的现场探测没走唯一入口（会与 explore 造出不同的行内列控件名）"
+    assert explorer.row_columns_to_items is _row_columns_mod.row_columns_to_items, \
+        "explorer 与 probe 层的行内列构造函数不是同一个对象（说明存在两份实现）"
 
 
 def _fn_src(name: str) -> str:
-    i = SRC.index(f"def {name}(")
-    j = SRC.find("\ndef ", i + 1)
-    return SRC[i: j if j > 0 else len(SRC)]
+    # 函数可能在新家（probe/row_columns.py）或 explorer —— 按"在哪儿"自动选源（见上面的说明）
+    src = SRC if f"def {name}(" in SRC else EXPLORER_SRC
+    i = src.index(f"def {name}(")
+    j = src.find("\ndef ", i + 1)
+    return src[i: j if j > 0 else len(SRC)]
 
 
 # ---------------------------------------------------------------- 有名字的控件条目
@@ -47,10 +66,10 @@ def test_row_columns_become_named_items():
     只给 AI 一份「列清单」是不够的 —— 真实链路走结构化输出，AI 不会为它填新字段。
     必须让它成为**清单里的一个控件**（有 semantic_name），AI 才能用它已经会的字段引用。
     """
-    assert "def _row_columns_to_items(" in SRC, (
+    assert "def row_columns_to_items(" in SRC, (
         "没有把行内列转成控件条目的函数 -> AI 只能靠新字段（实测它不填）"
     )
-    body = _fn_src("_row_columns_to_items")
+    body = _fn_src("row_columns_to_items")
     assert '"semantic_name"' in body, "转出来的条目没有 semantic_name -> AI 无法引用"
     assert "row_column_index" in body, (
         "条目没带列号 -> 框架无法把它翻译成 cell_by=index/cell_index"
@@ -59,7 +78,7 @@ def test_row_columns_become_named_items():
 
 def test_named_row_column_carries_table_and_index():
     """条目要带**表名**与**真实列号**（生成器 `cell_index` 同口径，从 1 起）。"""
-    body = _fn_src("_row_columns_to_items")
+    body = _fn_src("row_columns_to_items")
     assert "row_table" in body, "没带表名 -> 同一页多表时无法区分"
     assert "index" in body, "没带列号"
     assert "checkbox" in body, "没识别勾选列（这是本次事故的主角）"
@@ -71,7 +90,7 @@ def test_only_fieless_columns_become_items():
     那些列本来就靠 `cell_field` 表达（AI 对这个字段很熟，一直在用）；多造条目会
     污染控件清单、改变同名唯一化结果，还会让 42 份录像的结构键漂移。
     """
-    body = _fn_src("_row_columns_to_items")
+    body = _fn_src("row_columns_to_items")
     assert "if not" in body or "continue" in body, (
         "没有跳过「有 field」的列 -> 会凭空多出大量条目（清单污染 + 录像键漂移）"
     )

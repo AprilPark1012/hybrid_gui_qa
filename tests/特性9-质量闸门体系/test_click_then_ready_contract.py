@@ -103,3 +103,31 @@ def test_ready_contract_still_single_source():
     assert "hybrid-ready" in WAITS, "框架唯一实现里没有 ready 契约 -> 等待口径与 _goto 分叉了"
     assert "_READY_TIMEOUT_MS = int(os.environ.get(" in SRC, (
         "就绪超时不再来自可配置常量（HYBRID_READY_TIMEOUT）-> 慢机器/慢页面上无法放宽")
+
+
+def test_relative_goto_url_is_absolutized():
+    """行为判据：**相对 goto 地址**必须按用例 base 补齐（绝对地址原样返回）。
+
+    2026-10-10 实测：AI 生成的 goto 写了 `order_new.html?contract_no=HT-1001`（相对），
+    playwright 只吃绝对 URL -> `Cannot navigate to invalid URL` 整条红，报错完全指不到
+    「要补 base」这件事（排查绕了一圈）。渲染期补齐 + harness 相对地址报**看得懂的错**。
+    """
+    from framework.tools.generate.generator import _abs_url
+
+    # 正向：相对 -> 按 base 补齐（**base 是文件地址时按 RFC 丢最后一段**，见下）
+    assert _abs_url("order_new.html?contract_no=HT-1001", "http://localhost:8000") == \
+        "http://localhost:8000/order_new.html?contract_no=HT-1001"
+    assert _abs_url("/orders.html", "http://localhost:8000") == "http://localhost:8000/orders.html"
+    # [!] 用例 base_url 常是 `.../login.html`（文件地址）—— 必须按 RFC 只丢最后一段，
+    #   绝不能补成 `.../login.html/orders.html`（我犯过：把 AI 用例导航到垃圾地址）
+    assert _abs_url("orders.html", "http://localhost:8000/login.html") == \
+        "http://localhost:8000/orders.html", "base 是文件地址时补错了（会得到 .../login.html/orders.html）"
+    assert _abs_url("a/b.html", "http://localhost:8000/app/") == "http://localhost:8000/app/a/b.html"
+    # 负向自证：绝对地址**不许**被动过（补 base 只针对相对）
+    for u in ("http://x/y?z=1", "https://h/p", "file:///tmp/a.html"):
+        assert _abs_url(u, "http://localhost:8000") == u, f"绝对地址被改写了：{u}"
+    assert _abs_url("", "http://localhost:8000") == "", "空地址不该被补成 base"
+
+    # 接线契约：渲染 goto 时必须走这个补齐入口；harness 侧相对地址要报能看懂的错
+    assert "_abs_url(_raw_u" in SRC, "渲染 goto 时没补齐相对地址"
+    assert "收到**相对地址**" in SRC, "harness 侧没有相对地址的清晰报错（会退回 playwright 的天书）"

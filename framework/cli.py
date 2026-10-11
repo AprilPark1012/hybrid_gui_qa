@@ -777,6 +777,13 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
             _prod.append("产出里**漏了场景要求填的必填项**"
                          "（页面标 * 的必填控件；不填就保存不了，后面的断言必然失败）：")
             _prod += ["  · " + x for x in _exp._REQUIRED_COVERAGE_NOTES[:5]]
+        # 2026-10-10（他选 ①）：**重复控件没给行定位** -> 运行期同时命中多个必红（实测 3 个）。
+        #   信号与判据都来自探测侧（`multi_match` + 唯一入口 `row_scope_violation`），
+        #   这里只负责**把原因递给 AI**（原来只有生成期闸门说话，那会儿重试闭环已经结束）。
+        if getattr(_exp, "_ROW_SCOPE_NOTES", None):
+            _prod.append("产出里**操作了「每行一个」的重复控件，却没给行定位**"
+                         "（只给语义名会同时命中多个，运行期必红）：")
+            _prod += ["  · " + x for x in _exp._ROW_SCOPE_NOTES[:5]]
         if _prod:
             print("  [NG] 校验不合格：AI 产出有**结构性缺陷** -> 不试跑，直接带原因重生成")
             for line in _prod:
@@ -786,6 +793,9 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
             print("        ② 每个步骤选的控件必须与步骤描述语义相符（不许拿业务数据当控件名）；")
             print("        ③ 场景里**逐字列出的每一个要填的字段**（尤其页面标 * 的必填项）都要有对应步骤，"
                   "一项都不许漏 —— 漏一项保存就会被前端拦下，后面的断言全部白给。")
+            print("        ④ **每行一个的重复控件**（编码/数量/行类型等）必须给行定位："
+                  "`row_index`（第 N 行，从 1 起；`-1` = 最后一行）或 `row_text` + 列字段；"
+                  "**刚新增的空行只能用 `row_index`**（空行没内容可当行锚）。")
             return False, "\n".join(_prod)
     except Exception as _e:      # 收集/读取出问题不该毁掉校验本身
         print(f"  [!] 产出缺陷清单读取失败（不影响校验）：{type(_e).__name__}: {_e}")
@@ -881,7 +891,7 @@ def _int_flag(rest: list[str], name: str, default: int) -> int:
         else:
             continue
         try:
-            return cast(raw)
+            return int(raw)
         except ValueError:
             _fail(f"参数 {name} 取值不合法：{raw}", f"用法：{name} <整数>")
     return default
