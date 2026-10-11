@@ -5,9 +5,10 @@
 test_id / 可见文本），产出一个小写标识符 semantic_name。
 
 关键设计：这一步【不经过 LLM】，是 100% 确定性代码。它把页面上的
-交互元素"翻译"成人类可读的语义清单，供 Browser Use 的 agent 推理时
-引用。精确定位永远由这里 + locator_bridge 的确定性逻辑完成，
-LLM 只负责"理解意图 / 规划步骤 / 挑元素"，绝不负责"定位"。
+交互元素"翻译"成人类可读的语义清单，供 LLM 编排时引用（**不是**
+browser-use 的 Agent 在浏览器里自主探索）。精确定位永远由这里 +
+locator_bridge 的确定性逻辑完成，LLM 只负责"理解意图 / 规划步骤 /
+挑元素"，绝不负责"定位"。
 """
 from __future__ import annotations
 import re

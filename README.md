@@ -3,8 +3,18 @@
 > 当前版本 **V8.4.5**（2026-10-09）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
 > · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/) · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
 
-**一句话**：把 **Browser Use（AI 智能探索）** 和 **Playwright（确定性执行）** 组合成一套混合测试框架 ——
+**一句话**：把 **LLM 语义编排（AI 智能探索）** 和 **Playwright（浏览器采集证据 + 确定性执行）** 组合成一套混合测试框架 ——
 AI 负责理解意图、规划步骤、挑元素；Playwright 负责精确定位、唯一性校验、可复现回归。
+
+> **口径澄清（别被依赖名误导）**：AI 侧只借 `browser-use` 的 **LLM 客户端**
+> （`browser_use.llm.ChatDeepSeek`）直连做结构化编排，**不使用它的 Agent** ——
+> 不存在「AI 自己开浏览器、自己点」的循环。`browser-use` 是**可选**依赖
+> （`requirements-ai.txt`，仅 AI 探索用）；`generate` / `run` 都不需要它。
+> AI 没有浏览器的控制权，但它的**眼睛是浏览器**：判别依据全部来自 Playwright 采集的
+> DOM 证据（可见性 / 禁用 / 可编辑 / 可访问名 / 重复个数），且最终由**真实浏览器试跑**裁决。
+>
+> **四段闭环（浏览器在两端）**：浏览器出证据 -> LLM 出编排 -> 确定性执行 -> 浏览器裁决。
+> 其中「确定性执行」占全部日常运行：**运行期零 token、可复现、能进 CI**。
 
 **核心哲学**：**让 AI 做理解和决策，让确定性代码做精确定位，绝不把「定位」交给 LLM。**
 
@@ -22,13 +32,14 @@ AI 负责理解意图、规划步骤、挑元素；Playwright 负责精确定位
 纯 AI 测试不可靠（会幻觉、点错控件、不可复现、每次烧 token）；纯脚本测试不可维护（UI 一改红一片）。
 本框架把两者**按能力切开**：
 
-| 能力 | Browser Use（AI） | Playwright（确定性） |
+| 能力 | LLM 编排（DeepSeek 直连 · 非 Agent） | Playwright（确定性） |
 |---|---|---|
 | 理解自然语言测试意图 | ✅ 强 | ❌ |
 | 规划步骤 / 挑元素 | ✅ 强 | ❌ |
+| 采集浏览器证据（DOM 上下文：可见/禁用/可编辑/可访问名） | ❌ 看不到页面 | ✅ 准 |
 | 精确定位元素 | ❌ 可能幻觉 | ✅ 准 |
 | 唯一性校验 / 防误点 | ❌ | ✅ |
-| 可复现回归 / 进 CI | ❌ | ✅ |
+| 可复现回归 / 进 CI（运行期零 token） | ❌ | ✅ |
 
 业界在做同一件事（Stagehand / Playwright Test Agents）：*"Selectors break. Natural language doesn't."* ——
 但自然语言只能用于**理解**，真正执行必须落到确定性 locator。

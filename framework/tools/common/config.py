@@ -74,11 +74,12 @@ CASES_DIR = BASE / "cases"                   # ★ 手写的自然语言用例�
 SCRIPTS_DIR = BASE / "scripts"               # ★ generate 产物（playwright 脚本 + datasets 抽离）
 GENERATED_DIR = SCRIPTS_DIR / "generated"     # ★P20 生成脚本目录（<scenario_id>/<case_id>.py + index.json）
 
-# ---- Browser Use 探索阶段需要 LLM ----
+# ---- LLM 编排阶段需要 LLM（借 browser-use 的 LLM 客户端，非其 Agent）----
 # 负责"智能理解"：读懂自然语言测试意图、规划步骤、挑元素、写 plan。
 # 这是 AI 之力的成本来源（每步一次模型推理）。
 def llm_from_env():
-    """按 .env 里配了哪个 key，构造对应的 Browser Use LLM 实例。
+    """按 .env 里配了哪个 key，构造对应的 LLM 客户端实例
+    （来自 browser_use.llm 包；**不使用** browser-use 的 Agent）。
     优先级: ChatBrowserUse > OpenAI > Anthropic > Google > DeepSeek(ChatDeepSeek 原生)。"""
     try:
         from browser_use.llm import ChatBrowserUse, ChatOpenAI, ChatAnthropic, ChatGoogle

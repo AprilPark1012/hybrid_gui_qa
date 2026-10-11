@@ -276,3 +276,98 @@ def test_negative_misplaced_tree_is_caught():
 def test_negative_correct_tree_passes():
     """负向自证：挂对的树不许被误报（防判据写成恒红、逼人绕过）。"""
     assert belonging_problems(tree_entries(f'<pre class="tree">{_CORRECT_TREE}</pre>')) == []
+
+
+# ==================== 「AI 到底用不用浏览器」口径（2026-10-11 加） ====================
+# **为什么加**（2026-10-11 现场追问暴露出来的）：培训页第 1 章原先把 AI 侧标题写成
+#   「Browser Use（AI）」、首屏写成「Browser Use 负责思考，Playwright 负责执行」
+#   -> 读者（含他本人）以为框架是用 browser-use 的 **Agent** 在浏览器里自主探索。
+#   事实是：全仓只 import `browser_use.llm`（LLM 客户端，如 ChatDeepSeek）做**直连
+#   结构化编排**，**从未 import 它的 Agent**；`browser-use` 还是**可选**依赖
+#   （requirements-ai.txt），generate / run 都不需要它。
+#   这类「口径与代码不符」的错，跑一遍是绿、讲出去会被一戳就破 —— 所以钉成判据。
+_AI_POSITIONING_FORBIDDEN = (
+    "Browser Use 负责思考",
+    "Browser Use（AI）",
+    "Browser Use 语义识别",
+    "Browser Use/AI",
+    "供 Browser Use 的 agent",
+)
+_AI_POSITIONING_REQUIRED = (
+    "非 Agent",
+    "browser_use.llm",
+    "浏览器出证据",
+    "LLM 出编排",
+    "确定性执行",
+    "浏览器裁决",
+)
+
+
+def _positioning_docs():
+    """口径要查的全部对外文档（培训页 + README）—— 一处加多处查，别只盯一个文件。"""
+    return (("docs/training.html", HTML), ("README.md", README))
+
+
+def test_training_page_does_not_claim_browser_use_drives_browser():
+    """对外文档不得再用「Browser Use 驱动浏览器」这类会被一戳就破的口径。"""
+    for label, path in _positioning_docs():
+        txt = path.read_text(encoding="utf-8")
+        hits = [bad for bad in _AI_POSITIONING_FORBIDDEN if bad in txt]
+        assert not hits, f"{label} 仍在用误导口径：{hits}"
+
+
+def test_training_page_states_the_accurate_positioning():
+    """对外文档必须写明「非 Agent」+ 四段闭环（浏览器在两端）。"""
+    for label, path in _positioning_docs():
+        txt = path.read_text(encoding="utf-8")
+        miss = [m for m in _AI_POSITIONING_REQUIRED if m not in txt]
+        assert not miss, f"{label} 缺口径说明：{miss}"
+
+
+def test_training_page_says_all_does_not_include_explore():
+    """`cli all` 不含 explore 这点必须写在培训页（他 2026-10-11 就是在这踩的）。"""
+    txt = HTML.read_text(encoding="utf-8")
+    assert "不含" in txt and "explore" in txt, "培训页没写清 all 与 explore 的分工"
+
+
+def test_negative_positioning_judge_actually_catches_bad_text():
+    """负向自证：把禁用口径喂给判据逻辑，必须判红（否则这条判据恒绿）。"""
+    bad_txt = "<p>Browser Use 负责思考，Playwright 负责执行</p>"
+    hits = [b for b in _AI_POSITIONING_FORBIDDEN if b in bad_txt]
+    assert hits, "负向样本没被抓到 -> 判据恒绿"
+    good_txt = "AI 没有浏览器的控制权；四段闭环：浏览器出证据 -> LLM 出编排 -> 确定性执行 -> 浏览器裁决（非 Agent）"
+    assert [b for b in _AI_POSITIONING_FORBIDDEN if b in good_txt] == [], "正确的口径被误报"
+
+
+def test_repo_never_imports_browser_use_agent():
+    """事实约束：framework/ 与 build_tools/ 只许 import browser_use 的 LLM 客户端。
+
+    哪天真接了 Agent，这条会红 —— 那时应当改的是口径说明，而不是让它悄悄漂。
+    """
+    llm_imports = []
+    for root in (REPO / "framework", REPO / "build_tools"):
+        for py in root.rglob("*.py"):
+            if "__pycache__" in str(py):
+                continue
+            src = py.read_text(encoding="utf-8", errors="replace")
+            for m in re.finditer(r"^[ \t]*(?:from|import)[ \t]+browser_use[^\n]*", src, re.M):
+                line = m.group(0).strip()
+                assert "browser_use.llm" in line, (
+                    f"{py.relative_to(REPO)} 出现非 LLM 客户端的 browser_use 导入：{line!r}"
+                    "（若确实改用 Agent 驱动浏览器，请同步改培训页口径）"
+                )
+                llm_imports.append(line)
+    assert llm_imports, "一处 browser_use.llm 导入都没有 -> 口径说明与代码已不符，需人工确认"
+
+
+def test_generator_is_pure_deterministic_no_llm():
+    """generate 不含 LLM 调用（口径：缺 elementMap 时是**现场探测补**，不是再叫 AI）。"""
+    gen = REPO / "framework" / "tools" / "generate" / "generator.py"
+    src = gen.read_text(encoding="utf-8")
+    for m in re.finditer(r"^[ \t]*(?:from|import)[ \t]+([^\n]*)", src, re.M):
+        mod = m.group(1)
+        assert "browser_use" not in mod and "llm_from_env" not in mod, (
+            f"generator.py 引入了 LLM：{mod!r}"
+        )
+    assert "llm_from_env(" not in src, "generator.py 里调用了 llm_from_env()"
+    assert "probe_page" in src, "generator 没有现场探测补缺路径 -> 与口径不符"

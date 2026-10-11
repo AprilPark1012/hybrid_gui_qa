@@ -2230,17 +2230,30 @@ _FEAT_IMPL = {
         logic='人写的那部分（声明）由场景提供，框架不懂具体系统：'
               '<span class="code-inline">scenario.load_scenario_file()</span> 解析 '
               '<span class="code-inline">scenarios/**/*.yml</span> 的 pages / pre / auth / data / probe_url / '
-              'probe_pre。页面级前置 <span class="code-inline">_run_pre_actions()</span> 按可访问名依次点控件'
-              '（有些控件只在做了某个动作之后才存在）；登录前置 <span class="code-inline">login.ensure_logged_in()</span> '
+              'probe_pre。前置动作只有一个引擎 '
+              '<span class="code-inline">run_pre_actions()</span>（探测期与执行期共用）：'
+              '探测期 <span class="code-inline">_run_pre_actions()</span> 只做委托，让探针一开始就处对身份'
+              '（有些控件只在某个身份/某个动作之后才存在，点不动就采不到）；'
+              '<b>执行期</b>由生成物 <span class="code-inline">_harness._maybe_scene_pre()</span> 在'
+              '<b>首次导航之后</b>照同一声明复现一遍 —— 少这一半，AI 只会写序列的后半段'
+              '（漏掉「点开头像菜单」那步）-> 菜单项未展开 -> <span class="code-inline">Element is not visible</span>；'
+              '同时提示词明确告知「已声明的身份前置不用写进步骤」，'
+              '<span class="code-inline">_drop_declared_pre_steps()</span> 再按基名兜底移除重复步骤（两道闸）。'
+              '登录前置 <span class="code-inline">login.ensure_logged_in()</span> '
               '走接口拿 token 再 <span class="code-inline">install_token()</span> 注入 localStorage；'
               '<span class="code-inline">ScenarioPage.probe_url_for()</span> 给「运行期才有值的页面」一个探测地址。',
         call='<span class="code-inline">cmd_explore()</span> -> '
              '<span class="code-inline">load_scenario_file()</span> / '
              '<span class="code-inline">discover_scenarios()</span> -> '
              '<span class="code-inline">_collect_pages_context(pages, auth)</span> -> '
-             '<span class="code-inline">_run_pre_actions()</span> / '
-             '<span class="code-inline">login.ensure_logged_in()</span> -> scan_page。',
-        legend=['场景 yml（pages/pre/auth/data/probe_url）', 'load_scenario_file()', ('_run_pre_actions()', 'y'), ('login.ensure_logged_in()', 'y'), '探测/执行']),
+             '<span class="code-inline">_run_pre_actions()</span> -> '
+             '<span class="code-inline">run_pre_actions()</span> / '
+             '<span class="code-inline">login.ensure_logged_in()</span> -> scan_page　'
+             '执行期：<span class="code-inline">_goto()</span> -> '
+             '<span class="code-inline">_maybe_scene_pre()</span> -> '
+             '<span class="code-inline">run_pre_actions()</span>（读产物 '
+             '<span class="code-inline">_pre.json</span>）。',
+        legend=['场景 yml（pages/pre/auth/data/probe_url/probe_pre）', 'load_scenario_file()', ('探测期 _run_pre_actions()', 'y'), ('执行期 _maybe_scene_pre()', 'g'), '同一引擎 run_pre_actions()', '探测/执行']),
 
     '3.1': dict(
         logic='真实系统一般只有<b>顶层元素</b>有 data-testid，子元素没有埋点 -> 定位靠「锚点 + 容器内相对语义路径」。'
@@ -3189,7 +3202,7 @@ def build() -> str:
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
   <a class="ver" href="#changelog" title="跳到版本与更新记录">V{VERSION} · {VERSION_DATE}　▼</a>
-  <p>给新同学的一页通：<b>Browser Use 负责思考，Playwright 负责执行</b>，
+  <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
     <span class="pill">[ai] AI 理解意图</span>
@@ -3207,12 +3220,13 @@ def build() -> str:
   <p class="sec-sub">一桌子两把刀，各有锋利处，别只拿一把。</p>
   <div class="card vs">
     <div class="vs-box ai">
-      <h3>[ai] Browser Use（AI）</h3>
+      <h3>[ai] LLM 语义编排（DeepSeek 直连 · 非 Agent）</h3>
       <ul>
         <li>[OK] 听得懂人话</li>
-        <li>[OK] 会规划步骤、挑元素</li>
+        <li>[OK] 会规划步骤、挑元素（只在<b>生成期</b>算一次）</li>
+        <li>[OK] 判别依据 = <b>真浏览器采集的 DOM 证据</b>（可见性 / 禁用 / 可编辑 / 可访问名 / 重复个数）</li>
         <li>[NG] 会"幻觉"，结果不总重复</li>
-        <li>[NG] 每步花一次模型钱（token）</li>
+        <li>[NG] 每步花一次模型钱（token）—— 所以运行期零 token</li>
       </ul>
     </div>
     <div class="plus">1+1&gt;2</div>
@@ -3221,15 +3235,69 @@ def build() -> str:
       <ul>
         <li>[OK] 精准、不猜、可回归</li>
         <li>[OK] 免费、快、能进 CI</li>
+        <li>[OK] 既当<b>证据源</b>（探测），又当<b>裁决者</b>（真跑断言）</li>
         <li>[NG] 不透人性，得人写 selector</li>
         <li>[NG] UI 一改 selector 就断</li>
       </ul>
     </div>
   </div>
   <div class="card" style="margin-top:14px;">
-    <b>生活类比：</b>AI 是<b>导游</b>——认得路、会安排行程，但可能带偏；<br>
+    <b>生活类比：</b>AI 是<b>导游</b>——认得路、会安排行程，但可能带偏；
     Playwright 是<b>导航仪</b>——绝对准、说走就走，但得先输入目的地。<br>
-    [*] 导游负责<b>规划</b>，导航仪负责<b>走稳</b>——这就是我们要的配合。
+    [*] 导游负责<b>规划</b>，导航仪负责<b>走稳</b>——这就是我们要的配合。<br>
+    [*] 要说准的一点：导游手里拿的是<b>导航仪拍回来的现场照片</b>（DOM 证据），
+    他<b>不亲自开车</b>。
+  </div>
+  <div class="card" style="margin-top:14px;border-left:4px solid #d9534f;">
+    <b>[!] 口径澄清（别被依赖名误导）：</b>
+    本项目<b>没有使用 Browser Use 的 Agent</b>——不存在"AI 自己开浏览器、自己点"的循环。
+    仓库里只用它的 <b>LLM 客户端</b>（<code class="code-inline">browser_use.llm</code> 的
+    <code class="code-inline">ChatDeepSeek</code>）直连做结构化编排；
+    <code class="code-inline">browser-use</code> 只声明在
+    <code class="code-inline">requirements-ai.txt</code>（<b>可选</b>，仅 AI 探索用），
+    <code class="code-inline">generate</code> / <code class="code-inline">run</code> 都不需要它。
+    代码里对此的原话是"<b>ChatDeepSeek 直连编排，非 Agent</b>"。
+  </div>
+  <h3 style="margin:20px 0 8px;">「混合」的准确定义：四段闭环（浏览器在两端）</h3>
+  <div class="card">
+    <table class="tbl" style="width:100%;">
+      <tr><th>段</th><th>做什么</th><th>用 LLM？</th><th>代码位置</th><th>产物</th></tr>
+      <tr>
+        <td><b>1 浏览器出证据</b></td>
+        <td>Playwright 探控件 + 抓富 DOM 上下文（索引 / role / testid / aria 名 / visible / disabled / readonly）</td>
+        <td>否</td>
+        <td><code class="code-inline">explorer._collect_dom_context()</code></td>
+        <td><code class="code-inline">output/element_maps/element_map_*.json</code></td>
+      </tr>
+      <tr>
+        <td><b>2 LLM 出编排</b></td>
+        <td>场景文字 + 第 1 段证据 -> 结构化步骤（含行定位字段）</td>
+        <td><b>是</b>（DeepSeek）</td>
+        <td><code class="code-inline">explorer._ai_explore_async()</code></td>
+        <td><code class="code-inline">cases/ai_*.json</code></td>
+      </tr>
+      <tr>
+        <td><b>3 确定性执行</b></td>
+        <td>按 op 翻译成 pytest 脚本 + Playwright 逐步跑；定位走语义名 -> 指纹 -> 行锚</td>
+        <td>否（<b>零 token</b>）</td>
+        <td><code class="code-inline">generate/generator.py</code> / <code class="code-inline">run/runner.py</code></td>
+        <td><code class="code-inline">scripts/generated/*.py</code></td>
+      </tr>
+      <tr>
+        <td><b>4 浏览器裁决</b></td>
+        <td>真跑业务断言；定位失败时分级自愈</td>
+        <td>仅 Level-B</td>
+        <td><code class="code-inline">run/healer.py</code></td>
+        <td><code class="code-inline">output/heals/*.json</code></td>
+      </tr>
+    </table>
+    <p style="margin:10px 0 0;">
+      [*] 一句话：<b>AI 没有浏览器的控制权，但它的眼睛就是浏览器</b>。<br>
+      [*] 自愈分两级：<b>Level-A 确定性再协商</b>（放宽指纹阈值再找一次，无 LLM）；
+      <b>Level-B LLM 语义重猜</b>（抓真 DOM 快照 + 目标语义让 LLM 重挑；需配 key，无 key 自动跳过）。
+      每条 heal 都记成<b>可审 diff</b>（<code class="code-inline">output/heals/</code>），
+      且由<b>业务后置断言</b>裁决——断言不过一律判【真 bug】，<b>绝不静默改写</b>。
+    </p>
   </div>
 </section>
 
@@ -3327,6 +3395,43 @@ def build() -> str:
 <section>
   <h2 class="sec-title"><span class="n">3</span>整体流程：explore(AI 产用例) -> cases/ -> generate -> run(带自愈)</h2>
   <p class="sec-sub">本框架有<b>两种业务场景</b>：<b>(1)</b> 自然语言 -> `explore --ai` 语义识别/编排 -> 用例落 <code>cases/ai_*.json</code>（花 token）；<b>(2)</b> 手搓 <code>cases/*.json</code> -> `generate` 生成脚本+数据分离 -> `run` 执行（零 token）。一条龙（`cli all`）跑的是<b>确定性执行</b>那条；两条链路在 <code>cases/*.json</code> 汇合。</p>
+  <div class="card" style="margin:12px 0;">
+    <b>命令 -> 职责 -> 是否用 AI（最容易搞混的一张表）：</b>
+    <table class="tbl" style="width:100%;">
+      <tr><th>命令</th><th>职责</th><th>用 LLM？</th><th>产物</th></tr>
+      <tr>
+        <td><code class="code-inline">explore --ai --scenario-file x.yml</code></td>
+        <td>场景描述 -> 用例（语义识别 + 步骤编排）；默认带 <code class="code-inline">--verify</code> 试跑校验（不过就 exit 3）</td>
+        <td><b>是</b>（DeepSeek；需 key）</td>
+        <td><code class="code-inline">cases/ai_*.json</code> + <code class="code-inline">output/element_maps/element_map_*.json</code></td>
+      </tr>
+      <tr>
+        <td><code class="code-inline">probe</code></td>
+        <td>Playwright 探页面 -> 元素语义清单</td>
+        <td>否</td>
+        <td><code class="code-inline">output/element_maps/probe_*.json</code></td>
+      </tr>
+      <tr>
+        <td><code class="code-inline">generate</code></td>
+        <td>读 cases/*.json -> 翻译成脚本 + 抽离数据；定位来源按<b>覆盖度</b>选权威，命中不全就<b>现场探测补缺</b>（仍是 Playwright，不是再叫一次 AI）</td>
+        <td>否（<b>纯确定性</b>）</td>
+        <td><code class="code-inline">scripts/generated/*.py</code> + <code class="code-inline">datasets/</code></td>
+      </tr>
+      <tr>
+        <td><code class="code-inline">run --workers N</code></td>
+        <td>pytest 并发执行 + 日志整合 + 报告</td>
+        <td>否（仅自愈 Level-B 才用）</td>
+        <td><code class="code-inline">output/runs/</code>、<code class="code-inline">output/heals/</code></td>
+      </tr>
+      <tr>
+        <td><code class="code-inline">all --workers N</code></td>
+        <td><b>= probe -> generate -> run</b>（一条龙，<b>不含</b> explore）</td>
+        <td>否</td>
+        <td>同上面三条</td>
+      </tr>
+    </table>
+    <p style="margin:8px 0 0;">[*] 最常被搞混的一点：<code class="code-inline">all</code> 会把 <code>cases/</code> 里<b>所有</b>用例（AI 产的和手搓的）都跑掉，但它<b>不会生成</b>新用例 —— 「场景 -> 用例」只有 <code class="code-inline">explore --ai</code> 会做。</p>
+  </div>
   <div class="flow">
     <div class="flow-step">
       <span class="bdge" style="background:#0f8f6a">[OK] Playwright</span>
@@ -3442,7 +3547,7 @@ def build() -> str:
       ├─ items = explorer.<b>_merge_items(base, modal)</b>               按 semantic_name 去重
       └─ dom_ctx = explorer.<b>_collect_dom_context(pg)</b>              idx/visible/disabled/readonly/aria_label
 
- <b>(3) 认知阶段（异步 · AI · browser-use LLM · 花 token）</b>   explorer.<b>_ai_explore_async()</b>
+ <b>(3) 认知阶段（异步 · AI · LLM 客户端 browser_use.llm.ChatDeepSeek · 花 token）</b>   explorer.<b>_ai_explore_async()</b>
       ├─ prompt = explorer.<b>_build_planner_prompt()</b>
       │      目标URL ->「场景原话」->【页面背景 page/preconditions/business_context】
       │      ->【断言护栏 assert_guard】-> 控件清单 items[:60] -> DOM 上下文[:80] -> 规则 1~8
@@ -3561,7 +3666,7 @@ def build() -> str:
     role/name/placeholder/test_id/nearby_text...
     └─ 产物: 元素语义清单(给 AI 和 Playwright 用的\"词汇表\")
              ▼
-【阶段2】Browser Use 语义识别挑控件                -> ElementMap(步骤+语义引用)
+【阶段2】LLM 语义识别挑控件（DeepSeek 直连 · 非 Agent）   -> ElementMap(步骤+语义引用)
     explorer.ai_explore(自然语言场景 + DOM上下文)
     DeepSeek(ChatDeepSeek) 读场景+清单 -> 挑对 semantic_name
     只引用语义名, 绝不产 selector(防AI编脆弱CSS)
@@ -3590,7 +3695,7 @@ def build() -> str:
     └─ 产物: output/heals/*.md 可审diff(绝不静默改写)</pre>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-top:10px;">
       <div style="border:1px solid var(--line);border-radius:8px;padding:10px;font-size:.88rem">
-        <b>[brain] 谁在"看和想"</b><br>probe(看DOM) + Browser Use/AI(理解意图、挑语义名)。
+        <b>[brain] 谁在"看和想"</b><br>probe(看DOM，Playwright) + LLM(理解意图、挑语义名)。
         AI 只干"聪明"的活——把自然语言翻译成语义引用。</div>
       <div style="border:1px solid var(--line);border-radius:8px;padding:10px;font-size:.88rem">
         <b>[OK] 谁在"找和做"</b><br>locator_bridge(找) + runner(做)。纯 Playwright，零token、可回归、进CI。</div>
