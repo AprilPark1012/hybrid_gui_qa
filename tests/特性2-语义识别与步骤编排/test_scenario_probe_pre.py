@@ -29,8 +29,14 @@ def _scenario_from_text(tmp_path: Path, extra: str):
 
 
 def test_probe_pre_is_parsed(tmp_path):
-    sc = _scenario_from_text(tmp_path, "probe_pre:" + chr(10) + "  - 切换为订单管理员")
+    # P25 片 6（D10）：声明了 probe_pre 就必须同时声明 **probe_pre_host**（这批前置在哪一页执行，
+    # 引用 pages[].name）—— 缺了在加载期就硬红。所以这条判据的用例也要带上它，
+    # 否则测到的不是"解析"而是"新校验拦下了"（判据与实现的口径必须一起动）。
+    sc = _scenario_from_text(tmp_path, "probe_pre:" + chr(10) + "  - 切换为订单管理员"
+                             + chr(10) + "probe_pre_host: 列表页")
     assert sc.probe_pre == ["切换为订单管理员"], f"probe_pre 没解析出来：{sc.probe_pre!r}"
+    assert sc.probe_pre_host == "列表页", (
+        f"probe_pre_host 没解析出来：{sc.probe_pre_host!r}（D10 要求它随 probe_pre 一起声明）")
 
 
 def test_probe_pre_absent_is_empty(tmp_path):
@@ -66,13 +72,17 @@ def test_probe_pre_runs_before_scan_in_both_paths():
 
     顺序错了 -> 扫到的是旧权限上下文（置灰态），编辑态控件照样采不到。
     """
+    # [!] 片 3c（2026-10-12，B1 三合一）：**多页路径的这段顺序契约跟着骨架搬到了
+    #   `probe/scan_pages.py`**（explorer 侧只剩单页）。判据跟着搬，**要求一字不变**：
+    #   场景级前置必须在**页面级前置**与 **scan_page** 之前。
+    src = (REPO / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+    code = chr(10).join(l for l in src.splitlines() if not l.strip().startswith("#"))
+    i_pp = code.index("_run_pre(pg, _pp_pending")
+    i_page = code.index('_run_pre(pg, _field(spec, "pre"')
+    i_scan = code.index("_sc = scan_page(pg")
+    assert i_pp < i_page < i_scan, "多页路径顺序不对：场景级前置必须在页面级前置与 scan 之前"
     src = (REPO / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
     code = chr(10).join(l for l in src.splitlines() if not l.strip().startswith("#"))
-    # 多页路径：场景级前置 -> 页面级前置 -> scan
-    i_pp = code.index("_run_pre_actions(pg, _pp_pending")
-    i_page = code.index('_run_pre_actions(pg, spec.get("pre")')
-    i_scan = code.index('_sc = scan_page(pg, page_name=spec["name"]')
-    assert i_pp < i_page < i_scan, "多页路径顺序不对：场景级前置必须在页面级前置与 scan 之前"
     # 单页路径同款
     i_spp = code.index("_run_pre_actions(pg, probe_pre")
     i_sscan = code.index("_sc = scan_page(pg)", i_spp)
@@ -191,7 +201,8 @@ def test_scene_pre_done_is_initialized_before_use():
     `UnboundLocalError`（被兜住 = 探测静默退化）；有声明时则每页复用上一页的陈旧值，
     把陈旧名字当成"本页已点击"（假证据，实测让「切换为订单管理员」在两个页面上都成了合成条目）。
     """
-    src = (REPO / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
+    # [!] 片 3c（2026-10-12）：`_pp_done` 的初始化契约跟着骨架搬到了 `probe/scan_pages.py`。
+    src = (REPO / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
     i_init = src.index("_pp_done: list = []")
     i_if = src.index("if _pp_pending:", i_init)
     i_use = src.index("list(_pp_done)", i_init)
@@ -210,13 +221,21 @@ def test_generate_live_probe_applies_declared_probe_pre():
     同一个能力有两条实现路径却没逐条对齐（本项目铁律 13）。
     """
     src = (REPO / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
+    # [!] 片 3c（2026-10-12）：**声明页现场探测**的 probe_pre 应用跟着骨架搬到了 scan_pages
+    #   （generator 只把 `pre` 传进去）。所以"清单页那两条断言"改查 scan_pages；
+    #   "回到 generator 侧"的三条（回读场景 probe_pre / 形参 / 传参）**不变**。
+    sp = (REPO / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+    # [!] 片 3c 后的实际形态：scan_pages 里经 `_run_pre(...)` 转发（`_run_pre` 只做委托，
+    #   真正引擎仍是 `run.pre_actions.run_pre_actions`）。断言"声明页前置被应用 + 转发到唯一引擎"。
+    assert '_run_pre(pg, _field(spec, "pre"' in sp, \
+        "声明页现场探测没应用 probe_pre（骨架侧）-> 探测到的是只读态 -> 编辑态控件采集不到"
+    assert "from framework.tools.run.pre_actions import run_pre_actions" in sp, \
+        "scan_pages 里的前置没转发到唯一引擎 run.pre_actions（会漂成第二套点击逻辑）"
     assert "_scenario_probe_pre_of(" in src, "generate 没有回读场景的 probe_pre"
     assert "_decl_pre" in src, "generate 没有解析身份前置（_decl_pre）"
     assert 'run_pre_actions(pg, _decl_pre, "场景探测前置"' in src, \
         "单页现场探测没应用 probe_pre -> 探测到的是只读态 -> 编辑态控件采集不到"
     assert "pre: list | None = None" in src, "_probe_declared_pages 没接收 pre 形参"
-    assert 'run_pre_actions(pg, pre, "场景探测前置"' in src, \
-        "声明页现场探测没应用 probe_pre"
     assert "pre=_decl_pre" in src, "调用声明页探测时没把 _decl_pre 传进去"
 
 

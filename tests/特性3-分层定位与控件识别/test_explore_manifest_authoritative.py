@@ -100,8 +100,13 @@ def test_element_map_carries_manifest():
     em = ElementMap(url="http://x/", scenario="s")
     em.probe_items = [_item(MANIFEST_ONLY)]
     d = em.to_dict()
-    assert "probe_items" in d, "element_map 落盘必须带上权威清单（否则 generate 只能靠现场重探）"
-    assert [i["semantic_name"] for i in d["probe_items"]] == [MANIFEST_ONLY]
+    # P25 片 3：落盘形态统一成 **list（一页一个对象）** => 先取第一个页对象再断言。
+    # 断言意图**不变**（落盘必须带上权威清单，否则 generate 只能靠现场重探）；
+    # 变的只是"清单挂在哪儿"。
+    assert isinstance(d, list) and d, f"顶层必须是 list（一页一个对象），实际 {type(d).__name__}"
+    page = d[0]
+    assert "probe_items" in page, "element_map 落盘必须带上权威清单（否则 generate 只能靠现场重探）"
+    assert [i["semantic_name"] for i in page["probe_items"]] == [MANIFEST_ONLY]
 
 
 def test_element_map_roundtrip_keeps_manifest(tmp_path):
@@ -207,9 +212,11 @@ def test_manifest_is_threaded_through_explorer():
 
     sig = inspect.signature(EX._finalize_map)
     assert "manifest" in sig.parameters, "唯一出口 `_finalize_map` 必须能收下清单（否则填不进 ElementMap）"
-    # 定义 1 处 + 3 个产出路径（离线回放 / LLM 成功 / mock 兜底）—— 少接一处 = 那条路产出的产物没有清单
+    # 定义 1 处 + 2 个产出路径（离线回放 / LLM 成功）—— 少接一处 = 那条路产出的产物没有清单
+    # [!] 2026-10-11 P25 片 9（D5，AprilPark1012拍定）：原来还有第 3 条「mock 兜底」产出路径，
+    #   随 `--mock-fallback` 一并删除（那条路会产出**假 AI 产物**）—— 所以这里是 **2 处**，不是 3 处。
     calls = [l for l in code.splitlines() if "_finalize_map(" in l and "def _finalize_map" not in l]
-    assert len(calls) == 3, f"产出路径数变了（实测 3 处单点收口），实际 {len(calls)}：{calls}"
+    assert len(calls) == 2, f"产出路径数变了（实测 2 处单点收口），实际 {len(calls)}：{calls}"
     for l in calls:
         assert "manifest=" in l, f"这条产出路径没把清单传进去（静默丢清单 -> 事故复发）：{l.strip()}"
     assert "probe_items=" in code, "ElementMap 构造里没把清单填进去"
@@ -274,9 +281,12 @@ def test_synthetic_pre_action_items_keep_anchor_shape():
         "探测期入口没委托给唯一引擎（会漂成两套口径）"
     assert "全不可见 -> 改用 force 点一次" not in code, \
         "explorer 里还留着前置动作的第二份实现（只该在引擎里）"
-    assert "_register_pre_action_items(spec[\"name\"], _pp_clicked, merged_one" in code, \
+    # [!] 片 3c（2026-10-12）：调用点从 `_collect_pages_context` 搬到了 `scan_pages` 的
+    #   on_page 回调 `_explore_on_page`（骨架收敛的必然结果）。判据跟着搬，**要求不变**：
+    #   仍必须把 page 与"点击那一刻记下的锚"传进去，否则合成条目拿不到锚。
+    assert "_register_pre_action_items(page_name, clicked, merged_one" in code, \
         "调用点没把 page/锚传进去 -> 取不了锚"
-    assert "anchors=_pp_seen" in code, "调用点没把点击时记下的锚传进去"
+    assert "anchors=seen" in code, "调用点没把点击时记下的锚传进去"
 
 
 def test_manifest_is_threaded_through_generator():

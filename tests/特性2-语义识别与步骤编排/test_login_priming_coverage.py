@@ -20,6 +20,8 @@ from __future__ import annotations
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+SCAN_PAGES = (REPO / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+                 # 片 3c（2026-10-12）：跨页探测骨架的唯一入口，登录/前置/行内列都在它里面
 EXPL = (REPO / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
 GEN = (REPO / "framework" / "tools" / "generate" / "generator.py").read_text(encoding="utf-8")
 LOGIN = (REPO / "framework" / "tools" / "run" / "login.py").read_text(encoding="utf-8")
@@ -45,15 +47,29 @@ def _count(src: str, needle: str) -> int:
 
 
 def test_three_probe_paths_install_login():
-    """判据 1：四处探测路径都要有登录前置调用（explorer 两处 + generate 两处）。"""
+    """判据 1：每条探测路径都要有登录前置调用。
+
+    [!] 片 3c（2026-10-12，B1 三合一）后口径更新：**跨页**路径的登录前置跟着骨架搬到了
+    `probe/scan_pages.py`；explorer 只剩**单页**那处。判据改为：
+      explorer ≥1（单页）+ scan_pages ≥1（跨页骨架）+ generate ≥2（单页惯例 + 声明页）。
+    """
     n_expl = _count(EXPL, _PROBE_CALL_EXPL)
+    n_sp = _count(SCAN_PAGES, _PROBE_CALL_EXPL)
     n_gen = _count(GEN, _PROBE_CALL_GEN)
-    assert n_expl >= 2, (
-        f"explorer 里的登录前置只有 {n_expl} 处（应 ≥2：单页 + 跨页）"
+    assert n_expl >= 1, (
+        f"explorer 里的登录前置只有 {n_expl} 处（单页路径那处必须还在）"
         "—— 漏的那条路径会静默只探到登录页控件")
-    assert n_gen >= 2, (
-        f"generate 现场探测的登录前置只有 {n_gen} 处（应 ≥2：(1) 单页惯例探测 (2) 声明页探测）"
-        "—— 漏的那条 = 缺口补不上，映射质量闸会把 generate 打红（实测踩过）")
+    assert n_sp >= 1, (
+        f"scan_pages（跨页骨架）里的登录前置只有 {n_sp} 处"
+        "—— 骨架收敛后跨页的登录前置只可能在这里，漏了整条跨页链路都会落到登录页")
+    # [!] 片 3c（2026-10-12）：generate 侧**声明页**那处跟着骨架搬到了 scan_pages，
+    #   所以 generator 里现在只剩「单页惯例探测」1 处；声明页那处改在 scan_pages 里数。
+    #   两条路径仍缺一不可（漏一条 = 缺口补不上，映射质量闸会打红 —— 实测踩过）。
+    assert n_gen >= 1, (
+        f"generate 单页惯例探测的登录前置只有 {n_gen} 处（应 ≥1）—— 漏了会静默只探到登录页控件")
+    assert n_sp >= 1, (
+        f"scan_pages（跨页骨架）里的登录前置只有 {n_sp} 处"
+        "—— generate 的声明页探测 + explore 的跨页探测都走它，漏了整条跨页链路都会落到登录页")
     assert "def _ensure_login_for(" in GEN, "generate 侧要有登录前置的唯一入口"
 
 
@@ -70,7 +86,14 @@ def test_login_module_is_the_single_source():
     assert "def ensure_logged_in(" in LOGIN and "def login_token(" in LOGIN, "登录唯一实现缺函数"
     # 只允许"转发/导入"用，不允许别处再实现登录请求
     assert "urlopen" not in EXPL, "explorer 里不该自己发登录请求（应走 run/login.py）"
-    assert "urlopen" not in GEN.split("_install_login", 1)[0] or "login.py" in GEN
+    # [!] 2026-10-12 改口径：原来这条用 `GEN.split("_install_login",1)[0]` 判断"generator 前段没有
+    #   urlopen" —— **太脆**：generator 里还有「setup 数据复位」的 urlopen（与登录无关），
+    #   只要 `_install_login`（生成脚本模板里的片段）在前面就误报。改成**直接盯意图**：
+    #   generate 侧的登录前置必须走 `run/login.py`（`_ensure_login_for` 是它的统一入口），
+    #   不许自实现一套登录请求。
+    assert "def _ensure_login_for(" in GEN, "generate 侧登录前置的统一入口 `_ensure_login_for` 不见了"
+    assert ("from framework.tools.run.login import" in GEN) or ("run.login" in GEN), \
+        "generate 侧登录前置没走 run/login.py（会漂成第二份实现）"
 
 
 def test_negative_missing_a_call_is_caught():
@@ -78,7 +101,9 @@ def test_negative_missing_a_call_is_caught():
     broken_expl = EXPL.replace("_lg = ensure_logged_in(ctx, _base_of(url), auth or {})", "")
     assert broken_expl != EXPL, "负向自证前提不成立（找不到单页那行调用）—— 判据需同步更新"
     assert _count(broken_expl, _PROBE_CALL_EXPL) < 2, "删掉单页调用后判据仍通过 -> 判据是恒真的"
-    broken_gen = GEN.replace("_ensure_login_for(ctx, TARGET_URL, _decl_auth)", "")
+    # P25 片 4：目标地址改成**运行期**读取（`TARGET_URL` 常量 -> `target_url()`），
+    # 判据里这行源码串必须同步，否则负向自证的**前提**不成立（找不到那行 = 自证恒真）。
+    broken_gen = GEN.replace("_ensure_login_for(ctx, target_url(), _decl_auth)", "")
     assert broken_gen != GEN, "负向自证前提不成立（找不到 generate 单页惯例那行）"
     assert _count(broken_gen, _PROBE_CALL_GEN) < 2, "删掉 generate 一条路径后判据仍通过 -> 守门失效"
     broken_gen = GEN.replace("_install_login(context, _AUTH_TABLE.get(_cid)", "_install_login(context, {}")

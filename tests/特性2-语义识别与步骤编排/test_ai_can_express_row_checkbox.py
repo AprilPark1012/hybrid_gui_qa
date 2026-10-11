@@ -36,6 +36,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+SCAN_PAGES = (ROOT / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+                 # 片 3c（2026-10-12）：跨页探测骨架的唯一入口，登录/前置/行内列都在它里面
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -238,8 +240,12 @@ def test_row_field_cache_written_on_cross_page_path():
         **跨页**分支 -> 缓存恒为空 -> `_fill_missing_row_column` 直接返回 -> 全链路白修。
         判据要同时盯住「两处分支都有写」，否则以后加页面又会漏。
     """
+    # [!] 片 3c（2026-10-12，B1 三合一）：**跨页**路径的 `probe_row_fields(pg)` 跟着骨架
+    #   搬到了 `probe/scan_pages.py`；explorer 只剩**单页**那处。判据把两条路径合起来数
+    #   —— 口径不变（"两条路径都要取到行内列并同步缓存"），只是分居两个文件。
     src = SRC.replace(" ", "")
-    n_calls = src.count("probe_row_fields(pg)")
+    n_calls = src.count("probe_row_fields(pg)") + SCAN_PAGES.replace(
+        " ", "").count("probe_row_fields(pg)")
     # 同步方式：单页 `clear(); extend(...)` 或跨页 `extend(...)` 都算「同步了缓存」
     n_sync = src.count("_LAST_ROW_FIELDS.clear()") + src.count("_LAST_ROW_FIELDS.extend(")
     assert n_calls >= 2, "probe_row_fields 的调用点少于 2 处（结构变了？判据需复核）"
@@ -248,9 +254,14 @@ def test_row_field_cache_written_on_cross_page_path():
         f"-> 未同步的那条路径兜底不生效（实测就是这么漏的：跨页分支没写，兜底恒不触发）"
     )
     # 跨页分支**不许**在循环里 clear：否则跑完只剩最后一页的列（实测勾选列候选因此丢失）
-    i = src.index("_LAST_ROW_FIELDS.extend(_page_rf)")
-    seg = src[i - 200: i]
-    assert "_LAST_ROW_FIELDS.clear()" not in seg.replace(" ", ""), (
+    # [!] 片 3c（2026-10-12）：跨页那处 `extend` 跟着骨架搬到了 scan_pages；判据跟着搬，要求不变。
+    sp = SCAN_PAGES.replace(" ", "")
+    i = sp.index("row_fields.extend(_rf)")
+    seg = sp[max(0, i - 260): i]
+    assert "_LAST_ROW_FIELDS.clear()" not in seg, (
         "跨页循环内在 extend 之前 clear -> 每页都把前面的列冲掉，循环结束只剩最后一页 "
         "-> 勾选列候选丢失，兜底不触发（实测两次白跑）"
     )
+    # 而**跨页缓存的同步**（`_LAST_ROW_FIELDS.extend(res.row_fields)`）必须在 explorer 侧（薄封装里）
+    assert "_LAST_ROW_FIELDS.extend(res.row_fields)" in src, (
+        "explorer 薄封装没把 scan_pages 收回来的行内列同步进兜底缓存 -> 兜底恒不触发")

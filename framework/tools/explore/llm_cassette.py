@@ -406,16 +406,42 @@ class Cassette:
         #   步骤是录制当时针对那批数据做的判断，换了数据要人核对。
         # [!] 支持**多把结构键**（2026-09-22）：新算法（值归一化）与旧算法（兼容旧录像）都试
         _keys = [struct_key_value] if isinstance(struct_key_value, str) else list(struct_key_value)
+        struct_hits: list[tuple[str, str, dict]] = []
         for f in sorted(self.root.glob("*.json")):      # 扫描时跳过坏文件：一个坏文件不该毁掉整次回放
             try:
                 rec = json.loads(f.read_text(encoding="utf-8"))
             except Exception:
                 continue
             if rec.get("key_struct") in _keys and rec.get("responses"):
-                self.hits += 1
-                self.last_key = rec.get("key") or key
-                self.last_match = "struct"
-                return dict(rec, _match="struct")
+                struct_hits.append((str(rec.get("created_at") or ""), f.name, rec))
+
+        # [!] 同结构键**多份**时取「**最新录制**的那份」（P25 片 2 · 2026-10-11 实测修复）。
+        #
+        #   为什么会有多份：结构键刻意**剥掉 `@页名` 后缀**（见 element_fingerprint），
+        #   而 `@页名` 恰恰是「这次探测命中了哪些页」的观测 —— 于是
+        #     · 用旧上下文名录的（`物料编码@详细信息`）与
+        #     · 用新上下文名录的（`物料编码@订单详情页`）
+        #   算出来**是同一把结构键**、都会命中。
+        #
+        #   原实现 `for f in sorted(glob)` **命中即 return** => 返回文件名字典序第一个，
+        #   与录制时间无关 => 可能选中一份**旧**录像，而它里面的语义名与**当前**清单对不上 =>
+        #   解析期对不上名字的步骤 element 被清空 => 生成期 G2「必定位步骤空 element」拦下
+        #   （实测：8 步 element 为空、`generate EXIT=2`、run 因无脚本退出 5）。
+        #
+        #   为什么取「最新」而不是「第一个」：新录像代表**更近**的页面/命名状态，
+        #   与当前探测产物更可能一致；同结构键里挑不出更聪明的判据（都同键了），
+        #   而「猜哪份更配」属于拿实测值当地基 —— 排序口径必须简单、可解释、可审计。
+        if struct_hits:
+            struct_hits.sort(key=lambda x: (x[0], x[1]), reverse=True)
+            created, fname, rec = struct_hits[0]
+            self.hits += 1
+            self.last_key = rec.get("key") or key
+            self.last_match = "struct"
+            if len(struct_hits) > 1:
+                print(f"      [cassette] 结构键命中了 {len(struct_hits)} 份录像 -> "
+                      f"取**最新录制**的 {fname}（{created or '时间未知'}）；"
+                      f"其余 {[h[1] for h in struct_hits[1:]][:4]} 是更早录的，未采用")
+            return dict(rec, _match="struct")
 
         # ---- 第三级：相似度匹配（默认开；HYBRID_CASSETTE_FUZZY=0 可关）----
         import os as _os

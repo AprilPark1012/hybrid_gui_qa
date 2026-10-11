@@ -28,14 +28,19 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from framework.tools.probe.element_map import load_pages
+
 #: 快照文件名（落在 `scripts/generated/` 下，与 `_harness.py` 同目录）——
 #: 运行时按 `Path(__file__).parent` 找它，不依赖任何绝对路径/环境变量。
 SNAPSHOT_FILENAME = "_probe_snapshot.json"
 
 #: 快照里保留的字段（= 定位所需的最小集；`_to_ref` 要用的都在）
-_KEEP = ("semantic_name", "test_id", "role", "tag", "name", "placeholder", "text",
+_KEEP = ("semantic_name", "test_id", "element_id", "role", "tag", "name", "placeholder", "text",
          "label", "nearby_text", "container_heading", "help_text", "page", "page_hint",
-         "anchor", "path", "opens_new_tab")
+         "anchor", "path", "opens_new_tab",
+         # P25 片 3：**有效性标记要进运行时快照**（D3：置 false 的条目保留在快照里 = 留痕，
+         #   但**不参与定位索引** —— 见 index_from_items）。
+         "isValid")
 
 
 def _norm(it: dict) -> dict:
@@ -46,47 +51,80 @@ def _norm(it: dict) -> dict:
     return out
 
 
-def items_from_element_map(data: dict) -> list[dict]:
-    """从 explore 的 `element_map_*.json` 建条目（**这一步就是 AI 看到的那份命名**）。
+def _entry_element(entry) -> dict | None:
+    """从「步骤条目」或「控件条目」里取出**控件字典**（步骤条目嵌在 element 里）。"""
+    if hasattr(entry, "element") or hasattr(entry, "action"):        # TestStep
+        el = getattr(entry, "element", None)
+        if el is None:
+            return None
+        return el.to_dict() if hasattr(el, "to_dict") else (el if isinstance(el, dict) else None)
+    if isinstance(entry, dict) and "element" in entry:
+        el = entry.get("element")
+        return el if isinstance(el, dict) else None
+    return entry if isinstance(entry, dict) else None
+
+
+def items_from_element_map(data) -> list[dict]:
+    """从 explore 的 elementMap 产物建条目（**这一步就是 AI 看到的那份命名**）。
 
     两个来源，缺一不可（2026-10-10 S1 收口）：
       · `steps[].element`：AI **实际用到**的名字（老行为，保持优先）；
       · `probe_items`：本次探索**喂给 AI 的完整清单**（权威名字来源）—— 手搓用例 / 断言引用的、
         AI 没用过的控件名只能从这里拿到（现场重探拿不到跨页唯一化的上下文，实测补 0/1）。
+
+    [!] P25 片 3：读法**收敛到 `element_map.load_pages` 一处** —— 产物形态（list 一页一对象）
+        变了之后，各处再各写一套「先判 list 还是 dict」必漏一处（本模块原先就有第二种读法
+        `items_from_probe_snapshot`，两套永远只改一套）。**steps 优先于 probe_items**
+        （同名先到先得）在跨页下同样保持：先收全部页的 steps，再收全部页的 probe_items。
     """
+    pages = load_pages(data)
+    from framework.tools.probe.element_map import merge_entry_fields
+    # 先收集**权威清单**（probe_items）—— 只有它有探测期的定位信号（anchor/path/test_id）
+    manifest: dict[str, dict] = {}
+    for pg in pages:
+        for it in (pg.probe_items or []):
+            if isinstance(it, dict) and it.get("semantic_name"):
+                manifest.setdefault(str(it["semantic_name"]), it)
     out: list[dict] = []
     seen: set[str] = set()
-    for src in (list((data or {}).get("steps") or []), list((data or {}).get("probe_items") or [])):
-        for entry in src:
-            el = (entry.get("element") or {}) if isinstance(entry, dict) and "element" in entry else entry
-            if not isinstance(el, dict):
-                continue
-            n = _norm(el)
-            if n and n["semantic_name"] not in seen:
-                seen.add(n["semantic_name"])
-                out.append(n)
+    for key in ("steps", "probe_items"):
+        for pg in pages:
+            for entry in (getattr(pg, key, None) or []):
+                el = _entry_element(entry)
+                if not isinstance(el, dict):
+                    continue
+                # [!] 名字仍按「steps 优先」，但**用清单条目补齐定位字段** ——
+                #   否则 AI 的名字引用会把探测期的 anchor/path 顶掉（真 bug，见 element_map 注释）。
+                src = manifest.get(str(el.get("semantic_name") or ""))
+                if src is not None and src is not el:
+                    el = merge_entry_fields(el, src)
+                n = _norm(el)
+                if n and n["semantic_name"] not in seen:
+                    seen.add(n["semantic_name"])
+                    out.append(n)
     return out
 
 
-def items_from_probe_snapshot(data) -> list[dict]:
-    """从 `probe_*.json` 快照建条目（兼容它既可能是 list 也可能是 {"items": [...]}）。"""
-    raw = data.get("items") if isinstance(data, dict) else data
-    out: list[dict] = []
-    seen: set[str] = set()
-    for it in raw or []:
-        if not isinstance(it, dict):
-            continue
-        n = _norm(it)
-        if n and n["semantic_name"] not in seen:
-            seen.add(n["semantic_name"])
-            out.append(n)
-    return out
+def items_from_runtime_snapshot(data) -> list[dict]:
+    """从运行时快照（`_probe_snapshot.json`，形态 `{"items": [...]}`）建条目。
+
+    [!] 保留它是因为**它自己的产物形态**与 elementMap 不同（那是运行期索引缓存，不是探测产物）；
+        但读法同样收敛到 `load_pages`（`load_pages` 认 `{"items": [...]}` 这条容器形态），
+        不再有第二套解析。原 `items_from_probe_snapshot` 承担的就是这件事，已合并到这里。
+    """
+    return items_from_element_map(data)
 
 
 def index_from_items(items: list[dict]) -> dict[str, dict]:
-    """条目列表 -> {语义名: 条目}（后者不覆盖前者，保持首次出现优先）。"""
+    """条目列表 -> {语义名: 条目}（后者不覆盖前者，保持首次出现优先）。
+
+    [!] P25 片 3（D3）：`isValid=false` 的条目**进快照留痕、但不进索引** ——
+        索引是运行时定位用的，收进失效控件 = 运行期照样点到它（报出来的错还指向别处）。
+    """
     out: dict[str, dict] = {}
     for it in items or []:
+        if isinstance(it, dict) and it.get("isValid") is False:
+            continue
         n = _norm(it)
         if n:
             out.setdefault(n["semantic_name"], n)
@@ -115,4 +153,4 @@ def load_snapshot(dir_path: Path | str) -> dict[str, dict]:
         data = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return {}
-    return index_from_items(items_from_probe_snapshot(data))
+    return index_from_items(items_from_runtime_snapshot(data))

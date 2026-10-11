@@ -149,6 +149,15 @@ def elementmap_to_case(m: ElementMap, case_id: str | None = None,
             item["cell_by"] = st.cell_by
             if getattr(st, "cell_index", None) is not None:
                 item["cell_index"] = st.cell_index
+        # [!] P25 片 2（2026-10-11）：**row_index 也必须透传**（硬 bug 10-C）。
+        #   它是「按行下标定位」（第 N 行，从 1 起；-1 = 最后一行）的唯一表达，
+        #   explore 期的 R1 兜底（explorer.py:1555）与渲染期兜底（generator.py:689）都会补它 ——
+        #   不落盘 => 兜底补出来的值在写 cases 那一刻**丢掉** = 兜底白补；
+        #   实测症状就是 V8.4.6 端到端那条红：
+        #   `RuntimeError: 元素定位失败且自愈未成功: 物料编码@订单详情页`（重复控件没行定位）。
+        #   证据：全用例 0 步带该键，而生成脚本里却有 `_act_row(..., -1, ...)`。
+        if getattr(st, "row_index", None) is not None:
+            item["row_index"] = int(st.row_index)
         steps.append(item)
 
     case = {

@@ -146,6 +146,12 @@ def test_tag_page_marks_every_item(monkeypatch):
 
 # ---------------------------------------------------------------- 结构：三条路径都走入口
 
+def test_scan_pages_delegates_to_scan_page():
+    """`scan_pages`（多页骨架）内部必须委托 `scan_page`（每页步骤）—— 同一份知识不重复。"""
+    src = (REPO / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+    assert "scan_page(" in src, "scan_pages 没调 scan_page（步骤知识被抄了第二份）"
+
+
 def _func_source(path: pathlib.Path, fname: str) -> str:
     """取某函数的源码（AST 定位，避免文本误伤同名调用）。"""
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -156,15 +162,27 @@ def _func_source(path: pathlib.Path, fname: str) -> str:
     raise AssertionError(f"{path.name} 里找不到函数 {fname}")
 
 
+def test_single_page_path_calls_scan_page():
+    """**单页**路径（`_collect_page_context`）直接走每页步骤入口 `scan_page()`（不经多页骨架）。"""
+    src = _func_source(EXPLORER, "_collect_page_context")
+    assert "scan_page(" in src, "单页路径没走每页步骤的唯一入口 scan_page()"
+
+
 @pytest.mark.parametrize("path,fname", [
-    (EXPLORER, "_collect_page_context"),
     (EXPLORER, "_collect_pages_context"),
     (GENERATOR, "_probe_declared_pages"),
 ])
-def test_each_path_calls_scan_page(path, fname):
-    """三条探测路径都必须调唯一入口 scan_page()。"""
+def test_multi_page_paths_go_through_scan_pages(path, fname):
+    """**多页**探测路径必须走逐页探测的唯一入口 `probe.scan_pages()`。
+
+    [!] 片 3c（2026-10-12，B1 三合一）：逐页探测的**骨架**从两处各写一遍收敛到
+    `probe/scan_pages.py`；两条多页路径（explore 跨页 / generate 现场）只许调它，
+    不许再各写一遍「浏览器 + 顺序 goto + 前置 + scan_page + 跨页唯一化」。
+    """
     src = _func_source(path, fname)
-    assert "scan_page(" in src, f"{path.name}::{fname} 没有走统一入口 scan_page()"
+    assert "scan_pages(" in src, (
+        f"{path.name}::{fname} 没有走逐页探测的唯一入口 scan_pages()"
+        "（片 3c 后：骨架只在 probe/scan_pages.py，各多页路径只许调它）")
 
 
 @pytest.mark.parametrize("path,fname", [

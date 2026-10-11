@@ -26,7 +26,8 @@ from pydantic import BaseModel, Field
 from framework.tools.probe.element_map import (ElementMap, TestStep, ElementRef,
                                               row_scope_violation, step_get,
                                               item_multi_match_map, multi_match_of_name,
-                                              apply_row_locator_fallback, has_row_locator)
+                                              apply_row_locator_fallback, has_row_locator,
+                                              apply_scene_start_fallback)
 from framework.tools.common.browser import launch_opts
 from framework.tools.run.login import ensure_logged_in      # P22 批 5：登录前置
 from framework.tools.common.textutil import collapse_ws  # 事故(2)：accessible name 口径归一化
@@ -599,129 +600,75 @@ def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: 
 
 def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | None = None,
                            probe_pre: list | None = None):
-    """【同步】跨页探测（P3）：一个浏览器 + 一个 context，按声明顺序 goto 每页。
+    """【同步】跨页探测（P3）：**薄封装** —— 逐页探测的骨架在唯一入口 `probe.scan_pages`。
 
-    - 环境约束：本机 1.87G 无 swap -> 绝不为多页多开浏览器/并发探测（顺序 do 才是安全的）。
-    - 每页都做：基础控件探测（打 page 标记）→ 弹窗补探测 → DOM 上下文（带页名前缀）。
-    - 合并时做**同名唯一化**（`probe.uniquify_across_pages`）：两页同名的元素改成 `原名@页名`，
-      并返回冲突清单供 CLI 明示 —— 因为 generate 的 semantic_name→locator 是全局一张表，
-      同名会让两页元素争抢同一个键（过去是静默丢后者 = 悄悄用错页面的 locator）。
-    返回 (merged_items, dom_ctx, err_for_ai, collisions)。
+    [!] P25 片 3c（B1 三合一，2026-10-12）：这里原来与 `generator._probe_declared_pages`
+    **各写了一遍**「一个浏览器 + 顺序 goto + 登录前置 + 逐页前置 + `scan_page` + 跨页唯一化」。
+    两处实现必漏一处 —— 2026-10-08 V8.3.7 事故就是 generate 侧漏了「可展开容器」那一步，
+    干净环境下拿不到角色菜单里的控件 -> 映射质量闸拒绝产出。
+    现在骨架只留在 `scan_pages()`；本函数只负责 **explore 特有的三个动作**（见 `_explore_on_page`）。
+
+    返回 (merged_items, dom_ctx, err_for_ai, collisions, row_fields)。
     """
     # [!] 每次调用都重置：探测结果**跨轮累积**过（实测 3 轮重试 -> 同一个 list 里
     #     7 页 × 3 = 21 页 / 1432 个控件，AI 看到的清单被前几轮的旧控件挤爆）。
     items.clear()
 
-    from playwright.sync_api import sync_playwright
-    from framework.tools.probe.probe import probe_page, probe_row_fields, uniquify_across_pages
-    try:
-        per_page: list[tuple[str, list[dict]]] = []
-        dom_ctx: list[dict] = []
-        row_fields: list[dict] = []
-        with sync_playwright() as p:
-            b = p.chromium.launch(**launch_opts(headless=True))
-            ctx = b.new_context()
-            # P22 批 5：登录前置（跨页脚本同样需要，否则每页都落到登录页）
-            _lg = ensure_logged_in(ctx, _base_of((pages or [{}])[0].get("url", "")), auth or {})
-            if _lg.get("attempted"):
-                print("      [explore] [key] 登录前置：" + ("ok" if _lg.get("ok") else
-                      f"[!] 失败 → {_lg.get('reason')}"))
-            pg = ctx.new_page()
-            # 场景级探测前置的待办（每步只跑一次；跑不到的留到最后统一告警）
-            _pp_pending = list(probe_pre or [])
-            for _idx, spec in enumerate(pages):
-                _pp_clicked = []                 # 逐页重置：只补**本页**点到过的控件
-                _pp_seen: dict = {}              # 逐页重置：点击那一刻记下的定位锚（名字 -> 字段）
-                # P22 批 5：探测期优先用场景声明的探测地址（运行期才有值的页面，探测期对象不存在）
-                pg.goto(spec.get("probe_url") or spec["url"], wait_until="domcontentloaded")
-                try:      # P22 批 3：同单页路径 —— networkidle 在本 demo 上不可靠（fetch 悬挂）
-                    pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
-                except Exception:
-                    pg.wait_for_timeout(500)
-                # P22 批 5：该页声明的**前置动作**（弹层要先选合同、行控件要先点新增行）
-                # —— 不做前置，这些控件一次都探不到，AI 也就拿不到它们的语义名。
-                # 2026-10-10（A 方案 S1）：**场景级探测前置** —— 逐页尝试、能跑就跑、每步只跑一次。
-                #   为什么不是"只跑第一页"（实测踩到）：第一页可能是**登录页**，那儿根本没有
-                #   切身份控件 -> 前置动作报「没找到」（日志原文：前置动作「切换为订单管理员」没找到）。
-                #   逐页尝试让「登录」自然落在登录页、「切身份」自然落在声明了该控件的页 ——
-                #   且**只按精确名字匹配**（`quiet_missing` 抑制重复告警），找不到就留给后面的页，
-                #   **绝不猜别的控件去点**（本项目铁律：不让框架猜控件）。
-                #   必须在 scan_page **之前**：前置动作常改变权限上下文（切角色），
-                #   扫在它之后才拿得到编辑态/动态新增的控件。
-                # [!] `_pp_done` 必须**先初始化再进 if**：没声明 probe_pre 的场景 `_pp_pending`
-                #   一开始就是空 -> 旧写法（只在 if 里赋值、下一行无条件读 `_pp_done`）会对
-                #   **任何没声明 probe_pre 的跨页场景**抛 UnboundLocalError（被兜住 = 探测静默退化）；
-                #   有声明时则每页复用上一页的陈旧值 -> 陈旧名字被当成"本页已点击"（假证据）。
-                _pp_done: list = []
-                if _pp_pending:
-                    _pp_done = _run_pre_actions(pg, _pp_pending, "场景探测前置", quiet_missing=True,
-                                               require_all_resolvable=True, seen=_pp_seen)
-                    _pp_pending = [s for s in _pp_pending if s not in _pp_done]
-                _pp2 = _run_pre_actions(pg, spec.get("pre"), spec.get("name", ""), seen=_pp_seen)
-                _pp_clicked += [x for x in (list(_pp_done) + list(_pp2)) if x not in _pp_clicked]
-                from framework.tools.probe.page_scan import scan_page   # V8.3.7：探测步骤唯一入口
-                _sc = scan_page(pg, page_name=spec["name"], tag_page=True)   # 基础+可展开容器+弹窗/弹层+合并
-                menu_items = _sc.menu_items
-                modal_items = _sc.modal_items
-                merged_one = _sc.items
-                _remember_required_fields(merged_one, spec["name"])   # 必填项覆盖校验（唯一入口）
-                # [!] **不要再在这里改页名**（2026-10-10 实测教训，已回退一版错误修法）：
-                #   我曾在此把 `page` 统一成声明页名，结果**只改了快照侧**，而 generate 写出的
-                #   元素映射表仍用探针原来的页名（如 `订单系统`）=> 两侧名字不一致 =>
-                #   质量闸报 `缺失项：['订单名称@订单列表页']`（这个名 AI 根本没写过、只存在于快照）
-                #   => 整条链卡死。**真根因是我的"半边修复"制造了快照与映射表的分歧**。
-                #   口径：名字要么两边一起改（单一权威快照，铁律 15），要么都不改；
-                #   **绝不允许只改一侧**。
-                _extra = _register_pre_action_items(spec["name"], _pp_clicked, merged_one,
-                                                    pg=pg, anchors=_pp_seen)
-                if _extra:
-                    merged_one = merged_one + _extra
-                    print("      [explore] [key] 前置动作证明可点的控件已补进清单："
-                          + "、".join(i["semantic_name"] for i in _extra))
-                per_page.append((spec["name"], merged_one))
-                for d in _collect_dom_context(pg):
-                    d["page"] = spec["name"]
-                    dom_ctx.append(d)
-                _page_rf = probe_row_fields(pg)         # 行内列清单（按页标记，供 AI 做行内定位）
-                # V8.4.3 兜底用：跨页必须**累积**。
-                #   [!] 曾经写成 `clear(); extend(本页)` -> 循环跑完只剩**最后一页**的列；
-                #   本场景最后一页是发票列表页，勾选列候选因此丢失 -> 兜底恒不触发（实测两次白跑）。
-                _LAST_ROW_FIELDS.extend(_page_rf)
-                # V8.4.3 · A 方案：无 data-field 的列（勾选列）转成**有名字的控件**并进本页清单，
-                #   AI 用它会写的 semantic_name 就能引用，无需学 cell_by（实测结构输出下它不学）。
-                _rc_items = _row_columns_to_items(spec["name"], _page_rf, merged_one)
-                if _rc_items:
-                    # 同上：必须插到本页清单最前，否则会被 `items[:60]` 截掉 = AI 看不到
-                    merged_one[:0] = _rc_items
-                for rf in _page_rf:
-                    rf["page"] = spec["name"]
-                    row_fields.append(rf)
-                print(f"      [explore] 跨页探测: [{spec['name']}] {spec['url']} → "
-                      f"{len(merged_one)} 个控件（弹窗补充 {len(modal_items)}）")
-            b.close()
-        merged, collisions = uniquify_across_pages(per_page)
-        # 2026-10-10（方案 1+2）：**跨页聚合口也要过重复控件收敛** —— 这里是给 AI 的那份清单的
-        #   唯一汇合点；`_merge_items` 的收敛只管它自己那一次合并，跨页拼接会把残渣带回来
-        #   （实测：同一控件的 `_2/_3` 与主条目签名完全相同却仍在清单里）-> AI 可能引用到没标
-        #   重复信号的那一条。清单不变量要落在**每个对外出口**上（两处：这里 + `_finalize_map`）。
-        _collapse_row_repeats(merged)
-        for c in collisions:
-            print(f"      [explore] [!] 跨页同名元素 {c['semantic_name']!r} 出现在 "
-                  f"{'、'.join(c['pages'])} → 已唯一化为 "
-                  f"{'、'.join(c['semantic_name'] + '@' + p for p in c['pages'])}")
-        if _pp_pending:
-            print("      [explore] [!] 场景探测前置没跑到的步骤：" + "、".join(str(s) for s in _pp_pending)
-                  + "（找到过但没点成功 / 或任何一页都没匹配到 -> 该前置等于没做，别当它生效了）")
-
-        return merged, dom_ctx, "", collisions, row_fields
-    except Exception as e:
-        print(f"      [explore] [!] 跨页探测失败（{type(e).__name__}: {str(e)[:160]}）"
+    from framework.tools.probe.scan_pages import scan_pages
+    res = scan_pages(
+        pages, auth=auth or {}, probe_pre=probe_pre, login=True, label="explore",
+        with_dom_ctx=True, with_row_fields=True, collapse=True,
+        on_page=_explore_on_page,
+    )
+    # V8.4.3 兜底用：跨页必须**累积**。
+    #   [!] 曾经写成 `clear(); extend(本页)` -> 循环跑完只剩**最后一页**的列；
+    #   本场景最后一页是发票列表页，勾选列候选因此丢失 -> 兜底恒不触发（实测两次白跑）。
+    _LAST_ROW_FIELDS.extend(res.row_fields)
+    for c in res.collisions:
+        print(f"      [explore] [!] 跨页同名元素 {c['semantic_name']!r} 出现在 "
+              f"{'、'.join(c['pages'])} → 已唯一化为 "
+              f"{'、'.join(c['semantic_name'] + '@' + p for p in c['pages'])}")
+    if res.pre_pending:
+        print("      [explore] [!] 场景探测前置没跑到的步骤：" + "、".join(str(s) for s in res.pre_pending)
+              + "（找到过但没点成功 / 或任何一页都没匹配到 -> 该前置等于没做，别当它生效了）")
+    if res.error:
+        print(f"      [explore] [!] 跨页探测失败（{res.error}）"
               f"→ 退化为外部传入清单（{len(items)} 项）")
-        return items, [], f"{type(e).__name__}: {str(e)[:160]}", [], []
+        return items, [], res.error, [], []
+    return res.merged_items, res.dom_ctx, "", res.collisions, res.row_fields
+
+
+def _explore_on_page(page_name: str, pg, merged_one: list, clicked: list, seen: dict,
+                     row_fields: list) -> list:
+    """explore 侧**特有**的每页动作（`scan_pages` 的 `on_page` 回调）。
+
+    骨架（浏览器/goto/前置/scan_page/唯一化）不在这里 —— 那部分只有一处实现。
+    """
+    extra: list = []
+    # (1) 前置动作**证明可点**的控件补进清单。
+    #     为什么必须补：探针的扫描常发生在**状态切换之后**，于是「同一按钮在不同状态下的名字」
+    #     只留下切换后的那个 —— 实测真人真值：demo 的 `<button id=btn-detail-edit>` 在只读态叫
+    #     「编辑」、编辑态叫「保存」。页面前置动作点完「编辑」再扫描，清单里就只剩
+    #     `保存@详细信息`，**「编辑」这个名字凭空消失** -> AI 想写"进入编辑态"这一步时
+    #     绑不上任何元素 -> 映射质量闸拦下 -> 脚本生成不出来（整条链路卡在最后 1 步）。
+    #     口径：「能点到」就是「存在且可交互」的铁证。
+    _pre_extra = _register_pre_action_items(page_name, clicked, merged_one, pg=pg, anchors=seen)
+    if _pre_extra:
+        print("      [explore] [key] 前置动作证明可点的控件已补进清单："
+              + "、".join(i["semantic_name"] for i in _pre_extra))
+        extra += list(_pre_extra)
+    # (2) 无 `data-field` 的列（勾选列）转成**有名字的控件**并进本页清单，
+    #     AI 用它会写的 semantic_name 就能引用，无需学 cell_by（实测：结构化输出下它不学）。
+    _rc_items = _row_columns_to_items(page_name, row_fields, list(merged_one) + extra)
+    if _rc_items:
+        # [!] 必须插到本页清单**最前**，否则会被字符预算裁掉 = AI 看不到
+        merged_one[:0] = _rc_items
+    return extra
+
 
 
 def ai_explore(
-    scenario: str, items: list[dict], url: str, allow_mock_fallback: bool = False,
+    scenario: str, items: list[dict], url: str,
     page_bg: str = "", guard: str = "", pages: list[dict] | None = None,
     llm_cassette=None, cassette_strict: bool = False, auth: dict | None = None,
     retry_feedback: str = "", probe_pre: list | None = None,
@@ -734,8 +681,10 @@ def ai_explore(
     pages（P3 跨页，可选）：[{"name","url","page"}, ...]，≥2 页时按跨页模式探测与规划；
     不传/只 1 页 → 单页老路径（行为不变）。
 
-    LLM 完全不可用时：默认 raise AiExploreError（拒绝产出假 AI 用例）；
-    allow_mock_fallback=True（CLI 的 --mock-fallback）才显式降级为确定性 mock。
+    LLM 完全不可用时：**一律 raise AiExploreError**（拒绝产出假 AI 用例）。
+    [!] P25 片 9（D5，AprilPark1012 2026-10-11 拍定删）：原来还有一条 `--mock-fallback`
+        显式降级为确定性 mock 的路径 —— 已删除。理由：mock 产物不是 AI 产物，
+        留着就是"一条能产出假 AI 用例的路"。离线场景改用 `--llm-cassette` 回放。
 
     llm_cassette（2026-09-18，见 framework/tools/explore/llm_cassette.py）：录制 / 回放。
     回放模式**完全不联网、也不需要 key**（连 llm_from_env 都不调）——
@@ -766,7 +715,7 @@ def ai_explore(
     # (2) 异步阶段：LLM 语义识别（ChatDeepSeek）
     return asyncio.run(  # type: ignore
         _ai_explore_async(scenario, page_items, url, dom_ctx=dom_ctx,
-                          allow_mock_fallback=allow_mock_fallback, page_bg=page_bg, guard=guard,
+                          page_bg=page_bg, guard=guard,
                           pages=pages, collisions=collisions, row_fields=row_fields,
                           llm_cassette=llm_cassette, cassette_strict=cassette_strict,
                           auth=auth, retry_feedback=retry_feedback)
@@ -925,7 +874,7 @@ async def _aclose_llm(obj) -> None:
 
 async def _ai_explore_async(
     scenario: str, page_items: list[dict], url: str, dom_ctx: list[dict] | None = None,
-    allow_mock_fallback: bool = False, page_bg: str = "", guard: str = "",
+    page_bg: str = "", guard: str = "",
     pages: list[dict] | None = None, collisions: list[dict] | None = None,
     row_fields: list[dict] | None = None, llm_cassette=None, cassette_strict: bool = False,
     auth: dict | None = None, retry_feedback: str = "",
@@ -1063,24 +1012,21 @@ async def _ai_explore_async(
         await _aclose_llm(obj)
 
     # 重试用尽 —— 绝不静默用 mock 冒充 AI 产物（2026-09-11 修复的假 AI 缺陷）
-    if not allow_mock_fallback:
-        # [!] 2026-09-18 修：以前是单个 `last_err` 字符串、**后写覆盖先写** ->
-        #   连接失败（真因）会被随后那次「文本解析没抽出步骤（返回 0 字符）」冲掉，
-        #   于是「没网」被报成「解析器坏了」（实测：端点指到黑洞端口时提示语就是这个误导）。
-        #   现在把每一次失败都攒下来、去重保序，并按特征给出「最可能是什么问题 + 下一步」。
-        detail = "；".join(dict.fromkeys(errs)) or "未拿到可用步骤"
-        raise AiExploreError(
-            f"AI 语义识别失败（已重试 {n_attempts} 次）：{detail}。\n"
-            f"{_llm_failure_hint(detail)}"
-            "已拒绝用 mock 冒充 AI 产物（不写假 AI 用例）。\n"
-            "若这台机器连不上外网：可在有外网的机器上 `--llm-record` 录一份，"
-            "再把目录拷过来用 `--llm-cassette` 离线回放（回放不联网、不需要 key）。"
-        )
-    print("      [explore] [!] LLM 不可用 → 按 --mock-fallback 显式降级为【确定性 mock】"
-          "（这不是 AI 产物，不会写入 cases/）")
-    steps = mock_explore(scenario, page_items, url).steps
-    steps = _apply_semantic_calibration(steps, page_items)
-    return _finalize_map(first_url, scenario, steps, pages=pages, manifest=page_items)
+    # 重试用尽 —— 绝不静默用 mock 冒充 AI 产物（2026-09-11 修复的假 AI 缺陷）
+    # P25 片 9（D5 · AprilPark1012 2026-10-11 拍定删 --mock-fallback）：这里**不再有**
+    #   「降级为 mock」这条分支 —— 失败就如实报错，没有第二条路。
+    # [!] 2026-09-18 修：以前是单个 `last_err` 字符串、**后写覆盖先写** ->
+    #   连接失败（真因）会被随后那次「文本解析没抽出步骤（返回 0 字符）」冲掉，
+    #   于是「没网」被报成「解析器坏了」（实测：端点指到黑洞端口时提示语就是这个误导）。
+    #   现在把每一次失败都攒下来、去重保序，并按特征给出「最可能是什么问题 + 下一步」。
+    detail = "；".join(dict.fromkeys(errs)) or "未拿到可用步骤"
+    raise AiExploreError(
+        f"AI 语义识别失败（已重试 {n_attempts} 次）：{detail}。\n"
+        f"{_llm_failure_hint(detail)}"
+        "已拒绝用 mock 冒充 AI 产物（不写假 AI 用例）。\n"
+        "若这台机器连不上外网：可在有外网的机器上 `--llm-record` 录一份，"
+        "再把目录拷过来用 `--llm-cassette` 离线回放（回放不联网、不需要 key）。"
+    )
 
 
 def _get_llm_text(obj, prompt: str) -> str:
@@ -2324,6 +2270,11 @@ def _compact_item(it: dict, ambiguous: set[str] | None = None) -> dict:
           仅框架内部使用的 `name_source`/`base_conflict`、以及语义名已含 `@页名` 时的 `page`。
     实测压缩比：单条 ~300 字符 -> ~45-90 字符（同篇幅多放 3~6 倍控件）。
     """
+    # [!] P25 片 3（D3 · AprilPark1012明确要求「太浪费 token」）：`isValid=false` 的条目
+    #   **一律不进提示词**（返回空 dict，由调用方跳过）。注意：不是把 isValid 写进提示词，
+    #   而是把失效条目挡在外面 —— 既省 token，也免得 AI 拿一个已经不在页面上的控件编步骤。
+    if it.get("isValid") is False:
+        return {}
     out: dict = {"semantic_name": it.get("semantic_name") or it.get("name") or ""}
     role = it.get("role") or it.get("tag")
     if role:
@@ -2386,6 +2337,8 @@ def select_controls_for_prompt(items: list[dict], pages: list[dict] | None,
     for nm, grp in groups:
         m, r = [], []
         for it in grp:
+            if it.get("isValid") is False:       # 失效条目不进提示词（与 _compact_item 同口径）
+                continue
             (m if _must_include_control(it, scenario) else r).append(it)
         must[nm], rest[nm] = m, r
 
@@ -2786,9 +2739,15 @@ def _parse_steps_text(text: str, items: list[dict]) -> list[TestStep]:
             value=s.get("value"),
             assertion=s.get("assertion"),
             description=s.get("description", ""),
-            # 行内定位：这两个字段没有对应控件（semantic_name 为空是正常的），原样透传
+            # 行内定位：这些字段没有对应控件（semantic_name 为空是正常的），原样透传
+            # [!] P25 片 2：**文本兜底路径同样要带全**（原来只写 row_text/cell_field，
+            #   而 cell_by/cell_index/row_index 全丢 —— 结构化输出路径能表达的，文本路径表达不了，
+            #   属 schema 漂移：同一条 AI 产出走两条解析路径 -> 落盘结果不同）。
             row_text=s.get("row_text"),
             cell_field=s.get("cell_field"),
+            cell_by=s.get("cell_by"),
+            cell_index=s.get("cell_index"),
+            row_index=s.get("row_index"),
         ))
     if unmatched:
         print(f"      [explore] [!] 有 {len(unmatched)} 步的元素名不在探测清单里（无法定位）：{unmatched}")

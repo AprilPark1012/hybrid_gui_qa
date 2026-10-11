@@ -33,16 +33,16 @@ FEATURES = [
                  class1=["test_name_alignment.py"],
                  class2=[]),
             dict(no="2.2", name="自然语言步骤编排", goal="场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单",
-                 class1=["test_step_direct_locator.py", "test_ai_scenario_preconditions.py", "test_prompt_no_demo_literals.py", "test_ai_retry_loop.py", "test_ai_incomplete_output_retries.py", "test_ai_retry_same_cause.py", "test_ai_no_hardcoded_row_values.py",
-                          "test_semantic_mismatch_blocks.py", "test_llm_tool_choice_unsupported.py", "test_production_defects_gate_l1.py", "test_ai_can_express_row_checkbox.py",
-                          "test_required_field_coverage.py", "test_retry_leaves_no_stale_notes.py", "test_required_fields_hard_checklist.py",
+                 class1=["test_step_direct_locator.py", "test_ai_scenario_preconditions.py", "test_prompt_no_demo_literals.py", "test_ai_no_hardcoded_row_values.py",
+                          "test_semantic_mismatch_blocks.py", "test_llm_tool_choice_unsupported.py", "test_ai_can_express_row_checkbox.py",
+                          "test_required_field_coverage.py", "test_required_fields_hard_checklist.py",
                           "test_prompt_list_clipping_is_general.py"],
                  class2=["verify_role_switch_click.py"]),
             dict(no="2.3", name="步骤到定位的合成", goal="步骤里的语义名/属性如何合成可执行定位表达式",
                  class1=["test_scope_locate_expr.py", "test_locate_by_title.py"],
                  class2=["verify_scope_locate.py"]),
             dict(no="2.4", name="场景声明契约", goal="人写的那部分：pages / pre / auth / data / probe_url —— 声明必须由场景提供，框架不懂具体系统",
-                 class1=["test_scenario_auth_spec.py", "test_page_pre_actions.py",
+                 class1=["test_scenario_auth_spec.py", "test_page_pre_actions.py", "test_probe_pre_consistency.py",
                          "test_probe_url_and_occurrence.py", "test_login_priming_coverage.py"],
                  class2=["verify_login_priming.py", "test_page_pre_actions_force_fallback.py", "test_scenario_probe_pre.py", "verify_page_pre_actions.py"]),
         ],
@@ -69,7 +69,7 @@ FEATURES = [
                          "verify_editable_state_probe.py"]),
             dict(no="3.4", name="跨页面元素", goal="多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧；"
                                                      "explore 期喂给 AI 的**完整清单**必须落盘，作为映射表与运行时快照的**唯一名字来源**",
-                 class1=["test_runtime_name_source_is_explore_snapshot.py",
+                 class1=["test_runtime_name_source_is_explore_snapshot.py", "test_elementmap_list_contract.py",
                          "test_explore_manifest_authoritative.py"],
                  class2=["verify_cross_page.py"]),
             dict(no="3.5", name="属性直定位", goal="探测清单兜不住时，用属性（by+value）直接定位；select 的 index 语义 = 第 N 个非空选项（跳过 placeholder）",
@@ -91,7 +91,19 @@ FEATURES = [
                       "（行内同名列控件必然多个 -> 会被判死），改走探测期录下的"
                       "「锚点 + 容器内相对语义」（`scope_locate`）拿多命中 locator 再 `.nth(行号)`；"
                       "行内 `select` 未给 value 时与非行内**同口径**（选第一个真选项、留痕、无选项才报错）",
-                 class1=["test_multi_match_signal.py", "test_row_locate_uses_scope.py"],
+                 class1=["test_multi_match_signal.py", "test_row_locate_uses_scope.py", "test_row_index_lands_in_case.py", "test_elementmap_readers_accept_list_form.py"],
+                 class2=[]),
+            dict(no="3.9", name="元素自身 id 定位档",
+                 goal="元素**自身**带稳定 `id` 时，给定位链多一档："
+                      "`test_id` > `element_id` > 锚点下钻 > `role+name` ——"
+                      "有些控件的祖先链里**没有任何可锚容器**（容器是裸 `<div>`），"
+                      "若它又与别的控件同名，`role+name` **必然歧义**；此时 `id` 是唯一可用的稳定身份"
+                      "（实测：订单详情页底部那个「保存」与行工具栏「保存」撞名，"
+                      "而它自身 id 唯一 -> 靠这一档定住）。"
+                      "口径：采集进条目 -> 进运行时快照白名单 -> 定位链一档；"
+                      "**不进 AI 提示词、也不进录像结构键**（省 token 且不让录像失效）；"
+                      "改回任何一环都会被判据抓住（含「白名单静默丢弃」这个最隐蔽的坑）",
+                 class1=["test_element_id_is_captured_and_used.py"],
                  class2=[]),
         ],
     ),
@@ -172,7 +184,7 @@ FEATURES = [
         dir="特性8-离线回放",
         subs=[
             dict(no="8.1", name="录像键两级策略", goal="严格级（逐字一致）+ 宽松级的匹配分工",
-                 class1=["test_cassette_strict_policy.py", "test_cassette_key_stability.py", "test_cassette_fuzzy_fallback.py"], class2=[]),
+                 class1=["test_cassette_strict_policy.py", "test_cassette_key_stability.py", "test_cassette_fuzzy_fallback.py", "test_cassette_picks_latest_on_struct_tie.py"], class2=[]),
             dict(no="8.2", name="录像体检", goal="场景段抠取 + 覆盖判定；缺录像要能报出来",
                  class1=["test_check_cassettes_block.py"], class2=[]),
             dict(no="8.3", name="录制与回放契约", goal="录像能录、能放、放得对（不联网、不要 key）",
@@ -194,8 +206,9 @@ FEATURES = [
                          "test_click_then_ready_contract.py", "test_assert_kinds_render.py",
                          "test_wait_text_kind.py", "test_demo_testid_policy.py"],
                  class2=[]),
-            dict(no="9.2", name="质量闸", goal="用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤**",
-                 class1=["test_case_quality_gate.py", "test_generate_quality_gate.py",
+            dict(no="9.2", name="质量闸", goal="用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤**；"
+                                                     "**闸门统一契约 + 全量注册表**（B′：实现跟特性走、登记进 core/gates.py）",
+                 class1=["test_case_quality_gate.py", "test_generate_quality_gate.py", "test_gate_protocol_registry.py",
                          "test_demo_freshness_gate.py", "test_ai_case_scenario_sync.py",
                          "test_daily_skip_marker.py",
                          # V8.4.3：Windows 实测两次误拦（语义校准漏 help_text / 写死检测不对照场景原文）
@@ -246,6 +259,25 @@ FEATURES = [
                  class1=["test_cli_setup.py"], class2=[]),
             dict(no="10.5", name="推荐路径口径", goal="文档/提示/培训页的主推路径 = AI 链路；手搓用例降级为调试与回归辅助（历史版本记录不改）",
                  class1=["test_ai_first_docs.py", "test_tunables_exposed_as_flags.py"], class2=[]),
+        ],
+    ),
+
+    dict(
+        no=11, key="verify", name="交付即验证",
+        goal="两档验证：① 产出物被闸门拦下 -> 带具体原因让 AI 重生成；② 生成脚本后真跑一次 -> 失败带原因整轮重来。"
+             "两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、录像回放模式不重试、退出码可区分（2 产出侧 / 3 实跑侧）",
+        dir="特性11-交付即验证",
+        subs=[
+            dict(no="11.1", name="产出物档重试",
+                 goal="AI 产出被质量闸拦下（写死行数据 / 严重误选 / 必填未编排 / 行定位缺失）-> 带原因重生成；"
+                      "同因不重试、上一轮的缺陷记账不许留给下一轮",
+                 class1=["test_verify_entry_contract.py", "test_production_defects_gate_l1.py",
+                         "test_ai_incomplete_output_retries.py", "test_retry_leaves_no_stale_notes.py"],
+                 class2=[]),
+            dict(no="11.2", name="实跑档重试",
+                 goal="generate + 逐条实跑 -> 失败带原因整轮重来；录像回放模式不重试；实跑未过 exit 3",
+                 class1=["test_ai_retry_loop.py", "test_ai_retry_same_cause.py"],
+                 class2=[]),
         ],
     ),
 ]

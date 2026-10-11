@@ -3409,8 +3409,7 @@ def build() -> str:
 │       │   ├── element_map.py         数据契约(ElementRef/TestStep/ElementMap)
 │       │   ├── locator_bridge.py      [OK] [Playwright] 语义->唯一locator(核心!)
 │       │   ├── anchor.py              [loc] 锚点+相对路径：把「顶层容器内下钻」表达成数据(P16)
-│       │   ├── scope_locate.py        [loc] 定位合成:锚点+路径 -> 真实 locator(P16)
-│       │   └── semantic_locate.py     [loc] 语义定位入口(人写脚本的薄封装)
+│       │   └── scope_locate.py        [loc] 定位合成:锚点+路径 -> 真实 locator(P16)
 │       ├── explore/                   (2) AI 语义识别
 │       │   ├── explorer.py            [ai] [AI] 语义识别(读场景->规划；失败即报错,不静默降级)
 │       │   └── llm_cassette.py        LLM 录像/回放(离线机器:不联网、不需 key)
@@ -3430,7 +3429,7 @@ def build() -> str:
 │   ├── order_detail.html            订单详情页
 │   └── todo.html                    旧版 Todo 演示页(保留)
 ├── <b>tests/</b>                      测试根：<b>一个特性一个文件夹</b>（一类 test_* 与二类 verify_* <b>同住一个夹</b>,靠前缀区分）
-│   ├── 特性1-混合链路/ … 特性10-CLI帮助契约/  10 个特性夹（名字取自 feature_spec.py，唯一命名来源）
+│   ├── 特性1-混合链路/ … 特性11-交付即验证/  11 个特性夹（名字取自 feature_spec.py，唯一命名来源）
 │   │   ├── test_*.py                一类判据(秒级,不需 demo/浏览器)
 │   │   └── verify_*.py              二类验证(端到端,需 demo,含负向证伪)
 │   ├── _helpers/                    公共模块(两类共用):repo_files · artifacts · testid_policy · demo_freshness · _gen_layout

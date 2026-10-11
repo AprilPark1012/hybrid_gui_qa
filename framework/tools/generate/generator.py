@@ -18,7 +18,9 @@ from pathlib import Path
 
 from framework.tools.common.config import BASE, CASES_DIR, SCRIPTS_DIR
 from framework.tools.probe.element_map import (row_scope_violation,         # 行定位判据的唯一入口
-                                               apply_row_locator_fallback)  # 框架兜底的唯一入口
+                                               apply_row_locator_fallback,     # 框架兜底：行定位
+                                               apply_scene_start_fallback,    # 框架兜底：多余起手页导航
+                                               step_get)                      # 步骤字段读取（唯一入口）
 from framework.tools.generate import probe_snapshot   # explore 快照的唯一读写入口（V8.4.3+）
 from framework.tools.common.browser import CHROMIUM_ARGS
 from framework.tools.generate.case_builder import CaseQualityError, case_errors
@@ -568,6 +570,12 @@ def _semantic_to_locator_expr(it: dict, scope: str = "", by=None) -> str:
         return f"_drill(p, {it['anchor']!r}, {it['path']!r})"
     if it.get("test_id"):
         return f"get_by_test_id({_py_str(it['test_id'])})"
+    # P25 第 4 个真缺陷（2026-10-11）：元素**自身**的 id —— 与 test_id 同档（元素自己的契约），
+    # 排在锚点下钻之前、role+name 之前。为什么必须在这一档（实测）：订单详情页的「右下角保存」
+    # 祖先链无任何可锚容器、又与行保存同名 -> 落到 role+name 就是**必然歧义**；
+    # 而它自身的 id（#btn-detail-edit）唯一。id 重复的风险由运行期 count()==1 兜住。
+    if it.get("element_id"):
+        return f"locator({_py_str('#' + str(it['element_id']))})"
     if it.get("role") and it.get("name"):
         # 2026-09-24 事故(2)：demo 的 <option> 文本带**换行**（"请选择管理单元\n0021\n0451\n1031"），
         # 原样当 needle 会**匹配不到**（实测 RuntimeError：元素定位失败且自愈未成功）。
@@ -687,6 +695,55 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
         if _v2 > 1:
             _mm_fb.setdefault(str(_n), _v2)
     _fb = apply_row_locator_fallback(steps, _mm_fb)
+    # P25 兜底（要求11）：**新开标签页**的点击要切成 `click_new_tab`。
+    #   判据：清单里该控件 `opens_new_tab is True` 且该步 op 恰为 `click`（已是 click_new_tab 的不动）。
+    #   为什么必须兜（实测第 8 层）：demo「查看订单」是 window.open 新开页，写 `click` 的话
+    #   `page` 仍绑旧标签页 -> 紧接着的 URL 断言必然失败。探针早就给了信号、harness 也有
+    #   `_Tabs.click_new_tab`，是**模型不选**；而这是可由清单判死的确定性情形。
+    _nt = 0
+    for _st in (steps or []):
+        _op = str(step_get(_st, "op") or step_get(_st, "action") or "").strip().lower()
+        if _op != "click":
+            continue
+        _nm = step_get(_st, "element") or step_get(_st, "semantic")
+        if hasattr(_nm, "semantic_name"):
+            _nm = _nm.semantic_name
+        _it = (it_map or {}).get(str(_nm or ""))
+        if _it and (_it.get("opens_new_tab") is True):
+            _old_op = _op
+            try:
+                if hasattr(_st, "action"):
+                    _st.action = "click_new_tab"
+                else:
+                    _st["op"] = "click_new_tab"
+            except Exception:                                     # noqa: BLE001
+                continue
+            _nt += 1
+            print(f"[generate] [key] 框架兜底：{_nm} 标记为「新开标签页」-> {_old_op} 升级为 click_new_tab"
+                  f" · 用例 {cid}")
+    if _nt:
+        print(f"[generate] [OK] 共升级 {_nt} 处新标签页点击（后续 page 会重绑到新标签页）")
+    # P25：**场景起手页兜底**（与 explore 侧同一入口/同一规则 C1C2C3）——
+    #   这里是手搓用例与 AI 用例渲染的**共同收口**，放这里两条链路一起受益。
+    #   `case["pages"]` 的形状是 `[{"name","url"}, ...]`；取不到就传空串 ->
+    #   规则 C3 不成立 -> **一步都不动**（宁漏不误伤，绝不猜）。
+    _pages0 = list(case.get("pages") or [])
+    _pg0 = (_pages0 or [{}])
+    # host 页 = 场景 `probe_pre_host` 声明的那一页（用例的**起手工作页**）——按**页名**找它的 url，
+    # 找不到就传空串（那时兜底只做保守删除）。
+    _host_name = str(case.get("probe_pre_host") or "").strip()
+    _host_url = ""
+    for _p in _pages0:
+        if str((_p or {}).get("name") or "").strip() == _host_name:
+            _host_url = str((_p or {}).get("url") or "")
+            break
+    _sb = apply_scene_start_fallback(
+        steps, str((_pg0[0] or {}).get("url") or ""), bool(case.get("probe_pre")),
+        host_page_url=_host_url)
+    if _sb:
+        print(f"[generate] [key] 框架兜底修正「起手页导航」{len(_sb)} 处（规则 C1C2C3）"
+              f"· 用例 {cid}: "
+              + "; ".join(f"{x.get('url')} -> {x.get('retarget_to') or '已删除'}" for x in _sb[:3]))
     if _fb:
         print(f"[generate] [key] 框架兜底补行定位 {len(_fb)} 处"
               f"（规则 R1：刚新增行 -> row_index=-1）· 用例 {cid}: "
@@ -970,9 +1027,20 @@ def _multi_match_from_source(path: Path, kind: str) -> dict[str, int]:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
     except Exception:
         return {}
-    entries = (list((data.get("items") if isinstance(data, dict) else data) or [])
-               if kind == "probe"
-               else list((data or {}).get("probe_items") or []))
+    # [!] P25 片 3：elementMap 形态已统一成 **list（一页一个对象）** —— 这里原来直接
+    #   `data.get("probe_items")`，在 list 形态上会抛（`'list' object has no attribute 'get'`），
+    #   后果是**闸门整体失效**（多匹配信号取不到 = 该拦的不拦，静默放行）。
+    #   走 `load_pages` 归一化入口：形态再变也不用改这里。
+    if kind == "probe":
+        # [!] P25 片 4b：probe 产物已统一成 **elementMap 形态**（list of page 对象），不再是
+        #   裸条目列表 -> 必须走 `load_pages()` 归一化（新形态/老裸列表/运行时快照三种都认）。
+        #   原写法 `data.get("items")` 在 list 形态上取不到 -> **静默得空**，
+        #   闸门信号 / 锚优化来源会整体消失，且**零报错**（这类哑火查起来最费时）。
+        from framework.tools.probe.element_map import load_pages as _lpg
+        entries = [it for pg_ in _lpg(data) for it in (pg_.probe_items or [])]
+    else:
+        from framework.tools.probe.element_map import load_pages
+        entries = [it for pg in load_pages(data) for it in (pg.probe_items or [])]
     out: dict[str, int] = {}
     # 名字同时认 `semantic_name` 与 `base_name`（唯一化前的基础名）—— 与 explore 侧共用
     # `item_multi_match_map()`（2026-10-10：两处各写一份键名口径 -> 一边静默失效）。
@@ -995,14 +1063,34 @@ def _items_from_source(path: Path, kind: str) -> dict[str, dict]:
     except Exception:
         return {}
     if kind == "probe":
-        entries = list((data.get("items") if isinstance(data, dict) else data) or [])
+        # [!] P25 片 4b：probe 产物已统一成 **elementMap 形态**（list of page 对象），不再是
+        #   裸条目列表 -> 必须走 `load_pages()` 归一化（新形态/老裸列表/运行时快照三种都认）。
+        #   原写法 `data.get("items")` 在 list 形态上取不到 -> **静默得空**，
+        #   闸门信号 / 锚优化来源会整体消失，且**零报错**（这类哑火查起来最费时）。
+        from framework.tools.probe.element_map import load_pages as _lpg
+        entries = [it for pg_ in _lpg(data) for it in (pg_.probe_items or [])]
     else:
-        entries = list((data or {}).get("steps") or []) + list((data or {}).get("probe_items") or [])
+        # [!] P25 片 3：形态统一成 list（一页一对象）后**必须走归一化入口** ——
+        #   原写法 `data.get("steps") + data.get("probe_items")` 在 list 上直接抛
+        #   （实测：`cli all --ai` 走到 generate 就崩在这一行 ->
+        #    `AttributeError: 'list' object has no attribute 'get'`，整条真 AI 链路中断）。
+        #   顺序保持「steps 优先于 probe_items」（同名先到先得），跨页也保持同一优先级：
+        #   先收全部页的 steps，再收全部页的 probe_items。
+        from framework.tools.probe.element_map import load_pages
+        _pages = load_pages(data)
+        entries = ([st for pg in _pages for st in (pg.steps or [])]
+                   + [it for pg in _pages for it in (pg.probe_items or [])])
     out: dict[str, dict] = {}
     for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        el = (entry.get("element") or {}) if "element" in entry else entry
+        # `load_pages` 会把 steps 解析成 **TestStep 对象**（不是 dict）—— 两种形状都要认
+        # （2026-10-10 曾因只认一种形态吃过 `AttributeError`：换条路径就崩）。
+        if hasattr(entry, "element"):
+            _el = getattr(entry, "element", None)
+            el = _el.to_dict() if hasattr(_el, "to_dict") else _el
+        elif isinstance(entry, dict) and "element" in entry:
+            el = entry.get("element")
+        else:
+            el = entry
         if not isinstance(el, dict):
             continue
         name = el.get("semantic_name")
@@ -1026,19 +1114,45 @@ def _load_loc_map_from_element_map(path: Path) -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return out
-    sources = (list(data.get("steps") or []), list(data.get("probe_items") or []))
-    for src in sources:
-        for entry in src:
-            el = (entry.get("element") or {}) if "element" in entry else entry
-            if not isinstance(el, dict):
-                continue
-            name = el.get("semantic_name")
-            if not name or name in out:
-                continue
-            try:
-                out[name] = _semantic_to_locator_expr(el)
-            except Exception:
-                continue
+    # [!] P25 片 3：产物形态统一成 list（一页一个对象）后，这里**必须走归一化入口**——
+    #   `data.get("steps")` 在 list 形态上直接抛（list 没有 .get）=> 定位来源整体失效，
+    #   而且抛在 try 里会被吞成空 map（静默退化成"现场重探"，最难查的那类）。
+    from framework.tools.probe.element_map import load_pages
+    # [!] `isValid=false` 的条目**排除在映射之外**（D3）—— 失效控件被点到时，
+    #   报出来的错会指向别处，比"找不到"更难诊断。
+    from framework.tools.probe.element_map import merge_entry_fields, load_pages as _lp
+    _pages = _lp(data)
+    # [!] 与快照侧同一口径：先收权威清单，同名时用它**补齐** AI 名字引用缺的定位字段，
+    #   否则这里会拿"没有 anchor/path 的那一份"去合成 locator（运行期必失败）。
+    _manifest: dict[str, dict] = {}
+    for _pg in _pages:
+        for _it in (_pg.probe_items or []):
+            if isinstance(_it, dict) and _it.get("semantic_name"):
+                _manifest.setdefault(str(_it["semantic_name"]), _it)
+    for pg in _pages:
+        for src in (pg.steps, pg.probe_items):
+            for entry in (src or []):
+                if hasattr(entry, "element"):      # TestStep（load_pages 已转成对象）
+                    _el = getattr(entry, "element", None)
+                    el = _el.to_dict() if hasattr(_el, "to_dict") else _el
+                elif isinstance(entry, dict) and "element" in entry:
+                    el = entry.get("element")
+                else:
+                    el = entry
+                if not isinstance(el, dict):
+                    continue
+                if el.get("isValid") is False:
+                    continue
+                name = el.get("semantic_name")
+                if not name or name in out:
+                    continue
+                _src_it = _manifest.get(str(name))
+                if _src_it is not None and _src_it is not el:
+                    el = merge_entry_fields(el, _src_it)
+                try:
+                    out[name] = _semantic_to_locator_expr(el)
+                except Exception:
+                    continue
     return out
 
 
@@ -1198,6 +1312,24 @@ def _scenario_auth_of(rel_path: str) -> dict:
         return {}
 
 
+def _scenario_obj_of(rel_path: str):
+    """按 `source_scenario` 回读**场景对象**（一致性判定要完整声明，不只是几个字段）。
+
+    与 `_scenario_auth_of` / `_scenario_probe_pre_of` 同一族：都是"按用例溯源字段回读场景"。
+    读不到返回 None（那不是错误：独立于场景的用例本来就没有 source_scenario）。
+    """
+    rel = (rel_path or "").strip()
+    if not rel:
+        return None
+    try:
+        from framework.tools.generate.scenario import load_scenario_file
+        from framework.tools.common.config import SCENARIOS_DIR
+        return load_scenario_file(SCENARIOS_DIR.resolve().parent / rel)
+    except Exception as e:                                          # noqa: BLE001
+        print(f"[generate] [!] 读场景 {rel} 失败（一致性判定跳过）：{type(e).__name__}: {e}")
+        return None
+
+
 def _scenario_pre_host_of(rel_path: str) -> str:
     """场景声明的**身份前置该在哪一页跑** = `pages` 里第一个**业务页**的 url。
 
@@ -1215,7 +1347,13 @@ def _scenario_pre_host_of(rel_path: str) -> str:
     try:
         from framework.tools.generate.scenario import load_scenario_file
         from framework.tools.common.config import SCENARIOS_DIR
-        _pages = list(getattr(load_scenario_file(SCENARIOS_DIR.resolve().parent / rel), "pages", None) or [])
+        _sc = load_scenario_file(SCENARIOS_DIR.resolve().parent / rel)
+        _pages = list(getattr(_sc, "pages", None) or [])
+        # P25 片 6（D10）：前置宿主页**只认场景声明**（`probe_pre_host`，引用 pages[].name）。
+        # [!] 这个赋值第一版**漏了** —— 被 `test_no_undefined_names` 当场抓住（`_host` 未绑定）。
+        #   危险点在于：这类错会被下面那个 `except Exception` 兜成「读场景失败 -> host 为空」的
+        #   **静默降级**（前置跑到错误的页上，日志看起来还像做了）。所以判据必须守着它。
+        _host = str(getattr(_sc, "probe_pre_host", "") or "").strip()
         _cand = ""
         for p in _pages:
             # [!] `pages` 是 **ScenarioPage dataclass**（不是 dict）—— 第一版按 dict 取 `p.get("url")`
@@ -1231,9 +1369,12 @@ def _scenario_pre_host_of(rel_path: str) -> str:
                 continue
             if not _cand:
                 _cand = _u
-            if "login" in _u.lower() or "登录" in _n:
-                continue                       # 登录页没有业务导航 -> 不是前置的 host
-            return _u
+            if _host and _n == _host:
+                return _u                     # 场景声明的宿主页
+        # [!] P25 片 6（D10）：这里原来靠 `"login" in url` / 页名含「登录」**猜**宿主页 ——
+        #   框架层不许出现业务词（口径：补能力与场景解耦、不写死、不拿观测值当地基）。
+        #   现在只认场景声明 `probe_pre_host`；没声明时加载期已硬红，走到这里说明是
+        #   兼容情形（老场景/单页），退回第一页并已在上面留痕。
         return _cand
     except Exception as e:                                          # noqa: BLE001
         print(f"[generate] [!] 读场景 {rel} 的 pages（定前置 host）失败：{type(e).__name__}: {e}")
@@ -1317,6 +1458,28 @@ def _pages_to_probe(gaps: set[str],
     return need_single, [p for p in declared_pages if p[0] in want]
 
 
+def _generate_on_page(page_name: str, pg, merged_one: list, clicked: list, seen: dict,
+                      row_fields: list) -> list:
+    """generate 侧**特有**的每页动作（`scan_pages` 的 `on_page` 回调）。
+
+    只有一件事：**行内列控件**（`_当前行`）也要在这里造 —— 与 explore 侧**同一个唯一入口**
+    （`probe.row_columns`）。不造的实测后果：全新环境下 AI 用例引用的 `选择订单_当前行`
+    映射不上 -> 映射质量闸拒绝产出（2026-10-11：7 个缺失修到剩它 1 个）。
+    """
+    try:
+        from framework.tools.probe.row_columns import row_columns_to_items
+        if row_fields:
+            _synth = row_columns_to_items(page_name or "", row_fields, list(merged_one))
+            if _synth:
+                print(f"[generate] 现场探测 [{page_name or '页面1'}] 追加行内列控件 "
+                      f"{len(_synth)} 个（无 data-field 的列 -> `_当前行` 形态）")
+                return list(_synth)
+    except Exception as _e:                                  # noqa: BLE001
+        print(f"[generate] [!] 构造行内列控件失败（不阻断，但该页 `_当前行` 控件会缺）："
+              f"{type(_e).__name__}: {_e}")
+    return []
+
+
 def _probe_declared_pages(pages: list[tuple[str, str]],
                           auth: dict | None = None,
                           pre: list | None = None) -> tuple[dict, set[str], dict[str, set[str]], dict]:
@@ -1339,78 +1502,26 @@ def _probe_declared_pages(pages: list[tuple[str, str]],
     if len(pages) > 3:
         print(f"[generate] [!] 现场探测 {len(pages)} 个页面（>3）——耗时与内存都会涨，"
               f"建议只为确实需要的页面写用例")
-    per_page: list[tuple[str, list[dict]]] = []
-    with sync_playwright() as p:
-        b = p.chromium.launch(**launch_opts(headless=True))
-        ctx = b.new_context()
-        # P22 批 5（方案 H）：**登录前置** —— 与 explore 侧同源（framework/tools/run/login.py）。
-        # 不做这一步，现场探测只会拿到登录页那 7 个控件 -> 手写用例集体报「元素未映射」。
-        _ensure_login_for(ctx, (pages or [("", "")])[0][1], auth)         # P22 批 5：统一入口
-        pg = ctx.new_page()
-        # 身份前置必须在**每个探测页自己的标签页**里跑一次。
-        # [!] 2026-10-11 纠错（我先改成"只跑一次"-> 直接复现了用户报的失败）：
-        #   这个 demo 的"当前角色"是**按标签页**生效的 —— 单页探测在它的标签页里切好了，
-        #   声明页探测**新开一个标签页**（`ctx.new_page()`）=> 新页又是超管 =>
-        #   详情页「编辑/新增行」置灰 => 编辑态控件探不到 => 6~7 个语义名缺失 => 质量闸拒产。
-        #   （当时我把"切换后再按旧名找「超」会失败"的重试噪声当成了危害 —— 那只是安静跳过，
-        #     `quiet_missing=True` 不阻断，代价可以接受；而"漏切身份"是致命错误。）
-        #   代价：每页多一次前置（几十毫秒）—— 换来的是一条真能兜住场景约定的路。
-        for pname, url in pages:
-            pg.goto(url, wait_until="domcontentloaded")
-            # P22 批 3：别用 networkidle（本 demo 页面里的 fetch 会挂着 -> 永不 idle -> 30s 超时）；
-            # 等页面自己的就绪契约，拿不到再给有界缓冲。
-            try:
-                pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
-            except Exception:                                      # noqa: BLE001
-                pg.wait_for_timeout(500)
-            # V8.4.6（真 bug 修复）：每页探测前**先应用场景声明的身份前置** `probe_pre`
-            #   —— 与单页路径、explore 侧**同一个引擎**（`run_pre_actions`）。
-            #   不做这一步的实测后果：超管身份下详情页「编辑/新增行」置灰 -> 编辑态控件探不到
-            #   -> 映射质量闸拒绝产出（2026-10-11 全新环境 `cli all` 实测复现）。
-            #   探测期用 quiet_missing：前置项探不到不阻断（可能是页面差异），但会留痕。
-            if pre:
-                from framework.tools.run.pre_actions import run_pre_actions
-                run_pre_actions(pg, pre, "场景探测前置", quiet_missing=True)
-            # V8.3.7（2026-10-08 事故修复）：**改走唯一入口** scan_page()。
-            # 原来这里手写「基础探测 + 弹窗/弹层」两步，**漏了「可展开容器」那一步**
-            # （而 explore 侧两条路径都有）—— 后果：干净环境下拿不到右上角角色菜单里的控件
-            # （如「切换为订单管理员@合同列表页」）-> 映射质量闸拒绝产出任何产物。
-            # 收敛成单一入口后，三条路径共享同一份「探测包含哪些步骤」的知识。
-            #
-            # 历史沿革（保留原因，别再退回手写）：
-            #   2026-09-14 改用与 explore 同一套弹窗/弹层探测（含嵌套 picker 层，探完会关掉）——
-            #     此前这里自己点一遍「新建」按钮、只探一层、且**不关弹窗**：
-            #     (1)「客户弹层里选一行」这类控件永远看不到 -> 手写用例报「元素未映射」；
-            #     (2) 弹窗不关，下一页的探测是在"弹窗盖着"的状态下做的，结果不可信。
-            #   2026-09-18 批次 2（S1）：合并改走 `_merge_items`（合并后统一重命名），
-            #     与单页路径、explore 路径**同源** —— 否则同一页在两条路径上会产出两套名字。
-            from framework.tools.probe.page_scan import scan_page
-            _sc = scan_page(pg, page_name=pname or None, tag_page=True)   # 基础+可展开容器+弹窗/弹层+合并
-            layer = _sc.modal_items
-            merged_list = _sc.items
-            # V8.4.6：**行内列控件**（`_当前行`）也要在这里造 —— 与 explore 侧**同一个唯一入口**
-            #   （`probe.row_columns`）。不造的实测后果：全新环境下 AI 用例引用的
-            #   `选择订单_当前行` 映射不上 -> 映射质量闸拒绝产出（2026-10-11：7 个缺失修到剩它 1 个）。
-            try:
-                from framework.tools.probe.probe import probe_row_fields
-                from framework.tools.probe.row_columns import row_columns_to_items
-                _rfs = probe_row_fields(pg)
-                if _rfs:
-                    _synth = row_columns_to_items(pname or "", _rfs, list(merged_list))
-                    if _synth:
-                        print(f"[generate] 现场探测 [{pname or '页面1'}] 追加行内列控件 "
-                              f"{len(_synth)} 个（无 data-field 的列 -> `_当前行` 形态）")
-                        merged_list = list(merged_list) + list(_synth)
-            except Exception as _e:                                  # noqa: BLE001
-                print(f"[generate] [!] 构造行内列控件失败（不阻断，但该页 `_当前行` 控件会缺）："
-                      f"{type(_e).__name__}: {_e}")
-            merged = {i["semantic_name"]: i for i in merged_list}
-            print(f"[generate] 现场探测 [{pname or '页面1'}] {url} → {len(merged)} 个控件"
-                  f"（含弹窗/弹层 {len(layer)} 个）")
-            per_page.append((pname or "页面1", list(merged.values())))
-        b.close()
+    # [!] P25 片 3c（2026-10-12）：跨页探测骨架**已收敛到唯一入口** `probe.scan_pages`
+    #   —— 原来这里与 `explorer._collect_pages_context` 各写了一遍同样的骨架
+    #   （一个浏览器 + 顺序 goto + 登录前置 + 逐页前置 + scan_page + 跨页唯一化），
+    #   两处必漏一处：2026-10-08 V8.3.7 事故就是**这一处**漏了「可展开容器」那一步，
+    #   干净环境下拿不到角色菜单里的控件 -> 映射质量闸拒绝产出任何产物。
+    from framework.tools.probe.scan_pages import scan_pages
+    # pages 在这里是 [(页名, url)] 元组 -> 归一成 scan_pages 认的 dict 形状
+    #   （探测地址若有声明优先用它：`probe_url` 是运行期才有值的页面在探测期的替身）
+    _specs = [{"name": (n or ""), "url": u} for (n, u) in (pages or [])]
+    res = scan_pages(_specs, auth=auth, probe_pre=pre, login=True, label="generate",
+                     with_dom_ctx=False, with_row_fields=True, collapse=False,
+                     on_page=_generate_on_page)
+    if res.pre_pending:
+        print("[generate] [!] 场景探测前置没跑到的步骤：" + "、".join(str(x) for x in res.pre_pending)
+              + "（找到过但没点成功 / 或任何一页都没匹配到 -> 该前置等于没做）")
+    if res.error:
+        print(f"[generate] [!] 现场探测失败（{res.error}）"
+              f" -> 后面按已探到的部分继续（缺的会由映射质量闸拦下）")
 
-    merged_items, collisions = uniquify_across_pages(per_page)
+    merged_items, collisions = uniquify_across_pages(res.per_page)
     _record_conflict_bases(merged_items)
     # 原始名 → 出现过的页名集合（跨页用例必须用 @页名 形式；按用例过滤见 _dup_raw_names_for_case）
     dup_pages: dict[str, set[str]] = {c["semantic_name"]: set(c["pages"]) for c in collisions}
@@ -1566,7 +1677,7 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     """
     from playwright.sync_api import sync_playwright
     from framework.tools.probe.probe import probe_page
-    from framework.tools.common.config import TARGET_URL, ELEMENT_MAP_DIR
+    from framework.tools.common.config import target_url, ELEMENT_MAP_DIR
     from framework.tools.common.browser import launch_opts
 
     cases_dir = cases_dir or CASES_DIR
@@ -1655,6 +1766,33 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     #   [!] 场景里**已经写了** `probe_pre`（约定了），是**框架没用**（explore 路径用了、generate 的
     #   现场探测没用）—— 属于铁律 13「一个能力多条实现路径要逐条对齐」的漏网。
     #   口径：用例自带 `probe_pre` 优先，其次按 `source_scenario` 回读场景 yml（与 auth 同一优先级口径）。
+    # [!] P25 片 6（D9 · AprilPark1012 2026-10-11 拍定）：**用例级 probe_pre 与场景声明必须逐字一致**
+    #   （有序）—— 场景声明是唯一权威，不一致一律**硬红 exit 2**，不给任何"忽略/放行"开关。
+    #   为什么收紧到硬红而不是警告：前置是**有顺序的状态迁移**，少一步/多一步/换顺序都会让
+    #   后续步骤在错误状态下执行 —— 那种用例"跑过了"也不能信（比红更危险）。
+    #   两类用例（D11）：绑定场景的按"逐字一致"判；独立用例可自带前置，但必须带指纹自证。
+    from framework.tools.generate import scenario as _scmod
+    _pre_errors: list[str] = []
+    for _c0 in cases:
+        _cid0 = str(_c0.get("case_id") or "(无名)")
+        _sc0 = _scenario_obj_of(str(_c0.get("source_scenario") or ""))
+        if _sc0 is None:
+            if _c0.get("probe_pre") and not _c0.get("probe_pre_fingerprint"):
+                _pre_errors.append(
+                    f"{_cid0}: 独立用例自带 probe_pre 却没有 probe_pre_fingerprint"
+                    f"（无法自证没有漂移；用 scenario.probe_pre_fingerprint() 生成）")
+            continue
+        _pre_errors += [f"{_cid0}: {d}" for d in _scmod.probe_pre_conflicts(_c0, _sc0)]
+    if _pre_errors:
+        print("[generate] [NG] probe_pre 与场景声明不一致 -> **硬红**"
+              "（场景声明是唯一权威，没有放行开关）：")
+        for _e in _pre_errors[:8]:
+            print(f"    {_e}")
+        print("[generate]    怎么修：① 绑定场景的用例把 probe_pre 改成场景声明的**逐字副本**（顺序也要一致）；"
+              "② 确实需要不同前置 -> 改场景 yml 的 probe_pre；"
+              "③ 独立用例（不带 scenario_id）自带 probe_pre 时必须带 probe_pre_fingerprint 自证。")
+        raise SystemExit(2)
+
     _decl_pre: list = []
     for _c0 in cases:
         _decl_pre = (list(_c0.get("probe_pre") or [])
@@ -1690,9 +1828,9 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
                     # 为什么必须：`TARGET_URL` 是根路径，demo 加了登录后它就是**登录页** ——
                     # 不登录 -> 这段"补缺口"探测只探到登录页的 7 个控件 -> 缺口照样映射不上
                     #（原先连 context 都没有，`b.new_page()` 根本无从注入 localStorage）。
-                    _ensure_login_for(ctx, TARGET_URL, _decl_auth)   # P22 批 5：统一入口
+                    _ensure_login_for(ctx, target_url(), _decl_auth)   # P22 批 5：统一入口
                     pg = ctx.new_page()
-                    pg.goto(TARGET_URL, wait_until="domcontentloaded")
+                    pg.goto(target_url(), wait_until="domcontentloaded")
                     # P22 批 3：**不用 networkidle** —— login.html 上它必超时 30s
                     #（页面 fetch 挂着永不 idle，实测），改用页面自己的就绪契约 + 有界缓冲。
                     try:
@@ -1853,8 +1991,9 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
         _snap_items: list[dict] = []
         if _src_file is not None and _src_file.exists():
             _raw = json.loads(_src_file.read_text(encoding="utf-8"))
-            _snap_items = (probe_snapshot.items_from_element_map(_raw) if _src_kind == "element"
-                           else probe_snapshot.items_from_probe_snapshot(_raw))
+            # P25 片 3：不再按 `_src_kind` 走两套读法 —— `load_pages` 认所有形态
+            #   （list 一页一对象 / 老 dict / 裸条目列表），这里只留一条路。
+            _snap_items = probe_snapshot.items_from_element_map(_raw)
         _snap_items += [v for v in _LIVE_IT.values() if isinstance(v, dict)]   # 现场补探的也进快照
         _snap_path = probe_snapshot.write_snapshot(gen_dir, _snap_items)
         _n_names = len(probe_snapshot.index_from_items(_snap_items))

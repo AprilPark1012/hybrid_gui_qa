@@ -488,6 +488,15 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None,
         label = _label_text(page, loc)
         text = (name or placeholder or label)[:60]
         test_id = (loc.get_attribute("data-testid") or "").strip()
+        # P25 第 4 个真缺陷修复（2026-10-11，AprilPark1012拍定）：**采集元素自身的 `id`**。
+        # 为什么必要（实测证据）：订单详情页底部那两个「保存」里，行保存住在
+        #   <section aria-label="详细信息"> -> 有锚点；而「右下角保存」（编辑态下「编辑」按钮
+        #   文案变「保存」，id 恒为 #btn-detail-edit）住在 <div class="block"> —— 祖先链里
+        #   **没有任何** anchor.py 认得的容器 -> anchor=None -> 只剩 role+name
+        #   -> 与另一个"保存"**必然歧义**（实测 base_conflict=2，运行期定不住）。
+        # 而 `id` 是元素**自身**的稳定契约、生产系统里最常见的选择器 —— 框架此前完全没采集它。
+        # 口径：与 test_id 同级（都在元素自己身上）；优先级 test_id > element_id > 结构推导 > 裸语义。
+        element_id = (loc.get_attribute("id") or "").strip()
 
         # --- 跨 tab 流程（2026-09-17）：这个控件点了会不会**新开 tab**？ ---
         # 判据：<a target="_blank">（含 formtarget）或 onclick 里出现 window.open。
@@ -556,6 +565,8 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None,
             "placeholder": placeholder,
             "label": label,
             "test_id": test_id,
+            # P25：元素自身 id（同上；容器无语义时它是唯一可用的稳定身份）
+            "element_id": element_id,
             "text": text,
             # P4 语义上下文（AI 挑元素 + Tier2 消歧用）
             "nearby_text": nearby_text,
@@ -568,6 +579,10 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None,
             # P16：顶层锚点 + 容器内相对路径（无锚点/不在行内 -> None，绝不编造）
             "anchor": anchor,
             "path": path,
+            # P25 片 3（要求6）：**探测当场**认为它有效 => true。
+            #   这个字段是「例外标记」：generate 补探/复核发现页面改版、容器收起、行数变少
+            #   导致该控件已经找不到时才置 false（置 false 的条目保留留痕、但不进映射、不进提示词）。
+            "isValid": True,
         })
     assign_semantic_names(items)                 # 第二遍：统一命名（同名 → 全部带上下文）
     return items

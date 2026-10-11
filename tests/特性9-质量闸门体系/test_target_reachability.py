@@ -138,7 +138,10 @@ def playwright_trap(monkeypatch):
 
 def test_cli_probe_exits_2_with_human_message_when_target_down(playwright_trap, monkeypatch, capsys):
     import framework.cli as cli_mod
-    monkeypatch.setattr(cli_mod, "TARGET_URL", f"http://127.0.0.1:{_free_port()}")
+    # P25 片 4：目标地址改成**运行期**读取 => 判据改为设置它真正读的那个来源
+    # （原来 patch 的是模块常量，改完后那个名字不存在了；口径：patch 生产代码真正读的入口）
+    monkeypatch.setenv("HYBRID_BASE_URL", f"http://127.0.0.1:{_free_port()}")
+    monkeypatch.delenv("TARGET_URL", raising=False)
 
     with pytest.raises(SystemExit) as si:
         cli_mod.cmd_probe()
@@ -157,7 +160,7 @@ def test_cmd_all_forwards_allow_unmapped(monkeypatch):
     def _fake_generate(rest=None, allow_unmapped=False):
         seen["allow_unmapped"] = allow_unmapped
 
-    monkeypatch.setattr(cli, "cmd_probe", lambda: None)
+    monkeypatch.setattr(cli, "cmd_probe", lambda *a, **k: None)   # P25 片 4b：cmd_probe 现在收 rest（--scenario-file）
     monkeypatch.setattr(cli, "cmd_generate", _fake_generate)
     monkeypatch.setattr(cli, "cmd_run", lambda *a, **k: None)
 

@@ -107,5 +107,6 @@
   "probe_pre": [
     "超",
     "切换为订单管理员"
-  ]
+  ],
+  "probe_pre_fingerprint": "7c8a0cab4db8e144"
 }

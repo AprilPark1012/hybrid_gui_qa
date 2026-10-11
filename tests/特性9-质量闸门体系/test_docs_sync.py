@@ -36,7 +36,9 @@ MUST_BE_DOCUMENTED = (
     # 运行期（framework/）
     "cli.py", "config.py", "text_io.py", "browser.py", "limits.py", "retention.py", "target_probe.py",
     "probe.py", "element_map.py", "locator_bridge.py",
-    "anchor.py", "scope_locate.py", "semantic_locate.py",
+    # P25 片 9：semantic_locate.py 已删除（零代码引用、且"人写脚本"路径已由
+    # cases/*.json -> generate 取代）—— 文档清单同步移除，否则必红。
+    "anchor.py", "scope_locate.py",
     "explorer.py", "llm_cassette.py",
     "generator.py", "case_builder.py", "scenario.py", "data_driven.py",
     "runner.py", "healer.py",

@@ -179,8 +179,13 @@ def test_both_manifest_exits_enforce_collapse():
     AI 可能引用到没标的那条）。
     """
     src = (ROOT / "framework" / "tools" / "explore" / "explorer.py").read_text(encoding="utf-8")
-    assert "_collapse_row_repeats(merged)" in src, "跨页聚合口没收敛（给 AI 的清单会有残渣）"
     assert "_collapse_row_repeats(manifest)" in src, "清单成型口没收敛（落盘的清单会有残渣）"
+    # [!] 片 3c（2026-10-12，B1 三合一）：**跨页聚合口的收敛跟着骨架搬到了 `probe/scan_pages.py`**
+    #   （原在 explorer 的 `_collect_pages_context` 里）。判据跟着搬 —— **不是放宽**：
+    #   两个出口仍然各要一处收敛，只是位置变了。
+    sp = (ROOT / "framework" / "tools" / "probe" / "scan_pages.py").read_text(encoding="utf-8")
+    assert "_collapse(merged)" in sp, "跨页聚合口没收敛（给 AI 的清单会有残渣）"
+    assert "collapse" in sp, "scan_pages 没有 collapse 开关（调用方无法表达该出口要不要收敛）"
 
 
 def test_collapse_is_actually_wired_into_merge():

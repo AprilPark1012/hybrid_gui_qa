@@ -28,7 +28,7 @@ import sys
 from typing import NoReturn
 
 from framework.tools.common import config
-from framework.tools.common.config import ensure_dirs, TARGET_URL, LOG_DIR
+from framework.tools.common.config import ensure_dirs, target_url, LOG_DIR
 from framework.tools.probe.probe import probe_page
 from framework.tools.common.browser import launch_opts
 from framework.tools.common.limits import safe_workers
@@ -157,57 +157,97 @@ def _slowmo_from(rest: list[str]) -> int | None:
     return None
 
 
-def cmd_probe():
-    """探测页面交互元素 → output/element_maps/probe_*.json。
+def cmd_probe(rest: list[str] | None = None):
+    """探测页面交互元素 → output/element_maps/probe_*.json（**elementMap 形态**，一页一个对象）。
+
+    页来源（P25 片 4b：探针也支持**多页**，与 explore 同源）：
+      · 单页（默认）：`--base-url` / `TARGET_URL` / `HYBRID_BASE_URL` 那一页（页名 `probe`）；
+      · 多页：`--scenario-file <yml>` -> 按场景 `pages` 的**声明顺序**逐页探测（页名用声明名）。
+    逐页骨架走唯一入口 `probe.scan_pages()` —— 与 explore / generate 的现场探测**同一条链路**
+    （"同一能力收敛成唯一入口"；此处以前是第三份自己写的探测循环）。
 
     除了基础页面，还会点开「新建类」弹窗、**并钻进弹窗里嵌的 picker 层**（如客户列表），
     把层内控件一并探测出来（2026-09-14）—— 否则「从列表里选一行」这类 UI 对 AI/人都是盲区。
     层内元素在输出里带 - 标记，JSON 里带 `"source": "layer"`。
     """
+    rest = list(rest or [])
     ensure_dirs()
     # ---- 目标可达性预检（V7.5.1）：先回答「活没活」，别让 Playwright 甩一屏 traceback ----
     # 2026-09-15 实测：demo 没起时 `pg.goto()` 抛 `net::ERR_CONNECTION_REFUSED` + exit 1，
     # 现象像「框架坏了」，其实是一句「demo 没启动」。环境问题要给动作，不是给栈。
     from framework.tools.common.target_probe import reachability
-    ok, why = reachability(TARGET_URL)
+    _tgt = target_url()                                  # P25 片 4：**运行期**取，--base-url 才生效
+    ok, why = reachability(_tgt)
     if not ok:
         print(f"\n[probe] [NG] 探测没跑：{why}")
-        print("[probe]    目标地址可用 TARGET_URL / HYBRID_BASE_URL 覆盖（两者等效）；"
+        print("[probe]    目标地址可用 `--base-url <url>`（或 TARGET_URL / HYBRID_BASE_URL 环境变量，三者等效）；"
               "demo 起好后重跑 `python -m framework.cli probe`（或 all）")
         raise SystemExit(2)
-    from playwright.sync_api import sync_playwright
+
+    # ---- 页来源：场景声明的多页 / 单页 ----
+    sfile = _arg_value(rest, "--scenario-file")
+    specs: list[dict] = []
+    scenario_desc = ""
+    if sfile:
+        from pathlib import Path as _P
+        from framework.tools.generate.scenario import ScenarioError, load_scenario_file
+        try:
+            sc = load_scenario_file(_P(sfile))
+        except ScenarioError as e:
+            print(f"[probe] [NG] {e}")
+            raise SystemExit(2) from None
+        scenario_desc = sc.id
+        for _pg in (getattr(sc, "pages", None) or []):
+            specs.append({"name": _pg.name, "url": _pg.url,
+                          "pre": list(getattr(_pg, "pre", None) or []),
+                          "probe_url": _pg.probe_url() if callable(getattr(_pg, "probe_url", None)) else ""})
+        print(f"[probe] 多页模式：{sfile}（id={sc.id}）→ 按声明顺序探测 {len(specs)} 页")
+        for _s in specs:
+            print(f"      - {_s['name']}  {_s['url']}")
+        auth = sc.auth_spec()
+        probe_pre = list(getattr(sc, "probe_pre", None) or [])
+    else:
+        specs.append({"name": "probe", "url": _tgt})
+        auth, probe_pre = None, None
+
+    from framework.tools.probe.element_map import ElementMap, ElementMapPage
+    from framework.tools.probe.scan_pages import scan_pages
     import json
-    from framework.tools.explore.explorer import _try_collect_modal_items, _merge_items
-    from framework.tools.probe.expandable import expand_and_collect
-    with sync_playwright() as p:
-        b = p.chromium.launch(**launch_opts(headless=True))
-        pg = b.new_page()
-        pg.goto(TARGET_URL)
-        from framework.tools.probe.page_scan import scan_page   # V8.3.7：探测步骤唯一入口
-        _sc = scan_page(pg)          # 基础 + 可展开容器（隐藏菜单/下拉）+ 弹窗/弹层 + 合并
-        # 标记来源（产物里保留这个字段，供人工核对哪些项来自展开/弹层）：
-        #   menu_items / modal_items 与 items 里的项是同一批 dict（_merge_items 只做浅拷贝 + 统一重命名），
-        #   所以这里原地打标记，最终落到 output/element_maps/probe_*.json 里。
-        for it in _sc.menu_items:
-            it["source"] = "menu"
-        for it in _sc.modal_items:
-            it["source"] = "layer"
-        items = _sc.items
-        b.close()
+
+    res = scan_pages(specs, auth=auth, probe_pre=probe_pre, login=True, label="probe",
+                     with_dom_ctx=False, with_row_fields=False, collapse=True)
+    if res.error:
+        print(f"[probe] [NG] {res.error}")
+        raise SystemExit(2)
+
+    _url_by_name = {n: u for n, u in (res.labels or [])}
+    pages = [ElementMapPage(page=name, url=_url_by_name.get(name, ""),
+                            scenario=scenario_desc, steps=[], probe_items=list(items or []))
+             for name, items in (res.per_page or [])]
+    emap = ElementMap(url=_tgt, scenario=scenario_desc, steps=[], probe_items=[], pages=pages)
     out = config.ELEMENT_MAP_DIR / f"probe_{_now()}.json"
-    out.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    out.write_text(json.dumps(emap.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
     prune_snapshots(quiet_if_none=True)          # 归档保留策略（静默：无可清理就不打印）
+
+    # 标记来源（产物里保留这个字段，供人工核对哪些项来自展开/弹层）。
+    # scan_pages 里已经打过 `source`（menu/layer），这里只为打印统计。
+    items = [it for _pg in pages for it in (_pg.probe_items or [])]
     n_layer = sum(1 for it in items if it.get("source") == "layer")
     n_menu = sum(1 for it in items if it.get("source") == "menu")
-    print(f"[probe] 探测到 {len(items)} 个交互元素"
-          f"（其中可展开菜单内 {n_menu} 个 · 弹窗/弹层内 {n_layer} 个）→ {out}")
-    for it in items:
-        mark = ("-" if it.get("source") == "menu"
-                else ("-" if it.get("source") == "layer" else "  "))
-        print(f"      {mark} - {it['semantic_name']:<20} [{it['role']:<8}] "
-              f"name={it['name']!r} ph={it['placeholder']!r} test_id={it['test_id']!r}")
-
-
+    if len(pages) == 1:
+        print(f"[probe] 探测到 {len(items)} 个交互元素"
+              f"（其中可展开菜单内 {n_menu} 个 · 弹窗/弹层内 {n_layer} 个）→ {out}")
+    else:
+        print(f"[probe] 探测到 {len(items)} 个交互元素（{len(pages)} 页"
+              f"，其中可展开菜单内 {n_menu} 个 · 弹窗/弹层内 {n_layer} 个）→ {out}")
+    for _pg in pages:
+        _head = f"      [{_pg.page}]" if len(pages) > 1 else "     "
+        print(f"{_head} {len(_pg.probe_items or [])} 个控件")
+        for it in (_pg.probe_items or []):
+            mark = ("-" if it.get("source") == "menu"
+                    else ("-" if it.get("source") == "layer" else "  "))
+            print(f"      {mark} - {it['semantic_name']:<20} [{it['role']:<8}] "
+                  f"name={it['name']!r} ph={it['placeholder']!r} test_id={it['test_id']!r}")
 def _report_unmapped(e) -> NoReturn:
     """映射质量闸触发时的交代：缺什么 / 为什么 / 下一步 —— **绝不落产物**，exit 2。"""
     print(f"\n[generate] [NG] 映射质量闸拦下：{len(e.missing)} 个语义名映射不上 → 拒绝产出任何产物")
@@ -217,7 +257,7 @@ def _report_unmapped(e) -> NoReturn:
         # 先把「活没活」查清楚再给结论（旧版本这里只会猜「多半是目标没起」）
         try:
             from framework.tools.common.target_probe import reachability
-            ok, why = reachability(TARGET_URL)
+            ok, why = reachability(target_url())
         except Exception as _e:                       # 预检本身失败不该盖住原始错误
             ok, why = True, f"(可达性预检失败: {_e})"
         if not ok:
@@ -451,7 +491,7 @@ def _rel(p) -> str:
 def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str = "",
                  guard_text: str = "", guard_spec: dict | None = None,
                  case_id: str | None = None, extra: dict | None = None,
-                 to_cases: bool = True, mock_fallback: bool = False,
+                 to_cases: bool = True,
                  pages: list[dict] | None = None, cassette=None, cassette_strict: bool = False,
                  auth: dict | None = None, retry_feedback: str = "",
                  probe_pre: list | None = None):
@@ -468,7 +508,7 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
     # 刻意不在外面探测：ai_explore 内部会探测（且会打开弹窗补表单控件）。
     # 2026-09-11 修复：旧写法先探一次再交给 ai_explore -> 连开两个 Chromium，内存吃紧时
     # 第二次探测失败，叠加 ai_explore 里的静默兜底 -> AI 只能看到基础控件（弹窗字段全丢）。
-    emap = ai_explore(scenario_text, [], url, allow_mock_fallback=mock_fallback,
+    emap = ai_explore(scenario_text, [], url,
                       page_bg=page_bg, guard=guard_text, pages=pages, llm_cassette=cassette,
                       cassette_strict=cassette_strict, auth=auth, retry_feedback=retry_feedback,
                       probe_pre=probe_pre)
@@ -493,7 +533,7 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
         # 溯源：把「这条用例是录像回放出来的、还是当场问的 AI」写进用例文件 ——
         # 复核的人不用回忆当时敲了什么命令（回放 ≠ 实时 AI，必须看得见）。
         extra = {**(extra or {}), "llm_source": cassette.source_tag()}
-    if to_cases and not mock_fallback:
+    if to_cases:
         from framework.tools.generate.case_builder import CaseQualityError as _CaseQE
         from framework.tools.generate.case_builder import elementmap_to_cases_file
         try:
@@ -522,7 +562,6 @@ def cmd_explore(rest: list[str] = None):
     开关：
       --no-cases                是否落 cases/ai_*.json（**默认落**；没有 --to-cases 这个开关）
       --verify / --no-verify    落盘后是否试跑校验（**默认试跑**；实测失败 → exit 3）
-      --mock-fallback           LLM 不可用时显式降级为确定性 mock（默认【拒绝】，且不写 cases/）
       --tag <t>（可重复）        目录批量时按 tag 过滤（OR 语义）
       --limit N                 目录批量时最多跑 N 条
       --llm-record [DIR]        【录制】真调 LLM，成功后把「prompt → 回答」落盘
@@ -543,22 +582,27 @@ def cmd_explore(rest: list[str] = None):
         print("          要跑确定性链路请用： python -m framework.cli probe → generate → run")
         raise SystemExit(2)
 
-    mock_fallback = "--mock-fallback" in rest
     to_cases = "--no-cases" not in rest
     do_verify = "--no-verify" not in rest
 
-    # ---------- LLM 录像：录制 / 回放（2026-09-18）----------
-    # **只在显式给参数时启用** —— 默认一个字节都不变（实时调用），绝不自动切换模式。
-    from framework.tools.explore.llm_cassette import MODE_RECORD, MODE_REPLAY, Cassette, CassetteError
+    # ---------- LLM 录像：录制 / 回放（2026-09-18；P25 片 7 改默认口径）----------
+    # [!] P25 片 7（AprilPark1012 2026-10-11 要求7）：**默认优先回放**。
+    #   原话：「基于 token 成本考虑，后续除非涉及 scenario 变化，才需要重新生成 elementMap、
+    #   LLM_cassettes，否则 LLM 调用使用的默认还是 LLM_cassettes」。
+    #   所以口径改成：
+    #     · 录像目录里**有录像** -> 默认走回放（命中即用、不联网、不需要 key）；
+    #       未命中 -> 按既有口径**明确报错**并给出「怎么录」的指引（**绝不静默改走实时调用** ——
+    #       那会让人以为"默认省钱"，实际每次都在烧 token，而且产出还不可复现）；
+    #     · 录像目录**空/不存在**（新机器、新场景）-> 走**实时调用并自动录制**，
+    #       这次回答落盘，之后默认就能命中回放（这条也大声说明，不静默）。
+    #     · 要强制实时调用/重录：显式 `--llm-record`；要看"就是现在这份录像"：`--llm-cassette`。
+    from framework.tools.explore.llm_cassette import (MODE_RECORD, MODE_REPLAY, Cassette,
+                                                      CassetteError, default_dir)
     has_rec = "--llm-record" in rest or any(a.startswith("--llm-record=") for a in rest)
     has_rep = "--llm-cassette" in rest or any(a.startswith("--llm-cassette=") for a in rest)
     if has_rec and has_rep:
         print("[explore] [NG] --llm-record 与 --llm-cassette 互斥：一次只能「录」或「放」"
               "（要边录边放请分两次跑）")
-        raise SystemExit(2)
-    if (has_rec or has_rep) and mock_fallback:
-        print("[explore] [NG] --mock-fallback 与录像模式互斥：mock 是确定性假产物、录像里存的是"
-              "真 AI 回答 —— 混用没有意义")
         raise SystemExit(2)
     cassette = None
     try:
@@ -566,6 +610,17 @@ def cmd_explore(rest: list[str] = None):
             cassette = Cassette(MODE_RECORD, _arg_value(rest, "--llm-record"))
         elif has_rep:
             cassette = Cassette(MODE_REPLAY, _arg_value(rest, "--llm-cassette"))
+        else:
+            _cdir = default_dir()
+            if _cdir.is_dir() and any(_cdir.glob("*.json")):
+                cassette = Cassette(MODE_REPLAY, _cdir)
+                print("[explore] [key] 未指定录像参数 -> **默认优先回放**"
+                      f"（{_cdir}：命中即用、不联网、不需要 key）"
+                      "；要实时调用/重新录制请加 --llm-record")
+            else:
+                cassette = Cassette(MODE_RECORD, _cdir)
+                print(f"[explore] [key] 录像目录为空/不存在（{_cdir}）-> 本次**实时调用并录制**"
+                      "（这次回答会落盘，之后默认优先回放，省 token）")
     except CassetteError as e:
         print(f"[explore] [NG] {e}")
         raise SystemExit(2) from None
@@ -593,7 +648,7 @@ def cmd_explore(rest: list[str] = None):
         pgs = [p.to_dict() for p in sc.all_pages()]
         return dict(
             label=sc.id, text=scenario_text,
-            url=(pgs[0]["url"] if pgs else (sc.url or TARGET_URL)),
+            url=(pgs[0]["url"] if pgs else (sc.url or target_url())),
             pages=(pgs if len(pgs) > 1 else None),
             page_bg=sc.page_bg(), guard_text=sc.guard_text(), guard_spec=sc.guard_spec(),
             case_id=make_case_id_from_scenario_id(sc.id), extra=sc.case_extra(),
@@ -640,7 +695,7 @@ def cmd_explore(rest: list[str] = None):
     else:
         jobs.append(dict(
             label="", text=inline or "在合同列表页面的搜索框输入'合同1'，然后点击搜索按钮查看结果。",
-            url=TARGET_URL, page_bg="", guard_text="", guard_spec=None, case_id=None, extra=None,
+            url=target_url(), page_bg="", guard_text="", guard_spec=None, case_id=None, extra=None,
         ))
 
     # ---------- 逐条跑 ----------
@@ -674,7 +729,7 @@ def cmd_explore(rest: list[str] = None):
                         job["text"], job["url"], label=job["label"], page_bg=job["page_bg"],
                         guard_text=job["guard_text"], guard_spec=job["guard_spec"],
                         case_id=job["case_id"], extra=job["extra"],
-                        to_cases=to_cases, mock_fallback=mock_fallback, pages=job.get("pages"),
+                        to_cases=to_cases, pages=job.get("pages"),
                         cassette=cassette, cassette_strict=cassette_strict, auth=job.get("auth"),
                         retry_feedback=feedback, probe_pre=job.get("probe_pre"))
                 except AiExploreError as e:
@@ -707,8 +762,6 @@ def cmd_explore(rest: list[str] = None):
             last_emap = emap
             if cpath:
                 done.append((job["label"], cpath.stem))
-            if mock_fallback:
-                print("          [!] mock 兜底产物 → 按约定【不落 cases/】（避免假 AI 用例污染用例库）")
 
         # ---- L1：实跑校验（便宜的先跑已在 _explore_one 内做完 L0）----
         if not (done and do_verify):
@@ -735,6 +788,74 @@ def cmd_explore(rest: list[str] = None):
     if done and not do_verify:
         print("          [info] 按 --no-verify 跳过试跑校验（这些用例未经实测验证）")
     return last_emap
+
+
+def cmd_verify(rest: list[str] | None = None):
+    """「交付即验证」独立入口（特性11）：对已产出的 AI 用例做两档校验（产出物 + 实跑）。
+
+    参数：
+        --case <case_id>   只校验指定用例（可给多次）
+
+    为什么独立成一条命令（AprilPark1012 2026-10-11 要求5）：验证是**交付的前提**，不是 explore 的附属 ——
+    它必须能单独重跑（换了环境、改了断言之后复查一次），而 explore 里那一份只是"顺手调用它"。
+    两档口径与 `explore --verify` **同一个实现**（同一入口，绝不两份）：
+      · L0 产出物档：结构性缺陷（写死行数据 / 语义严重误选 / 漏必填项 / 重复控件没给行定位）
+                     -> 不试跑，直接带原因让 AI 重生成（省下注定失败的实跑）；
+      · L1 实跑档：generate 一次 + 逐条 pytest 单跑 -> 失败带原因整轮重来。
+    退出码：0 全过 / 2 没能校验（环境问题，不判死刑）/ 3 有判不过。
+    """
+    only = _arg_values(list(rest or []), "--case")
+    entries = _ai_cases_on_disk(only)
+    if not entries:
+        print("[verify] [NG] cases/ 下没有可校验的 AI 用例"
+              + (f"（--case {only}）" if only else "")
+              + " -> 先跑 `python -m framework.cli explore --ai`（或 all --ai）产出用例")
+        raise SystemExit(2)
+    print(f"[verify] 对 {len(entries)} 条 AI 用例做「交付即验证」（产出物档 + 实跑档）")
+    # P25 片 7（要求7）：**齐套**先查 —— 用例/脚本/录像不配套时跑出来的结论不可信
+    # （典型：用新用例跑旧脚本，报告看起来像代码 bug）。
+    try:
+        from framework.tools.generate.kit_check import check_kit
+        _kit = check_kit()
+        if _kit:
+            print(f"[verify] [NG] 交付物**不齐套**（{len(_kit)} 项）—— 先补齐再判：")
+            for _k in _kit[:10]:
+                print(f"    {_k}")
+            print("[verify]    修法：`python -m framework.cli generate` 重生成脚本；"
+                  "用例改了要先刷新产物（explore --ai / all --ai）")
+            raise SystemExit(3)
+        print("[verify] 齐套检查通过（用例 / 脚本 / 录像 对得上）")
+    except SystemExit:
+        raise
+    except Exception as _e:
+        print(f"[verify] [!] 齐套检查没跑成（{type(_e).__name__}: {_e}）—— 不判死刑")
+    ok, reasons = _verify_cases_detailed(entries)
+    if ok is False:
+        print("[verify] [NG] 校验不合格（具体原因见上）")
+        if reasons:
+            print(reasons)
+        raise SystemExit(3)
+    if ok is None:
+        print("[verify] [!] 校验没能跑成（环境问题，不判死刑）—— 请先处理上面的原因再重跑")
+        raise SystemExit(2)
+    print("[verify] [OK] 全部通过（产出物档 + 实跑档）")
+    return 0
+
+
+def _ai_cases_on_disk(only: list[str] | None = None) -> list[tuple[str, str]]:
+    """扫 `cases/` 下的 AI 用例 -> `[(label 场景目录名, case_id)]`（verify 独立入口用）。
+
+    [!] 只认 `ai_*.json`：手搓用例（`cases/manual/*.json`）由 generate 自己的闸门守，
+    这里校验的是「AI 产出」这一档（要求 2/5 的口径）。
+    """
+    from framework.tools.common.config import CASES_DIR
+    out: list[tuple[str, str]] = []
+    for f in sorted(CASES_DIR.rglob("ai_*.json")):
+        cid = f.stem
+        if only and cid not in only:
+            continue
+        out.append((f.parent.name, cid))
+    return out
 
 
 def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
@@ -1091,13 +1212,30 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
 
 def cmd_all(workers: int | None = None, debug: bool = False, force_workers: bool = False,
             cases: list[str] | None = None, slowmo: int | None = None,
-            isolated_target: bool = False, allow_unmapped: bool = False):
-    """probe → generate → run 一条龙。
+            isolated_target: bool = False, allow_unmapped: bool = False,
+            ai: bool = False, rest: list[str] | None = None):
+    """probe/explore → generate → run 一条龙；带 --ai 走真 AI 链路（主推）。
+
+    两条链路**同一条命令**（AprilPark1012 2026-10-11 要求4：用 `--ai` 区分，不另开命令）：
+
+      · 不带 `--ai` = **手搓链路**（次选）：probe（语义探测 + 分层定位兜底）
+                       → generate（吃 `*.case.json` + elementMap，含补探与 healer 自愈）
+                       → run
+      · 带 `--ai`   = **真 AI 链路**（主推）：explore --ai（场景解析 + 语义探测 + LLM 调用
+                       + 用例编排 + elementMap 落盘）→ generate → run；
+                       带 `--verify` 时由 explore **内部**完成两档验证（产出物档 + 实跑档，
+                       失败带原因重试，有界）。回放模式下不重试（回放同一份录像，转 N 圈还是同一个产出）。
 
     [!] 需要被测目标在跑（`python -m demo.app`）：任一步拿不到目标都会**在生成期就红**，
     不会产出「全是 pytest.fail 存根」的假脚本（--allow-unmapped 是调试逃生口，别用于交付）。
     """
-    cmd_probe()
+    _rest = list(rest or [])
+    if ai:
+        print("[all] 链路 = 真 AI（主推）：explore --ai → generate → run")
+        cmd_explore(_rest)
+    else:
+        print("[all] 链路 = 手搓（次选）：probe → generate → run")
+        cmd_probe(_rest)
     cmd_generate(allow_unmapped=allow_unmapped)
     cmd_run(workers, debug, force_workers, cases=cases, slowmo=slowmo,
             isolated_target=isolated_target)
@@ -1117,7 +1255,7 @@ FLAG_SPECS: dict[str, str | None] = {
     "--element-map": "value", "--live-probe": None,
     "--allow-unmapped": None,
     "--only": "value", "--changed": None, "--force": None,
-    "--ai": None, "--mock-fallback": None, "--no-cases": None,
+    "--ai": None, "--no-cases": None,
     "--verify": None, "--no-verify": None,
     "--scenario": "value", "--scenario-file": "value", "--scenario-dir": "value",
     "--tag": "value", "--limit": "value",
@@ -1139,16 +1277,26 @@ FLAG_SPECS: dict[str, str | None] = {
 _COMMON_FLAGS = {"--workers", "--debug", "--headed", "--force-workers", "--isolated-target",
                 "--case", "--slowmo"}
 CMD_FLAGS: dict[str, set[str]] = {
-    "probe": {"--base-url"},
+    "probe": {"--base-url", "--scenario-file"},
     "generate": {"--element-map", "--live-probe", "--allow-unmapped",
                   "--only", "--changed", "--force", "--base-url"},
-    "explore": {"--ai", "--mock-fallback", "--no-cases", "--no-verify", "--verify",
+    "explore": {"--ai", "--no-cases", "--no-verify", "--verify",
                 "--scenario", "--scenario-file", "--scenario-dir", "--tag", "--limit",
                 "--llm-cassette", "--llm-record", "--llm-cassette-strict", "--ai-retry"},
     "run": set(_COMMON_FLAGS) | {"--shots", "--video", "--timeout", "--base-url",
                                  "--strict-locate"},
+    # P25 片 5：`all` 同时是**两条链路的统一入口**（不带 --ai 手搓 / 带 --ai 真 AI）——
+    #   所以它要认得 explore 的全部参数（--ai/--scenario-*/--llm-cassette/...）。
     "all": set(_COMMON_FLAGS) | {"--allow-unmapped", "--shots", "--video", "--timeout",
-                                 "--base-url", "--strict-locate"},
+                                 "--base-url", "--strict-locate",
+                                 # ↓ 真 AI 链路（透传给 explore）
+                                 "--ai", "--no-cases", "--verify", "--no-verify",
+                                 "--scenario", "--scenario-file", "--scenario-dir", "--tag",
+                                 "--limit", "--llm-cassette", "--llm-record", "--llm-cassette-strict",
+                                 "--ai-retry"},
+    # P25 片 5（特性11）：验证是独立能力，有独立入口（能单独重跑，不必再走一遍 explore）
+    "verify": set(_COMMON_FLAGS) | {"--shots", "--video", "--timeout", "--base-url",
+                                    "--strict-locate"},
     "prune": {"--keep", "--dry-run", "--all", "--runs",
               "--keep-runs", "--keep-days", "--max-delete"},
     "setup": {"--check", "--force-browser", "--with-ai"},
@@ -1157,6 +1305,10 @@ CMD_FLAGS: dict[str, set[str]] = {
 # 已移除的参数：给"为什么没了 + 该用什么"，而不是笼统的"不认识"
 REMOVED_FLAGS = {
     "--to-cases": "落 cases/ai_*.json 已是默认行为；要关掉用 --no-cases",
+    # P25 片 9（D5，AprilPark1012 2026-10-11 拍定）：删除 mock 降级 —— 它是一条能产出**假 AI 用例**的路。
+    "--mock-fallback": "AI 链路不再提供 mock 降级（mock 产物不是 AI 产物，会污染用例库）；"
+                       "LLM 不可用时如实报错 —— 离线请用 --llm-cassette 回放，"
+                       "或在有外网的机器上 --llm-record 录一次再拷过来",
 }
 
 
@@ -1171,7 +1323,7 @@ TUNABLE_CATALOG: list[tuple[str, str, str]] = [
      "等待类断言的**有界默认**时长（毫秒）；场景声明了业务时长时以声明为准（见 declared_wait）"),
     ("HYBRID_PROMPT_LIST_CHARS", "90000",
      "喂给 AI 的**每条清单**（控件/行内列/DOM）的字符预算；超了按「场景提到+必填 全给，其余页间轮转」裁剪并明示条数"),
-    ("HYBRID_BASE_URL", "http://localhost:8000", "被测应用地址（旧名 TARGET_URL 也认，它优先）"),
+    ("HYBRID_BASE_URL", "http://localhost:8000", "被测应用地址（命令行 --base-url；旧名 TARGET_URL 也认，它优先）"),
     ("HYBRID_EFFECT_CHECK", "1",
      "动作后置校验总开关：业务动词点击后判「动作是否真的生效（有导航/有写请求/无拒绝提示）」，默认只留痕"),
     ("HYBRID_STRICT_EFFECT", "0",
@@ -1405,7 +1557,7 @@ def main():
     if not args or args[0] in ("-h", "--help"):
         _print_help(); return
     if args[0] in ("-V", "--version"):
-        print(f"hybrid_gui_qa {_version()}  ·  被测目标 {TARGET_URL}")
+        print(f"hybrid_gui_qa {_version()}  ·  被测目标 {target_url()}")
         return
     cmd, rest = args[0], args[1:]
     if cmd not in CMD_FLAGS:
@@ -1433,7 +1585,9 @@ def main():
     allow_unmapped = "--allow-unmapped" in rest
     # ★ 浏览器预检（2026-09-23，V8.2.2）：需要浏览器的命令先探一次，
     #   缺浏览器 -> 当场给「一行修复命令」+ exit 2（绝不让它到 Playwright 那层才炸原始栈）。
-    if cmd in ("probe", "generate", "explore", "run", "all"):
+    # verify 也要浏览器（它内部会 generate 一次做实跑校验），所以它在名单里；
+    # 但 `verify --case` 只跑 pytest 时同样需要，因为生成的脚本要起浏览器 -> 一致性保留。
+    if cmd in ("probe", "generate", "explore", "run", "all", "verify"):
         try:
             from framework.tools.common.browser import BrowserNotInstalledError, ensure_browser_installed
             ensure_browser_installed()
@@ -1450,7 +1604,7 @@ def main():
     #   只有这一条走 return -> 典型的不一致。修在分发层 = 根因修复：以后任何子命令
     #   只要 return 非 0，调用方都看得见。
     if cmd == "probe":
-        rc = cmd_probe()
+        rc = cmd_probe(rest)
     elif cmd == "generate":
         rc = cmd_generate(rest, allow_unmapped=allow_unmapped)
     elif cmd == "explore":
@@ -1460,7 +1614,10 @@ def main():
                      isolated_target=isolated)
     elif cmd == "all":
         rc = cmd_all(workers, headed, force_workers, cases=cases, slowmo=slowmo,
-                     isolated_target=isolated, allow_unmapped=allow_unmapped)
+                     isolated_target=isolated, allow_unmapped=allow_unmapped,
+                     ai=("--ai" in rest), rest=rest)
+    elif cmd == "verify":
+        rc = cmd_verify(rest)
     elif cmd == "setup":
         rc = cmd_setup(rest)
     elif cmd == "prune":
@@ -1668,8 +1825,8 @@ def _browser_state() -> tuple[bool, str]:
 
 
 _CMD_FUNCS = {"probe": cmd_probe, "generate": cmd_generate, "explore": cmd_explore,
-              "run": cmd_run, "all": cmd_all, "prune": cmd_prune, "setup": cmd_setup,
-              "config": cmd_config}
+              "run": cmd_run, "all": cmd_all, "verify": cmd_verify, "prune": cmd_prune,
+              "setup": cmd_setup, "config": cmd_config}
 
 
 if __name__ == "__main__":

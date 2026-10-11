@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import re
+import json
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -89,6 +90,11 @@ class Scenario:
     #   与页面级 pages[].pre 是**两个层级**、**同一个执行引擎**（_run_pre_actions），
     #   不是第二套机制（铁律 13：同一能力收敛成唯一入口）。
     probe_pre: list = field(default_factory=list)
+    # P25 片 6（D10 · AprilPark1012 2026-10-11 拍定）：**前置在哪一页执行** —— 引用 `pages[].name`。
+    #   [!] 这是为了取代框架原来用 `"login" in url` / 页名含「登录」**猜** host 的做法：
+    #   框架层不许出现业务词（口径：补能力要与场景解耦、不能写死、不拿观测值当地基）。
+    #   声明了 `probe_pre` 就必须声明它 —— 缺了在 **加载期**硬红，不允许"猜一个"。
+    probe_pre_host: str = ""
 
     def auth_spec(self) -> dict:
         """登录前置参数（空 dict = 该场景不需要登录）。"""
@@ -153,6 +159,15 @@ class Scenario:
                   f"-> D3 同步判据将失效，必须修", file=_sys.stderr)
         if self.pages:                      # P3 跨页：把页面清单带进用例（质量闸与溯源都用）
             extra["pages"] = [p.to_dict() for p in self.pages]
+        # [!] P25 片 6（修 10-A · 两条链路不同源）：**场景级探测前置也要落进用例**。
+        #   原来只写 scenario_id/pages，probe_pre 只在**手搓用例**里手工写 ——
+        #   于是 AI 用例的 `probe_pre` 恒为 None，只能靠 `source_scenario` 回读，
+        #   而回读失败时**只打印不抛**（静默降级成"没有前置"）=> 两条链路同名不同源。
+        #   现在：用例落盘即带场景声明的**逐字副本**（同一权威来源），下游读哪一份都一致。
+        if self.probe_pre:
+            extra["probe_pre"] = list(self.probe_pre)
+        if self.probe_pre_host:
+            extra["probe_pre_host"] = self.probe_pre_host
         return extra
 
 
@@ -303,6 +318,24 @@ def load_scenario_file(path) -> Scenario:
             warns.append("同时声明了 auth 与 probe_pre：探测期用 probe_pre（更新），"
                          "auth 仅作兼容，建议逐步迁移到「场景级探测前置」")
 
+    # 场景级前置的**宿主页**（D10，2026-10-11 AprilPark1012拍定）：
+    #   [!] 声明了 probe_pre 却不说"在哪一页做" -> **硬红**。为什么不能兜：
+    #     前置是"在某个页面的上下文里点几下"，点错页 = 前置等于没做（而日志看起来像做了）；
+    #     框架以前用 `login`/`登录` 猜 host（业务词进框架层），既脆弱又不通用。
+    probe_pre_host = str(raw.get("probe_pre_host") or "").strip()
+    if probe_pre and not probe_pre_host:
+        raise ScenarioError(
+            f"{p}: 声明了 probe_pre（{' -> '.join(str(x) for x in probe_pre[:3])}）"
+            f"但**没有** probe_pre_host —— 必须写明这批前置在哪一页执行，"
+            f"取值是 pages[].name 里的页名（框架不许用 login/登录 这类业务词去猜宿主页）")
+    if probe_pre_host and pages:
+        _names = [x.name for x in pages]
+        if probe_pre_host not in _names:
+            raise ScenarioError(
+                f"{p}: probe_pre_host={probe_pre_host!r} 不是 pages 里声明过的页名"
+                f"（现有页名：{'、'.join(_names)}）—— 页名对不上就找不到宿主页，"
+                f"前置会在错误页面静默执行")
+
 
     return Scenario(
         path=p, id=sid, scenario=text,
@@ -324,7 +357,55 @@ def load_scenario_file(path) -> Scenario:
         pages=pages,
         auth=auth,
         probe_pre=probe_pre,
+        probe_pre_host=probe_pre_host,
     )
+
+
+def probe_pre_fingerprint(probe_pre) -> str:
+    """独立用例自带 `probe_pre` 时的**自证指纹**（D11）。
+
+    为什么需要：绑定场景的用例有"与场景逐字一致"这条判据守着；**独立于场景**的用例没人守 ——
+    前置悄悄改一个字，没有任何东西会发现（而它照样"跑过了"）。
+    指纹 = sha256(前置序列的 JSON)：内容一变指纹就不匹配，判据当场红。
+    """
+    payload = json.dumps(list(probe_pre or []), ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def probe_pre_conflicts(case: dict, scenario: "Scenario | None") -> list[str]:
+    """用例级 `probe_pre` 与场景声明的一致性判定 —— **唯一入口**（D9）。
+
+    口径（2026-10-11 AprilPark1012拍定）：**场景声明是唯一权威**，用例里的 `probe_pre`
+    唯一合法状态 = 它的**逐字副本（有序）**。
+
+    为什么**顺序敏感**：前置是**状态迁移序列**（先点开下拉，才能点到它的子项）。
+    `[A, B]` 与 `[B, A]` 不是"差异不大"，而是**第二个动作根本点不到**
+    （菜单没开）。同理多一步/少一步都会让后续步骤在错误状态下执行。
+
+    为什么必须**报出第几步**：只说"不一致"的话，改的人无从下手（要在两份清单之间人肉 diff）。
+
+    两类用例（D11）：
+      · 绑定场景的（带 `scenario_id`）-> 走本函数（逐字一致）；
+      · 独立的（不带）-> 本函数返回空（它不受场景约束），由调用方改判
+        `probe_pre_fingerprint` 自证（见 `generator` 的闸门）。
+    返回空列表 = 一致；非空 = 逐条差异说明。
+    """
+    if scenario is None:
+        return []
+    declared = list(getattr(scenario, "probe_pre", None) or [])
+    got = list((case or {}).get("probe_pre") or [])
+    if not declared and not got:
+        return []
+    diffs: list[str] = []
+    if len(declared) != len(got):
+        diffs.append(f"步数不一致：场景声明 {len(declared)} 步 {declared!r}，"
+                     f"用例写了 {len(got)} 步 {got!r}")
+    for i, (want, have) in enumerate(zip(declared, got), 1):
+        if want != have:
+            diffs.append(f"第 {i} 步不一致：用例 {have!r} != 场景 {want!r}")
+    if not declared and got:
+        diffs.append(f"场景没声明任何前置，用例却写了 {got!r}（会做场景没约定的事）")
+    return diffs
 
 
 def discover_scenarios(root=None, tags=None, limit: int | None = None) -> list[Scenario]:

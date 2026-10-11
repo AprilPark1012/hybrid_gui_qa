@@ -32,6 +32,10 @@ from framework.tools.common.textutil import collapse_ws  # 事故(2)：accessibl
 # data-testid 是 component contract，不随视觉改版变，业界公认最稳 → 置顶。
 TIER1 = [
     ("test_id",       0.95),
+    # P25 第 4 个真缺陷（2026-10-11）：元素**自身**的 id。与 test_id 同档（都是元素自己的
+    # 稳定契约），排在 test_id 之后、锚点下钻之前 —— id 是**元素级**事实、不需要推导，
+    # 而锚点下钻是结构推导（页面一改就可能换）。仅在有值时尝试；唯一性由调用方的 count() 兜住。
+    ("element_id",    0.945),
     # P16 批 3：锚点 + 容器内相对路径。真实系统里**子元素（行/单元格/行内按钮）通常没有埋点**，
     # 这条是"能不能定位到"的主通道；排在 test_id 之后、role+name 之前（结构性锚定比裸语义稳）。
     ("anchor_path",   0.94),
@@ -82,6 +86,18 @@ def _try_test_id(page: Page, el: ElementRef):
     return None
 
 
+def _try_element_id(page: Page, el: ElementRef):
+    """元素自身的 `id` -> `page.locator("#<id>")`。
+
+    [!] 必须带唯一性校验：`id` 在 HTML 里**允许重复**（非法但常见），而命中 >1 个时
+    调用方会按 count 拒绝这档、自动降级 -> 不会因为一个不稳的 id 而误点别的控件。
+    """
+    if el.element_id:
+        loc = page.locator(f"#{el.element_id}")
+        return loc, f'page.locator("#{el.element_id}")', loc.count()
+    return None
+
+
 def _try_role(page: Page, el: ElementRef):
     if el.role and el.name:
         # 事故(2)：name 里的换行/多余空白要按 accessible name 口径归一化（否则永远匹配不到）
@@ -128,7 +144,8 @@ def _try_anchor_path(page: Page, el: ElementRef):
 
 
 _TIER1_FNS = {
-    "test_id": _try_test_id, "anchor_path": _try_anchor_path, "role+name": _try_role,
+    "test_id": _try_test_id, "element_id": _try_element_id,
+    "anchor_path": _try_anchor_path, "role+name": _try_role,
     "label": _try_label, "placeholder": _try_placeholder, "text": _try_text,
 }
 

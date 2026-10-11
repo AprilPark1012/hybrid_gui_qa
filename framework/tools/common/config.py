@@ -30,9 +30,25 @@ if _hermes_env.exists():
 # 2026-09-15 统一：以前只有 probe/generate 认 TARGET_URL、而生成脚本与 /api/health 探测认
 # HYBRID_BASE_URL -> 只设 HYBRID_BASE_URL 的人会发现「probe 还在打 localhost:8000」，
 # 属于「参数名不新手秒懂」。现在两个名字等效（TARGET_URL 优先，保持向后兼容）。
-TARGET_URL = (os.environ.get("TARGET_URL")
-              or os.environ.get("HYBRID_BASE_URL")
-              or "http://localhost:8000")
+DEFAULT_TARGET_URL = "http://localhost:8000"
+
+
+def target_url() -> str:
+    """被测应用地址（**运行期**读取的唯一入口）。
+
+    [!] P25 片 4（2026-10-11 实测修复）：这里原来是个**模块级常量**
+        （`TARGET_URL = os.environ.get(...)`），而 `os.environ` 是在 **import 那一刻**求值的 ——
+        CLI 的 `--base-url` 却是在 import **之后**才被解析并写进 `HYBRID_BASE_URL`
+        （见 `cli._apply_flag_as_env`）=> **设了完全不生效**：`probe --base-url http://X`
+        照样打 `localhost:8000`。这类"参数看着能改、实际改不动"最误人（与"参数名不新手秒懂"同档）。
+        改成函数后，「CLI 参数 > 环境变量 > 默认」这条优先级链才真正成立。
+
+    优先级：`TARGET_URL`（本项目老名字）> `HYBRID_BASE_URL`（生成脚本/target_probe 用的名字）
+    > 默认。两个名字等效是 2026-09-15 定的（只设一个的人不该发现"框架还在打别的地址"）。
+    """
+    return (os.environ.get("TARGET_URL")
+            or os.environ.get("HYBRID_BASE_URL")
+            or DEFAULT_TARGET_URL)
 
 # ---- 版本号单一来源（2026-09-19 把 build_html.py 挪进 tools/ 时收敛）----
 # 培训页生成器 `build_tools/build_html.py` 顶部的 VERSION / VERSION_DATE 是**唯一**版本来源。
