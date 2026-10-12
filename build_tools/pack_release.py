@@ -50,6 +50,10 @@ REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "fra
             "scripts/generated", "scripts/generated/index.json", "scripts/generated/_harness.py",
             "scripts/generated/conftest.py",
             "cases", "tests/_helpers", "tests/_runner", "demo", "scenarios")
+# [!] `output/element_maps` **故意不列在 REQUIRED 里**（2026-10-13）：REQUIRED 是**全局**
+#   必需项，而最小包构造的判据（release notes / auth gate / 历史形态）不塞 elementMap
+#   -> 放进来会把它们全误报一片。elementMap 的必需性改由 `check_zip(expect_element_map=N)`
+#   参数控制，**真实打包会显式传 1**（见 main 里那处调用）。
 # r9-legacy-block:begin —— 历史形态别名：审计**旧包**时按当时的路径形态认（有意保留旧路径）
 # 历史形态别名（2026-09-19）：**结构与文件位置变过，审计历史包不该因此误报**。
 # 先例：升级日志本来就「两种落点都认」（见下面 notes 那段）。这里收纳两次结构调整：
@@ -138,6 +142,18 @@ def collect_files(exclude_test_artifacts: bool = False) -> list[Path]:
     #     既误导收包人（以为还有隐藏前置），又是凭据暴露面。
     # [!] 这处漏改的原因值得记：**删一个机制时必须查"产出侧/打包侧"的引用**，
     #   只查读它的代码会漏掉「专门为它加过的补丁」。
+    # [!] 2026-10-13（AprilPark1012第 ④ 条要求）：elementMap 要进交付包 —— **必须显式补**。
+    #   为什么两条常规路径都到不了：`output/` 既在 `.gitignore`（第 24 行）里、又在
+    #   EXCLUDE_DIRS 里 => `git ls-files` 根本不列它、过滤那一关也照样滤掉。
+    #   （这正是当年 V8.3.4 给 `_auth.json` 用过的"不入库也要入包"手法，差别在
+    #     这次补的是**该进包**的东西，而 `_auth.json` 那次后来反转成了反向拦截。）
+    #   只补**最新 1 份**：见 `_latest_element_map()` 的说明。
+    #   [!] 录像（`output/llm_cassettes`）**不在这里补** —— 它走「两件套」的录像包单独交付
+    #   （判据 `tests/特性1-混合链路/verify_offline_delivery.py`），塞进代码包会破坏那个设计。
+    _emap = _latest_element_map()
+    if _emap is not None:
+        out.append(_emap)
+
     return sorted(set(out))
 
 
@@ -151,6 +167,20 @@ def _is_release_note(rel: Path) -> bool:
             and rel.name.startswith("RELEASE_NOTES"))
 
 
+def _latest_element_map() -> Path | None:
+    """`output/element_maps/` 里**最新**的一份快照（按 mtime）；没有则 None。
+
+    2026-10-13（AprilPark1012第 ④ 条要求）：elementMap 是交付生成物之一，必须进包 ——
+    仓库会积累几十份历史快照（实测 42 份 / 20M），全进包体积失控、且历史快照对收包人无意义，
+    故只取最新那份（= 本次端到端跑通产出的那一份）。
+    """
+    d = REPO / "output" / "element_maps"
+    if not d.is_dir():
+        return None
+    maps = [p for p in d.glob("*.json") if p.is_file()]
+    return max(maps, key=lambda p: p.stat().st_mtime) if maps else None
+
+
 def repo_release_notes() -> list[str]:
     """仓库 releases/ 下的升级日志清单（打包时用来核对「历史日志有没有全带上」）。"""
     d = REPO / RELEASES_DIRNAME
@@ -161,7 +191,8 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
               require_notes_for: str | None = None,
               expect_notes: int | None = None,
               legacy_notes: list[str] | None = None,
-              expect_auth_json: bool = False) -> list[str]:
+              expect_auth_json: bool = False,
+              expect_element_map: int | None = None) -> list[str]:
     """审计一个包：返回问题清单（空 = 通过）。**只用标准库，不依赖 unzip。**
 
     `legacy_notes`：可选的出参列表 —— 历史形态命中（结构变更前的包）会写进来，
@@ -222,10 +253,30 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
         if n_cases == 0:
             problems.append("包内没有任何 cases/**/*.json")
 
-        bad = [k for k in rel if k.startswith(("output/", "log/", ".venv/"))
+        # [!] 2026-10-13（AprilPark1012第 ④ 条）：`output/` 从「整体不许」放宽成
+        #   「只许 `output/element_maps/` 下的快照」；`log/` 与其它 output 子目录
+        #   （traces / verify / archived_* / *_shots）仍不许进包。
+        #   log 尤其不许：实测 `log/*/traces/*.zip` 记着登录过程（含明文凭据）。
+        bad = [k for k in rel
+               if k.startswith("log/") or k.startswith(".venv/")
+               or (k.startswith("output/") and not k.startswith("output/element_maps/"))
                or k.endswith(".env") or "__pycache__" in k]
         if bad:
             problems.append(f"包内含不该发的内容：{bad[:5]}{' …' if len(bad) > 5 else ''}")
+
+        # elementMap（2026-10-13 第 ④ 条：它是交付生成物之一）—— **按参数检查**：
+        #   `expect_element_map=None`（默认）跳过；否则要求恰好 N 份。
+        #   [!] 为什么必须做成可选的：最小包构造的判据（release notes / auth gate /
+        #   历史形态）只塞几个文件，无条件要求 elementMap 会把它们**全误报一片**
+        #   —— 与 `expect_auth_json` 当年踩的是同一个坑（见本文件那条判据的注释）。
+        #   真实打包（`pack_release --out`）会显式传 `expect_element_map=1`。
+        if expect_element_map is not None:
+            n_emaps = sum(1 for k in rel if k.startswith("output/element_maps/"))
+            if n_emaps != expect_element_map:
+                problems.append(
+                    f"包内 element_maps 快照 {n_emaps} 份，期望 {expect_element_map} 份"
+                    f"（elementMap 是交付生成物之一、须随包交付；且只带最新 1 份，"
+                    f"历史快照会让包体积从 ~2M 涨到 20M+）")
 
         # 升级日志：按**文件名**判断（2026-09-18 起它们落在 releases/ 下；历史包在包根 -> 两种都认）
         notes = {k.rsplit("/", 1)[-1] for k in rel
@@ -246,7 +297,11 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
 # ---------- LLM 录像包：交付「两件套」的第二件（给连不上外网 LLM 的机器）----------
 # 2026-09-19 收编：原先它住在 ~/deliver_scripts/pack_cassettes.py（一个仓库外的独立脚本），
 # 结果是「录像包」这条交付形态没有任何判据、路径也容易漂（旧脚本里就残留着 build_html.py 的老路径）。
-# 现在与代码包同一个打包器管：代码包**不含**录像（output/ 永不进包），录像单独一件。
+# 现在与代码包同一个打包器管：代码包**不含**录像，录像单独一件。
+# [!] 2026-10-13：`output/` 不再是"整体不进包" —— elementMap 快照要随**代码包**交付
+#   （见 `collect_files` 里的 `_latest_element_map()`，只带最新 1 份）。
+#   但 `output/llm_cassettes/` **仍然只走录像包**（它就是"单独一件"的那一件），
+#   代码包夹带录像会被 `tests/特性1-混合链路/verify_offline_delivery.py` 判 leak。
 CASSETTE_SRC = REPO / "output" / "llm_cassettes"
 CASSETTE_HELPER = REPO / "build_tools" / "offline_explore_chain.py"
 CASSETTE_SCENARIO_DIR = REPO / "scenarios"
@@ -490,6 +545,8 @@ def main() -> int:
     legacy: list[str] = []
     problems = check_zip(out_zip, expect_cases=repo_cases, require_notes_for=ver,
                          expect_auth_json=True,
+                         # 2026-10-13 第 ④ 条：elementMap 随包交付，且只带最新 1 份
+                         expect_element_map=1,
                          expect_notes=len(repo_notes) or None, legacy_notes=legacy)
     for n in legacy:          # 新包不该出现（出现=打包收集漏了当前布局）-> 大声打出来
         print(f"[pack] [!] {n}")

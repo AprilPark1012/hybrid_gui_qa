@@ -29,12 +29,21 @@ class AiOutputGate(Gate):
 
     name = "ai_output"
 
-    #: 四类问题的（私有全局名, 人类可读标签）—— 保留原名以便**只搬家不改行为**
+    #: 四类问题的（私有全局名, 人类可读标签, 级别）—— 保留原名以便**只搬家不改行为**
+    #  [!] 2026-10-13 分级（AprilPark1012「主推命令必须端到端跑通」+ 宁漏不误伤口径）：
+    #      `_ROW_SCOPE_NOTES` 由 BLOCK **降为 WARN**。理由：
+    #        ① 能自动补的已由 `apply_row_locator_fallback` 补掉，走到这里的都是**判不死**的；
+    #        ② 实测这类在运行期**并不致命** —— 旧用例同样带 `数量@开票页`（无 row_index），
+    #           却跑通了 220s 端到端 E2E（引擎取第一个匹配恰好是对的）；
+    #        ③ **录像回放模式**下「报缺陷 -> 喂回重试」这条路根本走不通（AI 产出是固定的，
+    #           重试必然得到同一份）=> 硬拦 = **死路**，把整个 `all --ai` 挡在 explore 里
+    #           （EXIT=3：script 未生成、run 未执行，主推命令整条不可用）。
+    #      仍**保留收集与展示**（人工可见、可复核、可审计），只是不再拦产出。
     SOURCES = (
-        ("_HARDCODED_NOTES", "AI 用了写死的行数据（应为行定位）"),
-        ("SEMANTIC_MISMATCH_NOTES", "语义误选（AI 选的控件与步骤语义不符）"),
-        ("_REQUIRED_COVERAGE_NOTES", "场景点名的必填项 AI 没编排"),
-        ("_ROW_SCOPE_NOTES", "行内控件缺行定位（多匹配）"),
+        ("_HARDCODED_NOTES", "AI 用了写死的行数据（应为行定位）", BLOCK),
+        ("SEMANTIC_MISMATCH_NOTES", "语义误选（AI 选的控件与步骤语义不符）", BLOCK),
+        ("_REQUIRED_COVERAGE_NOTES", "场景点名的必填项 AI 没编排", BLOCK),
+        ("_ROW_SCOPE_NOTES", "行内控件缺行定位（多匹配）", WARN),
     )
 
     def check(self, **kw) -> GateResult:
@@ -50,11 +59,20 @@ class AiOutputGate(Gate):
                 return GateResult(gate=self.name, level=WARN,
                                   entries=[f"取不到 explorer 模块，本闸门未生效：{e}"])
         entries: list[str] = []
-        for attr, label in self.SOURCES:
+        levels: set[str] = set()
+        for attr, label, lvl in self.SOURCES:
             got = list(getattr(expl, attr, None) or [])
+            if got:
+                levels.add(lvl)
             for x in got:
                 entries.append(f"[{label}] {x}")
-        return GateResult(gate=self.name, level=(BLOCK if entries else WARN), entries=entries)
+        # 有一类是 BLOCK 级 => 整体 BLOCK；全是 WARN 级 => 只作提醒。
+        # [!] **调用方必须按 `blocked`（level==BLOCK 且有 entries）判断是否拦截**，
+        #   不能拿「entries 非空」当拦截依据 —— 那样 WARN 级会被当成 BLOCK，
+        #   本次降级就白做了（回放模式下仍会把 all --ai 挡在 explore 里）。
+        return GateResult(gate=self.name,
+                          level=(BLOCK if BLOCK in levels else WARN),
+                          entries=entries)
 
 
 register(AiOutputGate())

@@ -36,6 +36,7 @@ class _St:
 class _El:
     def __init__(self, semantic_name):
         self.semantic_name = semantic_name
+        self.notes = ""          # _apply_semantic_calibration 会回写警告
 
 
 # ============ ① 语义校准必须看得见 help_text ============
@@ -111,3 +112,51 @@ def test_placeholder_value_never_hardcoded():
     """占位/示例形态（`{...}` / `SO-xxxx`）本来就不是写死（既有口径不许被改坏）。"""
     for v in ("{合同编号}", "SO-xxxx", "..."):
         assert not looks_like_hardcoded_row_value(v), f"{v} 被误判为写死"
+
+
+# ============ ③ 意图句描述不得被判「一定选错」（2026-10-13 精准化）============
+# 背景：`sim < SEMANTIC_HARD_SIM` 只说明「描述与控件字符集无交集」，不足以断定选错。
+# 实测误伤（V8.5.1 主推命令因此整条不可用）：第 46 步描述是**意图句**——
+#   「切角色后重新搜索，避免页面刷新丢条件」，AI 选的 `订单名称@订单列表页[订单系统]`
+#   完全正确（下一步就点搜索），却因字符集无交集被判「一定选错」->
+#   重试三轮全卡死 -> `all --ai` 在 explore 断掉（EXIT=2/3），script 未生成、run 未执行。
+
+_ITEMS_ORDERS = [
+    {"semantic_name": "订单名称@订单列表页[订单系统]", "name": "订单名称",
+     "placeholder": "订单名称（全模糊）", "container_heading": "订单系统"},
+    {"semantic_name": "搜索@订单列表页", "name": "搜索", "text": "搜索"},
+    {"semantic_name": "切换为发票管理员@订单列表页", "text": "切换为发票管理员"},
+]
+
+
+def test_intent_only_description_not_flagged_as_misselection():
+    """意图句描述（不含控件名）不许判误选 —— 否则主推命令整条断在 explore。"""
+    from framework.features.f02_semantic.explorer_explore import (
+        SEMANTIC_MISMATCH_NOTES, _apply_semantic_calibration,
+    )
+    st = _St(46, element=_El("订单名称@订单列表页[订单系统]"),
+             description="切角色后重新搜索，避免页面刷新丢条件")
+    _apply_semantic_calibration([st], _ITEMS_ORDERS)
+    assert SEMANTIC_MISMATCH_NOTES == [], (
+        f"意图句描述被判误选（误伤会让主推命令不可用）：{SEMANTIC_MISMATCH_NOTES}"
+    )
+
+
+def test_data_like_control_name_still_flagged_by_calibration():
+    """【反向自证】控件名本身是业务数据 -> 仍必须收集（V8.4.1 防护不许丢）。"""
+    from framework.features.f02_semantic.explorer_explore import (
+        SEMANTIC_MISMATCH_NOTES, _apply_semantic_calibration,
+    )
+    st = _St(1, element=_El("HT-1001@合同列表页"), description="展开角色切换菜单")
+    items = [{"semantic_name": "HT-1001@合同列表页", "name": "HT-1001", "text": "HT-1001"}]
+    _apply_semantic_calibration([st], items)
+    assert SEMANTIC_MISMATCH_NOTES, "拿业务数据当控件名的真误选被放过了"
+
+
+def test_intent_step_still_gets_warning_note():
+    """精准化只取消"硬拦"，**警告仍要打**（人工核对的路没断）。"""
+    from framework.features.f02_semantic.explorer_explore import _apply_semantic_calibration
+    st = _St(46, element=_El("订单名称@订单列表页[订单系统]"),
+             description="切角色后重新搜索，避免页面刷新丢条件")
+    _apply_semantic_calibration([st], _ITEMS_ORDERS)
+    assert "语义校准警告" in (st.element.notes or ""), "意图句步骤连警告都没了"

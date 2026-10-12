@@ -915,7 +915,11 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
         from framework.features.f02_semantic.ai_output_gate_explore import AiOutputGate
         _res = AiOutputGate().check()
         _prod: list[str] = list(_res.entries)
-        if _prod:
+        # [!] 2026-10-13：**按 `blocked` 判断**（level==BLOCK 且有 entries），
+        #   不按「entries 非空」—— 行定位缺失已降为 WARN 级（回放模式下重试无意义，
+        #   硬拦 = 死路，会把 all --ai 挡在 explore 里 EXIT=3）；拿 entries 当拦截依据
+        #   会把 WARN 一起拦下，降级就白做了。
+        if _res.blocked:
             print("  [NG] 校验不合格：AI 产出有**结构性缺陷** -> 不试跑，直接带原因重生成")
             for line in _prod:
                 print(f"     · {line[:170]}")
@@ -928,6 +932,13 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
                   "`row_index`（第 N 行，从 1 起；`-1` = 最后一行）或 `row_text` + 列字段；"
                   "**刚新增的空行只能用 `row_index`**（空行没内容可当行锚）。")
             return False, "\n".join(_prod)
+        if _prod:
+            # WARN 级（当前只有"行内控件缺行定位"）：**打印但不拦产出** ——
+            #   人工可见、可复核、可审计，产出照走 generate/run；
+            #   真有影响会在 run 阶段实测暴露（那才是可信证据，而不是静态怀疑）。
+            print(f"  [!] AI 产出有 {len(_prod)} 条**警告级**提示（不拦产出，继续 generate/run）：")
+            for line in _prod:
+                print(f"     · {line[:170]}")
     except Exception as _e:      # 收集/读取出问题不该毁掉校验本身
         print(f"  [!] 产出缺陷清单读取失败（不影响校验）：{type(_e).__name__}: {_e}")
 

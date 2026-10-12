@@ -309,9 +309,16 @@ def test_collect_files_keeps_sources_and_drops_runtime_cruft():
                  "scripts/generated", "scripts/generated/index.json", "demo/app.py",
                  "tests/特性9-质量闸门体系/test_artifacts_health.py", "tests/特性9-质量闸门体系/verify_html_sync.py", "cases", "scenarios"):
         assert any(r == must or r.startswith(must + "/") for r in rel), f"漏了 {must}"
-    bad = [r for r in rel if r.startswith(("output/", "log/", ".venv/"))
+    # 2026-10-13（AprilPark1012第 ④ 条）：`output/` 只放行 element_maps（交付生成物之一）；
+    # log/ 与其它 output 子目录（traces / verify / archived_* / *_shots）仍不得进包。
+    bad = [r for r in rel
+           if r.startswith(("log/", ".venv/"))
+           or (r.startswith("output/") and not r.startswith("output/element_maps/"))
            or "__pycache__" in r or r.endswith((".zip", ".tar.gz", ".env"))]
     assert not bad, f"包里有不该发的内容：{bad[:5]}"
+    # elementMap 必须随包交付，且**只带最新 1 份**（42 份历史快照会让包从 ~2M 涨到 20M+）
+    emaps = [r for r in rel if r.startswith("output/element_maps/")]
+    assert len(emaps) == 1, f"element_maps 应只收最新 1 份，实收 {len(emaps)} 份：{emaps[:3]}"
     # 升级日志必须进包；releases/ 下其它东西（交付包本体 / 内部记录）不得进包（2026-09-18 口径）
     notes = [r for r in rel if r.startswith("releases/")
              and r.rsplit("/", 1)[-1].startswith("RELEASE_NOTES")]

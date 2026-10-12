@@ -2860,11 +2860,27 @@ def _apply_semantic_calibration(steps: list[TestStep], items: list[dict]) -> lis
             continue
         sim = _semantic_sim(st.description, _element_semantics_blob(it))
         if sim < SEMANTIC_HARD_SIM:
-            # 严重误选: 完全不沾边 -> 收集起来(不抛, 交给重试闭环带原因重生成)
-            SEMANTIC_MISMATCH_NOTES.append(
-                f"第 {st.order} 步「{st.description[:30]}」选的控件「{st.element.semantic_name}」"
-                f"与描述重叠度 {sim:.2f}(几乎无关, 一定是选错了)"
-            )
+            # 2026-10-13 精准化（AprilPark1012选方案 A）。重叠度 0.00 只说明「描述与控件语义
+            #   毫无共同字符」，**不足以断定选错** —— 它有两种成因，必须分开：
+            #     (a) 真误选：AI 拿业务数据当控件名（如 `HT-1001` / `全链路-20260101`）；
+            #     (b) **描述是意图句/动作句**，压根没点名控件 ——
+            #         实测例：「切角色后重新搜索，避免页面刷新丢条件」选了
+            #         `订单名称@订单列表页[订单系统]`（**这一步是对的**，下一步就点搜索，
+            #         编排完全正确），却因字符集无交集被判「一定选错」=>
+            #         重试闭环三轮全卡死 => 整个 `all --ai` 断在 explore（EXIT=2/3），
+            #         script 未生成、run 未执行（V8.5.1 主推命令因此不可用）。
+            #   故只保留**能确证**的那一类：(a) 控件名本身是业务数据。
+            #   其余降为警告（下一档 sim < SEMANTIC_MIN_SIM），交给 run 阶段真跑暴露 ——
+            #   口径「宁漏不误伤」：误伤会让主推命令整条不可用，而漏放只是晚一步在 run 里红。
+            _nm = (it.get("name") or "").strip()
+            if _nm and looks_like_hardcoded_row_value(_nm):
+                SEMANTIC_MISMATCH_NOTES.append(
+                    f"第 {st.order} 步「{st.description[:30]}」选的控件「{st.element.semantic_name}」"
+                    f"与描述重叠度 {sim:.2f}(控件名本身是业务数据, 一定是选错了)"
+                )
+            else:
+                print(f"      [语义校准[info]] step{st.order} 描述与所选控件无语义交集，"
+                      f"但控件名形态正常（描述可能是意图句）-> 不判误选，仅警告")
         if sim < SEMANTIC_MIN_SIM:
             st.element.notes = (
                 f"[语义校准警告] AI 描述《{st.description}》与所选控件语义重叠度仅 {sim:.2f}"
