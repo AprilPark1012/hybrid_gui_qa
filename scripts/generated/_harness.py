@@ -567,17 +567,57 @@ def _click_row_cell(page, row_text, cell_field, tabs=None, op="click", value=Non
     return None
 
 
-def _assert_first_row(page, field, expected, desc=""):
+def _assert_first_row(page, field, expected, desc="", timeout_ms=None, refresh="none"):
     """断言「表格第一行的某列」包含期望文本 —— 直接覆盖「新建后列表第一条记录就是它」这类需求。
 
     为什么单列一种断言 kind：文本断言只能证明「页面上出现过这个名字」，证明不了「它就是第一条」。
+
+    [!] **有界等待 + 每轮重新取数**（2026-10-12 修的真 bug）：状态**按时间自动流转**的场景
+    （如「提交后 150 秒自动关闭」）不能只把超时调大 —— **demo 列表页不会自己刷新**
+    （`setInterval` 命中 0 处），纯轮询 DOM 等 302 轮也全是旧值，现象是
+    `expected '已关闭', actual '履行中'`（**看着像业务没流转，其实是页面没重新取数**）。
+
+    与 `_assert_wait_text` **同一套轮询语义**（同一能力收敛成唯一入口）：
+      refresh：none = 只轮询 DOM · reload = 每轮重载 · research = 每轮重放最近一次搜索点击。
+    有界性由 `timeout_ms` 决定（生成期按场景声明算，默认 `_LOCATE_TIMEOUT_MS`）—— **绝不无限等**。
     """
-    cell = page.locator(f"tbody tr:first-child td[data-field='{field}']")
-    _count_attached(cell)
-    if cell.count() == 0:
-        raise AssertionError(f"表格没有第一行、或没有 {field!r} 列 —— 无法验证「第一条记录」（断言无法成立）")
-    _expect(cell.first).to_contain_text(str(expected), timeout=_LOCATE_TIMEOUT_MS)
-    _ok(page, desc or f"第一行 {field} 含 {expected}", f"first_row_{field}", str(expected))
+    import time as _t
+    _tms = _LOCATE_TIMEOUT_MS if timeout_ms is None else int(timeout_ms)
+    _sel = f"tbody tr:first-child td[data-field='{field}']"
+    _deadline = _t.time() + (_tms / 1000.0)
+    _attempts = 0
+    _last = ""
+    _seen_zero = False
+    while True:
+        _attempts += 1
+        try:
+            _cell = page.locator(_sel)
+            _n = _cell.count()
+            if _n == 0:
+                _seen_zero = True
+            else:
+                _last = str(_cell.first.inner_text() or "")
+                if str(expected) in _last:
+                    _ok(page, desc or f"第一行 {field} 含 {expected}",
+                        f"first_row_{field}", f"{expected}（轮询 {_attempts} 轮 · refresh={refresh}）")
+                    return
+        except Exception as _e:                                # noqa: BLE001
+            _last = f"{type(_e).__name__}: {str(_e)[:80]}"
+        if _t.time() >= _deadline:
+            if _seen_zero and _last == "":
+                raise AssertionError(
+                    f"表格没有第一行、或没有 {field!r} 列 —— 无法验证「第一条记录」（断言无法成立）")
+            raise AssertionError(
+                f"等待超时：{_tms}ms 内表格第一行的 {field!r} 始终不含 {expected!r}"
+                f"（轮询 {_attempts} 轮 · refresh={refresh} · 最后读到 {_last!r}）")
+        if refresh == "reload":
+            try:
+                page.reload(wait_until="domcontentloaded")
+            except Exception:                                  # noqa: BLE001
+                pass
+        elif refresh == "research":
+            _replay_last_search(page)
+        page.wait_for_timeout(500)
 
 
 # ---- 用例间数据复位（2026-09-14）----

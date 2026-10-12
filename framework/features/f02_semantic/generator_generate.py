@@ -264,7 +264,8 @@ def apply_kind_defaults(a: dict, scenario_text: str = "") -> dict:
 
 
 def _render_assert(a: dict, loc_map: dict, cross_page: bool = False,
-                   dup_raw: set[str] | None = None) -> list[str]:
+                   dup_raw: set[str] | None = None,
+                   scenario_text: str = "") -> list[str]:
     """把一条断言（cases 的 asserts[i]）翻译成生成脚本里的调用行。
 
     定位优先级：selector（手写用例显式给，确定性）> element（语义名 → generate 映射的 locator）。
@@ -292,7 +293,30 @@ def _render_assert(a: dict, loc_map: dict, cross_page: bool = False,
                 f" pytrace=False)"]
     if kind == "first_row":
         # 期望值必须是「操作前可确定」的（如刚输入的订单名称）——由 AI 护栏与质量闸共同把关
-        return [f"    _assert_first_row(page, {str(a['row_field']).strip()!r}, {payload}, {desc!r})"]
+        #
+        # [!] **等待时长同样按场景声明抬升**（2026-10-12 修的真 bug）：场景明写
+        #   「提交后 150 秒自动关闭」+「断言『已关闭』必须用**有界等待**」，而这里原先
+        #   硬用 `_LOCATE_TIMEOUT_MS`（5s）=> 用例必然红，现象是
+        #   `AssertionError: expected '已关闭', actual '履行中'` —— **看着像业务没流转，
+        #   其实是框架等太短**。与 `wait_text` 走**同一个** `effective_wait_ms`（同一能力
+        #   收敛成唯一入口），并同样高声留痕。
+        from framework.shared.declared_wait import effective_wait_ms, wait_shortfall
+        _fr_before = a.get("timeout_ms")
+        _fr_tm = effective_wait_ms(scenario_text, _fr_before, _wait_default_ms())
+        for _why in wait_shortfall(scenario_text, _fr_before):
+            print(f"[generate] [!] {_why}（已按场景声明抬到 {_fr_tm}ms）")
+        # [!] refresh：状态按时间流转的场景（场景声明里出现"自动流转/自动关闭/按时间"等）
+        #   必须让断言**每轮重新取数** —— 列表页自己不会刷新，只调超时永远等不到。
+        #   AI 明确给了 refresh 就尊重它；没给 && 场景是流转类的 -> 补 research（生成期留痕）。
+        _fr_ref = str(a.get("refresh") or "").strip().lower()
+        if not _fr_ref:
+            _fr_ref = "research" if scenario_text and any(
+                _kw in scenario_text for _kw in ("自动流转", "自动关闭", "按时间推进", "自动推进")) else "none"
+            if _fr_ref == "research":
+                print(f"[generate] [!] first_row 断言按场景声明（状态自动流转）补 refresh=research"
+                      f" —— 列表页不会自己刷新，只调超时等不到（{str(a.get('row_field'))!r}）")
+        return [f"    _assert_first_row(page, {str(a['row_field']).strip()!r}, {payload},"
+                f" {desc!r}, timeout_ms={_fr_tm}, refresh={_fr_ref!r})"]
 
     if cross_page and elem and elem in dup:
         reason = (f"跨页用例的断言用了跨页重名的原始名 {elem!r} —— 它在多个页面都存在，"
@@ -779,6 +803,8 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
     跨页用例（带 pages）：用到跨页重名的**原始名**时显式失败 —— 必须写成 `原名@页名`，
     否则会静默落到另一页的 locator（就是 P3 要根治的坑）。
     """
+    # 场景原文：等待时长按场景声明抬升要用（与 wait_text 同一入口 `effective_wait_ms`）
+    _scen_text = _scenario_text_of(str(case.get("source_scenario") or ""))
     cid = case["case_id"]
     # [!] 产物是 .py -> 必须 GBK 可编（跨平台铁律）。AI 用例的 name = 场景原文整段，
     #     里面可能有 U+26A0/U+21D2（yml 合法）—— 抄进 docstring 前降级，别让产物违规。
@@ -1090,13 +1116,15 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
         lines.append(f'    _log(page, "{op}", f"{_brace_safe(desc)}")')
         # 该步之后的原地断言（after_step = i+1）
         for a in by_step.get(i + 1, []):
-            lines.extend(_render_assert(a, loc_map, cross_page=is_cross_page, dup_raw=dup_raw))
+            lines.extend(_render_assert(a, loc_map, cross_page=is_cross_page,
+                                        dup_raw=dup_raw, scenario_text=_scen_text))
         lines.append("")
 
     if tail:
         lines.append("    # ---- 断言（用例末尾）----")
         for a in tail:
-            lines.extend(_render_assert(a, loc_map, cross_page=is_cross_page, dup_raw=dup_raw))
+            lines.extend(_render_assert(a, loc_map, cross_page=is_cross_page,
+                                        dup_raw=dup_raw, scenario_text=_scen_text))
         lines.append("")
     return "\n".join(lines)
 
@@ -1654,6 +1682,30 @@ def _probe_declared_pages(pages: list[tuple[str, str]],
     # P22 批 5：另返回「语义名 → 元素字典」——步骤声明 `by` 时要拿元素的稳定锚
     # （title/label/…）现场重算定位，而 loc_map 里只有烘干的表达式。
     it_map = {it["semantic_name"]: it for it in merged_items}
+
+    # [!] **按页名写的名字必须能命中带语境后缀的条目**（AprilPark1012 2026-10-12 拍板 B 的必要组成）：
+    #   清单里同页重名的条目名是 `基础名@页名[语境]`（页名永远在 `@` 后第一段），
+    #   而 AI / 手搓用例按"页名唯一权威"的规则写的是 `基础名@页名`
+    #   => 精确查表必然落空 => 闸门报「缺失项」，看着像 AI 编名字，实为**清单名字多带了一段语境**。
+    #   这里给 it_map 补一层**别名**：把 `基础名@页名[语境]` 也登记到 `基础名@页名` 这个键上。
+    #   只在该键**恰好对应 1 条**条目时才加（多条同名 -> 不加，让调用方按"未映射"处理，
+    #   绝不猜 —— 猜错就是操作到另一个同名控件上，比报红更糟）。
+    _alias_counts: dict[str, int] = {}
+    for _it in merged_items:
+        _sn = str(_it.get("semantic_name") or "")
+        _head, _sep, _tail = _sn.partition("@")
+        if not _sep or not _tail or "[" not in _tail:
+            continue
+        _base_page = f"{_head}@{_tail.split('[', 1)[0]}"
+        _alias_counts[_base_page] = _alias_counts.get(_base_page, 0) + 1
+    for _it in merged_items:
+        _sn = str(_it.get("semantic_name") or "")
+        _head, _sep, _tail = _sn.partition("@")
+        if not _sep or not _tail or "[" not in _tail:
+            continue
+        _base_page = f"{_head}@{_tail.split('[', 1)[0]}"
+        if _alias_counts.get(_base_page) == 1 and _base_page not in it_map:
+            it_map[_base_page] = _it
     return loc_map, ambiguous, dup_pages, it_map
 
 
@@ -2248,7 +2300,20 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             continue
         # host = 前置该在哪一页跑（带业务导航的页）：执行期**用例体之前**先去那儿把身份建立好，
         # 不依赖用例自己的路线（AI 会「等价直达」，可能全程不经过带导航的页）
+        #
+        # [!] **host 缺省 = 工作页根址**（2026-10-12 修的真 bug）：独立用例（手搓）按 D11 可以
+        #   自带 `probe_pre` + `probe_pre_fingerprint` 自证，**不需要**绑场景、也不需要声明
+        #   `probe_pre_host`。原先这里直接落空串，而执行期 `_harness` 是
+        #   `if _steps and _host:` -> **前置根本不跑**；可收尾闸只看 `_steps` -> **照样判红**
+        #   => 同一机制两处判据不一致，独立用例必然红（实测 `manual_order_create_smoke`）。
+        #   独立用例必然是在**登录后的工作页**上跑的，所以缺省就用工作页根址。
         _host = str(_c.get("probe_pre_url") or _scen_host_cache.get(_rel) or "").strip()
+        if not _host:
+            try:
+                from framework.shared.config import target_url as _tgt_url
+                _host = str(_tgt_url() or "").strip()
+            except Exception:                                      # noqa: BLE001
+                _host = ""
         _entry = {"steps": _pp, "url": _host}
         if _pre_tbl.get(_cid) != _entry:
             _pre_tbl[_cid] = _entry
@@ -2916,17 +2981,57 @@ def _click_row_cell(page, row_text, cell_field, tabs=None, op="click", value=Non
     return None
 
 
-def _assert_first_row(page, field, expected, desc=""):
+def _assert_first_row(page, field, expected, desc="", timeout_ms=None, refresh="none"):
     """断言「表格第一行的某列」包含期望文本 —— 直接覆盖「新建后列表第一条记录就是它」这类需求。
 
     为什么单列一种断言 kind：文本断言只能证明「页面上出现过这个名字」，证明不了「它就是第一条」。
+
+    [!] **有界等待 + 每轮重新取数**（2026-10-12 修的真 bug）：状态**按时间自动流转**的场景
+    （如「提交后 150 秒自动关闭」）不能只把超时调大 —— **demo 列表页不会自己刷新**
+    （`setInterval` 命中 0 处），纯轮询 DOM 等 302 轮也全是旧值，现象是
+    `expected '已关闭', actual '履行中'`（**看着像业务没流转，其实是页面没重新取数**）。
+
+    与 `_assert_wait_text` **同一套轮询语义**（同一能力收敛成唯一入口）：
+      refresh：none = 只轮询 DOM · reload = 每轮重载 · research = 每轮重放最近一次搜索点击。
+    有界性由 `timeout_ms` 决定（生成期按场景声明算，默认 `_LOCATE_TIMEOUT_MS`）—— **绝不无限等**。
     """
-    cell = page.locator(f"tbody tr:first-child td[data-field='{field}']")
-    _count_attached(cell)
-    if cell.count() == 0:
-        raise AssertionError(f"表格没有第一行、或没有 {field!r} 列 —— 无法验证「第一条记录」（断言无法成立）")
-    _expect(cell.first).to_contain_text(str(expected), timeout=_LOCATE_TIMEOUT_MS)
-    _ok(page, desc or f"第一行 {field} 含 {expected}", f"first_row_{field}", str(expected))
+    import time as _t
+    _tms = _LOCATE_TIMEOUT_MS if timeout_ms is None else int(timeout_ms)
+    _sel = f"tbody tr:first-child td[data-field='{field}']"
+    _deadline = _t.time() + (_tms / 1000.0)
+    _attempts = 0
+    _last = ""
+    _seen_zero = False
+    while True:
+        _attempts += 1
+        try:
+            _cell = page.locator(_sel)
+            _n = _cell.count()
+            if _n == 0:
+                _seen_zero = True
+            else:
+                _last = str(_cell.first.inner_text() or "")
+                if str(expected) in _last:
+                    _ok(page, desc or f"第一行 {field} 含 {expected}",
+                        f"first_row_{field}", f"{expected}（轮询 {_attempts} 轮 · refresh={refresh}）")
+                    return
+        except Exception as _e:                                # noqa: BLE001
+            _last = f"{type(_e).__name__}: {str(_e)[:80]}"
+        if _t.time() >= _deadline:
+            if _seen_zero and _last == "":
+                raise AssertionError(
+                    f"表格没有第一行、或没有 {field!r} 列 —— 无法验证「第一条记录」（断言无法成立）")
+            raise AssertionError(
+                f"等待超时：{_tms}ms 内表格第一行的 {field!r} 始终不含 {expected!r}"
+                f"（轮询 {_attempts} 轮 · refresh={refresh} · 最后读到 {_last!r}）")
+        if refresh == "reload":
+            try:
+                page.reload(wait_until="domcontentloaded")
+            except Exception:                                  # noqa: BLE001
+                pass
+        elif refresh == "research":
+            _replay_last_search(page)
+        page.wait_for_timeout(500)
 
 
 # ---- 用例间数据复位（2026-09-14）----

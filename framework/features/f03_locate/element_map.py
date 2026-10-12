@@ -433,17 +433,41 @@ def _url_key(url: str) -> str:
     （`http://localhost:8000/order_new.html?contract_no=HT-1`、`/order_new.html`、`order_new.html`），
     而「这是不是一个页」必须由**结构**判断，不能由字符串逐字判断。
     只留 path：host 随部署变、query 常带业务数据值（都是运行期观测，不是页面身份）。
+
+    [!] **根址必须给稳定非空标识**（2026-10-12 修的真 bug）：`http://localhost:8000/` 归一化后
+    是**空串**，而调用方 `split_steps_by_page` 写的是 `if k and pg.get("name")` —— 空 key 被
+    静默跳过 => **根址那一页永远拿不到页名**（`page=''`）=> `probe_items` 里存的是中文页名
+    （`合同列表页`），两边对不上 => 该页控件全被判成"无归属"。
+    实测：合同列表页承载 39 步（最重的一页）却 items=0。
+    => 空 url 仍返回空串（区分"没给"），但**根址**返回 `/`（有路径语义、稳定可比）。
     """
     t = str(url or "").strip()
+    if not t:
+        return ""
     if "://" in t:
         rest = t.split("://", 1)[1]
         t = rest.split("/", 1)[1] if "/" in rest else ""
     t = t.split("?", 1)[0].split("#", 1)[0]
-    return t.strip("/").lower()
+    return t.strip("/").lower() or "/"
 
 
-def split_steps_by_page(steps, pages=None) -> list[dict]:
-    """把一串步骤按 **goto 边界**切成「页」-> `[{"page": 页名, "url": <该页地址>, "steps": [...]}]`。
+#: 会**换页**的动作全集 —— 切页时这些都是边界，其余动作都发生在当前页上。
+#:   goto                                  有明确 URL，按 URL 归一化匹配声明页名
+#:   click_new_tab / new_tab / ...         window.open 开新标签页（无 URL，靠后续证据定页名）
+#:   close_tab / close_page / switch_back  关标签页回到上一页（栈回溯）
+#:   switch_frame / navigate_spa / ...     iframe 内换页、SPA 路由跳转（同为边界）
+#: [!] 只认 goto 是 2026-10-12 修掉的真 bug：新标签页那一段（实测 173 条步骤）全被
+#:     并进上一页，页名永久对不上，控件清单按页查一条都查不到，且不报任何错。
+_PAGE_BOUNDARY_OPS = frozenset({
+    "goto",
+    "click_new_tab", "new_tab", "open_tab", "switch_tab", "open_new_page",
+    "close_tab", "close_page", "switch_back",
+    "switch_frame", "switch_iframe", "navigate_spa", "push_state", "route_to",
+})
+
+
+def split_steps_by_page(steps, pages=None, items=None) -> list[dict]:
+    """把一串步骤按 **换页边界** 切成「页」-> `[{"page": 页名, "url": <该页地址>, "steps": [...]}]`。
 
     为什么要切（要求6 + D2）：`steps` 原先是**一整条流水**，而页对象要「一页一个」；
     不切的话每页都会带上全流程步骤，页与步骤的关系就丢了（下游「按页复核控件」也没法做）。
@@ -451,9 +475,27 @@ def split_steps_by_page(steps, pages=None) -> list[dict]:
     页名怎么定：优先用场景声明的 `pages[].name`（按 URL 归一化匹配，声明是权威）；
     声明里没有这个 URL 时用**归一化后的 path**兜底 —— 客观、不猜、可读。
 
-    [!] 只认 `goto`（含 `op`/`action` 两种写法）作为边界：它是链路里唯一的「换页」动作，
-        其余动作都发生在当前页上。goto 步本身归**它打开的那一页**（它是那页的第 0 步）。
+    [!] **三种换页动作都算边界**（曾经只认 goto，是 2026-10-12 修的真 bug）：
+
+        - `goto`           -> 有明确 URL，按 URL 归一化匹配到声明的页名
+        - `click_new_tab`  -> `window.open` 开新标签页；**没有 goto、没有 URL**，
+                              曾经被并进上一页 => 新页的步骤全挂错页名，
+                              控件清单里该页的条目一条都对不上（实测 173 条）
+        - `close_tab`      -> 关掉标签页，**回到**开它之前的那个页（用栈回溯）
+        - iframe / SPA 路由（`switch_frame` / `navigate_spa`）-> 同样换页，一并认
+
+    新标签页的**页名**从哪来（没有 URL 可用，只能靠交叉证据）：
+        ① 该步骤目标控件在**控件清单**里的 `page` 字段（探测时按页打过标，最权威）
+        ② 该步骤 target 里的 `名称@页名` 后缀，**且**该页名必须是场景声明过的
+           （不合法就不认，留给下游报红 —— 猜一个名字比留空更糟）
+        ③ 都取不到就留空串：由 `_partition_items` 的严格模式报红暴露，不静默归第一页
+
+    :param items: 控件清单（`[{name, page, ...}]`）—— 只用于给新标签页定页名，可省。
     """
+    declared = [str(pg.get("name")) for pg in (pages or [])
+                if isinstance(pg, dict) and pg.get("name")]
+    declared_set = set(declared)
+
     name_by_key: dict[str, str] = {}
     for pg in (pages or []):
         if not isinstance(pg, dict):
@@ -461,37 +503,240 @@ def split_steps_by_page(steps, pages=None) -> list[dict]:
         k = _url_key(pg.get("url") or "")
         if k and pg.get("name"):
             name_by_key[k] = str(pg["name"])
+
+    # 控件名（去掉 @页名 后缀）-> 它出现过的**所有**页名集合。
+    # [!] 必须是 **set** 而不是单值（2026-10-12 修）：同一个控件名（如「订单名称」）
+    #   在多个页面上都存在，取"第一个见到的页"会把新标签页定成**别的页** ——
+    #   实测「查看订单」开的新页被定成"新建订单页"、真正的"订单列表页"整页丢失。
+    #   有歧义时宁可**不用**这条证据（留给 @后缀 或下游报红），也不猜一个。
+    item_pages: dict[str, set] = {}
+    for it in (items or []):
+        if not isinstance(it, dict):
+            continue
+        nm = str(it.get("name") or "").strip()
+        pname = str(it.get("page") or "").strip()
+        if nm and pname:
+            base = nm.partition("@")[0].strip()
+            if base:
+                item_pages.setdefault(base, set()).add(pname)
+
+    def _tgt_text(st) -> str:
+        """取出"这一步瞄准谁"的可读名 —— **三种形态都认**。
+
+        踩过的坑（2026-10-12）：
+          · `target` 可能是 **dict**（`{"semantic_name": "查看订单", ...}`），也可能只是 str；
+          · `TestStep` 那边字段叫 `element`，值是 **`ElementRef` 对象**（既不是 str 也不是 dict）。
+        曾经只认 str/dict => 运行期（dataclass 形态）永远取不到名字 => 新标签页定不出页名，
+        而**同一步骤**从落盘 JSON 读回来（dict 形态）却能算对 —— 于是"手工验证通过、真跑落盘为空"，
+        白追一轮。教训：验证必须用**运行期真实形态**，不能读 json 回来验。
+        """
+        for key in ("target", "element", "name"):
+            v = step_get(st, key)
+            if v is None:
+                continue
+            if isinstance(v, str):
+                if v.strip():
+                    return v.strip()
+                continue
+            if isinstance(v, dict):
+                for k2 in ("semantic_name", "name", "label", "text"):
+                    s2 = str(v.get(k2) or "").strip()
+                    if s2:
+                        return s2
+                continue
+            # ElementRef 之类的 dataclass/对象：按属性取
+            for attr in ("semantic_name", "name", "label", "text"):
+                s3 = str(getattr(v, attr, "") or "").strip()
+                if s3:
+                    return s3
+        return ""
+
+    def _name_of_new_tab(steps_list, idx) -> str:
+        """给"无 URL 的新页"定页名 —— **往后扫**，用新页里的证据反推。
+
+        为什么不能只看触发步本身：`click_new_tab` 的**目标控件在旧页上**
+        （「查看订单」按钮住在合同列表页），它的 `page` 是**旧页**，当新页名正好取反
+        （2026-10-12 实测：写成"合同列表页"，于是合同列表页出现两次、订单列表页消失）。
+
+        证据分**两轮**扫，顺序不能颠倒（2026-10-12 修）：
+          第一轮：只认后续步骤 target 里的 `名称@页名` 且页名已声明 —— AI 自己写出来的
+                 页名，是**它读过的清单口径**，最权威。
+          第二轮：再用后续步骤用到的控件去清单里**反查**页名，但**只有候选唯一**时才采用。
+                 同名控件常跨页存在（「订单名称」在登录页/新建订单页/订单详情页都有），
+                 一见就取会把新页定成错的页 —— 实测就是因此丢掉了整页"订单列表页"。
+
+        反例（真实数据）：`click_new_tab 查看订单` 之后第一步是 `订单名称@订单系统`
+        （后缀非法、不是页名），若此时退回用 base 反查 => `订单名称 -> 新建订单页` => 定错；
+        而紧接着的 `搜索@订单列表页` 才是正确证据。所以**必须先扫完第一轮**。
+
+        扫到**下一个换页动作**就停（那是下一页的地盘，不能再借）。
+        """
+        _end = len(steps_list)
+        for _k in range(idx + 1, len(steps_list)):
+            _op = str(step_get(steps_list[_k], "op")
+                      or step_get(steps_list[_k], "action") or "").strip().lower()
+            if _op in _PAGE_BOUNDARY_OPS:
+                _end = _k
+                break
+        _window = steps_list[idx + 1:_end]
+
+        # ---- 第一轮：@后缀（必须已声明）----
+        for st in _window:
+            _tgt = _tgt_text(st)
+            _base, _sep, _suffix = _tgt.partition("@")
+            if _suffix.strip() and _suffix.strip() in declared_set:
+                return _suffix.strip()
+
+        # ---- 第二轮：清单反查，仅当候选唯一 ----
+        _cands: set = set()
+        for st in _window:
+            _base = _tgt_text(st).partition("@")[0].strip()
+            for _p in (item_pages.get(_base) or ()):        # noqa: B007
+                if _p in declared_set:
+                    _cands.add(_p)
+        if len(_cands) == 1:
+            return next(iter(_cands))
+        return ""
+
+    def _op_of(x) -> str:
+        return str(step_get(x, "op") or step_get(x, "action") or "").strip().lower()
+
+    def _implied_page_after(start_idx: int, cur_name: str) -> str:
+        """AI 用**普通 click** 换页时的页名推断（2026-10-12 实测）。
+
+        场景：AI 写 `click [订单名称]` 进入订单详情页、`click [去开票]` 跳转开票页 ——
+        **既不是 goto 也不是 click_new_tab**，于是这两页的控件全被并进上一页
+        （实测未分配 65 条：订单详情页 40 + 开票页 25）。
+
+        证据沿用同一套 @"权威口径"：**该步之后第一个出现的、已声明的 `名称@页名`**。
+        若它与"当前所在页"不同，说明这一步换到了那一页。
+
+        不猜动作名（`click` 大多数并不换页），只读 AI 自己写出来的页名 —— 有证据才动。
+        扫到真·换页动作（`_PAGE_BOUNDARY_OPS`）就停：那由外层逻辑接管，不越界猜。
+        """
+        for _k in range(start_idx + 1, len(steps_list)):
+            if _op_of(steps_list[_k]) in _PAGE_BOUNDARY_OPS:
+                return ""
+            _b, _s, _suf = _tgt_text(steps_list[_k]).partition("@")
+            _suf = _suf.strip()
+            if _suf and _suf in declared_set:
+                return "" if _suf == (cur_name or "") else _suf
+        return ""
+
     groups: list[dict] = []
     cur: dict | None = None
-    for st in steps or []:
+    stack: list[dict] = []          # 关掉标签页后要回到的页（栈顶 = 最近一次离开的页）
+    steps_list = list(steps or [])
+    for _i, st in enumerate(steps_list):
         op = str(step_get(st, "op") or step_get(st, "action") or "").strip().lower()
         url = step_get(st, "url") if op == "goto" else None
         if url is None and op == "goto":
             url = step_get(st, "value")
+
         if op == "goto" and url:
+            if cur is not None:
+                stack.append(cur)
             k = _url_key(url)
             cur = {"page": name_by_key.get(k) or k, "url": str(url), "steps": [st]}
             groups.append(cur)
             continue
+
+        # [!] 新标签页：没有 goto、没有 URL，但**是**换页 —— 必须开新组，
+        #    否则这一页的步骤全并进上一页，页名永久对不上。
+        if op in ("click_new_tab", "new_tab", "open_tab", "switch_tab", "open_new_page"):
+            if cur is not None:
+                stack.append(cur)
+            cur = {"page": _name_of_new_tab(steps, _i), "url": "", "steps": [st]}
+            groups.append(cur)
+            continue
+
+        # iframe 内换页 / SPA 路由跳转：同页容器内换"页"，也开新组（页名按 @后缀 或清单定）
+        if op in ("switch_frame", "switch_iframe", "navigate_spa", "push_state", "route_to"):
+            if cur is not None:
+                stack.append(cur)
+            cur = {"page": _name_of_new_tab(steps, _i), "url": "", "steps": [st]}
+            groups.append(cur)
+            continue
+
+        # 关标签页：回到开它之前的那一页（栈回溯），本步归**回到的那页**
+        if op in ("close_tab", "close_page", "switch_back"):
+            if stack:
+                cur = stack.pop()
+            if cur is None:
+                cur = {"page": "", "url": "", "steps": []}
+                groups.append(cur)
+            cur["steps"].append(st)
+            continue
+
         if cur is None:                      # goto 之前的步骤（如登录前置）：独立成「首页组」
             cur = {"page": name_by_key.get("") or "", "url": "", "steps": []}
             groups.append(cur)
+
+        # [!] AI 用**普通 click** 换页时也要开新组（证据 = 后续合法的 @页名，见 _implied_page_after）。
+        #   否则该页的控件全被并进上一页 => 未分配条目（实测 65 条：详情页 40 + 开票页 25）。
+        #   触发步本身归**它打开的那一页**（与 goto 口径一致：它是那页的第 0 步）。
+        _imp = _implied_page_after(_i, str(cur.get("page") or ""))
+        if _imp:
+            stack.append(cur)
+            cur = {"page": _imp, "url": "", "steps": [st]}
+            groups.append(cur)
+            continue
+
         cur["steps"].append(st)
-    return groups
+
+    # ---- 同名页合并（切页的职责，2026-10-12）----
+    # [!] 一次链路里同一个页可能被访问多次（实测：搜索 -> 进详情 -> 返回列表，
+    #   "订单列表页"出现两次）。若各自保留一个页对象，`_partition_items` 会把**同一批
+    #   清单条目**分给两个对象 => 落盘条目数虚高（实测 537 变 693）、下游遍历时控件出现两遍。
+    #   页身份就是页名（name 是权威口径）：同名即同页 => 步骤按访问顺序拼接。
+    _merged: list[dict] = []
+    _by_name: dict[str, dict] = {}
+    for g in groups:
+        _nm = str(g.get("page") or "")
+        if _nm and _nm in _by_name:
+            _by_name[_nm]["steps"].extend(g["steps"])
+            if not _by_name[_nm].get("url") and g.get("url"):
+                _by_name[_nm]["url"] = g["url"]
+            continue
+        _merged.append(g)
+        if _nm:
+            _by_name[_nm] = g
+    return _merged
 
 
-def _partition_items(items, page_name: str, total_pages: int) -> list[dict]:
+def _partition_items(items, page_name: str, total_pages: int,
+                     known_names=None, unassigned=None) -> list[dict]:
     """把整份控件清单按页分给某个页对象。
 
     单页（`total_pages <= 1`）-> **整份给它**：此时清单里通常没有 `page` 字段，
     按页过滤会把清单过滤空（那是实打实的数据丢失，不是"分桶"）。
-    多页 -> 按条目的 `page` 字段匹配页名；匹配不上的归**第一页**（宁可留在第一页看得见，
-    也不静默丢掉 —— 丢一条控件 = 少一个能定位的名字）。
+
+    多页 -> 按条目的 `page` 字段**精确匹配**页名。
+
+    [!] **匹配不上的不再归第一页**（2026-10-12 D2=B 改）：旧代码把它们一股脑塞给
+        第一页（注释写"宁可留在第一页看得见"），结果在页名口径错开时把**全部**条目
+        都归了第一页（实测 488 条全堆登录页、其余 3 页全空），而且**不报任何错** ——
+        看着"没丢数据"，实际下游按页查控件每页都查空，属静默降级。
+        现在改为：记进 `unassigned`（调用方收集，由 mapping 闸门报红暴露）。
+        `known_names` 只用于判断"这个页名是不是本次切页已知的页"—— 不是的话说明
+        页对象没建出来（另一类问题），照样算未分配，不掩盖。
+
+    :param known_names: 本次切页得到的所有页名集合（可选，仅用于诊断信息）
+    :param unassigned: 调用方传入的列表，匹配不上的条目追加进去（可选）
     """
     items = list(items or [])
     if total_pages <= 1:
         return items
-    hit = [it for it in items if isinstance(it, dict) and str(it.get("page") or "") == page_name]
+    hit: list[dict] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if str(it.get("page") or "") == page_name:
+            hit.append(it)
+        # [!] 匹配不上的**不归第一页**（D2=B，2026-10-12 AprilPark1012拍板）。
+        #   未分配的收集放在 `normalized_pages` 里**统一算一次** —— 曾经在这里 append，
+        #   结果每页都扫整份清单 => 同一条被记 N 次（实测 315 条报成 2125 条），
+        #   计数失去意义、还会掩盖真问题。这里只负责"分桶"。
     return hit
 
 
@@ -589,24 +834,46 @@ class ElementMap:
         """返回页对象列表（有 pages 用 pages；否则按 goto 现切）—— **读取侧唯一入口**。"""
         if self.pages:
             return list(self.pages)
-        groups = split_steps_by_page(self.steps, self.page_meta)
+        groups = split_steps_by_page(self.steps, self.page_meta, self.probe_items)
         if not groups:
             return [ElementMapPage(page="", url=self.url, scenario=self.scenario,
                                    steps=[], probe_items=with_isvalid(self.probe_items))]
         total = len(groups)
         out: list[ElementMapPage] = []
+        # [!] D2=B（2026-10-12 AprilPark1012拍板）：**匹配不上不再静默归第一页**，改为
+        #   记进 `_LAST_PARTITION_UNASSIGNED` 并由 mapping 闸门报红。
+        #   理由：旧行为看着"没丢数据"，实则把全部对不上的一股脑塞进第一页
+        #   （实测 488 条全堆登录页、其余页全空），下游按页查控件每页都查空，
+        #   而不报任何错 —— 属于「静默降级」，比报红危险得多。
+        unassigned: list[dict] = []
+        known_names = {str(g.get("page") or "") for g in groups}
         for i, g in enumerate(groups):
-            items = _partition_items(self.probe_items, g["page"], total)
-            if total > 1 and i == 0:          # 多页时匹配不上的条目归第一页（不静默丢）
-                rest = [it for it in (self.probe_items or [])
-                        if isinstance(it, dict) and str(it.get("page") or "") not in
-                        {str(x["page"]) for x in groups}]
-                items = list(items) + rest
+            items = _partition_items(self.probe_items, g["page"], total,
+                                     known_names=known_names, unassigned=unassigned)
             out.append(ElementMapPage(page=g["page"], url=g["url"] or self.url,
                                       scenario=self.scenario,
                                       steps=[s if hasattr(s, "to_dict") else TestStep.from_dict(s)
                                              for s in g["steps"]],
                                       probe_items=items))
+        # [!] 未分配条目**统一算一次**（不是每页各扫一遍）：同一条只该记一次，
+        #   否则 N 页 × M 条 => 计数虚高（实测 315 条报成 2125 条），失去诊断意义。
+        assigned = set()
+        for pg in out:
+            for it in pg.probe_items:
+                if isinstance(it, dict):
+                    assigned.add(id(it))
+        for it in (self.probe_items or []):
+            if not isinstance(it, dict) or id(it) in assigned:
+                continue
+            _nm = str(it.get("page") or "")
+            unassigned.append({
+                "name": str(it.get("name") or ""),
+                "element_id": it.get("element_id") or "",
+                "page": _nm,
+                "reason": ("页名不在本次切页结果里（该页没被建出来 —— 换页动作可能没被识别）"
+                           if _nm not in known_names else "页名与当前页不匹配"),
+            })
+        self.partition_unassigned = unassigned
         return out
 
     def to_dict(self) -> list:
@@ -614,8 +881,16 @@ class ElementMap:
 
         为什么统一成 list（要求6）：probe（单页快照）与 explore（跨页）**同形**，
         下游只写一套读法；页与步骤/控件的从属关系也随对象结构显式表达出来。
+
+        [!] `partition_unassigned`（匹配不上页名的条目）**必须落盘** ——
+        explore 与 generate 是**两个进程**，只在内存里传递等于没传（V8.5 已因这类
+        "数据活着但没落盘"踩过一次）。挂在首页对象上，与页结构同生共死。
         """
-        return [pg.to_dict() for pg in self.normalized_pages()]
+        pages = [pg.to_dict() for pg in self.normalized_pages()]
+        un = list(getattr(self, "partition_unassigned", []) or [])
+        if un and pages:
+            pages[0]["partition_unassigned"] = un
+        return pages
 
     def to_json(self, path) -> None:
         path.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=2),

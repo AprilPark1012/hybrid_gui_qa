@@ -1,5 +1,5 @@
 {
-  "ai_orders_invoice_full_lifecycle_044342": {
+  "ai_orders_invoice_full_lifecycle_183547": {
     "steps": [
       "超",
       "切换为订单管理员"
@@ -11,6 +11,6 @@
       "超",
       "切换为订单管理员"
     ],
-    "url": ""
+    "url": "http://127.0.0.1:1"
   }
 }

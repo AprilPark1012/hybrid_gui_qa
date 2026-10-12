@@ -204,7 +204,10 @@ def cmd_probe(rest: list[str] | None = None):
         print(f"[probe] 多页模式：{sfile}（id={sc.id}）→ 按声明顺序探测 {len(specs)} 页")
         for _s in specs:
             print(f"      - {_s['name']}  {_s['url']}")
-        auth = (_decl_login_of(sc))
+        # [!] 这里在 `cmd_probe` 里，**不在** `cmd_explore` 作用域内 —— 不能调那个嵌套辅助。
+        #   直接取（V8.5.1 口径：优先场景 `login:` 动作序列，旧 `auth:` 兼容）。
+        _lg_spec = sc.login_spec() or {}
+        auth = _lg_spec if _lg_spec.get("steps") else (sc.auth_spec() or {})
         probe_pre = list(getattr(sc, "probe_pre", None) or [])
     else:
         specs.append({"name": "probe", "url": _tgt})

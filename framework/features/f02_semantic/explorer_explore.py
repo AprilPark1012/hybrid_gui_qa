@@ -1550,8 +1550,14 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
                   f" cell_field={step_get(_st, 'cell_field')!r}"
                   f" cell_by={step_get(_st, 'cell_by')!r}"
                   f" cell_index={step_get(_st, 'cell_index')!r}")
+    # [!] `page_meta` 必须在这里落进 ElementMap —— 它是 `normalized_pages()` 切页时**定页名的
+    #   唯一来源**。曾经只定义、只读取、**没人赋值**（恒空）=> 切页退化成用 URL 文件名当页名
+    #   （`login.html`），而 `probe_items` 里存的是**中文页名**（`登录页`）=> 两边对不上
+    #   => `_partition_items` 全部匹配失败 => 488 条控件全堆第一页、其余页全空。
+    #   表现：generate 报「缺失项」卡死，看着像命名口径冲突，实为**页名映射断了**。
     return ElementMap(url=first_url, scenario=scenario, steps=steps,
-                      probe_items=list(manifest or []))
+                      probe_items=list(manifest or []),
+                      page_meta=[dict(p) for p in (pages or []) if isinstance(p, dict)])
 
 
 # 触发弹窗的关键词（识别"新建/添加/新增/创建"类按钮 → 点开以探测表单控件）
@@ -2447,7 +2453,24 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
             if pg.get("page"):
                 one += f" —— {pg['page']}"
             lines.append(one)
-        prompt = ("\n".join(lines) + "\n"
+    # [!] **页名硬约束放提示词最前**（2026-10-12 实测）：原先写在提示词中段（约 32% 位置），
+    #   AI 在长上下文里没遵循 —— 写出 `订单名称@订单系统`（把**应用名**当页名）、
+    #   `保存@详细信息`（把**容器名/区块名**当页名）、`保存@订单详情`（近义造词）。
+    #   这些后缀一律映射不上，整条链在生成期被拦，报出来的却只是「缺失项」。
+    #   页名只有一个来源：场景声明的 `pages[].name`（AI 与手搓用例都只看得见它）。
+    _page_names = [str(_p.get("name") or "").strip() for _p in (pages or [])
+                   if isinstance(_p, dict) and str(_p.get("name") or "").strip()]
+    _pname_rule = ("[!] **本场景的页名只有下面这几个**（来自场景声明，是权威口径）："
+                   + "、".join(f"「{_x}」" for _x in _page_names) + "\n"
+                   "  语义名里的 `@页名` 后缀**只能从这几个里选，一个字都不能改**。"
+                   "**下面这些都不是页名，不许当后缀用**：\n"
+                   "    · 系统名 / 模块名 / 应用名（如场景文案里提到的别的叫法）；\n"
+                   "    · **容器名 / 区块名 / 面板标题**（如「详细信息」「发票行」）；\n"
+                   "    · 自己按语义近义造出来的词（如把「订单详情页」写成「订单详情」）。\n"
+                   "  写错后缀会让该控件映射不上，框架会在生成期直接拦下整条链。\n\n") \
+        if _page_names else ""
+    if multi:
+        prompt = (_pname_rule + "\n".join(lines) + "\n"
                   + f"自然语言测试场景: 「{scenario}」\n\n"
                   + "跨页规则（**必须遵守**）：\n"
                   + "  · 每个控件都有 `page` 字段，标出它属于哪一页 —— **只能操作当前所在页面的控件**；\n"
@@ -2473,7 +2496,8 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         prompt += "\n"
     else:
         prompt = (
-            f"你是 GUI 自动化测试规划师。目标页面: {url}\n"
+            _pname_rule
+            + f"你是 GUI 自动化测试规划师。目标页面: {url}\n"
             f"自然语言测试场景: 「{scenario}」\n\n"
         )
 

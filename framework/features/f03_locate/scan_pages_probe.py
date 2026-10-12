@@ -186,21 +186,25 @@ def scan_pages(pages, *, auth=None, probe_pre=None, login=True, label="探测",
 
 def _run_pre(pg, pre, page_name: str = "", *, quiet_missing: bool = False,
              require_all_resolvable: bool = False, seen: dict | None = None) -> list:
-    """跑一组前置动作（唯一引擎：`run.pre_actions.run_pre_actions`）。
+    """跑一组前置动作 —— **委托到唯一入口** `explorer_explore._run_pre_actions`。
 
-    [!] 这里只是**转发**，不实现第二套点击逻辑 —— 探测期与执行期必须是同一个引擎，
-        否则「探测时点得动、执行时点不动」这类差异会在最痛的时候出现。
+    [!] 这里曾经自己写一份调用（直接 `run_pre_actions(..., seen=seen)`），而引擎**根本不认
+        `seen` 参数** => 每次必然 `TypeError` => 被 `except TypeError` 兜成"旧签名调用"
+        => `quiet_missing` / `require_all_resolvable` **全部丢失**，却**不报错**。
+        后果（2026-10-12 实测）：`require_all_resolvable=True` 从未生效，场景级前置在**登录页**
+        上被逐条执行，「超」被子串匹配点掉并记入 done => 后面所有业务页都不再切身份
+        => 详情页「编辑」置灰 => 行内控件探不到 => AI 只能照场景文案编名字 => 定位失败。
+
+    口径（铁律 13「同一能力收敛成唯一入口」）：探测期怎么点前置，只有一份实现。
+    `explorer_explore._run_pre_actions` 已经把 `seen` 正确转成引擎的 `on_clicked` 回调，
+    这里**只转发**，不再持有第二套调用姿势。
     """
     if not pre:
         return []
-    from framework.shared.pre_actions_run import run_pre_actions
-    try:
-        return list(run_pre_actions(pg, pre, page_name, quiet_missing=quiet_missing,
-                                    require_all_resolvable=require_all_resolvable,
-                                    seen=seen) or [])
-    except TypeError:
-        # 兼容旧签名（没有 quiet_missing/require_all_resolvable/seen 时）
-        return list(run_pre_actions(pg, pre, page_name) or [])
+    from framework.features.f02_semantic.explorer_explore import _run_pre_actions
+    return list(_run_pre_actions(pg, pre, page_name, quiet_missing=quiet_missing,
+                                 require_all_resolvable=require_all_resolvable,
+                                 seen=seen) or [])
 
 
 def _remember_required(items, page_name: str) -> None:

@@ -70,7 +70,7 @@ FEATURES = [
             dict(no="3.4", name="跨页面元素", goal="多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧；"
                                                      "explore 期喂给 AI 的**完整清单**必须落盘，作为映射表与运行时快照的**唯一名字来源**",
                  class1=["test_runtime_name_source_is_explore_snapshot.py", "test_elementmap_list_contract.py",
-                         "test_explore_manifest_authoritative.py"],
+                         "test_explore_manifest_authoritative.py", "test_page_identity_contract.py"],
                  class2=["verify_cross_page.py"]),
             dict(no="3.5", name="属性直定位", goal="探测清单兜不住时，用属性（by+value）直接定位；select 的 index 语义 = 第 N 个非空选项（跳过 placeholder）",
                  class1=["test_select_by_index.py", "test_select_without_value.py", "test_text_assert_prefers_visible.py"],

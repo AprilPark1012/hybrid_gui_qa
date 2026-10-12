@@ -229,8 +229,15 @@ def test_generate_live_probe_applies_declared_probe_pre():
     #   真正引擎仍是 `run.pre_actions.run_pre_actions`）。断言"声明页前置被应用 + 转发到唯一引擎"。
     assert '_run_pre(pg, _field(spec, "pre"' in sp, \
         "声明页现场探测没应用 probe_pre（骨架侧）-> 探测到的是只读态 -> 编辑态控件采集不到"
-    assert "from framework.shared.pre_actions_run import run_pre_actions" in sp, \
-        "scan_pages 里的前置没转发到唯一引擎 run.pre_actions（会漂成第二套点击逻辑）"
+    # [!] 2026-10-12：scan_pages 的转发现在是**两跳**（scan_pages._run_pre -> explorer._run_pre_actions
+    #   -> shared.run_pre_actions）。中间那一跳不是第二套实现，它只做 `seen` -> `on_clicked` 的
+    #   适配（探测期要记录"点击那一刻的定位锚"），实现仍**唯一**。所以判据要查**整条委托链**
+    #   是否真的落到引擎上，而不是盯着一句 import 的字面位置 —— 否则挪一层转发就会误报。
+    assert "from framework.features.f02_semantic.explorer_explore import _run_pre_actions" in sp, \
+        "scan_pages 的前置没委托出去（会漂成第二套点击逻辑）"
+    _xp = (REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
+    assert "from framework.shared.pre_actions_run import run_pre_actions" in _xp, \
+        "scan_pages 委托到的那一站没有落到唯一引擎 run.pre_actions（委托链断了）"
     assert "_scenario_probe_pre_of(" in src, "generate 没有回读场景的 probe_pre"
     assert "_decl_pre" in src, "generate 没有解析身份前置（_decl_pre）"
     assert 'run_pre_actions(pg, _decl_pre, "场景探测前置"' in src, \

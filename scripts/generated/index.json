@@ -1,26 +1,18 @@
 {
-  "ai_orders_invoice_full_lifecycle_044342": {
-    "case_fingerprint": "28916f4e0ac85dbe",
-    "probe_fingerprint": "416a44fe90a4e910",
-    "scenario_fingerprint": "282b923e23312069",
+  "ai_orders_invoice_full_lifecycle_183547": {
+    "case_fingerprint": "369345d4ce6ebc1d",
+    "probe_fingerprint": "da5c6fb45487c147",
+    "scenario_fingerprint": "bd0d136dac570cd3",
     "scenario_id": "orders_invoice_full_lifecycle",
-    "script_path": "scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_044342.py",
-    "template_fingerprint": "360aeb2e482a67d8"
-  },
-  "ai_在合同列表页面的搜索框输入_合同1_然后点击搜索_074348": {
-    "case_fingerprint": "bb6f3ad8c579904d",
-    "probe_fingerprint": "416a44fe90a4e910",
-    "scenario_fingerprint": "",
-    "scenario_id": "manual",
-    "script_path": "scripts/generated/manual/ai_在合同列表页面的搜索框输入_合同1_然后点击搜索_074348.py",
-    "template_fingerprint": "360aeb2e482a67d8"
+    "script_path": "scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_183547.py",
+    "template_fingerprint": "689be4ce109d59ac"
   },
   "manual_order_create_smoke": {
-    "case_fingerprint": "097c1ece1bbf6591",
-    "probe_fingerprint": "416a44fe90a4e910",
+    "case_fingerprint": "a3f7fd40917db624",
+    "probe_fingerprint": "da5c6fb45487c147",
     "scenario_fingerprint": "",
     "scenario_id": "manual",
     "script_path": "scripts/generated/manual/manual_order_create_smoke.py",
-    "template_fingerprint": "360aeb2e482a67d8"
+    "template_fingerprint": "689be4ce109d59ac"
   }
 }

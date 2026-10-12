@@ -376,11 +376,25 @@ def _ctx_token(nearby_text: str, container_heading: str, help_text: str) -> str:
 _BARE_GENERIC_PLACEHOLDERS = {"请选择", "请输入", "选填", "全部", "请选择_", "选择", "-", "--"}
 
 
-def assign_semantic_names(items: list[dict], max_len: int = 26) -> None:
+def assign_semantic_names(items: list[dict], max_len: int = 40,
+                          page_name: str = "") -> None:
     """给探测结果统一分配 semantic_name（**两遍命名，且可重复调用**，2026-09-14 / 2026-09-18 批次 2 改造）。
 
     规则：基础名**在本次传入的清单里唯一**时保持原名（老用例零影响，如「搜索」）；
-    一旦同名（≥2 个），这一组**全部**带上上下文后缀 `base@上下文`，拿不到上下文才退回 `base_2/base_3`。
+    一旦同名（≥2 个），这一组**全部**带上后缀，拿不到上下文才退回 `base_2/base_3`。
+
+    [!] **后缀格式 = `基础名@页名[语境]`（2026-10-12 AprilPark1012拍板 B）**：
+      页名**永远**是 `@` 后面的第一段，语境只在同页重名时补充。
+      为什么必须这样（实测事故）：原先同页重名直接用**容器上下文**当后缀，产出
+      `订单名称@订单系统`（应用名）、`订单名称@基础信息`（区块名）—— 而提示词里明写的
+      硬约束是「`@` 后缀只能是场景声明的**页名**」。于是：
+        · AI 遵守约束、按页名写 `订单名称@订单列表页` -> **清单里根本没有这个名字** -> 映射不上；
+        · 框架自己产出的名字**违反了**自己立的约束。
+      统一成「页名在前」之后，「`@` 后第一段是页名」成为**可机检的不变式**，
+      AI 与手搓用例按页名写名字必然能对上。
+
+      页名来源：优先条目自带的 `page` 字段（跨页清单里每项都有），其次入参 `page_name`。
+      两者都拿不到时才退回裸 `base@语境`（单页且未声明页名的老路径，行为与改造前一致）。
 
     为什么不沿用「第一个用原名、后续加序号」：
       (1) 序号是 DOM 顺序，行序一变就指向别的行（脆弱）；
@@ -433,7 +447,20 @@ def assign_semantic_names(items: list[dict], max_len: int = 26) -> None:
         if counts[base] == 1:
             name, src = base, "exact"
         else:
-            cand = f"{base}@{_slug(ctx)}"[:max_len].rstrip("_") if ctx else ""
+            # [!] 后缀 = `@页名[语境]`（AprilPark1012 2026-10-12 拍板 B）：页名永远在 `@` 后第一段，
+            #   语境只在同页重名时补充。页名优先取条目自带的 `page`，其次入参。
+            #   两者都没有（单页且未声明页名）才退回裸 `base@语境`，与改造前行为一致。
+            _pg = str(it.get("page") or page_name or "").strip()
+            _cx = _slug(ctx)
+            if _pg and _cx:
+                cand = f"{base}@{_pg}[{_cx}]"
+            elif _pg:
+                cand = f"{base}@{_pg}"
+            elif _cx:
+                cand = f"{base}@{_cx}"
+            else:
+                cand = ""
+            cand = cand[:max_len].rstrip("_") if cand else ""
             if cand and cand not in seen:
                 name, src = cand, "ctx"
             else:

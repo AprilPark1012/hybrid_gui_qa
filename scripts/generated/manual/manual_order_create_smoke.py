@@ -96,11 +96,11 @@ def test_manual_order_create_smoke(page, ctx):
     _assert_text(page, _data('expect_0', ctx), '确认进入订单列表页')
 
     # step 12: 在订单名称搜索框输入刚填的订单名称
-    _act(page, "fill", semantic='订单名称@订单系统', primary=lambda p: p.locator("#tb-o-name"), value=_data('fill_1', ctx))
+    _act(page, "fill", semantic='订单名称@订单列表页[订单系统]', primary=lambda p: p.locator("#tb-o-name"), value=_data('fill_1', ctx))
     _log(page, "fill", f"在订单名称搜索框输入刚填的订单名称")
 
     # step 13: 搜索该订单
     _act(page, "click", semantic='搜索@订单列表页', primary=lambda p: p.locator("#btn-search-o"))
     _log(page, "click", f"搜索该订单")
-    _assert_first_row(page, 'orderName', _data('expect_1', ctx), '列表首行出现刚创建的订单')
+    _assert_first_row(page, 'orderName', _data('expect_1', ctx), '列表首行出现刚创建的订单', timeout_ms=30000, refresh='none')
 

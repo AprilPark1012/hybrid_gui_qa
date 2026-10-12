@@ -199,6 +199,10 @@ def perform_login(page, base_url, spec, timeout=15000):
     login_url = str(spec.get("login_url") or "").strip()
     if not login_url:
         login_url = (base_url or "").rstrip("/") + "/login.html"
+    elif not login_url.startswith("http"):
+        # [!] 场景里常写相对路径 `/login.html` —— 必须拼成绝对地址，
+        #   否则 Playwright 的 goto 会拿它当**相对当前页**的路径（实测会跑错页）。
+        login_url = (base_url or "").rstrip("/") + "/" + login_url.lstrip("/")
 
     page.goto(login_url, wait_until="domcontentloaded")
     done = 0
