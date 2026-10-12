@@ -82,7 +82,7 @@ python -m demo.app         # http://localhost:8000：合同/订单列表页 + �
 # 两条链路**同一条命令**，用 `--ai` 区分（不另开命令）：
 python -m framework.cli all --ai --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml
                                               # 真 AI 链路（主推）：explore --ai → generate → run 一条龙
-python -m framework.cli all --workers 2       # 手搓链路（次选）：probe → generate → run，确定性，零 token
+python -m framework.cli all --workers 2       # 手搓链路（暂冻结，暂不推荐）：probe → generate → run，确定性，零 token
 python -m framework.cli run --debug           # 调试开关：有屏幕弹浏览器；没屏幕录视频 + 逐步截图
 python -m framework.cli run --case <case_id>          # 只跑指定用例（--case 可重复；case_id = cases/ 里的文件名）
 python -m framework.cli prune --dry-run       # 归档保留（log/ 与 output/verify/ 按 30 个 ∪ 7 天清理）
@@ -93,6 +93,9 @@ python -m framework.cli --help                # 总览 = 子命令 + 每个子�
 > **命令统一口径（AprilPark1012 2026-10-11 要求 4）**：真 AI 链路与手搓链路**共用 `all`**，
 > **用 `--ai` 区分**，**不另开命令**。单独用 `explore` / `generate` / `run` 仍然可以
 > （调参、只跑某一段时用），但那不是主线；主线一律 `all`。
+>
+> ⚠️ **手搓链路暂时冻结**（2026-10-13 AprilPark1012重申：设计上可能还有问题，他再想想怎么做）
+> —— **打通性验收只看真 AI 链路**（`all --ai`），手搓链路不参与，也不能当「真 AI 链路跑不通」的替代证明。
 
 **两类验证**（改完东西跑这两条）：
 

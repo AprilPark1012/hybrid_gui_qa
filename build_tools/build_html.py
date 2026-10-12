@@ -3519,7 +3519,7 @@ def build() -> str:
 <!-- ========== 3. 整体流程 ========== -->
 <section>
   <h2 class="sec-title"><span class="n">3</span>整体流程：explore(AI 产用例) -> cases/ -> generate -> run(带自愈)</h2>
-  <p class="sec-sub">本框架有<b>两种业务场景</b>，但<b>入口只有一条命令</b>：<b>(1) 真 AI 链路（主推）</b> <code>cli all --ai</code> —— 自然语言场景 -> AI 语义识别/编排 -> 用例落 <code>cases/ai_*.json</code> -> 生成 -> 真跑（花 token）；<b>(2) 手搓链路（次选）</b> <code>cli all</code>（不带 <code>--ai</code>）—— 手搓 <code>cases/*.json</code> -> 生成脚本+数据分离 -> 执行（零 token）。<b>两条链路共用 <code>all</code>，用 <code>--ai</code> 区分，不另开命令</b>；两条链路在 <code>cases/*.json</code> 汇合，下游是同一条确定性执行链。</p>
+  <p class="sec-sub">本框架有<b>两种业务场景</b>，但<b>入口只有一条命令</b>：<b>(1) 真 AI 链路（主推）</b> <code>cli all --ai</code> —— 自然语言场景 -> AI 语义识别/编排 -> 用例落 <code>cases/ai_*.json</code> -> 生成 -> 真跑（花 token）；<b>(2) 手搓链路（暂冻结）</b> <code>cli all</code>（不带 <code>--ai</code>）—— 手搓 <code>cases/*.json</code> -> 生成脚本+数据分离 -> 执行（零 token）。<b>两条链路共用 <code>all</code>，用 <code>--ai</code> 区分，不另开命令</b>；两条链路在 <code>cases/*.json</code> 汇合，下游是同一条确定性执行链。</p>
   <div class="card" style="margin:12px 0;">
     <b>命令 -> 职责 -> 是否用 AI（最容易搞混的一张表）：</b>
     <table class="tbl" style="width:100%;">
@@ -3555,7 +3555,7 @@ def build() -> str:
         <td>同上面几条</td>
       </tr>
       <tr>
-        <td><code class="code-inline">all</code>（次选，不加 <code class="code-inline">--ai</code>）</td>
+        <td><code class="code-inline">all</code>（暂冻结，不加 <code class="code-inline">--ai</code>）</td>
         <td><b>= probe -> generate -> run</b>（手搓链路一条龙，<b>不含</b> explore）</td>
         <td>否</td>
         <td>同上面几条</td>
