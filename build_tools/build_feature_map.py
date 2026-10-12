@@ -1,10 +1,10 @@
-"""从 framework/feature_spec.py 生成特性映射文档。
+"""从 framework/features/f09_gate/feature_spec.py 生成特性映射文档。
 
 用法：
     python build_tools/build_feature_map.py            # 写 docs/feature_map.md
     python build_tools/build_feature_map.py --check     # 只校验，不写（判据用）
 
-单一来源纪律：特性/子特性/归属只在 framework/feature_spec.py 里定义，
+单一来源纪律：特性/子特性/归属只在 framework/features/f09_gate/feature_spec.py 里定义，
 本脚本只负责渲染 + 统计。文档与规格不一致时 --check 会非 0 退出。
 """
 
@@ -35,7 +35,7 @@ def render(repo: Path) -> str:
     lines: list[str] = []
     lines.append("# 框架特性与子特性映射表")
     lines.append("")
-    lines.append("> 本文件由 `build_tools/build_feature_map.py` 从 `framework/feature_spec.py` **自动生成**，请勿手改。")
+    lines.append("> 本文件由 `build_tools/build_feature_map.py` 从 `framework/features/f09_gate/feature_spec.py` **自动生成**，请勿手改。")
     lines.append("> 加特性 / 子特性：改规格文件后重跑生成器。")
     lines.append("")
 

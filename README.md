@@ -62,7 +62,7 @@ AI 负责理解意图、规划步骤、挑元素；Playwright 负责精确定位
 ### 0. 一条命令搞定环境（推荐；装依赖 + 装浏览器 + 自检）
 
 ```bash
-pip install -r requirements.txt        # 核心三件套：playwright / python-dotenv / pytest
+pip install -r requirements.txt        # 核心依赖：playwright / python-dotenv / pytest / pytest-xdist / pytest-html
 python -m framework.cli setup          # 装依赖 → 装浏览器 → 真启 chromium 自检；就绪才说 OK
 ```
 
@@ -79,25 +79,35 @@ python -m demo.app         # http://localhost:8000：合同/订单列表页 + �
 ### 2. 跑通整条链路（另开一个终端）
 
 ```bash
-python -m framework.cli all --workers 2       # probe → generate → run 一条龙（确定性，零 token）
+# 两条链路**同一条命令**，用 `--ai` 区分（不另开命令）：
+python -m framework.cli all --ai --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml
+                                              # 真 AI 链路（主推）：explore --ai → generate → run 一条龙
+python -m framework.cli all --workers 2       # 手搓链路（次选）：probe → generate → run，确定性，零 token
 python -m framework.cli run --debug           # 调试开关：有屏幕弹浏览器；没屏幕录视频 + 逐步截图
 python -m framework.cli run --case <case_id>          # 只跑指定用例（--case 可重复；case_id = cases/ 里的文件名）
-python -m framework.cli explore --ai --scenario "在搜索框输入'1005'点搜索，确认出现 HT-1005"
-                                              # AI 链路：自然语言 → cases/<场景id>/ai_*.json（落盘后默认试跑）
 python -m framework.cli prune --dry-run       # 归档保留（log/ 与 output/verify/ 按 30 个 ∪ 7 天清理）
 python -m framework.cli --help                # 总览 = 子命令 + 每个子命令的全部参数（由代码注册表生成，不手写第二份）
                                               # 参数写错一律报错 + exit 2，绝不静默忽略；<子命令> --help 看详细用法
 ```
 
+> **命令统一口径（AprilPark1012 2026-10-11 要求 4）**：真 AI 链路与手搓链路**共用 `all`**，
+> **用 `--ai` 区分**，**不另开命令**。单独用 `explore` / `generate` / `run` 仍然可以
+> （调参、只跑某一段时用），但那不是主线；主线一律 `all`。
+
 **两类验证**（改完东西跑这两条）：
 
 ```bash
-python -m pytest tests/_helpers/ -q                    # ① 框架自测：秒级，不需要 demo / key
+python -m pytest tests/ -q                            # ① 框架自测：秒级，不需要 demo / key
 python tests/_runner/run_verifications.py             # ② 端到端特性验证：需 demo（会自己起停；SKIP ≠ 通过）
 python tests/_runner/run_acceptance.py                # ③ 四项验收一条命令（闸门 → 新鲜度 → 自测 → E2E → 特性）
 ```
 
-⚠️ **跑那条 AI 端到端用例（`ai_orders_invoice_full_lifecycle_<时间戳>`）必须带 `HYBRID_CASE_TIMEOUT=600`**：
+> **判据住哪**（2026-10-12 更正）：判据按**特性**分目录，在 `tests/特性1-…/` ... `tests/特性11-…/` 下
+> （`test_*.py` 一类 + `verify_*.py` 二类混放同一特性目录，共 121 个 `test_*` / 24 个 `verify_*`）。
+> `tests/_helpers/` 只是**共享辅助**（artifacts / demo_freshness / repo_files / testid_policy），
+> **不含任何 `test_*.py`** —— 直接跑它会 `no tests collected`。
+
+⚠️ **跑那条 AI 端到端用例（`ai_orders_invoice_full_lifecycle_<时间戳>`）建议显式带 `HYBRID_CASE_TIMEOUT`**：
 
 ```bash
 HYBRID_CASE_TIMEOUT=600 HYBRID_STRICT_LOCATE=1 \
@@ -105,14 +115,16 @@ HYBRID_CASE_TIMEOUT=600 HYBRID_STRICT_LOCATE=1 \
 ```
 
 **为什么**：该用例含 **150 秒真等待**（等订单自动关闭并落库，是 demo 的真实状态流转，不是卡住）。
-默认上限 120s 会在半途掐断 —— **表现像用例失败，其实是超时设小了**。
+**该值的默认已是 600**（2026-10-08 由 120 上调）—— 所以一般**不用设**；只有你要
+**调小**、或想**显式固定**（不受将来默认值变化影响）时才写。设小了会在半途掐断，
+**表现像用例失败，其实是超时设小了**。可调项全清单见 `python -m framework.cli config`。
 
-**期望值对照（V8.3 基准 · 本机 1.87G 无 swap 实测）**：
+**期望值对照（V8.5.1 基准 · 本机 1.87G 无 swap 实测）**：
 
 | 命令 | 期望 | 耗时 |
 |---|---|---|
-| 上面那条端到端 | `1 passed`（48 步 / 8 断言） | ~185s |
-| `pytest tests/_helpers -q` | `675 passed`，0 failed | ~30s |
+| 上面那条端到端 | `1 passed` | ~220s |
+| `pytest tests/ -q` | `1124 passed / 1 skipped`，0 failed | ~41s |
 | `run_verifications.py` | 绝大部分通过；**唯一遗留 `verify_slow_target`**（慢环境缺陷，见 BACKLOG L22） | ~14 min |
 | `run_acceptance.py` | 四项闸门全过 | — |
 
@@ -150,31 +162,37 @@ cases/（自然语言用例：manual/ 手写 · <场景id>/ AI）──generate�
 
 | # | 场景 | 入口 | 花 token |
 |---|---|---|---|
-| ① | 自然语言场景 → AI 语义识别 → 产出用例 | `explore --ai --scenario` / `--scenario-file` / `--scenario-dir` | ✅ |
-| ② | 手搓 `cases/manual/*.json` → 生成脚本 + 数据分离 → 执行 | `generate` / `run` / `all` | ❌ 零 token |
+| ① | 自然语言场景 → AI 语义识别 → 产出用例 → 执行 | **`all --ai`**（`--scenario` / `--scenario-file` / `--scenario-dir`） | ✅ |
+| ② | 手搓 `cases/manual/*.json` → 生成脚本 + 数据分离 → 执行 | **`all`**（不带 `--ai`） | ❌ 零 token |
+
+> **入口只有一条命令**：两条链路**共用 `all`**，**用 `--ai` 区分**，不另开命令。
+> 单独用 `explore` / `generate` / `run` 仍可（调参、只跑某一段），但那是**辅助**，不是主线。
 
 **目录职责**（逐文件说明见培训页第 2 章）：
 
 ```
-cases/        手写自然语言用例（源）：manual/ 手写 · <场景id>/ AI 用例 · scenarios/  AI 场景库（一个 yml = 一个场景）
+cases/        用例（源）：manual/ 手搓用例 · <场景id>/ AI 用例（AI 产出也落这里，两者在此汇合）
+scenarios/    AI 场景库：<模块>/<场景id>.yml（一个 yml = 一个场景）；字段契约见 scenarios/README.md
 scripts/      generate 产物（可重建，别手改）：generated/（<场景id>/<用例id>.py + manual/ + _harness.py + conftest.py + index.json）· datasets/（抽离数据）
-framework/    cli.py + tools/{common,probe,explore,generate,run}
+framework/    按**特性**聚合：features/f01..f11（每特性 api.py 是唯一入口，阶段看文件名后缀）· shared/（跨特性基础设施：配置/浏览器/登录/前置动作）· cli.py
 demo/         被测 demo（合同/订单列表页 + 详情页 + 数据 API）
 build_tools/  开发期工具：打包 · 培训页 · 录像体检/重录 · 离线链路
-tests/_helpers/  框架自验证：test_*（秒级、不需 demo/浏览器）+ 共享辅助
-tests/_runner/    特性自验证：verify_*（端到端、需 demo）+ run_verifications.py / run_acceptance.py 两个入口
+tests/        判据按**特性**分目录：特性1-…/ ... 特性11-…/（test_* 一类 + verify_* 二类同放一特性目录）
+  ├─ _helpers/   共享辅助（artifacts / demo_freshness / repo_files / testid_policy）—— **不含 test_***
+  └─ _runner/    run_verifications.py（二类入口）· run_acceptance.py（四项验收一条命令）
 releases/     发行说明 RELEASE_NOTES_V*.md（变更日志的家）+ 交付包（包不入库）
 docs/         training.html 培训页（对外文档）· feature_map.md 特性/子特性/用例映射表（自动生成，别手改）
 output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 + report.html，可清理）
 ```
 
-**断言 11 种**（`asserts[].kind`，缺省 = `text`）：`text` · `visible`/`hidden` · `count` · `attr` ·
-`value` · `url` · `checked`/`unchecked` · `enabled`/`disabled`。定位用 `element`（探测语义名）或
+**断言 13 种**（`asserts[].kind`，缺省 = `text`）：`text` · `visible`/`hidden` · `count` · `attr` ·
+`value` · `url` · `checked`/`unchecked` · `enabled`/`disabled` · **`first_row`**（表格第一行某列，
+证明"它就是第一条"）· **`wait_text`**（有界等待式，等状态自动流转）。定位用 `element`（探测语义名）或
 `selector`（手写用例专用，**AI 链路禁用**）。契约与示例见培训页第 4 章；样例用例见 `cases/orders_invoice_full_lifecycle/`（AI 用例）与 `cases/manual/`（手搓用例，按需自建）。
 
 ## 常见坑
 
-新同学最容易踩的 8 条（完整清单见培训页第 8 章）：
+新同学最容易踩的 10 条（完整清单见培训页第 7 章）：
 
 1. **漏装浏览器** —— `pip install` 不装浏览器；跑 `python -m framework.cli setup`。
 2. **改了 demo 不重启** ⇒ 验证跑在旧页面上（用例白跑）；二类入口会自己过新鲜度闸门。
@@ -204,8 +222,8 @@ output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 
 ## 文档与资源
 
 - **培训页 [`docs/training.html`](docs/training.html)**（团队主文档，由 `build_tools/build_html.py` 生成）：
-  2 目录结构 · 3 整体流程 · 4 场景/用例怎么写 · 5 函数调用地图 · 6 关键设计图例 · 7 框架特性说明 ·
-  8 常见坑 · 9 动手跑一遍（含**环境变量与运行开关**表）· 10 收尾
+  1 为什么是「混合」· 2 目录结构 · 3 整体流程 · 4 场景/用例怎么写 · 5 函数调用地图 ·
+  6 框架特性设计实现（11 特性 / 49 子特性）· 7 常见坑 · 8 动手跑一遍（含**环境变量与运行开关**表）· 9 收尾
 - **发行说明 [`releases/RELEASE_NOTES_V*.md`](releases/)**：每版改了什么（**变更日志都在这里**，随交付包一并发出）
 - **字段契约**：`scenarios/README.md`（场景文件）+ 培训页第 4 章（用例文件）
 - **框架判据**：`tests/_helpers/`（框架自验证，`test_*` 秒级、不需要 demo）+ `tests/_runner/`（特性自验证，`verify_*` 端到端且含**负向证伪**）

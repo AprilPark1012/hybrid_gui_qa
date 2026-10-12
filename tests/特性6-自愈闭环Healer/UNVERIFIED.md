@@ -3,7 +3,7 @@
 **状态**：🔴 **未验证**（2026-10-07 登记 · 对应遗留项 L11）
 
 ## 现状
-- **实现**：`framework/tools/run/healer.py` —— A 级放宽阈值（阈值×0.75 / MINGAP×0.6，确定性无 LLM）·
+- **实现**：`framework/features/f06_healer/healer_run.py` —— A 级放宽阈值（阈值×0.75 / MINGAP×0.6，确定性无 LLM）·
   B 级 LLM 重猜（需 key，可选）· 三态裁决 `recovered` / `real_bug` / `failed`
 - **判据**：**本目录为空** —— `tests/` 全文搜 `healer` / `try_heal` / `heals/` **没有任何行为判据**
   （只有 `test_docs_sync.py` / `test_no_stale_paths.py` 里的非行为引用）

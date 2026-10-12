@@ -1083,7 +1083,7 @@ def cmd_prune(rest: list[str] = None):
 def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool = False,
             cases: list[str] | None = None, slowmo: int | None = None,
             isolated_target: bool = False):
-    """用 pytest 执行 scripts/test_cases.py + 日志整合 + HTML 报告。
+    """用 pytest 执行 scripts/generated/ 下的用例脚本 + 日志整合 + HTML 报告。
 
     debug=True（`--debug`，别名 `--headed`）＝ **调试开关**（默认关，只在调试时用）。
       开了 = "我要看得见这次执行"：单浏览器、顺序跑、动作放慢（默认 200ms，`--slowmo N` 可改），
@@ -1205,7 +1205,7 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
             print(f"        trace 交互回放：playwright show-trace {traces[0]}")
     if r.returncode == 5:
         print("[run] [info] 退出码 5 = 没有匹配到任何用例（--case 的名字对不上？已生成的用例见 "
-              "scripts/test_cases.py 里的 def test_* ）")
+              "scripts/generated/ 下各场景目录里的 def test_* ）")
     # 退出码必须**如实传递**（2026-09-13 修）：以前 cmd_run 跑完就返回 -> cli 永远 exit 0，
     # 用例失败(1)/没匹配到用例(5)/collect error(2) 全被吞掉 -> CI 与脚本调用方一律误判成功。
     # ---- 收尾（**必须在退出码判断之前**）：summary.json + 归档保留 ----

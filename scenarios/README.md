@@ -7,16 +7,19 @@
 
 ## 用法
 
+> **入口口径**：主线用 `all --ai`（一条龙：explore --ai -> generate -> run）。
+> 只想产出用例、不跑执行时，才用下面的 `explore --ai` 形式（辅助用法）。
+
 ```bash
 # 单个场景
-python -m framework.cli explore --ai --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml
+python -m framework.cli all --ai --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml
 
 # 目录批量（递归扫；--tag 可重复，OR 语义；--limit 限流）
-python -m framework.cli explore --ai --scenario-dir scenarios/ --tag smoke
-python -m framework.cli explore --ai --scenario-dir scenarios/ --limit 3 --no-verify
+python -m framework.cli all --ai --scenario-dir scenarios/ --tag smoke
+python -m framework.cli all --ai --scenario-dir scenarios/ --limit 3 --no-verify
 
 # 内联（原样保留，不进场景库的临时想法用这个）
-python -m framework.cli explore --ai --scenario "在搜索框输入'1005'点搜索，确认出现 HT-1005"
+python -m framework.cli all --ai --scenario "在搜索框输入'1005'点搜索，确认出现 HT-1005"
 ```
 
 三者**互斥**：`--scenario` / `--scenario-file` / `--scenario-dir` 只能给一个，同时给会报错退出（exit 2）。

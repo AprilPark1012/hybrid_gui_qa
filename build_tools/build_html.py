@@ -311,7 +311,11 @@ CHANGELOG = [
     ),
     dict(
         version="8.3.4", date="2026-10-07", tag="上一版本",
-        theme="<b>交付包缺文件修复</b> —— 包里少了登录前置清单，导致「整条用例跑在登录页上」却报成「元素找不到」",
+        theme="<b>[V8.5.1 已作废] 交付包缺文件修复</b> —— 包里少了登录前置清单，导致「整条用例跑在登录页上」却报成「元素找不到」"
+              "<br><b>[!] 本条的口径在 V8.5.1 整体反转</b>：登录已<b>步骤化</b>（场景 <code>login:</code> 段声明 -> "
+              "生成期展开成用例前导步骤 -> 执行期真在页面上填账号点登录），<code>_auth.json</code> 那套"
+              "<b>已整体删除、没有任何代码读它</b>；现在包里出现该文件<b>反而会被闸门报红</b>"
+              "（它含明文口令且无人读取）。下面记的是<b>当时的事实</b>，别再按它做。",
         summary="用户在<b>内网 Windows</b> 上跑 <code>python -m framework.cli run --debug</code>，"
                 "<b>两条用例全挂</b>，报 <code>RuntimeError: 元素语义未找到: 超@合同列表页</code>，"
                 "而 <code>page.url</code> 停在 <code>login.html?next=%2F</code>。<br>"
@@ -323,13 +327,17 @@ CHANGELOG = [
                 "<b>现象却是「元素语义未找到」，排查方向被彻底带偏</b>。",
         fixed=[
             "<code>pack_release.py</code> 收集文件时<b>显式补上</b> <code>scripts/generated/_auth.json</code>"
-            "（口径修正：<b>「不入库」不等于「不入包」</b> —— 入库靠 git，交付靠打包脚本，两件事分开）",
+            "（口径修正：<b>「不入库」不等于「不入包」</b> —— 入库靠 git，交付靠打包脚本，两件事分开）"
+            "<br><b>[V8.5.1 起反向]</b>：该补丁已删除；<code>pack_release.py</code> 现在<b>反向拦截</b>"
+            "（包里出现 <code>_auth.json</code> 即报问题）—— 「专门为某个机制加过的补丁」"
+            "在机制废弃后就是<b>反向危害</b>，删机制时必须一并查产出侧/打包侧。",
             "<b>包自检加一条</b>：仓库里有该文件而包里没有 => 报问题"
             "（只在仓库确有该文件时才要求，避免对无登录场景误报）；这个坑以后进不了交付包",
         ],
         notes=[
             "<b>30 秒复现</b>（本机即可）：把 <code>scripts/generated/_auth.json</code> 移走 => "
-            "跑 <code>run --case &lt;id&gt;</code> => <b>必现</b>；移回来 => <code>passed</code>。",
+            "跑 <code>run --case &lt;id&gt;</code> => <b>必现</b>；移回来 => <code>passed</code>。"
+            "<br><b>[V8.5.1 起此复现已失效</b>：登录走用例前导步骤，不经该文件]",
             "<b>排查心法</b>：用例报「元素找不到」时<b>先看 <code>page.url</code></b> —— "
             "URL 是登录页/空白页，说明问题<b>根本不在定位</b>，而在<b>前置没生效</b>。",
         ],
@@ -527,7 +535,7 @@ CHANGELOG = [
             "<code>--only &lt;case_id,...&gt;</code>（只重做指定用例，其余一动不动）",
             "<b>共享运行时拆分</b>：<code>generated/_harness.py</code>（辅助函数）+ "
             "<code>generated/conftest.py</code>（只转发夹具）—— 消除「两个 conftest」的 import 歧义",
-            "<b>二类共享助手</b>：<code>tests/_runner/_gen_layout.py</code>（case_id -> 新脚本路径）",
+            "<b>二类共享助手</b>：<code>tests/_helpers/_gen_layout.py</code>（case_id -> 新脚本路径）",
             "<b>新判据</b>：布局契约（唯一脚本 / index<->磁盘双向一致 / 四指纹齐 / 无平铺残留）、"
             "pytest 真收集对账、增量只重写变化项、打包必需项覆盖新目录",
         ],
@@ -726,7 +734,7 @@ CHANGELOG = [
             "<b><code>title</code> 消歧</b>：同名控件/裸图标按钮按 <code>title</code> 或邻近文本区分，"
             "歧义时<b>如实失败</b>（禁止按顺序猜第一个）",
             "<b>元素身份</b>= 容器锚点 + 相对路径 + <code>title</code>/邻近文本；新增 "
-            "<code>framework/features/f03_locate/semantic_locate.py</code>（语义定位）",
+            "<code>framework/features/f03_locate/semantic_locate.py</code>（语义定位）（此文件现已不在仓库）",
             "<b>弹层收尾兜底</b> <code>_close_open_modal()</code>：框架自己开的弹层自己关，"
             "不让它挡住后续点击",
             "<b>二类预算与并发</b>：单脚本预算 600s-><b>1200s</b>（<code>--timeout-s</code> 可调；"
@@ -748,7 +756,7 @@ CHANGELOG = [
         ],
         fixed=[
             "<b>产物「悬空引用」窗口</b>：验证脚本临时写用例、归档后<b>没复原产物</b> -> "
-            "<code>scripts/test_cases.py</code> 留死引用 -> 之后跑它的脚本全红，且报 "
+            "<code>scripts/test_cases.py</code>（此文件现已不在仓库） 留死引用 -> 之后跑它的脚本全红，且报 "
             "<code>FileNotFoundError</code> + pytest 退出码 <b>2</b>（= 执行环境问题）"
             "-> <b>看着像「环境/偶发」</b>。现在四层设防（自愈 + 自洽闸 + 脚本间质检 + 一类缺口判据）",
             "<b>录像体检工具两个真 bug</b>：抠取正则非贪婪、遇场景内层引号提前截断 -> 长场景"
@@ -1003,7 +1011,8 @@ CHANGELOG = [
     ),
     dict(
         version="7.6", date="2026-09-18", tag="上一版",
-        theme="跨 tab 端到端（订单场景）· 行内定位 · 首行断言 —— 并修掉两处「看着对、其实不在验」的缺陷",
+        theme="跨 tab 端到端（订单场景）· 行内定位 · 首行断言 —— 并修掉两处「看着对、其实不在验」的缺陷"
+              "（历史条目：文中引用的用例/场景文件现已不在仓库）",
         summary="本版主线：让框架能跑<b>真实的跨窗口业务流程</b>（点链接开新 tab -> 在另一页填单 -> "
                 "回到原 tab），并把 AI 规划链路里两处<b>不会报错却会出错</b>的地方修掉。"
                 "第一处（服务 (2) AI 语义准）：同一个字段在<b>筛选区与弹窗里各有一个控件、名字却完全不同</b>时，"
@@ -1060,7 +1069,8 @@ CHANGELOG = [
     ),
     dict(
         version="7.5.3", date="2026-09-17", tag="上一版",
-        theme="假绿治理：换页证据闸（弱 url 断言）· F5 断言稳健化 · 质量闸健壮性 · 负向验证段复活",
+        theme="假绿治理：换页证据闸（弱 url 断言）· F5 断言稳健化 · 质量闸健壮性 · 负向验证段复活"
+              "（历史条目：文中引用的用例/场景文件现已不在仓库）",
         summary="本版<b>全是「假绿」类缺陷的修复</b>（用例照绿、其实没验到东西）："
                 "(1) AI 用 <code>expect_url = localhost</code> 当换页证据 —— 换页前后两个页面都含它，"
                 "点击后立刻就能通过，<b>「确实换页了」这条关键证据悬空</b>，而根因是<b>提示词在教 AI 这么写</b>；"
@@ -1160,7 +1170,7 @@ CHANGELOG = [
     dict(
         version="7.5.1", date="2026-09-15", tag="上一版本",
         theme="交付修复：映射质量闸 · 目标可达性预检 · 交付包自检 · 跨平台 UTF-8/GBK guard",
-        summary="<b>V7.5 的交付包夹带了坏产物</b>：包里的 <code>scripts/test_cases.py</code> 含 "
+        summary="<b>V7.5 的交付包夹带了坏产物</b>：包里的 <code>scripts/test_cases.py</code>（此文件现已不在仓库） 含 "
                 "<b>100 处「元素未映射」存根</b>（每个步骤都是 <code>pytest.fail</code>），"
                 "导致 Windows 验收第 3 条「慢目标闸门」<b>5 failed / 1 passed</b>（真红，不是慢目标时序问题）。"
                 "根因：<b>现场探测不可用时，<code>generate</code> 只打一句警告就照样落盘、而且 exit 0</b> -> "
@@ -1186,14 +1196,14 @@ CHANGELOG = [
             "<b>跨平台 GBK guard</b>：旧判据用 POSIX 专有的 <code>locale -a</code>，Windows 上没有该命令 -> "
             "三条 GBK 精确复现用例在<b>中文 Windows（事故原发环境）上永远跳过</b>；"
             "现在 Windows 分支读系统 ANSI 代码页（中文系统 = 936），断言放宽成「GBK 家族」",
-            "<code>tests/特性7-并发与资源安全/verify_slow_target.py</code> · <code>tests/_runner/verify_picker_layer.py</code> 补 "
+            "<code>tests/特性7-并发与资源安全/verify_slow_target.py</code> · <code>tests/_runner/verify_picker_layer.py</code>（此文件现已不在仓库） 补 "
             "<code>force_stdio()</code>：中文 Windows 控制台上中文曾显示成乱码（UTF-8 字节被 cp936 解释）",
             "目标地址口径统一：<code>TARGET_URL</code> <-> <code>HYBRID_BASE_URL</code> 等效"
             "（以前只设后者会发现 probe 仍在打 <code>localhost:8000</code>）",
             "并发闸归因纠偏：<code>probe_partitioned</code> 不再把「目标连不上」说成「未声明可并发隔离」",
         ],
         fixed=[
-            "交付物与仓库不一致：<code>scripts/test_cases.py</code> 的<b>坏产物</b>曾同时存在于 git 提交与交付包中；"
+            "交付物与仓库不一致：<code>scripts/test_cases.py</code>（此文件现已不在仓库） 的<b>坏产物</b>曾同时存在于 git 提交与交付包中；"
             "本版提交正确产物，并加了防复发闸门（见上）",
             "复检流程的<b>假绿</b>：<code>unzip</code> 未安装时 <code>unzip -p … | grep -c</code> 会把<b>空输入</b>"
             "数成 0 命中、被误读成「包是干净的」-> 一律改用标准库 <code>zipfile</code> 自检",
@@ -1212,7 +1222,8 @@ CHANGELOG = [
     ),
     dict(
         version="7.5", date="2026-09-14", tag="已由 7.5.1 替换（交付包夹带坏产物）",
-        theme="慢目标/并发下的假红治理：页面就绪契约 · 定位有界等待 · 报错纠偏 · 每 worker 数据分区 · 慢目标闸门",
+        theme="慢目标/并发下的假红治理：页面就绪契约 · 定位有界等待 · 报错纠偏 · 每 worker 数据分区 · 慢目标闸门"
+              "（历史条目：文中引用的用例/场景文件现已不在仓库）",
         summary="团队演示事故：同一份代码 <code>run all</code> 红 4 条、<code>--debug</code> 全绿。"
                 "本机用「每请求 +400ms 的反向代理」确定性复现（<b>5 failed / 1 passed</b>），定位到两条根因："
                 "<b>(1)</b> 页面异步取数却没有「就绪契约」，<code>goto</code> 之后立刻动作/断言，"
@@ -1303,7 +1314,7 @@ CHANGELOG = [
             "「列表恢复 20 行」这类断言被上一条用例的残留数据打乱（用例互相污染比用例失败更难查）",
             "<b>用例级看门狗</b>：超时把<b>所有线程的调用栈</b>写进 <code>log/&lt;run_id&gt;/watchdog.txt</code> 再退出"
             "（<code>HYBRID_CASE_TIMEOUT</code> 默认 600s，2026-10-08 由 120 上调）—— 挂死比失败更糟，绝不允许",
-            "<b>tests/_runner/verify_picker_layer.py</b>：弹层（picker）端到端回归 —— 弹层里 6 个同名「选择」按钮"
+            "<b>tests/_runner/verify_picker_layer.py</b>（此文件现已不在仓库）：弹层（picker）端到端回归 —— 弹层里 6 个同名「选择」按钮"
             "必须<b>按所在行命名</b>收集到、探完必须把层关掉、轮询必须第一轮就命中",
             "<b>tests/特性3-分层定位与控件识别/verify_cross_page.py 新增第四段</b>：UI 新建 -> 详情页读到的客户必须等于弹层里选的那个；"
             "对不存在的编号必须如实报「未找到」",
@@ -1339,7 +1350,7 @@ CHANGELOG = [
             "—— <b>2026-09-17 已修掉</b>：提示词禁止 host 片段 + 质量闸红线（拒绝落盘/生成）+ 用例改「目标页独有证据」；"
             "跨页流程 D1~D4（pages 声明 / 原地断言 <code>after_step</code> / 跨页重名消解 / 换页证据闸）已全部落地；"
             "场景 <code>data</code> 参数化仍只解析不展开",
-            "文档口径修正：生成物 <code>scripts/conftest.py</code> 会 <code>import framework.features.f05_layers.data_driven_generate / framework.features.f06_healer.healer_run</code> -> "
+            "文档口径修正：生成物 <code>scripts/generated/conftest.py</code> 会 <code>import framework.features.f05_layers.data_driven_generate / framework.features.f06_healer.healer_run</code> -> ",
             "<b>要在项目内运行</b>，不是「拷到哪儿都能独立跑」",
         ],
     ),
@@ -1360,7 +1371,7 @@ CHANGELOG = [
             "<b>tests/特性9-质量闸门体系/test_utf8_io.py</b>（10 条）：含<b>用 zh_CN.gbk locale 精确复现AprilPark1012那条报错</b>"
             "（断言里就写着 `byte 0xbb in position 13`）+ <b>AST 全仓扫描</b>"
             "（谁再写出「靠系统默认编码」的 subprocess/read_text/open 就直接测试失败）",
-            "生成的 scripts/conftest.py 自带 UTF-8 自举：裸跑 pytest（不经 cli）也不会因中文/v 崩或乱码",
+            "生成的 scripts/generated/conftest.py 自带 UTF-8 自举：裸跑 pytest（不经 cli）也不会因中文/v 崩或乱码",
             "limits.py 在 Windows 上用 GlobalMemoryStatusEx 读可用内存（以前读不到 /proc 就恒判 1 并发）",
             "启动期<b>文件系统编码告警</b>：文件系统编码不是 UTF-8（中文 Windows / GBK locale）时 cli 会"
             "大声提示「中文文件名会落成 GBK 字节名，请用 PYTHONUTF8=1 重跑」——实测踩到过 "
@@ -1552,7 +1563,7 @@ ARTICLE_HANDCRAFT = """<!-- ========== 4. 先让 AI 出题，再按需手搓（�
     </tr>
     <tr>
       <td><b>入口命令</b></td>
-      <td><span class="code-inline">python -m framework.cli explore --ai --scenario-file …</span></td>
+      <td><span class="code-inline">python -m framework.cli all --ai --scenario-file …</span></td>
       <td><span class="code-inline">python -m framework.cli generate &amp;&amp; … run</span></td>
     </tr>
     <tr>
@@ -1679,7 +1690,7 @@ python -m framework.cli probe                 # -> output/element_maps/probe_*.j
 cp scenarios/orders/orders_invoice_full_lifecycle.yml scenarios/contracts/&lt;你的场景id&gt;.yml
 
 # (3) 跑！默认会自动试跑（--verify 默认开）：FAILED -> exit 3
-python -m framework.cli explore --ai --scenario-file scenarios/contracts/&lt;你的场景id&gt;.yml
+python -m framework.cli all --ai --scenario-file scenarios/contracts/&lt;你的场景id&gt;.yml
 
 # (4) 看产出：用例 + 报告
 ls cases/ai_&lt;你的场景id&gt;_*.json
@@ -1689,7 +1700,7 @@ ls log/&lt;run_id&gt;/                          # 用例日志 / 报告 / trace
 #    满意   -> 固化成手搓用例（见 4.3），之后零 token 重跑
 </pre>
   <p style="color:var(--muted);font-size:.9rem">
-    批量场景：<span class="code-inline">explore --ai --scenario-dir scenarios/ --tag smoke</span>（可加 <span class="code-inline">--limit N</span> 限流）。
+    批量场景：<span class="code-inline">all --ai --scenario-dir scenarios/ --tag smoke</span>（可加 <span class="code-inline">--limit N</span> 限流）。
     三个入口 <span class="code-inline">--scenario</span> / <span class="code-inline">--scenario-file</span> / <span class="code-inline">--scenario-dir</span>
     <b>互斥</b>，同时给会报错退出（exit 2）。内联 <span class="code-inline">--scenario "…"</span> 适合临时想法，不建议进场景库。
   </p>
@@ -1838,13 +1849,13 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   <table class="tbl">
     <tr><th style="width:34%">我想干什么</th><th style="width:30%">写哪个文件</th><th>命令</th></tr>
     <tr><td>用自然语言批量铺覆盖</td><td><span class="code-inline">scenarios/&lt;模块&gt;/&lt;id&gt;.yml</span></td>
-        <td><span class="code-inline">cli explore --ai --scenario-file …</span></td></tr>
+        <td><span class="code-inline">cli all --ai --scenario-file …</span></td></tr>
     <tr><td>把 AI 产出的用例固化成回归资产</td><td><span class="code-inline">cases/&lt;id&gt;.json</span>（去掉 <span class="code-inline">ai_</span> 前缀）</td>
         <td>改名 + <span class="code-inline">cli generate</span></td></tr>
     <tr><td>补一条边界/负向用例</td><td><span class="code-inline">cases/&lt;id&gt;.json</span></td>
         <td>抄现成的改 -> <span class="code-inline">cli generate</span> -> 单跑 <span class="code-inline">-k</span></td></tr>
     <tr><td>一组数据跑多条用例</td><td>场景文件的 <span class="code-inline">data:</span> 段</td>
-        <td><span class="code-inline">cli explore --ai …</span>（每组一条用例）</td></tr>
+        <td><span class="code-inline">cli all --ai …</span>（每组一条用例）</td></tr>
     <tr><td>查某个控件叫什么</td><td>—</td><td><span class="code-inline">cli probe</span> -> <span class="code-inline">output/element_maps/probe_*.json</span></td></tr>
     <tr><td>只跑我刚写的那条</td><td>—</td><td><span class="code-inline">pytest scripts/generated -q -k &lt;case_id&gt;</span></td></tr>
     <tr><td>跑不通，想确认是环境还是用例</td><td>—</td><td>看 <span class="code-inline">log/&lt;run_id&gt;/</span> 里该用例日志 + <span class="code-inline">report.html</span> + trace</td></tr>
@@ -1957,7 +1968,7 @@ def _svg_two_scenarios() -> str:
                    f'stroke-width="2" marker-end="url(#{mid})"/>')
 
     # ---------- 场景(1) 泳道 ----------
-    band(20, "场景(1)  自然语言用例 -> AI 语义识别/编排 -> 输出测试用例到 cases/    入口: cli explore --ai", C1)
+    band(20, "场景(1)  自然语言用例 -> AI 语义识别/编排 -> 输出测试用例到 cases/    入口: cli all --ai", C1)
     W, GAP, X0 = 216, 18, 20
     xs = [X0 + i * (W + GAP) for i in range(5)]
     AR1, AR2 = 124, 256          # 两条节点行的箭头 y
@@ -3425,7 +3436,7 @@ def build() -> str:
 ├── <b>cases/</b>                   自然语言用例(写死数据;按 id 分文件,一个用例一个 json)
 │   ├── manual/                      手写用例(search_*.json 模糊/混合搜索 · create_bu_*.json 新建
 │   │                                · assert_kinds_*.json 11 种断言 · cross_page_detail.json 跨页)
-│   └── &lt;场景id&gt;/                    [ai] explore --ai 产出的 AI 用例(ai_*.json,按场景分目录,可批量清理)
+│   └── &lt;场景id&gt;/                    [ai] AI 用例(ai_*.json,按场景分目录,可批量清理) -- 由 all --ai / explore --ai 产出
 ├── <b>scenarios/</b>                AI 场景库(一文件=一场景,YAML)
 │   ├── README.md                    字段契约与用法
 │   ├── contracts/*.yml              合同场景：按编号搜索 / 新建(弹层选客户) / 跨页流程
@@ -3508,16 +3519,16 @@ def build() -> str:
 <!-- ========== 3. 整体流程 ========== -->
 <section>
   <h2 class="sec-title"><span class="n">3</span>整体流程：explore(AI 产用例) -> cases/ -> generate -> run(带自愈)</h2>
-  <p class="sec-sub">本框架有<b>两种业务场景</b>：<b>(1)</b> 自然语言 -> `explore --ai` 语义识别/编排 -> 用例落 <code>cases/ai_*.json</code>（花 token）；<b>(2)</b> 手搓 <code>cases/*.json</code> -> `generate` 生成脚本+数据分离 -> `run` 执行（零 token）。一条龙（`cli all`）跑的是<b>确定性执行</b>那条；两条链路在 <code>cases/*.json</code> 汇合。</p>
+  <p class="sec-sub">本框架有<b>两种业务场景</b>，但<b>入口只有一条命令</b>：<b>(1) 真 AI 链路（主推）</b> <code>cli all --ai</code> —— 自然语言场景 -> AI 语义识别/编排 -> 用例落 <code>cases/ai_*.json</code> -> 生成 -> 真跑（花 token）；<b>(2) 手搓链路（次选）</b> <code>cli all</code>（不带 <code>--ai</code>）—— 手搓 <code>cases/*.json</code> -> 生成脚本+数据分离 -> 执行（零 token）。<b>两条链路共用 <code>all</code>，用 <code>--ai</code> 区分，不另开命令</b>；两条链路在 <code>cases/*.json</code> 汇合，下游是同一条确定性执行链。</p>
   <div class="card" style="margin:12px 0;">
     <b>命令 -> 职责 -> 是否用 AI（最容易搞混的一张表）：</b>
     <table class="tbl" style="width:100%;">
       <tr><th>命令</th><th>职责</th><th>用 LLM？</th><th>产物</th></tr>
       <tr>
-        <td><code class="code-inline">explore --ai --scenario-file x.yml</code></td>
-        <td>场景描述 -> 用例（语义识别 + 步骤编排）；默认带 <code class="code-inline">--verify</code> 试跑校验（不过就 exit 3）</td>
+        <td><code class="code-inline">all --ai --scenario-file x.yml</code></td>
+        <td><b>真 AI 链路（主推）一条龙</b>：场景描述 -> 用例（语义识别 + 步骤编排）-> 生成脚本 -> 真跑；默认带 <code class="code-inline">--verify</code> 试跑校验（不过就 exit 3）。只跑其中一段时才拆成 <code class="code-inline">explore --ai</code>（辅助用法，非主线）</td>
         <td><b>是</b>（DeepSeek；需 key）</td>
-        <td><code class="code-inline">cases/ai_*.json</code> + <code class="code-inline">output/element_maps/element_map_*.json</code></td>
+        <td><code class="code-inline">cases/ai_*.json</code> + <code class="code-inline">output/element_maps/element_map_*.json</code> + 生成物 + 报告</td>
       </tr>
       <tr>
         <td><code class="code-inline">probe</code></td>
@@ -3538,13 +3549,19 @@ def build() -> str:
         <td><code class="code-inline">output/runs/</code>、<code class="code-inline">output/heals/</code></td>
       </tr>
       <tr>
-        <td><code class="code-inline">all --workers N</code></td>
-        <td><b>= probe -> generate -> run</b>（一条龙，<b>不含</b> explore）</td>
+        <td><code class="code-inline">all --ai</code>（<b>主推</b>）</td>
+        <td><b>= explore --ai -> generate -> run</b>（真 AI 一条龙，<b>含</b> explore，会产出新用例）</td>
+        <td><b>是</b>（DeepSeek；需 key）</td>
+        <td>同上面几条</td>
+      </tr>
+      <tr>
+        <td><code class="code-inline">all</code>（次选，不加 <code class="code-inline">--ai</code>）</td>
+        <td><b>= probe -> generate -> run</b>（手搓链路一条龙，<b>不含</b> explore）</td>
         <td>否</td>
-        <td>同上面三条</td>
+        <td>同上面几条</td>
       </tr>
     </table>
-    <p style="margin:8px 0 0;">[*] 最常被搞混的一点：<code class="code-inline">all</code> 会把 <code>cases/</code> 里<b>所有</b>用例（AI 产的和手搓的）都跑掉，但它<b>不会生成</b>新用例 —— 「场景 -> 用例」只有 <code class="code-inline">explore --ai</code> 会做。</p>
+    <p style="margin:8px 0 0;">[*] 最常被搞混的一点（<b>2026-10-12 更正</b>）：<code class="code-inline">all</code> 会把 <code>cases/</code> 里<b>所有</b>用例（AI 产的和手搓的）都跑掉；<b>带 <code class="code-inline">--ai</code> 时它<b>同时会</b>生成新用例</b>（先跑 <code class="code-inline">explore --ai</code> 再 generate/run），不带 <code class="code-inline">--ai</code> 时<b>不会</b>生成、只跑既有的。旧文档写的「<code class="code-inline">all</code> 不会生成新用例」是 <code class="code-inline">all</code> 还不支持 <code class="code-inline">--ai</code> 时的口径，已作废。</p>
   </div>
   <div class="flow">
     <div class="flow-step">
@@ -3570,7 +3587,7 @@ def build() -> str:
     </div>
   </div>
   <div class="card" style="margin-top:14px;border-left:4px solid #3b6fdd;">
-    <b>[ai] AI 分支：`cli explore --ai`（AI 语义识别，需 DeepSeek key）</b>
+    <b>[ai] AI 分支（主推）：`cli all --ai`（AI 语义识别 + 生成 + 真跑一条龙，需 DeepSeek key）</b>
     <p style="color:var(--muted);font-size:.9rem;margin-top:4px">给一句自然语言场景，AI 读场景 + probe 语义清单 + DOM 上下文 -> 挑对控件 -> 产出 <b>ElementMap</b>（步骤+语义引用），并默认<b>同步落 <span class="code-inline">cases/ai_*.json</span></b>（--no-cases 可关）。generate 会读它、优先消费 element_map 快照，AI 用例与手写用例走同一条确定性执行链路。<br>三道防假安全感闸：(1) <b>交付即验证</b>——落盘后默认 <span class="code-inline">--verify</span> 立刻试跑该用例，实测 PASSED 才算出活，FAILED 就 <b>[NG] + exit 3</b>（日志 <span class="code-inline">output/verify/</span>）；(2) <b>AI 失败即报错退出（exit 2）</b>，绝不静默用 mock 顶替（mock 只在显式 --mock-fallback 出现且不入库）；(3) 落盘前<b>用例质量校验</b>拦「断言=输入回显」与「断言=猜出来的运行时计数（共 N 条）」。<br>另有：DeepSeek function calling 有间歇性 JSON 抖动 -> 内置退避重试（HYBRID_LLM_ATTEMPTS 默认 3）；<span class="code-inline">cli prune</span> 给快照做归档保留（各留最近 N 个）。<br><b>场景文件</b>：<span class="code-inline">--scenario-file</span> / <span class="code-inline">--scenario-dir</span> 直接读 <span class="code-inline">scenarios/*.yml</span>（一文件=一场景，含 business_context 领域知识 与 assert_guard 断言护栏），与内联 <span class="code-inline">--scenario</span> 共用同一条下游链路。</p>
   </div>
 </section>
@@ -3639,7 +3656,7 @@ def build() -> str:
              两条链路<b>在 cases/*.json 汇合</b> —— 场景(1)的产物就是场景(2)的输入，格式完全一致。
 
 ╔══════════════════════════════════════════════════════════════════════════════════════════════╗
-║ 场景(1)  自然语言用例 -> AI 语义识别/编排 -> 输出测试用例到 cases/      入口: cli explore --ai    ║
+║ 场景(1)  自然语言用例 -> AI 语义识别/编排 -> 输出测试用例到 cases/      入口: cli all --ai        ║
 ╚══════════════════════════════════════════════════════════════════════════════════════════════╝
  <b>(1) 输入（自然语言）</b>
     内联  --scenario "在搜索框输入'1005'点搜索，确认出现 HT-1005"      <- 原样保留的临时用法
@@ -3877,7 +3894,7 @@ def build() -> str:
 <section>
   <h2 class="sec-title"><span class="n">8</span>动手跑一遍</h2>
   <p class="sec-sub">先起被测应用，再跑链路。没 key 也能玩 mock。</p>
-  <h3 style="margin:24px 0 6px">9.0 装环境三件事（第一次跑之前必做 —— <b>漏第三步必报错</b>）</h3>
+  <h3 style="margin:24px 0 6px">8.0 装环境三件事（第一次跑之前必做 —— <b>漏第三步必报错</b>）</h3>
   <p style="margin:6px 0 10px;padding:10px 12px;border-left:3px solid #0f8f6a;background:rgba(15,143,106,.07);border-radius:6px">
     <b>省事做法：一条命令全搞定</b>
     <span class="code-inline" style="margin-left:6px">python -m framework.cli setup</span><br>
@@ -4001,7 +4018,7 @@ def build() -> str:
 <span class="prompt">$</span> python -m framework.cli run --debug --slowmo 500 --case &lt;case_id&gt; <span class="cmt"># (3)''' 放慢 500ms/动作，肉眼跟步</span>
 <span class="prompt">$</span> python -m framework.cli run --force-workers <span class="cmt"># (3)'' 无视资源预检(有 OOM 风险,慎用)</span>
 
-<span class="prompt">$</span> python -m framework.cli explore --ai --scenario "输入1005点搜索确认出现HT-1005"
+<span class="prompt">$</span> python -m framework.cli all --ai --scenario "输入1005点搜索确认出现HT-1005"
                                               <span class="cmt"># (4) AI 语义识别 -> cases/&lt;场景id&gt;/ai_*.json（默认 --verify 立刻试跑）</span>
 <span class="prompt">$</span> python -m framework.cli prune --keep 20  <span class="cmt"># (5) 归档保留：快照各留最近 N 个</span>
 <span class="prompt">$</span> python -m pytest tests/_helpers/ -q               <span class="cmt"># (6) 框架自测（一类）：秒级，不需要 demo / key</span></pre>
@@ -4011,7 +4028,7 @@ def build() -> str:
       HTML 报告在 <code>log/&lt;run_id&gt;/report.html</code>（每次运行独立目录）。
     </p>
     <p style="margin-top:12px;color:var(--muted);font-size:.92rem;border-left:3px solid #999;padding-left:10px">
-      <b>框架自测（一类）的环境前提</b>（2026-09-22 实测口径）：上面那条 <code>pytest tests/_helpers/ -q</code>
+      <b>框架自测（一类）的环境前提</b>（2026-09-22 实测口径）：上面那条 <code>pytest tests/ -q</code>
       在 <b>Windows</b>、<b>非 git 目录（交付包解压目录）</b>、<b>demo 没起</b> 这三种情况下都要能跑 ——
       进程探测按平台取（Linux <code>/proc</code> · Windows PowerShell · 其它 <code>ps</code>）；
       文件清单在 git 不可用时降级为文件树扫描；<b>生成物缺失或为 0 字节</b>时直接告诉你
@@ -4043,17 +4060,21 @@ def build() -> str:
       录像包不会再「发出去了才发现是废包」。调试绕过：<code>--allow-missing-cassettes</code>（交付永不用）。
     </p>
 
-  <h3 style="margin:26px 0 6px">9.1 环境变量与运行开关（需要时查，不设就用默认值）</h3>
+  <h3 style="margin:26px 0 6px">8.1 环境变量与运行开关（需要时查，不设就用默认值）</h3>
   <p style="margin:6px 0 10px;color:var(--muted);font-size:.9rem">
-    绝大多数场景<b>一个都不用改</b>。下表按「最可能用到的排前面」列全（默认值取自代码）；
-    <b>命令行参数优先于环境变量</b>（如 <span class="code-inline">--workers</span> / <span class="code-inline">--debug</span> / <span class="code-inline">--isolated-target</span>）。
+    绝大多数场景<b>一个都不用改</b>。下表按「最可能用到的排前面」列<b>常用项</b>（默认值取自代码）；
+    <b>命令行参数优先于环境变量</b>（如 <span class="code-inline">--workers</span> / <span class="code-inline">--debug</span> / <span class="code-inline">--isolated-target</span>）。<br>
+    <b>要看全清单（45 项）请用唯一权威入口</b> <span class="code-inline">python -m framework.cli config</span>
+    —— 一屏列出<b>全部可调项 + 当前值 + 来源（CLI/环境变量/默认）+ 对应 CLI 参数</b>，
+    不在这里维护第二份（避免两处漂移）。
   </p>
   <table class="tbl">
     <tr><th style="width:36%">环境变量</th><th style="width:16%">默认</th><th>作用（什么时候用它）</th></tr>
-    <tr><td><span class="code-inline">HYBRID_BASE_URL</span></td><td>未设（用用例里的地址）</td>
+    <tr><td><span class="code-inline">HYBRID_BASE_URL</span></td><td>未设（默认 <span class="code-inline">http://localhost:8000</span>）</td>
         <td><b>换目标</b>：同一套用例跑本机 / 慢代理 / 预发环境（生成脚本的 <span class="code-inline">goto</span> 统一走 <span class="code-inline">_goto()</span> 替换 scheme + host）</td></tr>
-    <tr><td><span class="code-inline">HYBRID_RESET_URL</span></td><td><span class="code-inline">http://localhost:8000/api/reset</span></td>
-        <td><b>用例间数据复位</b>（每条用例前 POST 一次）；<span class="code-inline">off</span> / <span class="code-inline">0</span> / 空 = 不复位</td></tr>
+    <tr><td><span class="code-inline">HYBRID_RESET_URL</span></td><td><span class="code-inline">http://localhost:8000/api/reset?purge=1</span></td>
+        <td><b>用例间数据复位</b>（每条用例前 POST 一次）；<span class="code-inline">off</span> / <span class="code-inline">0</span> / 空 = 不复位。<br>
+            <span style="color:var(--muted)">带 <span class="code-inline">?purge=1</span> = 完全复原成预置（清之前会先自动备份）；去掉它只把数据复位成预置条数</span></td></tr>
     <tr><td><span class="code-inline">HYBRID_CASE_TIMEOUT</span></td><td><span class="code-inline">600</span></td>
         <td><b>用例级看门狗</b>（秒）：超时把调用栈写进 <span class="code-inline">log/&lt;run_id&gt;/watchdog.txt</span> 并退出；<span class="code-inline">0</span> / <span class="code-inline">off</span> = 关</td></tr>
     <tr><td><span class="code-inline">HYBRID_LOCATE_TIMEOUT</span></td><td><span class="code-inline">5000</span></td>

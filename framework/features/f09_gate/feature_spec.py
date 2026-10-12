@@ -259,6 +259,9 @@ FEATURES = [
                  class1=["test_cli_setup.py"], class2=[]),
             dict(no="10.5", name="推荐路径口径", goal="文档/提示/培训页的主推路径 = AI 链路；手搓用例降级为调试与回归辅助（历史版本记录不改）",
                  class1=["test_ai_first_docs.py", "test_tunables_exposed_as_flags.py"], class2=[]),
+            dict(no="10.6", name="文档真值契约", goal="文档说的必须和代码做的是同一回事：引用的路径存在、" \
+                                                      "主线命令统一 all --ai、配置表不虚报条数、关键数字对齐代码真值",
+                 class1=["test_docs_truth_contract.py"], class2=[]),
         ],
     ),
 
