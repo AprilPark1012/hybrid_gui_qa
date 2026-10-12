@@ -567,7 +567,8 @@ def main() -> int:
 
     sha = hashlib.sha256(out_zip.read_bytes()).hexdigest()
     print(f"[pack] [OK] 包内自检通过（cases={repo_cases} · 升级日志 {len(repo_notes)} 份 · "
-          f"未映射=0 · _goto 接线在 · 无 output/log/.env）")
+          f"未映射=0 · _goto 接线在 · 运行时证据不入包"
+          f"（log/ 不进包；output/ 下只放行 element_maps 最新 1 份））")
     print(f"[pack] sha256 {sha}")
 
     if a.with_cassettes:
