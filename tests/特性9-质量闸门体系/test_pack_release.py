@@ -320,21 +320,24 @@ def test_collect_files_keeps_sources_and_drops_runtime_cruft():
     assert not leaked, f"releases/ 下不该进包的内容混进来了：{leaked[:5]}"
 
 def test_auth_json_gate_behaves(tmp_path):
-    """★ 守门（V8.3.4 交付事故）：`_auth.json` 缺失必须在**显式要求时**被抓住。
+    """★ 守门（V8.5.1 语义反转）：`_auth.json` **已废弃**，包里出现它必须在**显式要求时**被抓住。
 
-    来源：V8.3.2 的交付包漏了 `scripts/generated/_auth.json`（登录前置清单）——
-    它被 `.gitignore` 忽略（注释理由「运行期产物，不入库/不入包」），而收集逻辑走
-    `git ls-files`（**只收入库文件**）=> **必然漏它**。包里的 `scripts/generated/*.py`
-    本身已是**预生成产物**、用户解包后**直接 run、不跑 generate** =>
-    `_harness.py` 读不到它 => 登录前置没凭据 => 业务页被重定向到登录页 =>
-    **但报出来却是「元素语义未找到」，排查方向被彻底带偏**（用户实测踩到）。
+    **历史**（V8.3.4 时的正确行为，现已反转）：那时登录前置靠运行期读
+    `scripts/generated/_auth.json` 注入 token，包里的 `scripts/generated/*.py` 是预生成产物、
+    用户解包后直接 run，所以**必须带它**，否则业务页被重定向到登录页、报出来却是
+    「元素语义未找到」，排查方向被带偏。当时判据锁的是「缺了必报」。
 
-    这里锁两件事（缺一不可）：
-      (1) **默认不查** —— 本文件的判据都用**最小临时包**构造各种形态，若不区分地要求
-          `_auth.json`，会把这批判据**全部误报**（2026-10-07 实测 4 条被带红）；
-      (2) **显式要求时，缺了必报** —— 交付路径（CLI `--check` / 打包后自检）就是这么调的。
+    **现在**（V8.5.1 登录步骤化后）：登录由场景 `login:` 段声明 -> 生成期展开成用例前导步骤
+    -> 执行期真在页面上填账号点登录。`_auth.json` 那套**整体删除，没有任何代码读它**。
+    它还留在包里就成了：① **没人用却含明文口令**的凭据暴露面；② 误导收包人以为还有隐藏前置。
 
-    [!] 必须能红：把 `expect_auth_json` 的分支删掉 => 本判据立刻失败。
+    -> 判据语义**整体反转**，锁三件事（缺一不可）：
+      (1) **默认不查** —— 本文件的判据都用**最小临时包**构造各种形态，若不区分地检查，
+          会把这批判据**全部误报**（2026-10-07 实测 4 条被带红）；
+      (2) **显式要求时，带了必报** —— 交付路径（CLI `--check` / 打包后自检）就是这么调的；
+      (3) **没带不许报** —— 否则闸门会误伤正确的新包。
+
+    [!] 必须能红：把 `expect_auth_json` 的反向拦截分支删掉 => 本判据立刻失败。
     """
     zp = _make_zip(tmp_path, GOOD_TESTS)
 
@@ -342,20 +345,25 @@ def test_auth_json_gate_behaves(tmp_path):
     assert pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9") == [], \
         "默认不该检查 _auth.json —— 否则最小包构造的判据会被误报一片"
 
-    # (2) 显式要求：必须报出来
-    problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9",
-                                      expect_auth_json=True)
-    assert any("_auth.json" in p for p in problems), f"缺 _auth.json 没被抓住：{problems}"
+    # (2) 显式要求时，**没带**是正确的（不许报）
+    assert pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9",
+                                 expect_auth_json=False) == [], \
+        "包里没有 _auth.json 是 V8.5.1 的正确形态，闸门不该报"
 
 
-def test_auth_json_present_passes_when_required(tmp_path):
-    """反向：包里**带了** `_auth.json` 且显式要求 => 不许报（否则闸门会误伤正确的包）。"""
+def test_auth_json_present_is_caught(tmp_path):
+    """反向拦截（V8.5.1）：包里**带了**已废弃的 `_auth.json` => **必须报出来**。
+
+    为什么必须能红：这条是防「打包脚本那段 V8.3.4 补丁回归」的唯一哨兵 ——
+    该补丁当年是**正确的**（运行期要读），删机制时极容易被漏掉（V8.5.1 实际就这么漏了，
+    把含明文口令的文件打进了交付包）。
+    """
     base = _make_zip(tmp_path / "b", GOOD_TESTS)
     zp = tmp_path / "with_auth.zip"
     with zipfile.ZipFile(base) as src, zipfile.ZipFile(zp, "w") as dst:
         for n in src.namelist():
             dst.writestr(n, src.read(n))
         dst.writestr("pkg/scripts/generated/_auth.json", '{"x": {}}')
-    assert pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9",
-                                  expect_auth_json=True) == [], \
-        "带了 _auth.json 却仍报缺 —— 闸门会误伤正确包"
+    problems = pack_release.check_zip(zp, expect_cases=1, require_notes_for="9.9")
+    assert any("_auth.json" in p for p in problems), \
+        f"包里带了已废弃的 _auth.json 却没被抓住：{problems}"

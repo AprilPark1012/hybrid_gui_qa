@@ -70,10 +70,20 @@ def test_j5_no_auth_json_anywhere_in_source():
 
 
 def test_j5_gitignore_has_no_auth_json_entry():
-    """`.gitignore` 里不许再有 `_auth.json` 那条（它正是"被忽略却运行必需"的成因）。"""
+    """`.gitignore` 里不许再有 `_auth.json` 的**忽略规则**（它正是"被忽略却运行必需"的成因）。
+
+    [!] 只查**规则行**、跳过注释（2026-10-12 修正）：本判据原先全文搜字面
+    `"_auth.json"`，于是**注释里提到它**也会被判红 —— 而注释恰恰是必要的
+    （要写明"这套机制已整体废弃、故意不留忽略规则"，否则后人只会看到一条
+    被删掉的规则、不知道是误删还是有意）。判据该盯的是**行为**（有没有真的忽略），
+    不是"文件里有没有这几个字母"。
+    """
     gi = _read(REPO / ".gitignore")
-    assert "_auth.json" not in gi, (
-        ".gitignore 仍忽略 _auth.json -> 它不会进交付包，但运行期又要读（隐藏依赖）")
+    rule_lines = [l for l in gi.split("\n") if l.strip() and not l.lstrip().startswith("#")]
+    offenders = [l for l in rule_lines if "_auth.json" in l]
+    assert not offenders, (
+        ".gitignore 仍忽略 _auth.json（说明它还会被生成，只是不入库）-> 运行期隐藏依赖没清干净：\n"
+        + "\n".join(offenders[:5]))
 
 
 def test_j5_harness_template_has_no_install_login():

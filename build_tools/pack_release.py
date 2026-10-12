@@ -129,17 +129,15 @@ def collect_files(exclude_test_artifacts: bool = False) -> list[Path]:
             continue
         out.append(p)
 
-    # [!] 2026-10-07（V8.3.4）交付事故修复：`scripts/generated/_auth.json` **必须进包**。
-    # 为什么原先漏了：本函数走 `git ls-files`（只收**入库**文件），而 `_auth.json` 被
-    # `.gitignore` 排除（理由写着「运行期产物、不入库/不入包」）-> 交付包里没有它。
-    # 为什么必须进包：包里的 `scripts/generated/*.py` 本身就是**生成好的产物**，用户解包后
-    # **直接 run、不会跑 generate** -> `_harness.py` 读不到同目录的 `_auth.json`
-    # -> 登录前置拿不到凭据 -> 业务页被重定向到登录页 -> **整条用例跑在登录页上**
-    # （2026-10-07 内网 Windows 实测：两条用例都报「元素语义未找到: 超@合同列表页」）。
-    # 口径修正：**「不入库」不等于「不入包」** —— 入库靠 git，交付靠本函数，两件事分开。
-    _auth_json = REPO / "scripts" / "generated" / "_auth.json"
-    if _auth_json.is_file():
-        out.append(_auth_json)
+    # [!] 2026-10-12（V8.5.1）**已删除**上一版在这里硬塞 `_auth.json` 的逻辑。
+    # 历史：V8.3.4 时运行期确实要读 `scripts/generated/_auth.json`（token 注入），
+    #   所以专门加了「不入库也要入包」的补丁。
+    # 现在：登录已**步骤化**（场景 `login:` 段声明 -> 生成期展开成用例前导步骤 -> 执行期
+    #   真在页面上填账号点登录），`_auth.json` 那套**整体删除**，**没有任何代码读它**。
+    #   -> 继续把它打进包 = 交付包里躺着一个**没人用、却含明文口令**的文件，
+    #     既误导收包人（以为还有隐藏前置），又是凭据暴露面。
+    # [!] 这处漏改的原因值得记：**删一个机制时必须查"产出侧/打包侧"的引用**，
+    #   只查读它的代码会漏掉「专门为它加过的补丁」。
     return sorted(set(out))
 
 
@@ -210,16 +208,13 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
         else:
             problems.append("包里没有 scripts/generated/_harness.py（共享运行时缺失 -> 跑不起来）")
 
-        # [!] 2026-10-07（V8.3.4）：登录前置清单也必须进包 —— 缺了会让**整条用例跑在登录页上**，
-        # 而现象是「元素语义未找到」，极容易被误判成"页面还没渲染/语义名过期"，排查方向被带偏。
-        # 口径：由调用方**显式声明**这个包该不该带它（默认不查）。
-        # 为什么不做成「看真实仓库有没有」：本函数的测试用**最小临时包**构造各种形态，
-        # 拿真实仓库的状态去判它们会**全部误报**（2026-10-07 实测 4 条判据被带红）。
-        # 交付路径（CLI --check / 打包后自检）显式传 True；无登录场景的包不传即可。
-        if expect_auth_json and not read("scripts/generated/_auth.json"):
+        # [!] 2026-10-12（V8.5.1）：原先这里**要求**包内必须有 `scripts/generated/_auth.json`
+        #   （V8.3.4 的登录前置清单）。登录步骤化后该机制整体删除，反过来了 ——
+        #   包内**不该**再出现它。改为**反向**拦截：带了就报问题（含明文口令 + 误导收包人）。
+        if not expect_auth_json and read("scripts/generated/_auth.json"):
             problems.append(
-                "包里没有 scripts/generated/_auth.json（登录前置缺失 -> 业务页会被重定向到登录页，"
-                "整条用例跑在登录页上，报出来却是「元素语义未找到」，排查方向会被带偏）")
+                "包里出现了 scripts/generated/_auth.json（V8.5.1 已删该机制，它含明文口令且无人读取）"
+                " -> 打包脚本仍在硬塞它，请检查 pack_release 是否回归")
 
         n_cases = sum(1 for k in rel if k.startswith("cases/") and k.endswith(".json"))
         if expect_cases is not None and n_cases != expect_cases:
@@ -468,7 +463,7 @@ def main() -> int:
         # 审计历史包时**不**强制「升级日志份数一致」：老包的日志在包根、份数也不同（形态差异不是缺陷）
         legacy: list[str] = []
         problems = check_zip(zp, expect_cases=repo_cases, require_notes_for=_version()[0],
-                            expect_auth_json=True,
+                            expect_auth_json=False,   # V8.5.1：该机制已删，传 False = 反向拦截
                              legacy_notes=legacy)
         for n in legacy:
             print(f"[pack] [half] {n}")
