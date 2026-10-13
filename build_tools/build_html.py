@@ -2270,7 +2270,9 @@ _FEAT_IMPL = {
              '<span class="code-inline">--keep-going</span> 跑完再汇总。',
         legend=['run_acceptance.py', ('step_gate_selfcheck()', 'g'), ('step_framework_selftest()', 'g'), 'step_e2e() 3->2->1', ('SKIP != 通过 -> exit 3', 'r'), '退出码 0/1/2/3']),
     '1.3': dict(
-        logic='<span class="code-inline">build_tools/pack_release.py</span> 打「代码包」（含运行期必需文件），'
+        logic='<span class="code-inline">build_tools/pack_release.py</span> 打「代码包」（含运行期必需文件，'
+              '外加 <span class="code-inline">output/element_maps/</span> 的 elementMap <b>最新 1 份</b>'
+              '—— elementMap 是交付生成物之一；<b><span class="code-inline">log/</span> 与录像都不进代码包</b>），'
               '<span class="code-inline">--with-cassettes</span> 打「LLM 录像包」；打包前强制'
               '<span class="code-inline">build_tools/check_cassettes.py</span> 体检（覆盖不全就不产包，'
               '<span class="code-inline">--allow-missing-cassettes</span> 仅供调试）。'
