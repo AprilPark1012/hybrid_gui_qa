@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
-"""特性10 · 文档口径：**AI 链路是主推路径，手搓用例降级为调试/回归辅助**（V8.4）。
+"""特性10 · 文档口径：**真 AI 链路是唯一链路**（V8.6）。
 
-背景（用户 2026-10-08 定的方向 C，原话）：
-    「把『手搓用例』明确降级为调试/回归辅助，文档与培训页里的主推路径改成 AI 链路。」
-    并强调「我的本意是真 AI 生成 cases，cli all 就是跑完整的 AI 链路端到端……请务必按照这个
-    要求来改，而不是只是适配手搓用例。」
+背景：
+  · 2026-10-08 用户定方向 C：「把『手搓用例』降级为调试/回归辅助，主推路径改成 AI 链路」。
+  · 2026-10-13 用户进一步定（V8.6）：**手搓链路整体删除**，框架只剩真 AI 链路一条 ——
+    所以「AI 主推 / 手搓辅助」这个对比本身也不复存在，本文档口径判据随之升级为
+    「文档里不许再把手搓链路写成可用入口」。
 
 判据口径：
-  · 只查**主推路径的表述顺序与措辞**（README / CLI 提示 / 培训页主推章节）；
+  · 只查**主推路径的表述**（README / CLI 提示 / 培训页）；
   · **不碰历史版本记录**（那是历史事实，改了才是造假）；
-  · **不碰判据/代码里的「手写」技术术语**（如 `test_assert_kinds_render.py` 里的用例名）。
+  · **允许**在「已删除」的说明语境里提到手搓（那是必要的变更交代，不是把它当活入口）。
 """
 
 from __future__ import annotations
@@ -24,72 +25,63 @@ HTML_GEN = REPO / "build_tools" / "build_html.py"
 
 # ---------------------------------------------------------------- CLI 提示
 
-def test_cli_error_suggests_ai_first():
-    """`generate` 在 cases 为空时的提示，必须**先推 AI**（`explore --ai`），再提手写。
-
-    事故口径：原文是「先写 cases/*.json，或用 explore --ai 让 AI 出题」—— 把**手搓排在前面**，
-    而现任主推路径是 AI。用户按提示走会先撞上手搓那条（还要自己写用例）。
-    """
+def test_cli_error_suggests_ai_path():
+    """`generate` 在 cases 为空时的提示，必须指向 **真 AI 链路**（`explore --ai`）。"""
     src = CLI.read_text(encoding="utf-8")
     i = src.index("cases/ 里一个用例都没有")
     seg = src[i: i + 400]
-    ai = seg.find("explore --ai")
-    manual = seg.find("cases/*.json")
-    assert ai != -1, "提示里没有提到 AI 路径（explore --ai）"
-    assert manual != -1, "提示里没有提到手写用例路径"
-    assert ai < manual, (
-        "CLI 提示里手搓路径排在 AI 路径**前面** —— 与「主推 AI 链路」的口径不符"
+    assert "explore --ai" in seg, (
+        "提示里没有指向真 AI 路径（explore --ai）—— V8.6 起它是唯一链路"
     )
+    assert "cli probe" not in seg, "提示里仍在教人跑已删除的 probe 子命令"
 
 
-def test_cli_module_docstring_marks_manual_as_auxiliary():
-    """`cli.py` 顶部对 `cases/` 的说明，必须把「手写」标注为辅助定位（而不是默认形态）。"""
+def test_cli_module_docstring_says_cases_come_from_ai():
+    """`cli.py` 顶部对 `cases/` 的说明，必须写明用例来自 **AI 产出**。"""
     src = CLI.read_text(encoding="utf-8")
     head = src[:2000]
     assert "cases/" in head, "cli.py 顶部没有 cases/ 说明"
-    # 必须出现「AI」+「辅助/调试/回归」这类限定词，不能只写「手写自然语言用例」
     assert "AI" in head, "cli.py 顶部说明里没提 AI 链路"
-    assert any(w in head for w in ("辅助", "调试", "回归")), (
-        "cli.py 顶部把 cases/ 只说成「手写自然语言用例」，没有标注手写是辅助形态"
+    assert "手写" not in head and "手搓" not in head, (
+        "cli.py 顶部还在把 cases/ 说成「手写/手搓」—— V8.6 起用例只有 AI 一个来源"
     )
 
 
 # ---------------------------------------------------------------- README
 
-def test_readme_two_tracks_puts_ai_first():
-    """README 的「两条链路」表格里，**AI 链路必须是 ①**。"""
+def test_readme_single_track_no_handcraft():
+    """README 必须只讲**一条链路**，且不许把 probe/手搓写成可用入口。"""
     src = README.read_text(encoding="utf-8")
-    i = src.index("两条链路")
-    seg = src[i: i + 1200]
-    ai = seg.find("AI")
-    manual = seg.find("手搓")
-    assert ai != -1 and manual != -1, "README 的链路表结构变了，判据需同步更新"
-    assert ai < manual, "README 链路表里手搓排在 AI 前面 —— 主推路径应当 AI 在前"
+    assert "两条链路" not in src, (
+        "README 仍在讲「两条链路」—— V8.6 起只剩真 AI 链路一条"
+    )
+    assert "python -m framework.cli all --ai" in src, "README 没有给出真 AI 链路的入口命令"
+    # 允许出现「已删除」交代，但不许出现可照跑的 probe 子命令
+    assert "cli probe" not in src, "README 仍在教人跑已删除的 probe 子命令"
 
 
 def test_readme_ai_is_recommended():
-    """README 必须明确说明「AI 是推荐入口、手搓是辅助」。"""
+    """README 必须明确说明入口是 `all --ai`。"""
     src = README.read_text(encoding="utf-8")
-    assert any(w in src for w in ("推荐", "主推")) and "AI" in src, (
-        "README 没有说明推荐的入口是哪一个"
+    assert "all --ai" in src, "README 没有写明主入口是 all --ai"
+    assert any(w in src for w in ("推荐", "主推", "唯一")), (
+        "README 没有说明入口关系（推荐/主推/唯一）"
     )
-    i = src.find("推荐")
-    if i == -1:
-        i = src.find("主推")
-    seg = src[max(0, i - 200): i + 400]
-    assert "AI" in seg, "README 的「推荐/主推」字样附近没有提到 AI 链路"
 
 
 # ---------------------------------------------------------------- 培训页（生成器模板）
 
-def test_training_chapter4_not_headlined_by_handcraft():
-    """培训页第 4 章标题不许再以「手搓」开头 —— 它是主推路径章节，应以 AI 为主语。"""
+def test_training_chapter4_is_ai_centered():
+    """培训页第 4 章不许再以「手搓」为主题；须以「写场景 / AI 出用例」为主语。"""
     src = HTML_GEN.read_text(encoding="utf-8")
-    assert "场景文件与用例文件：怎么手搓" not in src, (
-        "培训页第 4 章标题仍是《场景文件与用例文件：怎么手搓》—— 主推路径没有改成 AI"
+    assert "先让 AI 出题，再按需手搓" not in src, (
+        "培训页第 4 章标题仍是《先让 AI 出题，再按需手搓》—— 手搓链路已删，标题须改"
     )
-    assert "先让 AI 出题" in src or "AI 出题" in src, (
-        "培训页第 4 章没有改成「AI 为主、手搓为辅」的表述"
+    assert "写场景" in src and "AI 出用例" in src, (
+        "培训页第 4 章没有改成「写场景 -> AI 出用例」的表述"
+    )
+    assert '<h3 style="margin:26px 0 6px">4.1 一条链路' in src, (
+        "培训页 4.1 没有改成「一条链路」（原来是与手搓的两条链路对比表）"
     )
 
 
@@ -99,7 +91,6 @@ def test_training_history_chapters_untouched():
     判据用意：防止有人为了「口径统一」把历史记录也一并改掉（那等于篡改版本史）。
     """
     src = HTML_GEN.read_text(encoding="utf-8")
-    # 历史章节里的典型句子（V8.1 时期：13 用例全绿 = 10 手写 + 3 AI）
     assert "10 条手写" in src or "12 条手写" in src or "6 条手写" in src, (
         "历史版本章节里的「N 条手写」记录被改掉了 —— 历史事实不许动"
     )

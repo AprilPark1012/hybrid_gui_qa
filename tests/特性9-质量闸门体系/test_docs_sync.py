@@ -33,15 +33,18 @@ HTML = REPO / "docs" / "training.html"
 
 # (1) 这些「入口 / 框架模块 / 开发期工具 / 判据公共件」必须能在培训页里找到
 MUST_BE_DOCUMENTED = (
-    # 运行期（framework/）
-    "cli.py", "config.py", "text_io.py", "browser.py", "limits.py", "retention.py", "target_probe.py",
-    "probe.py", "element_map.py", "locator_bridge.py",
-    # P25 片 9：semantic_locate.py 已删除（零代码引用、且"人写脚本"路径已由
-    # cases/*.json -> generate 取代）—— 文档清单同步移除，否则必红。
-    "anchor.py", "scope_locate.py",
-    "explorer.py", "llm_cassette.py",
-    "generator.py", "case_builder.py", "scenario.py", "data_driven.py",
-    "runner.py", "healer.py",
+    # 运行期（framework/）—— V8.6 起按**真实文件名**登记（原来是 V8.0 的 tools/ 旧名，
+    # 如 explorer.py / locator_bridge.py / generator.py，那些文件在「按特性聚合」后已改名，
+    # 判据却还在找旧名 -> 长期空转。2026-10-13 对着 `find framework -name '*.py'` 逐条校准）
+    "cli.py", "config.py", "text_io.py", "browser.py", "target_probe.py",
+    "probe.py", "element_map.py", "locator_bridge_locate.py", "anchor_locate.py",
+    "scope_locate.py", "scan_pages_probe.py", "is_valid_rescan_gate_probe.py",
+    "explorer_explore.py", "generator_generate.py", "case_builder_generate.py",
+    "scenario_generate.py", "probe_pre_gate_generate.py", "probe_snapshot_generate.py",
+    "ai_output_gate_explore.py", "mapping_gate_generate.py", "ambiguity_gate_generate.py",
+    "data_gate_generate.py", "data_driven_generate.py",
+    "llm_cassette_explore.py", "gates.py", "feature_spec.py",
+    "healer_run.py", "limits.py", "retention_run.py",
     # 开发期（build_tools/）
     "pack_release.py", "build_html.py", "check_cassettes.py", "record_cassettes.py", "offline_explore_chain.py",
     # 判据与验证入口（tests/_helpers/ + tests/_runner/）
@@ -145,7 +148,7 @@ def test_negative_changelog_area_is_excluded():
     """版本史附录里的旧文档引用（冻结历史）不该让判据变红。"""
     # 正文区的路径必须是**真实存在**的 —— 本判据只验「历史区被跳过」，
     # 不能因为样例文件被 R7-f 清掉而假红（2026-09-30：原用 search_mixed.json，已随三目录重建清除）。
-    body = '<h2>正文</h2><p>见 <code>cases/manual/manual_order_create_smoke.json</code></p>'
+    body = '<h2>正文</h2><p>见 <code>README.md</code></p>'
     hist = '<span class="n">A</span>版本与更新记录</h2><p>见 <code>docs/P4-慢目标与并发-修复方案.md</code></p>'
     assert missing_paths(live_body(body + hist)) == []
 # r9-legacy-block:end

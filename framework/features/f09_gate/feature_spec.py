@@ -9,12 +9,12 @@
 FEATURES = [
     dict(
         no=1, key="mixed_chain", name="混合链路",
-        goal="三种链路（AI 生成 / 手搓 / 离线回放）都能跑通，且有一条统一验收入口",
+        goal="两种链路（AI 生成 / 离线回放）都能跑通，且有一条统一验收入口",
         dir="特性1-混合链路",
         subs=[
-            dict(no="1.1", name="三种链路可切换", goal="AI 生成链路、手搓用例链路、离线回放链路三条路各自可独立跑通",
+            dict(no="1.1", name="两种链路可切换", goal="AI 生成链路、离线回放链路两条路各自可独立跑通",
                  class1=["test_acceptance_entry.py", "test_offline_chain_python.py"],
-                 class2=["verify_e2e_scenario1_online.py", "verify_e2e_scenario2_handwritten.py"]),
+                 class2=["verify_e2e_scenario1_online.py"]),
             dict(no="1.2", name="统一验收入口", goal="四条验收原则能用一条命令跑完；跳过策略（如 --skip-ai）必须显式留痕，不许静默少跑",
                  class1=["test_acceptance_entry.py", "test_acceptance_skip_policy.py"],
                  class2=[]),
@@ -257,11 +257,15 @@ FEATURES = [
                  class1=["test_cli_help_coverage.py"], class2=[]),
             dict(no="10.4", name="setup 与分发采纳", goal="`setup --check` 退出码能区分环境好坏",
                  class1=["test_cli_setup.py"], class2=[]),
-            dict(no="10.5", name="推荐路径口径", goal="文档/提示/培训页的主推路径 = AI 链路；手搓用例降级为调试与回归辅助（历史版本记录不改）",
+            dict(no="10.5", name="推荐路径口径", goal="文档/提示/培训页的主推路径 = 真 AI 链路（V8.6 起是唯一链路）；不许把手搓链路写成可用入口（历史版本记录不改）",
                  class1=["test_ai_first_docs.py", "test_tunables_exposed_as_flags.py"], class2=[]),
             dict(no="10.6", name="文档真值契约", goal="文档说的必须和代码做的是同一回事：引用的路径存在、" \
                                                       "主线命令统一 all --ai、配置表不虚报条数、关键数字对齐代码真值",
                  class1=["test_docs_truth_contract.py"], class2=[]),
+            dict(no="10.7", name="文档结构真值契约", goal="培训页/README 画的目录结构必须与磁盘一致：" \
+                                                          "登记的特性夹都要真实存在、磁盘上的特性夹都要登记、" \
+                                                          "不许声称有 f01 或每特性 api.py",
+                 class1=["test_docs_structure_truth.py"], class2=[]),
         ],
     ),
 

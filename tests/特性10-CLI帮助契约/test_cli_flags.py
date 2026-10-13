@@ -32,7 +32,6 @@ def _cli(*args: str) -> subprocess.CompletedProcess:
 
 # ---------- 一、合法参数必须全部通过（防误杀现有用法）----------
 LEGAL = [
-    ("probe", []),
     ("generate", []),
     ("generate", ["--live-probe"]),
     ("generate", ["--element-map", "output/element_maps/element_map_x.json"]),
@@ -68,13 +67,11 @@ ILLEGAL = [
     (["prune", "--dry-run", "--workres", "1"], "不认识的参数", "--workers"),
     (["run", "--head"], "不认识的参数", "--headed"),
     (["run", "--worker", "2"], "不认识的参数", "--workers"),
-    (["frobnicate"], "未知子命令", "是不是想写"),
+    (["frobnicate"], "未知子命令", "可用子命令"),   # V8.6：probe 删除后模糊匹配候选集变了
     (["explore", "--ai", "--scenario", "x", "--to-cases"], "已移除", "--no-cases"),
-    (["probe", "--workers", "2"], "对 probe 无效", "run"),
     (["prune", "--ai"], "对 prune 无效", "explore"),
     (["run", "--workers"], "缺少取值", "--workers <值>"),
     (["run", "--case"], "缺少取值", "--case <值>"),
-    (["probe", "extra-positional"], "多余的位置参数", "不接受位置参数"),
 ]
 
 

@@ -1,18 +1,10 @@
 {
-  "ai_orders_invoice_full_lifecycle_010009": {
-    "case_fingerprint": "8f7d4c1cc4df368c",
-    "probe_fingerprint": "0fa3533a4050c487",
+  "ai_orders_invoice_full_lifecycle_231656": {
+    "case_fingerprint": "d2b82bbddb00bceb",
+    "probe_fingerprint": "61878bcea164e917",
     "scenario_fingerprint": "bd0d136dac570cd3",
     "scenario_id": "orders_invoice_full_lifecycle",
-    "script_path": "scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_010009.py",
-    "template_fingerprint": "0ebffda8f38307cc"
-  },
-  "manual_order_create_smoke": {
-    "case_fingerprint": "a3f7fd40917db624",
-    "probe_fingerprint": "0fa3533a4050c487",
-    "scenario_fingerprint": "",
-    "scenario_id": "manual",
-    "script_path": "scripts/generated/manual/manual_order_create_smoke.py",
+    "script_path": "scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_231656.py",
     "template_fingerprint": "0ebffda8f38307cc"
   }
 }

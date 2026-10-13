@@ -5,13 +5,13 @@
 
 ## 总览
 
-- 大特性 **11** 个 · 子特性 **50** 条
-- 一类用例文件 **120** 个 / 用例函数 **996** 条
-- 二类验证文件 **26** 个
+- 大特性 **11** 个 · 子特性 **51** 条
+- 一类用例文件 **121** 个 / 用例函数 **997** 条
+- 二类验证文件 **25** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
-| 1 | 混合链路 | 3 | 4 | 3 |
+| 1 | 混合链路 | 3 | 4 | 2 |
 | 2 | 语义识别与步骤编排 | 4 | 19 | 6 |
 | 3 | 分层定位与控件识别 | 9 | 22 | 6 |
 | 4 | 选错控件兜底 | 4 | 4 | 2 |
@@ -20,18 +20,18 @@
 | 7 | 并发与资源安全 | 4 | 3 | 1 |
 | 8 | 离线回放 | 4 | 7 | 3 |
 | 9 | 质量闸门体系 | 8 | 40 | 6 |
-| 10 | CLI 帮助契约 | 6 | 7 | 0 |
+| 10 | CLI 帮助契约 | 7 | 8 | 0 |
 | 11 | 交付即验证 | 2 | 6 | 0 |
 
 ## 特性 1 · 混合链路
 
-**目标**：三种链路（AI 生成 / 手搓 / 离线回放）都能跑通，且有一条统一验收入口
+**目标**：两种链路（AI 生成 / 离线回放）都能跑通，且有一条统一验收入口
 
 **目录**：`tests/特性1-混合链路/`
 
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
-| 1.1 | 三种链路可切换 | AI 生成链路、手搓用例链路、离线回放链路三条路各自可独立跑通 | `test_acceptance_entry.py`(8)、`test_offline_chain_python.py`(9) | `verify_e2e_scenario1_online.py`、`verify_e2e_scenario2_handwritten.py` |
+| 1.1 | 两种链路可切换 | AI 生成链路、离线回放链路两条路各自可独立跑通 | `test_acceptance_entry.py`(8)、`test_offline_chain_python.py`(9) | `verify_e2e_scenario1_online.py` |
 | 1.2 | 统一验收入口 | 四条验收原则能用一条命令跑完；跳过策略（如 --skip-ai）必须显式留痕，不许静默少跑 | `test_acceptance_entry.py`(8)、`test_acceptance_skip_policy.py`(6) | - |
 | 1.3 | 交付两件套 | 无外网机器靠「代码包 + LLM 录像包」即可跑 AI 链路 | `test_render_entrypoint.py`(2) | `verify_offline_delivery.py` |
 
@@ -139,10 +139,10 @@
 |---|---|---|---|---|
 | 9.1 | 布局与命名契约 | tests/ 与生成物的布局、路径拼接（跨平台）、命名空间契约 | `test_test_layout_contract.py`(13)、`test_generated_layout_contract.py`(7)、`test_path_join_contract.py`(2)、`test_case_scenario_contract.py`(6)、`test_click_then_ready_contract.py`(8)、`test_assert_kinds_render.py`(11)、`test_wait_text_kind.py`(6)、`test_demo_testid_policy.py`(12) | - |
 | 9.2 | 质量闸 | 用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤**；**闸门统一契约 + 全量注册表**（B′：实现跟特性走、登记进 core/gates.py） | `test_case_quality_gate.py`(14)、`test_generate_quality_gate.py`(5)、`test_gate_protocol_registry.py`(8)、`test_demo_freshness_gate.py`(35)、`test_ai_case_scenario_sync.py`(2)、`test_daily_skip_marker.py`(4)、`test_no_false_positive_blocks_ai.py`(12) | `verify_demo_freshness.py` |
-| 9.3 | 环境与编码适配 | 跨平台路径/内存探测/UTF-8 与 cp936 —— 源码不许出现 GBK 编不了的字符；**源码不许有未绑定名**（拷代码漏作用域会被 except 兜成静默降级） | `test_env_adaptation.py`(18)、`test_utf8_io.py`(21)、`test_browser_preflight.py`(5)、`test_no_stale_paths.py`(9)、`test_no_undefined_names.py`(3) | `verify_undefined_names.py` |
+| 9.3 | 环境与编码适配 | 跨平台路径/内存探测/UTF-8 与 cp936 —— 源码不许出现 GBK 编不了的字符；**源码不许有未绑定名**（拷代码漏作用域会被 except 兜成静默降级） | `test_env_adaptation.py`(18)、`test_utf8_io.py`(21)、`test_browser_preflight.py`(4)、`test_no_stale_paths.py`(9)、`test_no_undefined_names.py`(3) | `verify_undefined_names.py` |
 | 9.4 | 交付包与文档同步 | 打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README | `test_pack_release.py`(19)、`test_pack_release_requires_generated_dir.py`(1)、`test_readme_structure.py`(16)、`test_docs_sync.py`(16)、`test_build_html_hl.py`(12) | `verify_html_sync.py` |
 | 9.5 | 保留与产物健康 | 日志/产物保留策略与健康检查 | `test_retention_runs.py`(14)、`test_artifacts_health.py`(9) | `verify_retention_runs.py` |
-| 9.6 | 就绪与等待契约 | 点击后等就绪、等文本刷新策略、选择器生效、**动作后置校验（做了 != 生效了）** | `test_ready_and_locate.py`(12)、`test_wait_text_refresh_policy.py`(3)、`test_wait_text_selector.py`(2)、`test_import_targets.py`(4)、`test_generated_pytest_discovery.py`(1)、`test_case_imports_cover_helpers.py`(1)、`test_scenario_case_script_hygiene.py`(5)、`test_target_reachability.py`(7)、`test_declared_wait_budget.py`(24)、`test_action_effect_check.py`(12) | `verify_wait_text.py`、`verify_action_effect_check.py` |
+| 9.6 | 就绪与等待契约 | 点击后等就绪、等文本刷新策略、选择器生效、**动作后置校验（做了 != 生效了）** | `test_ready_and_locate.py`(12)、`test_wait_text_refresh_policy.py`(3)、`test_wait_text_selector.py`(2)、`test_import_targets.py`(4)、`test_generated_pytest_discovery.py`(1)、`test_case_imports_cover_helpers.py`(1)、`test_scenario_case_script_hygiene.py`(5)、`test_target_reachability.py`(5)、`test_declared_wait_budget.py`(24)、`test_action_effect_check.py`(12) | `verify_wait_text.py`、`verify_action_effect_check.py` |
 | 9.7 | 替换安全与闸门解耦 | 用例替换不许破坏结构；闸门自身不许互相耦合 | `test_case_replacement_safety.py`(6)、`test_no_gate_coupling.py`(2) | - |
 | 9.8 | 特性规格契约 | 特性/子特性/用例归属的规格（feature_spec）与磁盘**双向一致**：规格里列的文件必须存在、磁盘上的用例必须有归属、编号规范、目录不漂移、文档与规格同步 | `test_feature_spec_contract.py`(8) | - |
 
@@ -158,8 +158,9 @@
 | 10.2 | 参数契约 | 未知/错位参数一律报错 + 非 0 退出，绝不静默忽略 | `test_cli_flags.py`(11) | - |
 | 10.3 | 帮助自动覆盖 | 新增子命令/参数必须自动出现在 --help 总览里 | `test_cli_help_coverage.py`(8) | - |
 | 10.4 | setup 与分发采纳 | `setup --check` 退出码能区分环境好坏 | `test_cli_setup.py`(10) | - |
-| 10.5 | 推荐路径口径 | 文档/提示/培训页的主推路径 = AI 链路；手搓用例降级为调试与回归辅助（历史版本记录不改） | `test_ai_first_docs.py`(6)、`test_tunables_exposed_as_flags.py`(6) | - |
+| 10.5 | 推荐路径口径 | 文档/提示/培训页的主推路径 = 真 AI 链路（V8.6 起是唯一链路）；不许把手搓链路写成可用入口（历史版本记录不改） | `test_ai_first_docs.py`(6)、`test_tunables_exposed_as_flags.py`(6) | - |
 | 10.6 | 文档真值契约 | 文档说的必须和代码做的是同一回事：引用的路径存在、主线命令统一 all --ai、配置表不虚报条数、关键数字对齐代码真值 | `test_docs_truth_contract.py`(7) | - |
+| 10.7 | 文档结构真值契约 | 培训页/README 画的目录结构必须与磁盘一致：登记的特性夹都要真实存在、磁盘上的特性夹都要登记、不许声称有 f01 或每特性 api.py | `test_docs_structure_truth.py`(4) | - |
 
 ## 特性 11 · 交付即验证
 

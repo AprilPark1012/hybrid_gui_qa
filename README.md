@@ -1,6 +1,6 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.5.1**（2026-10-12）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
+> 当前版本 **V8.6**（2026-10-13）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
 > · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/) · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
 
 **一句话**：把 **LLM 语义编排（AI 智能探索）** 和 **Playwright（浏览器采集证据 + 确定性执行）** 组合成一套混合测试框架 ——
@@ -66,7 +66,7 @@ pip install -r requirements.txt        # 核心依赖：playwright / python-dote
 python -m framework.cli setup          # 装依赖 → 装浏览器 → 真启 chromium 自检；就绪才说 OK
 ```
 
-> ⚠️ **最容易漏的一步是「装浏览器」** —— `pip install` 不会装它。缺了会在 `probe/generate/explore/run`
+> ⚠️ **最容易漏的一步是「装浏览器」** —— `pip install` 不会装它。缺了会在 `generate/explore/run`
 > 时报 `Executable doesn't exist at …ms-playwright…`。`cli setup` 就是为这一步准备的：
 > `--check` 只体检不安装 · `--force-browser` 换过 playwright 版本时强制重下 · `--with-ai` 连 AI 依赖一起装。
 
@@ -79,10 +79,8 @@ python -m demo.app         # http://localhost:8000：合同/订单列表页 + �
 ### 2. 跑通整条链路（另开一个终端）
 
 ```bash
-# 两条链路**同一条命令**，用 `--ai` 区分（不另开命令）：
+# 主链路（唯一）：explore --ai → generate → run 一条龙
 python -m framework.cli all --ai --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml
-                                              # 真 AI 链路（主推）：explore --ai → generate → run 一条龙
-python -m framework.cli all --workers 2       # 手搓链路（暂冻结，暂不推荐）：probe → generate → run，确定性，零 token
 python -m framework.cli run --debug           # 调试开关：有屏幕弹浏览器；没屏幕录视频 + 逐步截图
 python -m framework.cli run --case <case_id>          # 只跑指定用例（--case 可重复；case_id = cases/ 里的文件名）
 python -m framework.cli prune --dry-run       # 归档保留（log/ 与 output/verify/ 按 30 个 ∪ 7 天清理）
@@ -90,12 +88,12 @@ python -m framework.cli --help                # 总览 = 子命令 + 每个子�
                                               # 参数写错一律报错 + exit 2，绝不静默忽略；<子命令> --help 看详细用法
 ```
 
-> **命令统一口径（AprilPark1012 2026-10-11 要求 4）**：真 AI 链路与手搓链路**共用 `all`**，
-> **用 `--ai` 区分**，**不另开命令**。单独用 `explore` / `generate` / `run` 仍然可以
-> （调参、只跑某一段时用），但那不是主线；主线一律 `all`。
+> **V8.6 口径（2026-10-13 AprilPark1012定）**：**手搓链路（probe 驱动的确定性链路）已整体删除**，
+> 框架现在**只有真 AI 链路一条**。`all` 必须带 `--ai`（不带会**显式报错 exit 2**，不再隐式降级）。
+> 单独用 `explore` / `generate` / `run` 仍可（调参、只跑某一段），但那是**分段**用法，主线一律 `all --ai`。
 >
-> ⚠️ **手搓链路暂时冻结**（2026-10-13 AprilPark1012重申：设计上可能还有问题，他再想想怎么做）
-> —— **打通性验收只看真 AI 链路**（`all --ai`），手搓链路不参与，也不能当「真 AI 链路跑不通」的替代证明。
+> 为什么删：手搓链路的**输入靠人手写用例**，与「让 AI 出题」的主线思路重复，且两条链的维护成本
+> 是双份（同一能力两条路 = 一处改两处验）。收敛成一条，判定与验证都只有一份真值。
 
 **两类验证**（改完东西跑这两条）：
 
@@ -106,7 +104,7 @@ python tests/_runner/run_acceptance.py                # ③ 四项验收一条�
 ```
 
 > **判据住哪**（2026-10-12 更正）：判据按**特性**分目录，在 `tests/特性1-…/` ... `tests/特性11-…/` 下
-> （`test_*.py` 一类 + `verify_*.py` 二类混放同一特性目录，共 121 个 `test_*` / 24 个 `verify_*`）。
+> （`test_*.py` 一类 + `verify_*.py` 二类混放同一特性目录，共 122 个 `test_*` / 23 个 `verify_*`）。
 > `tests/_helpers/` 只是**共享辅助**（artifacts / demo_freshness / repo_files / testid_policy），
 > **不含任何 `test_*.py`** —— 直接跑它会 `no tests collected`。
 
@@ -122,12 +120,12 @@ HYBRID_CASE_TIMEOUT=600 HYBRID_STRICT_LOCATE=1 \
 **调小**、或想**显式固定**（不受将来默认值变化影响）时才写。设小了会在半途掐断，
 **表现像用例失败，其实是超时设小了**。可调项全清单见 `python -m framework.cli config`。
 
-**期望值对照（V8.5.1 基准 · 本机 1.87G 无 swap 实测）**：
+**期望值对照（V8.6 基准 · 本机 1.87G 无 swap 实测）**：
 
 | 命令 | 期望 | 耗时 |
 |---|---|---|
 | 上面那条端到端 | `1 passed` | ~220s |
-| `pytest tests/ -q` | `1124 passed / 1 skipped`，0 failed | ~41s |
+| `pytest tests/ -q` | `1123 passed / 3 skipped`，0 failed | ~39s |
 | `run_verifications.py` | 绝大部分通过；**唯一遗留 `verify_slow_target`**（慢环境缺陷，见 BACKLOG L22） | ~14 min |
 | `run_acceptance.py` | 四项闸门全过 | — |
 
@@ -148,36 +146,36 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 DEEPSEEK_MODEL=deepseek-chat
 ```
 
-> 用例驱动的主链路（probe → generate → run）**默认确定性、不需要 key**。
+> **真 AI 链路**（`all --ai`）需要 key（`explore` 要调 LLM）。不带 AI 的部分（`generate` / `run`）
+> 是确定性的、不需要 key；所以无 key 环境下可以用「录像回放」跑完整的 AI 链路。
 > 无外网机器要用 AI 链路 ⇒ 走**录像回放**（`build_tools/offline_explore_chain.py` + 随包发出的录像包）。
 
 ## 项目结构与链路
 
 ```
-cases/（自然语言用例：manual/ 手写 · <场景id>/ AI）──generate──▶ scripts/generated/ + scripts/datasets/
-   ▲ 手写（cases/manual/）                              │
+cases/（自然语言用例：<场景id>/，AI 产出）──generate──▶ scripts/generated/ + scripts/datasets/
+   ▲                                                  │
    └── explore --ai ◀── AI 语义识别（场景/自然语言）      ▼
                                      cli run → pytest 并发 + web-first 断言
                                               + Tier1→Tier2 定位 + Healer 自愈
 ```
 
-**两条链路**（汇合点 = `cases/` 下的用例文件 —— AI 产的用例和你手搓的用例，跑的是同一条确定性执行链）：
+**一条链路**（唯一）：自然语言场景 → AI 语义识别 → 产出用例 → 生成脚本 + 数据分离 → 执行。
 
-| # | 场景 | 入口 | 花 token |
-|---|---|---|---|
-| ① | 自然语言场景 → AI 语义识别 → 产出用例 → 执行 | **`all --ai`**（`--scenario` / `--scenario-file` / `--scenario-dir`） | ✅ |
-| ② | 手搓 `cases/manual/*.json` → 生成脚本 + 数据分离 → 执行 | **`all`**（不带 `--ai`） | ❌ 零 token |
+| 场景 | 入口 | 花 token |
+|---|---|---|
+| 自然语言场景 → AI 语义识别 → 产出用例（`cases/<场景id>/`）→ 生成脚本 + 数据分离 → 执行 | **`all --ai`**（`--scenario` / `--scenario-file` / `--scenario-dir`） | ✅ |
 
-> **入口只有一条命令**：两条链路**共用 `all`**，**用 `--ai` 区分**，不另开命令。
-> 单独用 `explore` / `generate` / `run` 仍可（调参、只跑某一段），但那是**辅助**，不是主线。
+> **入口只有一条命令**：`all`，**必须带 `--ai`**（不带会显式报错 exit 2）。
+> 单独用 `explore` / `generate` / `run` 仍可（调参、只跑某一段），但那是**分段**用法，不是主线。
 
 **目录职责**（逐文件说明见培训页第 2 章）：
 
 ```
-cases/        用例（源）：manual/ 手搓用例 · <场景id>/ AI 用例（AI 产出也落这里，两者在此汇合）
+cases/        用例（源）：<场景id>/ AI 用例（AI 产出落这里）
 scenarios/    AI 场景库：<模块>/<场景id>.yml（一个 yml = 一个场景）；字段契约见 scenarios/README.md
-scripts/      generate 产物（可重建，别手改）：generated/（<场景id>/<用例id>.py + manual/ + _harness.py + conftest.py + index.json）· datasets/（抽离数据）
-framework/    按**特性**聚合：features/f01..f11（每特性 api.py 是唯一入口，阶段看文件名后缀）· shared/（跨特性基础设施：配置/浏览器/登录/前置动作）· cli.py
+scripts/      generate 产物（可重建，别手改）：generated/（<场景id>/<用例id>.py + _harness.py + conftest.py + index.json）· datasets/（抽离数据）
+framework/    按**特性**聚合：features/f02..f11（共 10 个特性夹，按阶段命名后缀区分：_semantic/_locate/_gate/…）· shared/（跨特性基础设施：配置/浏览器/登录/前置动作）· tools/（构建期工具）· cli.py
 demo/         被测 demo（合同/订单列表页 + 详情页 + 数据 API）
 build_tools/  开发期工具：打包 · 培训页 · 录像体检/重录 · 离线链路
 tests/        判据按**特性**分目录：特性1-…/ ... 特性11-…/（test_* 一类 + verify_* 二类同放一特性目录）
@@ -185,13 +183,15 @@ tests/        判据按**特性**分目录：特性1-…/ ... 特性11-…/（te
   └─ _runner/    run_verifications.py（二类入口）· run_acceptance.py（四项验收一条命令）
 releases/     发行说明 RELEASE_NOTES_V*.md（变更日志的家）+ 交付包（包不入库）
 docs/         training.html 培训页（对外文档）· feature_map.md 特性/子特性/用例映射表（自动生成，别手改）
-output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 + report.html，可清理）
+output/ log/  运行期证据：`output/element_maps/`（**elementMap 是交付生成物之一**，打包时随代码包
+              发最新 1 份）· `output/llm_cassettes/`（LLM 录像，走单独的录像包）· heals / traces /
+              verify / 逐用例日志 + report.html（**这些不进交付包**，log 可清理）
 ```
 
 **断言 13 种**（`asserts[].kind`，缺省 = `text`）：`text` · `visible`/`hidden` · `count` · `attr` ·
 `value` · `url` · `checked`/`unchecked` · `enabled`/`disabled` · **`first_row`**（表格第一行某列，
 证明"它就是第一条"）· **`wait_text`**（有界等待式，等状态自动流转）。定位用 `element`（探测语义名）或
-`selector`（手写用例专用，**AI 链路禁用**）。契约与示例见培训页第 4 章；样例用例见 `cases/orders_invoice_full_lifecycle/`（AI 用例）与 `cases/manual/`（手搓用例，按需自建）。
+`selector`（手写用例专用，**AI 链路禁用**）。契约与示例见培训页第 4 章；样例用例见 `cases/orders_invoice_full_lifecycle/`。
 
 ## 常见坑
 
@@ -202,7 +202,7 @@ output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 
 3. **被测页面没声明就绪契约** ⇒ 慢页面上动作/断言早于渲染 ⇒ 假红。页面 `body` 置
    `data-hybrid-ready="1"`（**团队接自己系统时第一条要做的**，见培训页第 9 章）。
 4. **AI 用例的断言不许依赖运行时计数**（如「共 N 条」）⇒ 落盘前会被质量闸拦下。
-5. **未映射元素 = 显式失败**：`element` 必须是 `cli probe` 探到的语义名；映射不到会 `pytest.fail`，
+5. **未映射元素 = 显式失败**：`element` 必须是语义探测（`explore --ai` 落盘的 elementMap）里有的语义名；映射不到会 `pytest.fail`，
    绝不静默跳过（少验一步还报绿 = 假绿）。
 6. **别并发跑浏览器**（内存红线）：跑前确认 `MemAvailable ≥ 550MB`，不够就降并发，别用 `--force-workers` 硬闯。
 7. **生成物别手改**：`scripts/generated/` 是 `generate` 的产物；改了模板要重跑 `generate`（模板是唯一来源）。
@@ -218,7 +218,7 @@ output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 
 |---|---|---|
 | `Executable doesn't exist at …ms-playwright…` | 没装浏览器 | `python -m framework.cli setup` |
 | `先起被测应用：python -m demo.app` | 目标连不上 | 起 demo（或改 `HYBRID_BASE_URL` 指别的目标） |
-| `仍未映射 [...]` | 语义名对不上 | 跑 `cli probe` 取正确语义名 |
+| `仍未映射 [...]` | 语义名对不上 | 查 `output/element_maps/` 里的语义名清单（由 `explore --ai` 落盘） |
 | 元素「等了 5000ms 仍是 0 个」 | 页面慢 / 选择器漂移 | 查就绪契约；必要时调 `HYBRID_LOCATE_TIMEOUT` |
 | 用例卡死不返回 | 目标无响应 | 看 `log/<run_id>/watchdog.txt`（看门狗写了调用栈） |
 
@@ -226,13 +226,13 @@ output/ log/  运行时证据（element_maps / heals / traces / 逐用例日志 
 
 - **培训页 [`docs/training.html`](docs/training.html)**（团队主文档，由 `build_tools/build_html.py` 生成）：
   1 为什么是「混合」· 2 目录结构 · 3 整体流程 · 4 场景/用例怎么写 · 5 函数调用地图 ·
-  6 框架特性设计实现（11 特性 / 49 子特性）· 7 常见坑 · 8 动手跑一遍（含**环境变量与运行开关**表）· 9 收尾
+  6 框架特性设计实现（11 特性 / 50 子特性）· 7 常见坑 · 8 动手跑一遍（含**环境变量与运行开关**表）· 9 收尾
 - **发行说明 [`releases/RELEASE_NOTES_V*.md`](releases/)**：每版改了什么（**变更日志都在这里**，随交付包一并发出）
 - **字段契约**：`scenarios/README.md`（场景文件）+ 培训页第 4 章（用例文件）
 - **框架判据**：`tests/_helpers/`（框架自验证，`test_*` 秒级、不需要 demo）+ `tests/_runner/`（特性自验证，`verify_*` 端到端且含**负向证伪**）
-- 想动手扩展：模块 docstring 即接口说明，`framework/features/` 按**特性**聚合（f01..f11），
-  阶段归属看**文件名后缀**（`*_explore/_probe/_generate/_run/_verify`，无后缀=阶段无关）；
-  跨特性的基础设施（配置/浏览器/登录/前置动作）在 `framework/shared/`。同一特性只有 `api.py` 一个入口。
+- 想动手扩展：模块 docstring 即接口说明，`framework/features/` 按**特性**聚合（**f02..f11 共 10 个特性夹**），
+  阶段归属看**文件名后缀**（`*_explore/_generate/_run/_verify` 等，无后缀 = 阶段无关）；
+  跨特性的基础设施（配置/浏览器/登录/前置动作）在 `framework/shared/`，构建期工具在 `framework/tools/`。
 
 ## 许可
 

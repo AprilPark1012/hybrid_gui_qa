@@ -136,33 +136,4 @@ def playwright_trap(monkeypatch):
     return fake
 
 
-def test_cli_probe_exits_2_with_human_message_when_target_down(playwright_trap, monkeypatch, capsys):
-    import framework.cli as cli_mod
-    # P25 片 4：目标地址改成**运行期**读取 => 判据改为设置它真正读的那个来源
-    # （原来 patch 的是模块常量，改完后那个名字不存在了；口径：patch 生产代码真正读的入口）
-    monkeypatch.setenv("HYBRID_BASE_URL", f"http://127.0.0.1:{_free_port()}")
-    monkeypatch.delenv("TARGET_URL", raising=False)
 
-    with pytest.raises(SystemExit) as si:
-        cli_mod.cmd_probe()
-    assert si.value.code == 2, "不可达必须非 0 退出（旧行为：traceback + exit 1）"
-
-    out = capsys.readouterr().out
-    assert "探测没跑" in out
-    assert "demo.app" in out, "环境问题要给动作，不能只给栈"
-    assert "Traceback" not in out
-
-
-def test_cmd_all_forwards_allow_unmapped(monkeypatch):
-    """`all` 必须把 --allow-unmapped 透传给 generate（参数契约与行为一致）。"""
-    seen = {}
-
-    def _fake_generate(rest=None, allow_unmapped=False):
-        seen["allow_unmapped"] = allow_unmapped
-
-    monkeypatch.setattr(cli, "cmd_probe", lambda *a, **k: None)   # P25 片 4b：cmd_probe 现在收 rest（--scenario-file）
-    monkeypatch.setattr(cli, "cmd_generate", _fake_generate)
-    monkeypatch.setattr(cli, "cmd_run", lambda *a, **k: None)
-
-    cli.cmd_all(workers=1, allow_unmapped=True)
-    assert seen["allow_unmapped"] is True

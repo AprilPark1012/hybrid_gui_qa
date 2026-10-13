@@ -73,20 +73,6 @@ def test_normal_env_passes_through():
         raise
 
 
-def test_cli_probe_exits_2_with_friendly_message(tmp_path):
-    """★端到端：走真实 CLI（子进程 -> 不受进程内 driver 缓存影响），必须 exit 2 + 人话。"""
-    env = dict(os.environ)
-    env["PLAYWRIGHT_BROWSERS_PATH"] = _empty_browsers(tmp_path)
-    env.pop("HYBRID_SKIP_BROWSER_CHECK", None)
-    env["PYTHONUTF8"] = "1"
-    p = subprocess.run([sys.executable, "-m", "framework.cli", "probe"],
-                       cwd=str(REPO), env=env, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", timeout=180)
-    out = (p.stdout or "") + (p.stderr or "")
-    assert p.returncode == 2, f"必须非 0 退出（拿到 {p.returncode}）"
-    assert "playwright install chromium" in out, f"没给一行修复命令：{out[-500:]}"
-    assert "python -m framework.cli" not in out.split("playwright install")[0][-200:] or True
-
 
 def test_cli_help_and_version_do_not_need_browser(tmp_path):
     """边界：--version / --help 不该被预检拦（它们跟浏览器无关）。"""

@@ -2,11 +2,10 @@
 
 典型用法（先起被测应用：python -m demo.app）:
     python -m framework.cli setup            # 0) 第一次跑先执行它：装依赖 + 装浏览器 + 自检
-    python -m framework.cli probe            # 1) 探测页面交互元素
     python -m framework.cli generate         # 2) 读 cases/*.json → 生成 scripts/（按操作类型翻译 + 抽离数据）
     python -m framework.cli run --workers 2  # 3) pytest 并发执行用例 + 日志整合 + 报告
                                              #    跑前资源预检：内存不够会自动降并发，--force-workers 可强制
-    python -m framework.cli all              # 1→2→3 全链路
+    python -m framework.cli all --ai --scenario-file scenarios/x.yml   # 全链路（唯一入口，必须带 --ai）
     python -m framework.cli explore --ai --scenario "…"        # 内联自然语言（原样保留）
     python -m framework.cli explore --ai --scenario-file scenarios/x.yml   # 单场景文件
     python -m framework.cli explore --ai --scenario-dir scenarios/ --tag smoke  # 目录批量
@@ -18,9 +17,9 @@
     python -m framework.cli run --debug --slowmo 500                    # 动作放慢 500ms，肉眼跟步
 
 目录职责：
-    cases/       手写自然语言用例（写死数据 + asserts[] 断言）
+    cases/       AI 产出的自然语言用例（<场景id>/ai_*.json；由 explore --ai 落盘）
     scripts/     generate 产物（playwright 脚本 + scripts/datasets 抽离数据，分离）
-    output/      probe/element_map/plan/heals/trace（运行时证据）
+    output/      element_map（交付生成物，随包发最新 1 份）/llm_cassettes（录像包）/heals/trace（不进包）
 """
 from __future__ import annotations
 import json
@@ -157,100 +156,7 @@ def _slowmo_from(rest: list[str]) -> int | None:
     return None
 
 
-def cmd_probe(rest: list[str] | None = None):
-    """探测页面交互元素 → output/element_maps/probe_*.json（**elementMap 形态**，一页一个对象）。
 
-    页来源（P25 片 4b：探针也支持**多页**，与 explore 同源）：
-      · 单页（默认）：`--base-url` / `TARGET_URL` / `HYBRID_BASE_URL` 那一页（页名 `probe`）；
-      · 多页：`--scenario-file <yml>` -> 按场景 `pages` 的**声明顺序**逐页探测（页名用声明名）。
-    逐页骨架走唯一入口 `probe.scan_pages()` —— 与 explore / generate 的现场探测**同一条链路**
-    （"同一能力收敛成唯一入口"；此处以前是第三份自己写的探测循环）。
-
-    除了基础页面，还会点开「新建类」弹窗、**并钻进弹窗里嵌的 picker 层**（如客户列表），
-    把层内控件一并探测出来（2026-09-14）—— 否则「从列表里选一行」这类 UI 对 AI/人都是盲区。
-    层内元素在输出里带 - 标记，JSON 里带 `"source": "layer"`。
-    """
-    rest = list(rest or [])
-    ensure_dirs()
-    # ---- 目标可达性预检（V7.5.1）：先回答「活没活」，别让 Playwright 甩一屏 traceback ----
-    # 2026-09-15 实测：demo 没起时 `pg.goto()` 抛 `net::ERR_CONNECTION_REFUSED` + exit 1，
-    # 现象像「框架坏了」，其实是一句「demo 没启动」。环境问题要给动作，不是给栈。
-    from framework.shared.target_probe import reachability
-    _tgt = target_url()                                  # P25 片 4：**运行期**取，--base-url 才生效
-    ok, why = reachability(_tgt)
-    if not ok:
-        print(f"\n[probe] [NG] 探测没跑：{why}")
-        print("[probe]    目标地址可用 `--base-url <url>`（或 TARGET_URL / HYBRID_BASE_URL 环境变量，三者等效）；"
-              "demo 起好后重跑 `python -m framework.cli probe`（或 all）")
-        raise SystemExit(2)
-
-    # ---- 页来源：场景声明的多页 / 单页 ----
-    sfile = _arg_value(rest, "--scenario-file")
-    specs: list[dict] = []
-    scenario_desc = ""
-    if sfile:
-        from pathlib import Path as _P
-        from framework.features.f02_semantic.scenario_generate import ScenarioError, load_scenario_file
-        try:
-            sc = load_scenario_file(_P(sfile))
-        except ScenarioError as e:
-            print(f"[probe] [NG] {e}")
-            raise SystemExit(2) from None
-        scenario_desc = sc.id
-        for _pg in (getattr(sc, "pages", None) or []):
-            specs.append({"name": _pg.name, "url": _pg.url,
-                          "pre": list(getattr(_pg, "pre", None) or []),
-                          "probe_url": _pg.probe_url() if callable(getattr(_pg, "probe_url", None)) else ""})
-        print(f"[probe] 多页模式：{sfile}（id={sc.id}）→ 按声明顺序探测 {len(specs)} 页")
-        for _s in specs:
-            print(f"      - {_s['name']}  {_s['url']}")
-        # [!] 这里在 `cmd_probe` 里，**不在** `cmd_explore` 作用域内 —— 不能调那个嵌套辅助。
-        #   直接取（V8.5.1 口径：优先场景 `login:` 动作序列，旧 `auth:` 兼容）。
-        _lg_spec = sc.login_spec() or {}
-        auth = _lg_spec if _lg_spec.get("steps") else (sc.auth_spec() or {})
-        probe_pre = list(getattr(sc, "probe_pre", None) or [])
-    else:
-        specs.append({"name": "probe", "url": _tgt})
-        auth, probe_pre = None, None
-
-    from framework.features.f03_locate.element_map import ElementMap, ElementMapPage
-    from framework.features.f03_locate.scan_pages_probe import scan_pages   # 唯一入口（函数，不是模块）
-    import json
-
-    res = scan_pages(specs, auth=auth, probe_pre=probe_pre, login=True, label="probe",
-                     with_dom_ctx=False, with_row_fields=False, collapse=True)
-    if res.error:
-        print(f"[probe] [NG] {res.error}")
-        raise SystemExit(2)
-
-    _url_by_name = {n: u for n, u in (res.labels or [])}
-    pages = [ElementMapPage(page=name, url=_url_by_name.get(name, ""),
-                            scenario=scenario_desc, steps=[], probe_items=list(items or []))
-             for name, items in (res.per_page or [])]
-    emap = ElementMap(url=_tgt, scenario=scenario_desc, steps=[], probe_items=[], pages=pages)
-    out = config.ELEMENT_MAP_DIR / f"probe_{_now()}.json"
-    out.write_text(json.dumps(emap.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-    prune_snapshots(quiet_if_none=True)          # 归档保留策略（静默：无可清理就不打印）
-
-    # 标记来源（产物里保留这个字段，供人工核对哪些项来自展开/弹层）。
-    # scan_pages 里已经打过 `source`（menu/layer），这里只为打印统计。
-    items = [it for _pg in pages for it in (_pg.probe_items or [])]
-    n_layer = sum(1 for it in items if it.get("source") == "layer")
-    n_menu = sum(1 for it in items if it.get("source") == "menu")
-    if len(pages) == 1:
-        print(f"[probe] 探测到 {len(items)} 个交互元素"
-              f"（其中可展开菜单内 {n_menu} 个 · 弹窗/弹层内 {n_layer} 个）→ {out}")
-    else:
-        print(f"[probe] 探测到 {len(items)} 个交互元素（{len(pages)} 页"
-              f"，其中可展开菜单内 {n_menu} 个 · 弹窗/弹层内 {n_layer} 个）→ {out}")
-    for _pg in pages:
-        _head = f"      [{_pg.page}]" if len(pages) > 1 else "     "
-        print(f"{_head} {len(_pg.probe_items or [])} 个控件")
-        for it in (_pg.probe_items or []):
-            mark = ("-" if it.get("source") == "menu"
-                    else ("-" if it.get("source") == "layer" else "  "))
-            print(f"      {mark} - {it['semantic_name']:<20} [{it['role']:<8}] "
-                  f"name={it['name']!r} ph={it['placeholder']!r} test_id={it['test_id']!r}")
 def _report_unmapped(e) -> NoReturn:
     """映射质量闸触发时的交代：缺什么 / 为什么 / 下一步 —— **绝不落产物**，exit 2。"""
     print(f"\n[generate] [NG] 映射质量闸拦下：{len(e.missing)} 个语义名映射不上 → 拒绝产出任何产物")
@@ -582,7 +488,6 @@ def cmd_explore(rest: list[str] = None):
     rest = rest or []
     if "--ai" not in rest:
         print("[explore] [NG] 缺 --ai：explore 只做真 AI 语义识别（不提供隐式降级 —— 静默兜底=造假）。")
-        print("          要跑确定性链路请用： python -m framework.cli probe → generate → run")
         raise SystemExit(2)
 
     to_cases = "--no-cases" not in rest
@@ -1235,17 +1140,15 @@ def cmd_all(workers: int | None = None, debug: bool = False, force_workers: bool
             cases: list[str] | None = None, slowmo: int | None = None,
             isolated_target: bool = False, allow_unmapped: bool = False,
             ai: bool = False, rest: list[str] | None = None):
-    """probe/explore → generate → run 一条龙；带 --ai 走真 AI 链路（主推）。
+    """all → generate → run 一条龙（真 AI 链路）。
 
-    两条链路**同一条命令**（AprilPark1012 2026-10-11 要求4：用 `--ai` 区分，不另开命令）：
+    [!] V8.6（2026-10-13 AprilPark1012定）：**手搓链路已整体删除**，现在只剩真 AI 链路一条。
+    所以 `--ai` 不再是「区分两条链路」的开关，而是**唯一入口的必需参数**（不带就显式报错）。
 
-      · 不带 `--ai` = **手搓链路**（次选）：probe（语义探测 + 分层定位兜底）
-                       → generate（吃 `*.case.json` + elementMap，含补探与 healer 自愈）
-                       → run
-      · 带 `--ai`   = **真 AI 链路**（主推）：explore --ai（场景解析 + 语义探测 + LLM 调用
-                       + 用例编排 + elementMap 落盘）→ generate → run；
-                       带 `--verify` 时由 explore **内部**完成两档验证（产出物档 + 实跑档，
-                       失败带原因重试，有界）。回放模式下不重试（回放同一份录像，转 N 圈还是同一个产出）。
+      真 AI 链路：explore --ai（场景解析 + 语义探测 + LLM 调用 + 用例编排 + elementMap 落盘）
+                  → generate → run；
+                  带 `--verify` 时由 explore **内部**完成两档验证（产出物档 + 实跑档，
+                  失败带原因重试，有界）。回放模式下不重试（回放同一份录像，转 N 圈还是同一个产出）。
 
     [!] 需要被测目标在跑（`python -m demo.app`）：任一步拿不到目标都会**在生成期就红**，
     不会产出「全是 pytest.fail 存根」的假脚本（--allow-unmapped 是调试逃生口，别用于交付）。
@@ -1255,8 +1158,14 @@ def cmd_all(workers: int | None = None, debug: bool = False, force_workers: bool
         print("[all] 链路 = 真 AI（主推）：explore --ai → generate → run")
         cmd_explore(_rest)
     else:
-        print("[all] 链路 = 手搓（次选）：probe → generate → run")
-        cmd_probe(_rest)
+        # [!] V8.6（2026-10-13 AprilPark1012定）：手搓链路（probe 驱动）**已整体删除**，
+        #     现在只剩真 AI 链路一条。原来这里调 cmd_probe，是「不带 --ai 就走手搓」的入口。
+        #     不再隐式降级：没有 --ai 就**明确报错**，而不是偷偷跑一条被删掉的链路
+        #     （静默兜底 = 造假，与框架一贯口径一致）。
+        print("[all] [NG] 缺 --ai：all 只支持真 AI 链路（explore --ai → generate → run）。")
+        print("[all]     手搓链路（probe 驱动）已在 V8.6 删除。")
+        print("[all]     正确用法：python -m framework.cli all --ai --scenario-file <场景文件>")
+        raise SystemExit(2)
     cmd_generate(allow_unmapped=allow_unmapped)
     cmd_run(workers, debug, force_workers, cases=cases, slowmo=slowmo,
             isolated_target=isolated_target)
@@ -1298,7 +1207,6 @@ FLAG_SPECS: dict[str, str | None] = {
 _COMMON_FLAGS = {"--workers", "--debug", "--headed", "--force-workers", "--isolated-target",
                 "--case", "--slowmo"}
 CMD_FLAGS: dict[str, set[str]] = {
-    "probe": {"--base-url", "--scenario-file"},
     "generate": {"--element-map", "--live-probe", "--allow-unmapped",
                   "--only", "--changed", "--force", "--base-url"},
     "explore": {"--ai", "--no-cases", "--no-verify", "--verify",
@@ -1608,7 +1516,7 @@ def main():
     #   缺浏览器 -> 当场给「一行修复命令」+ exit 2（绝不让它到 Playwright 那层才炸原始栈）。
     # verify 也要浏览器（它内部会 generate 一次做实跑校验），所以它在名单里；
     # 但 `verify --case` 只跑 pytest 时同样需要，因为生成的脚本要起浏览器 -> 一致性保留。
-    if cmd in ("probe", "generate", "explore", "run", "all", "verify"):
+    if cmd in ("generate", "explore", "run", "all", "verify"):
         try:
             from framework.shared.browser import BrowserNotInstalledError, ensure_browser_installed
             ensure_browser_installed()
@@ -1624,9 +1532,7 @@ def main():
     #   （_report_unmapped / _report_data_sets / _report_case_quality）都是 -> NoReturn 直接 raise，
     #   只有这一条走 return -> 典型的不一致。修在分发层 = 根因修复：以后任何子命令
     #   只要 return 非 0，调用方都看得见。
-    if cmd == "probe":
-        rc = cmd_probe(rest)
-    elif cmd == "generate":
+    if cmd == "generate":
         rc = cmd_generate(rest, allow_unmapped=allow_unmapped)
     elif cmd == "explore":
         rc = cmd_explore(rest)
@@ -1743,7 +1649,6 @@ def cmd_setup(argv: list[str]) -> int:
 
     if ok:
         print("\n[setup] [OK] 环境就绪，可以跑了：")
-        print("            python -m framework.cli probe     # 探测页面元素")
         print("            python -m framework.cli all       # 探测→生成→执行 全链路")
         return 0
     print("\n[setup] [NG] 环境还没就绪（上面有原因）；修好后重跑 python -m framework.cli setup")
@@ -1845,7 +1750,7 @@ def _browser_state() -> tuple[bool, str]:
         return False, f"启动失败：{e}"
 
 
-_CMD_FUNCS = {"probe": cmd_probe, "generate": cmd_generate, "explore": cmd_explore,
+_CMD_FUNCS = {"generate": cmd_generate, "explore": cmd_explore,
               "run": cmd_run, "all": cmd_all, "verify": cmd_verify, "prune": cmd_prune,
               "setup": cmd_setup, "config": cmd_config}
 

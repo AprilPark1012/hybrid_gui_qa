@@ -61,11 +61,65 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.5.1"
-VERSION_DATE = "2026-10-12"
+VERSION = "8.6"
+VERSION_DATE = "2026-10-13"
 CHANGELOG = [
     dict(
-        version="8.5", date="2026-10-12", tag="当前版本",
+        version="8.6", date="2026-10-13", tag="当前版本",
+        theme="<b>收敛成一条链路</b> + 文档/判据与代码真值逐条对齐",
+        summary="按AprilPark1012 2026-10-13 定的 V8.6 目标做三件事："
+                "① <b>删除手搓链路</b>（probe 驱动的确定性链路整条退场，只留真 AI 链路）；"
+                "② <b>tests / README / training.html 与 framework 代码逐条对齐</b>，失效内容删除；"
+                "③ <b>交付打包口径</b>与上述要求的冲突排查与修正。<br>"
+                "为什么删：手搓链路的输入靠人手写用例，与「写场景让 AI 出用例」的主线思路重复，"
+                "两条链的维护成本是双份（同一能力两条路 = 一处改两处验）。"
+                "收敛成一条后，<b>判定与验证都只有一份真值</b>。",
+        changed=[
+            "<b>手搓链路整体删除</b>：<code>cli.py</code> 里 <code>cmd_probe</code> 函数本体、"
+            "<code>cmd_all</code> 的手搓分支、<code>main()</code> 分发、<code>_CMD_FUNCS</code> 注册表、"
+            "<code>CMD_FLAGS['probe']</code>、浏览器预检名单里的 <code>probe</code>、"
+            "模块 docstring 的 <code>cli probe</code> 示例，共 <b>14 处</b>一并清理；"
+            "<code>cases/manual/</code> + <code>scripts/datasets/manual_*</code> + "
+            "<code>scripts/generated/manual/</code> <b>三处产物同删</b>"
+            "（只删一处会让「用例<->数据集一一对应」判据变红）",
+            "<b>不再隐式降级</b>：<code>all</code> 不带 <code>--ai</code> 时<b>显式报错 exit 2</b>"
+            "（原来会悄悄走手搓链路）。静默兜底 = 造假，与框架一贯口径一致 —— "
+            "现在 <code>--ai</code> 不是「区分两条链路」的开关，而是唯一入口的必需参数",
+            "<b>删测试 5 处</b>：<code>verify_e2e_scenario2_handwritten.py</code>（整文件 = 手搓链路验证）、"
+            "<code>test_target_reachability</code> 2 条、<code>test_browser_preflight</code> 1 条、"
+            "<code>test_cli_flags</code> 3 条参数样本、<code>test_tunables_exposed_as_flags</code> 1 条断言；"
+            "<b>规格先行</b>：先改 <code>feature_spec.py</code> 再删脚本（否则连带 3 条判据红）",
+            "<b>修 9 类「与手搓无关」的文档真错</b>（这类最值钱 —— 静态文本写错不会自己报错）："
+            "① 文档称 framework 是 <code>features/f01..f11</code> 且「每特性 <code>api.py</code> 是唯一入口」，"
+            "实测<b>无 f01、全仓无 api.py</b>；"
+            "② 培训页第 2 章 framework 树是 <b>V8.0 旧画像</b>（<code>tools/{common,probe,explore,generate,run}</code>）；"
+            "③ <code>cases/manual/</code> 树列了 4 个不存在的文件；"
+            "④ <code>scenarios/</code> 树写不存在的 <code>contracts/*.yml</code>；"
+            "⑤ <code>demo/</code> 树漏 8 个真实文件；"
+            "⑥ 断言表只列 9 种、<code>first_row</code> 口径写成 selector（实为 <code>row_field</code>）；"
+            "⑦ 两处仍写已删除的 <code>--mock-fallback</code>；"
+            "⑧ 两处让用户跑 <code>pytest tests/_helpers/</code>（该目录无 <code>test_*</code>，跑出来是 no tests collected）；"
+            "⑨ README 计数过期（test 121→<b>122</b>、verify 24→<b>23</b>、判据 1124/1→<b>1123/3</b>、"
+            "子特性 49→<b>50</b>），以及 Windows 激活命令 <code>.venv\\Scriptsctivate</code> 缺字"
+            "（应为 <code>Scripts\\activate</code>）",
+            "<b>判据同步（19 项）</b>：<code>test_ai_first_docs.py</code> 按新口径重写"
+            "（不再要求「两条链路」、不再要求 cases/ 是手写）；"
+            "<code>test_docs_sync.py</code> 的 <code>MUST_BE_DOCUMENTED</code> 长期在找 V8.0 的旧模块名"
+            "（<code>explorer.py</code>/<code>locator_bridge.py</code>/<code>generator.py</code>…）"
+            "—— 那些文件按特性重组后已改名，判据<b>长期空转</b>，现对着 "
+            "<code>find framework -name '*.py'</code> 逐条校准；"
+            "<code>test_docs_sync</code> 的正例样本不再绑 <code>cases/manual</code>",
+            "<b>新增判据 10.7「文档结构真值契约」</b>：文档里登记的特性夹都要<b>真实存在</b>、"
+            "磁盘上的特性夹都要<b>登记</b>、正文区不许再声称有 <code>f01</code> 或每特性 <code>api.py</code>；"
+            "并<b>反向自证</b>「现在确实没有 api.py」（哪天真加了会让这条红，提醒同步）",
+            "<b>交付包口径</b>：<code>output/element_maps/</code> 的 elementMap <b>最新 1 份随代码包交付</b>"
+            "（它是交付生成物之一）；<code>log/</code> 与录像都不进代码包"
+            "（录像走「两件套」的录像包）；README 补上交付包内容口径，"
+            "并改掉把 <code>output/</code> 笼统写成「运行时证据…可清」的旧表述",
+        ],
+    ),
+    dict(
+        version="8.5", date="2026-10-12", tag="上一版本",
         theme="<b>真 AI 链路端到端跑通 + framework 按特性重组</b>",
         summary="两条链路（手搓 / 真 AI）端到端全绿："
                 "<code>python -m framework.cli all --ai</code> 从探测、生成到真跑一次通过"
@@ -427,8 +481,9 @@ CHANGELOG = [
         added=[
             "<b>tests/ 按 10 个特性分文件夹</b>（V8.3.6 起：原特性2「语义识别与分层定位」一分为二，其后顺延）：特性1-混合链路 … 特性10-CLI帮助契约；公共模块住 <code>tests/_helpers/</code>、"
             "入口与工具住 <code>tests/_runner/</code>；新增 <code>tests/conftest.py</code> 统一补 <code>_helpers</code> 的 import 路径",
-            "<b>场景2 常驻样例</b>（手搓链路）：<code>cases/manual/manual_order_create_smoke.json</code> + 生成物；"
-            "配套 E2E 验证脚本 <code>tests/特性1-混合链路/verify_e2e_scenario2_handwritten.py</code>（7 条判据，"
+            "<b>[!] 已移除 —— 此文件现已不在仓库（V8.6 删除手搓链路）</b>："
+            "<b>场景2 常驻样例</b>：<code>cases/manual/manual_order_create_smoke.json</code> + 生成物；"
+            "配套 E2E 验证脚本 <code>tests/特性1-混合链路/verify_e2e_scenario2_handwritten.py</code>（也<b>已移除</b>）（7 条判据，"
             "<b>离线可证伪</b>：LLM 端点强制指黑洞仍须跑通 = 证明这条链没碰 AI；含负向自证 + 零残留）",
             "<b>「特性 × 验证结果」报告</b> <code>tests/_runner/feature_verification_report.py</code>："
             "特性来源 = 特性夹目录名（不另立清单）；一类走 junitxml 分组、二类读 runner 日志；零判据特性标 [skip]。"
@@ -682,7 +737,7 @@ CHANGELOG = [
     ),
     dict(
         version="8.2.1", date="2026-09-22", tag="上一版本",
-        theme="培训页第 4 章：<b>先让 AI 出题，再按需手搓</b>（两种业务场景）"
+        theme="培训页第 4 章：<b>写场景，让 AI 出用例</b>（唯一条链路的输入）"
               "—— 把「团队约定」写成可教学的一章",
         summary="本版<b>零代码行为变化</b>，只补文档：培训页新开一章，讲清本框架支持的<b>两种业务场景</b>"
                 "对应<b>两种手搓文件</b> —— <code>scenarios/&lt;模块&gt;/&lt;id&gt;.yml</code>（自然语言场景）"
@@ -691,7 +746,7 @@ CHANGELOG = [
                 "整章按「<b>怎么手搓出来</b>」组织：字段表 / 动作表 / 断言表 / 两个真实样例 / "
                 "五步操作流程 / 六条团队约定 / 一页速查。",
         added=[
-            "<b>培训页第 4 章《先让 AI 出题，再按需手搓（两种业务场景）》</b>："
+            "<b>培训页第 4 章《写场景，让 AI 出用例》</b>："
             "(1) 两条链路对比（花不花 token / 什么时候用哪个 / 怎么把 AI 用例固化成回归资产）；"
             "(2) 场景文件字段表（谁读 / 干什么）+ 一份字段注释完整的真实样例 + 四条写作要点 + demo 三件事 + 五步流程；"
             "(3) 用例文件五个顶层字段 + <b>7 个动作</b> + <b>9 类断言</b> + 一个真实用例模板 + 五步流程；"
@@ -1539,9 +1594,9 @@ CHANGELOG = [
 ]
 # r9-legacy-block:end
 
-ARTICLE_HANDCRAFT = """<!-- ========== 4. 先让 AI 出题，再按需手搓（两种业务场景） ========== -->
+ARTICLE_HANDCRAFT = """<!-- ========== 4. 写场景，让 AI 出用例 ========== -->
 <section>
-  <h2 class="sec-title"><span class="n">4</span>先让 AI 出题，再按需手搓（两种业务场景）</h2>
+  <h2 class="sec-title"><span class="n">4</span>写场景，让 AI 出用例</h2>
   <p class="sec-sub">
     <b>主推路径是 AI 链路</b>：你写<b>自然语言场景</b>（<span class="code-inline">scenarios/*.yml</span>），
     AI 负责语义识别、编排步骤、识别控件，产出可执行用例。
@@ -1551,46 +1606,46 @@ ARTICLE_HANDCRAFT = """<!-- ========== 4. 先让 AI 出题，再按需手搓（�
     这就是「<b>AI 产的用例</b>」和「<b>你手搓的用例</b>」能跑同一条执行链、拿到同一份报告的原因。
   </p>
 
-  <h3 style="margin:26px 0 6px">4.1 先分清两条链路（<b>主推 AI；手搓做辅助</b>）</h3>
+  <h3 style="margin:26px 0 6px">4.1 一条链路：写场景 → AI 出用例 → 执行</h3>
   <table class="tbl">
-    <tr><th style="width:11%"> </th><th style="width:44.5%">场景(1) · 场景驱动（AI 语义识别）</th><th>场景(2) · 用例驱动（直接写用例）</th></tr>
+    <tr><th style="width:20%">环节</th><th>说明</th></tr>
     <tr>
       <td><b>你要准备的文件</b></td>
       <td><span class="code-inline">scenarios/&lt;模块&gt;/&lt;场景id&gt;.yml</span><br>
-          自然语言动作流（人话）</td>
-      <td><span class="code-inline">cases/manual/&lt;用例id&gt;.json</span><br>
-          结构化步骤 + 断言（机器话）</td>
+          自然语言动作流（人话）—— <b>这是唯一的输入</b>，也是你唯一要写的文件</td>
     </tr>
     <tr>
       <td><b>入口命令</b></td>
-      <td><span class="code-inline">python -m framework.cli all --ai --scenario-file …</span></td>
-      <td><span class="code-inline">python -m framework.cli generate &amp;&amp; … run</span></td>
+      <td><span class="code-inline">python -m framework.cli all --ai --scenario-file …</span>
+          （必须带 <span class="code-inline">--ai</span>，不带会显式报错 exit 2）</td>
     </tr>
     <tr>
       <td><b>产出</b></td>
-      <td><span class="code-inline">cases/&lt;场景id&gt;/ai_&lt;场景id&gt;_&lt;HHMMSS&gt;.json</span>（AI 写的用例，按场景分目录）</td>
-      <td>直接进 <span class="code-inline">scripts/generated/&lt;场景id&gt;/&lt;用例id&gt;.py</span>（无中间产物）</td>
+      <td><span class="code-inline">cases/&lt;场景id&gt;/ai_&lt;场景id&gt;_&lt;HHMMSS&gt;.json</span>（AI 写的用例，按场景分目录）<br>
+          → <span class="code-inline">scripts/generated/&lt;场景id&gt;/&lt;用例id&gt;.py</span> + <span class="code-inline">scripts/datasets/</span>（数据分离）</td>
     </tr>
     <tr>
       <td><b>花不花 token</b></td>
-      <td><b>花</b>（每次跑都调 LLM；离线机器用录像回放，见第 5 章 5.2）</td>
-      <td><b>零 token</b>（纯确定性，可反复跑、可进 CI）</td>
+      <td><b>花</b>（每次跑都调 LLM）。<b>但场景没变时可以复用录像</b>（见第 5 章 5.2）——
+          回放模式下<b>不调 LLM、零 token</b>，且产出与录制那次逐字节一致</td>
     </tr>
     <tr>
       <td><b>什么时候用</b></td>
-      <td><b>默认从这里开始</b>：页面/口径已清楚，要<b>批量铺覆盖</b>（一个场景 × N 组数据 = N 条用例）；
-          或者你想先让 AI 试一遍看它怎么选控件</td>
-      <td><b>边界与负向</b>（点错该失败、空值该拦截）、要<b>精确断言</b>、临时补一条、
-          以及把 AI 产出的满意用例<b>固化</b>成回归资产</td>
+      <td><b>默认从这里开始</b>：页面/口径已清楚，要<b>批量铺覆盖</b>
+          （一个场景 × N 组数据 = N 条用例）</td>
     </tr>
     <tr>
       <td><b>推荐节奏</b></td>
-      <td>先写场景跑通 -> 看 AI 产出的用例 -> 满意就<b>固化</b>成 <span class="code-inline">cases/&lt;id&gt;.json</span>（去掉 <span class="code-inline">ai_</span> 前缀）-> 之后当回归资产零成本重跑</td>
-      <td>抄一份<b>最像</b>的现成用例改（别从零写）</td>
+      <td>写场景 → 跑通 → 看 AI 产出的用例 → 不满意就<b>改场景重跑</b>
+          （别去手改用例；用例是产物，改它下次重跑就没了）</td>
     </tr>
   </table>
   <p style="color:var(--muted);font-size:.9rem;margin-top:8px">
-    一句话：<b>场景(1) 前期花 token 换覆盖速度；场景(2) 零成本换精确度</b>。两者产出的用例格式完全相同，随时可以互相转换。
+    一句话：<b>把「想测什么」写成人话交给 AI，用例由它出</b>。<br>
+    <b>[!] V8.6（2026-10-13）起手搓链路已整体删除</b> —— 原来「人直接写
+    <span class="code-inline">cases/manual/*.json</span> 再 generate」那条路不再存在。
+    同一件事不再有两条路：<span class="code-inline">cases/</span> 下的用例<b>只有 AI 一个来源</b>，
+    要改测什么就改场景。
   </p>
 
   <h3 style="margin:26px 0 6px">4.2 场景文件 <span class="code-inline">scenarios/&lt;模块&gt;/&lt;场景id&gt;.yml</span></h3>
@@ -1682,7 +1737,7 @@ assert_guard:
         <span class="code-inline">选择@北京华信科技有限公司</span>；列表页客户筛选是<b>右模糊（前缀）匹配</b>（非前缀不命中）。</li>
   </ol>
 
-  <h4 style="margin:18px 0 4px">手搓一个场景：五步</h4>
+  <h4 style="margin:18px 0 4px">写一个场景：五步</h4>
   <pre class="tree"># (1) 先看被测页面有哪些控件（语义名的唯一来源）
 python -m framework.cli probe                 # -> output/element_maps/probe_*.json
 
@@ -1739,7 +1794,8 @@ ls log/&lt;run_id&gt;/                          # 用例日志 / 报告 / trace
     <tr><td><span class="code-inline">checked</span> / <span class="code-inline">unchecked</span></td><td>同上</td><td>勾选框状态</td></tr>
     <tr><td><span class="code-inline">attr</span></td><td><span class="code-inline">selector</span> + <span class="code-inline">name</span> + <span class="code-inline">expect</span></td><td>属性值（如 <span class="code-inline">data-field</span>）</td></tr>
     <tr><td><span class="code-inline">url</span></td><td><span class="code-inline">expect</span></td><td>当前地址（跳转/带参跳转）</td></tr>
-    <tr><td><span class="code-inline">first_row</span></td><td><span class="code-inline">selector</span> + <span class="code-inline">expect</span></td><td>取第一行做比对（排序类断言）</td></tr>
+    <tr><td><span class="code-inline">first_row</span></td><td><span class="code-inline">row_field</span>（列名）+ <span class="code-inline">expect</span></td><td>取<b>表格第一行</b>的某列做比对（排序类断言）。<b>不需要</b> <span class="code-inline">element</span>/<span class="code-inline">selector</span> —— 用列名（如 <span class="code-inline">orderName</span>）定位那一列</td></tr>
+    <tr><td><span class="code-inline">wait_text</span></td><td><span class="code-inline">element</span> 或 <span class="code-inline">selector</span> + <span class="code-inline">expect</span></td><td><b>有界等待式</b>断言：在有界时间内轮询直到出现该文本。<b>列表页不会自己刷新</b>，所以「等状态自动流转」（如订单提交后 150 秒自动关闭）只能用这个 —— 普通 <span class="code-inline">text</span> 断言的等待是硬编码 5s，等不到</td></tr>
   </table>
   <p style="color:var(--muted);font-size:.9rem;margin-top:6px">
     断言可以<b>多条并存</b>（一个用例 = 一串断言），失败时报告会指出<b>是哪一条</b>。断言是<b>唯一</b>的判定依据 ——
@@ -1755,40 +1811,37 @@ ls log/&lt;run_id&gt;/                          # 用例日志 / 报告 / trace
         例：'请输入合同名称'（placeholder）· '搜索'（按钮文本）· '选择@北京华信科技有限公司'（弹层选行）
 </pre>
   <p style="margin-top:8px">
-    <b>怎么查到它们</b>：跑 <span class="code-inline">python -m framework.cli probe</span>，
-    它把页面（含<b>弹层及其内嵌挑选层</b>）的可交互元素翻译成语义清单，落到
-    <span class="code-inline">output/element_maps/probe_*.json</span>。
-    <b>手搓用例前先跑一次 probe，照着清单抄语义名</b> —— 别猜。
+    <b>怎么查到它们</b>：跑一次 <span class="code-inline">python -m framework.cli all --ai --scenario-file …</span>，
+    <span class="code-inline">explore --ai</span> 会把页面（含<b>弹层及其内嵌挑选层</b>）的可交互元素翻译成语义清单，
+    落到 <span class="code-inline">output/element_maps/element_map_*.json</span>（这就是 <b>elementMap</b>）。
+    <b>想看某个控件叫什么，就查这份 elementMap</b> —— 别猜，也别去数 testid。
   </p>
   <p style="margin-top:8px;padding:10px 12px;border-left:3px solid #d97706;background:rgba(217,119,6,.07);border-radius:6px">
     <b>口径与生产一致</b>：被测系统里<b>只有顶层容器带 testid，控件层没有</b>。
-    所以手搓时<b>不要指望用 testid 定位控件</b>；语义名命中不唯一时，框架会<b>如实报歧义并要求你给更精确的定位</b>
+    所以<b>不要指望用 testid 定位控件</b>（<span class="code-inline">selector</span> 只留给框架内部与调试，AI 链路禁用）；语义名命中不唯一时，框架会<b>如实报歧义并要求更精确的定位</b>
     （加容器锚点/字段步/<span class="code-inline">title</span>），<b>不会按顺序猜第一个</b>——这是刻意设计，避免"点错元素还绿"。
   </p>
 
-  <h4 style="margin:18px 0 4px">手搓一个用例：五步</h4>
-  <pre class="tree"># (1) 跑 probe，拿到目标控件的语义名
-python -m framework.cli probe
+  <h4 style="margin:18px 0 4px">用例从哪来：三步（不用手写）</h4>
+  <pre class="tree"># (1) 写场景（唯一要你写的文件）
+vim scenarios/&lt;模块&gt;/&lt;场景id&gt;.yml
 
-# (2) 抄一个最像的现成用例改（样例：cases/orders_invoice_full_lifecycle/<case_id>.json）
-cp cases/orders_invoice_full_lifecycle/&lt;case_id&gt;.json cases/manual/&lt;你的用例id&gt;.json
-#    必改：case_id 与文件名一致 · name 给人看 · steps 换成你的动作 · asserts 换成你的判定
-
-# (3) 生成脚本（幂等，可反复跑）
-python -m framework.cli generate
+# (2) 跑真 AI 链路：explore --ai 出用例 + generate 出脚本 + run 实测
+python -m framework.cli all --ai --scenario-file scenarios/&lt;模块&gt;/&lt;场景id&gt;.yml
+#    产出：cases/&lt;场景id&gt;/ai_&lt;场景id&gt;_&lt;HHMMSS&gt;.json + scripts/generated/&lt;场景id&gt;/*.py
 #    [!] 映射不到语义名 -> 会打印 "[!] 仍未映射" 并让那一步 pytest.fail（绝不静默跳过）
 
-# (4) 只跑你这一条（按 case_id 过滤）
+# (3) 只跑你这一条（按 case_id 过滤）
 python -m pytest scripts/generated/ -q -k &lt;你的用例id&gt;
 
 # (5) 看报告与证据
 ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 </pre>
 
-  <h4 style="margin:18px 0 4px">一个真实的手搓用例（节选，可当模板）</h4>
+  <h4 style="margin:18px 0 4px">一条真实用例（AI 产出，节选 —— 看懂它就知道 AI 写的是什么）</h4>
   <pre class="tree">{
   "case_id": "&lt;case_id&gt;",
-  "name": "手搓用例 · 回车触发搜索 + 客户右模糊筛选",
+  "name": "回车触发搜索 + 客户右模糊筛选（AI 产出）",
   "base_url": "http://localhost:8000",
   "steps": [
     { "op": "goto",      "desc": "打开合同列表页", "url": "http://localhost:8000" },
@@ -1813,7 +1866,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <tr>
       <td><b>(1) 只改源头，不改产物</b></td>
       <td><span class="code-inline">scripts/generated/</span>（一个用例一个脚本：
-          <span class="code-inline">&lt;场景id&gt;/&lt;用例id&gt;.py</span> + <span class="code-inline">manual/</span> +
+          <span class="code-inline">&lt;场景id&gt;/&lt;用例id&gt;.py</span> +
           <span class="code-inline">_harness.py</span> + <span class="code-inline">conftest.py</span> + <span class="code-inline">index.json</span>）、
           <span class="code-inline">scripts/datasets/*.json</span> 都是 <span class="code-inline">generate</span> 的<b>产物</b>，
           手改会被下一次 generate 覆盖。要改行为 -> 改 <span class="code-inline">cases/*.json</span> 或 <span class="code-inline">scenarios/*.yml</span>，然后重新 generate。</td>
@@ -2045,7 +2098,7 @@ def _svg_two_scenarios() -> str:
           "脚本只留 _data(key, ctx)", "（脚本 <-> 数据 分离）"])
     node(x2[2], Y4, W2, 120, C2, BG2, "6", "生成产物",
          ["scripts/generated/（脚本）", "datasets/*.json（数据）",
-          "_harness.py + conftest.py", "零 token，可进 CI；断言 11 种 kind"])
+          "_harness.py + conftest.py", "断言 13 种 kind；脚本可进 CI"])
     node(x2[1], Y4, W2, 120, C2, BG2, "7", "执行",
          ["cmd_run() -> safe_workers()", "pytest -n N --html=…",
           "资源预检自动降并发", "逐用例 .log + report.html"])
@@ -3436,55 +3489,55 @@ def build() -> str:
   <div class="card">
   <pre class="tree"><b>hybrid_gui_qa/</b>
 ├── <b>cases/</b>                   自然语言用例(写死数据;按 id 分文件,一个用例一个 json)
-│   ├── manual/                      手写用例(search_*.json 模糊/混合搜索 · create_bu_*.json 新建
-│   │                                · assert_kinds_*.json 11 种断言 · cross_page_detail.json 跨页)
 │   └── &lt;场景id&gt;/                    [ai] AI 用例(ai_*.json,按场景分目录,可批量清理) -- 由 all --ai / explore --ai 产出
+│                                     (V8.6 起手搓链路已删,不再有 manual/ 手写用例目录)
 ├── <b>scenarios/</b>                AI 场景库(一文件=一场景,YAML)
 │   ├── README.md                    字段契约与用法
-│   ├── contracts/*.yml              合同场景：按编号搜索 / 新建(弹层选客户) / 跨页流程
-│   └── orders/*.yml                 订单场景：跨 tab 端到端(新建退货订单 -> 看详情)
+│   └── orders/*.yml                 订单场景(当前唯一:orders_invoice_full_lifecycle.yml
+│                                     —— 建单 -> 等自动关闭 -> 开票 -> 发票列表反查)
 ├── <b>scripts/</b>                  generate 产物(可随时重建,别手改)
 │   ├── generated/                   P20 脚本根:一个用例一个文件(便于按 id 管理与增量重生成)
 │   │   ├── &lt;场景id&gt;/&lt;用例id&gt;.py       AI 用例脚本(对应 cases/&lt;场景id&gt;/&lt;用例id&gt;.json)
-│   │   ├── manual/&lt;用例id&gt;.py         手搓用例脚本(对应 cases/manual/&lt;用例id&gt;.json)
 │   │   ├── _harness.py              会话级浏览器池/数据注入/变量池/断言辅助/日志(共享辅助)
 │   │   ├── conftest.py              只转发夹具(把 _harness 暴露给 pytest)
 │   │   └── index.json               case_id -> {{script_path, 三种指纹, template_fingerprint}}
 │   └── datasets/*.json              ▲ 抽离出的数据(脚本<->数据分离)
-├── <b>framework/</b>                核心框架(V8.0: 只留入口 + 按业务流程分层的 tools/)
-│   ├── cli.py                       [tool] 命令行入口(probe/explore/generate/run/all/prune/setup)
-│   └── tools/                        运行期模块(区别于开发期的 build_tools/)
-│       ├── common/                   基建(零业务语义)
-│       │   ├── config.py              配置+目录常量+LLM选择(含 VERSION_SOURCE)
-│       │   ├── text_io.py             跨平台文本口径唯一入口(显式 UTF-8)
-│       │   ├── browser.py             [tool] Chromium 启动参数唯一来源 + 缺浏览器预检(人话报错)
-│       │   ├── limits.py              [fix] 并发安全闸(按可用内存自动降级,防 OOM)
-│       │   ├── retention.py           [store] 归档保留：快照/run 分级清理(cli prune)
-│       │   └── target_probe.py        目标可达性/并发安全预检
-│       ├── probe/                     (1) 探测与定位
-│       │   ├── probe.py               [OK] [Playwright] 探测元素(含行内列清单/新 tab 信号)
-│       │   ├── element_map.py         数据契约(ElementRef/TestStep/ElementMap)
-│       │   ├── locator_bridge.py      [OK] [Playwright] 语义->唯一locator(核心!)
-│       │   ├── anchor.py              [loc] 锚点+相对路径：把「顶层容器内下钻」表达成数据(P16)
-│       │   └── scope_locate.py        [loc] 定位合成:锚点+路径 -> 真实 locator(P16)
-│       ├── explore/                   (2) AI 语义识别
-│       │   ├── explorer.py            [ai] [AI] 语义识别(读场景->规划；失败即报错,不静默降级)
-│       │   └── llm_cassette.py        LLM 录像/回放(离线机器:不联网、不需 key)
-│       ├── generate/                  (3) 用例与脚本生成
-│       │   ├── generator.py           [OK] 按操作类型翻译+抽离数据->scripts/
-│       │   ├── case_builder.py        [ai] ElementMap->cases/ai_*.json 转换 + 用例质量校验(防假绿)
-│       │   ├── scenario.py            [store] scenarios/*.yml 解析/校验/发现(需 PyYAML)
-│       │   └── data_driven.py         [part] 占位符替换+变量池+数据真展开
-│       └── run/                       (4) 执行与自愈
-│           ├── runner.py              [OK] ElementMap 场景执行引擎(集成自愈)
-│           └── healer.py              [patch] 自愈闭环(再协商+业务断言兜底+可审 diff)
+├── <b>framework/</b>                核心框架(按<b>特性</b>聚合；阶段看文件名后缀)
+│   ├── cli.py                       命令行入口(generate/explore/run/all/verify/prune/setup/config)
+│   ├── features/                    10 个特性夹(f02..f11) —— 一个特性一个目录，都是唯一入口
+│   │   ├── f02_semantic/            语义与步骤编排:explorer_explore.py · generator_generate.py ·
+│   │   │                            case_builder_generate.py · scenario_generate.py ·
+│   │   │                            probe_pre_gate_generate.py · ai_output_gate_explore.py
+│   │   ├── f03_locate/              分层定位与控件识别:probe.py · locator_bridge_locate.py ·
+│   │   │                            element_map.py · scan_pages_probe.py · anchor_locate.py ·
+│   │   │                            scope_locate.py · is_valid_rescan_gate_probe.py ·
+│   │   │                            mapping_gate_generate.py · page_scan_probe.py
+│   │   ├── f04_ambiguity/           同名歧义处置:ambiguity_gate_generate.py
+│   │   ├── f05_layers/              弹层/展开态补探与数据:probe_snapshot_generate.py ·
+│   │   │                            data_gate_generate.py · data_driven_generate.py
+│   │   ├── f06_healer/              自愈闭环:healer_run.py · runner_unused.py
+│   │   ├── f07_concurrency/         并发安全与归档:limits.py · retention_run.py
+│   │   ├── f08_replay/              LLM 录像/回放:llm_cassette_explore.py
+│   │   ├── f09_gate/                质量闸门体系:gates.py · feature_spec.py
+│   │   ├── f10_cli/                 CLI:cli.py
+│   │   └── f11_verify/              交付即验证:kit_check_generate.py
+│   ├── shared/                      跨特性基础设施(零业务语义)
+│   │   ├── config.py                 配置+目录常量+LLM选择(含 VERSION_SOURCE)
+│   │   ├── text_io.py                跨平台文本口径唯一入口(显式 UTF-8)
+│   │   ├── browser.py                Chromium 启动参数唯一来源 + 缺浏览器预检(人话报错)
+│   │   └── target_probe.py           目标可达性/并发安全预检
+│   └── tools/                       构建期辅助(仅 spec/；区别于开发期的 build_tools/)
 ├── <b>demo/</b>                      被测应用(靶子,8000端口)
-│   ├── app.py                       静态页面 + 内存数据 API(客户/合同/订单/复位;/api/*)
+│   ├── app.py                       静态页面 + 内存数据 API(客户/合同/订单/发票/复位;/api/*)
+│   ├── login.html                   登录页(演示场景声明的身份前置)
 │   ├── contracts.html               合同列表页(右模糊筛选/新建+客户弹层)
-│   ├── contract_detail.html         合同详情页(读同一条真实记录;查不到如实报「未找到」)
+│   ├── contract_new.html / contract_edit.html / contract_detail.html
 │   ├── orders.html                  订单系统页(分页/新建订单弹层/跨 tab 入口)
-│   ├── order_detail.html            订单详情页
-│   └── todo.html                    旧版 Todo 演示页(保留)
+│   ├── order_new.html / order_detail.html
+│   ├── invoice_list.html / invoice_create.html / invoice_detail.html
+│   ├── pick_customer.html           弹层选客户(内嵌挑选层)
+│   ├── todo.html                    旧版 Todo 演示页(保留)
+│   └── vendor/                      前端依赖(本地随包)
 ├── <b>tests/</b>                      测试根：<b>一个特性一个文件夹</b>（一类 test_* 与二类 verify_* <b>同住一个夹</b>,靠前缀区分）
 │   ├── 特性1-混合链路/ … 特性11-交付即验证/  11 个特性夹（名字取自 feature_spec.py，唯一命名来源）
 │   │   ├── test_*.py                一类判据(秒级,不需 demo/浏览器)
@@ -3500,7 +3553,9 @@ def build() -> str:
 │   └── offline_explore_chain.py     离线一条命令:录像回放 -> generate -> 试跑(无外网机器用)
 ├── <b>releases/</b>                   发行说明(每版改了什么) + 交付包(包不入库)
 │   └── RELEASE_NOTES_V*.md           V7.0 起逐版:升级须知 / 改了什么 / 验证真值 / 已知遗留
-├── <b>output/</b>                    [OK] 运行时证据(element_maps/ · heals/ · traces/ · verify/;可清)
+├── <b>output/</b>                    element_maps/(**交付生成物**:打包时随代码包发最新 1 份) ·
+│                                   llm_cassettes/(LLM 录像,走单独的录像包) ·
+│                                   heals/ · traces/ · verify/(这些**不进交付包**)
 ├── <b>log/&lt;run_id&gt;/</b>             本次运行 逐用例 .log + report.html + traces(可清)
 ├── <b>docs/</b>                       培训文档目录(仓库里唯一的对外文档)
 │   └── training.html                这份培训文档(由 build_tools/build_html.py 生成)
@@ -3590,7 +3645,7 @@ def build() -> str:
   </div>
   <div class="card" style="margin-top:14px;border-left:4px solid #3b6fdd;">
     <b>[ai] AI 分支（主推）：`cli all --ai`（AI 语义识别 + 生成 + 真跑一条龙，需 DeepSeek key）</b>
-    <p style="color:var(--muted);font-size:.9rem;margin-top:4px">给一句自然语言场景，AI 读场景 + probe 语义清单 + DOM 上下文 -> 挑对控件 -> 产出 <b>ElementMap</b>（步骤+语义引用），并默认<b>同步落 <span class="code-inline">cases/ai_*.json</span></b>（--no-cases 可关）。generate 会读它、优先消费 element_map 快照，AI 用例与手写用例走同一条确定性执行链路。<br>三道防假安全感闸：(1) <b>交付即验证</b>——落盘后默认 <span class="code-inline">--verify</span> 立刻试跑该用例，实测 PASSED 才算出活，FAILED 就 <b>[NG] + exit 3</b>（日志 <span class="code-inline">output/verify/</span>）；(2) <b>AI 失败即报错退出（exit 2）</b>，绝不静默用 mock 顶替（mock 只在显式 --mock-fallback 出现且不入库）；(3) 落盘前<b>用例质量校验</b>拦「断言=输入回显」与「断言=猜出来的运行时计数（共 N 条）」。<br>另有：DeepSeek function calling 有间歇性 JSON 抖动 -> 内置退避重试（HYBRID_LLM_ATTEMPTS 默认 3）；<span class="code-inline">cli prune</span> 给快照做归档保留（各留最近 N 个）。<br><b>场景文件</b>：<span class="code-inline">--scenario-file</span> / <span class="code-inline">--scenario-dir</span> 直接读 <span class="code-inline">scenarios/*.yml</span>（一文件=一场景，含 business_context 领域知识 与 assert_guard 断言护栏），与内联 <span class="code-inline">--scenario</span> 共用同一条下游链路。</p>
+    <p style="color:var(--muted);font-size:.9rem;margin-top:4px">给一句自然语言场景，AI 读场景 + probe 语义清单 + DOM 上下文 -> 挑对控件 -> 产出 <b>ElementMap</b>（步骤+语义引用），并默认<b>同步落 <span class="code-inline">cases/ai_*.json</span></b>（--no-cases 可关）。generate 会读它、优先消费 element_map 快照，AI 用例与手写用例走同一条确定性执行链路。<br>三道防假安全感闸：(1) <b>交付即验证</b>——落盘后默认 <span class="code-inline">--verify</span> 立刻试跑该用例，实测 PASSED 才算出活，FAILED 就 <b>[NG] + exit 3</b>（日志 <span class="code-inline">output/verify/</span>）；(2) <b>AI 失败即报错退出（exit 2）</b>，绝不静默用 mock 顶替（**框架不提供 mock 降级**，LLM 不可用就如实报错退出）；(3) 落盘前<b>用例质量校验</b>拦「断言=输入回显」与「断言=猜出来的运行时计数（共 N 条）」。<br>另有：DeepSeek function calling 有间歇性 JSON 抖动 -> 内置退避重试（HYBRID_LLM_ATTEMPTS 默认 3）；<span class="code-inline">cli prune</span> 给快照做归档保留（各留最近 N 个）。<br><b>场景文件</b>：<span class="code-inline">--scenario-file</span> / <span class="code-inline">--scenario-dir</span> 直接读 <span class="code-inline">scenarios/*.yml</span>（一文件=一场景，含 business_context 领域知识 与 assert_guard 断言护栏），与内联 <span class="code-inline">--scenario</span> 共用同一条下游链路。</p>
   </div>
 </section>
 
@@ -3690,7 +3745,7 @@ def build() -> str:
       │             (1)精确 (2)规范化唯一模糊对齐 (3)都不中->打印告警+可用清单名（不静默丢元素）
       │             命中 -> ElementRef（role/name/placeholder/test_id/nearby/heading，全部取自 probe）
       ├─ 兜底 explorer.<b>_get_llm_text_async()</b> + <b>_parse_steps_text()</b>（同样过 _match_item）
-      ├─ 全失败 -> AiExploreError -> cli <b>exit 2</b>（拒绝产假用例；--mock-fallback 才降级且不入库）
+      ├─ 全失败 -> AiExploreError -> cli <b>exit 2</b>（拒绝产假用例；**无 mock 降级**）
       ├─ explorer.<b>_apply_semantic_calibration()</b>   AI 的 desc vs 元素语义 重叠 &lt;0.3 -> 告警"疑似选错"
       └─ explorer.<b>_finalize_map()</b>  首步非 goto 自动补 goto -> <b>ElementMap</b>（只含 semantic_name）
 

@@ -39,7 +39,7 @@ USER_TUNABLE = [
     ("--shots", "HYBRID_SHOTS", {"run", "all"}),
     ("--video", "HYBRID_VIDEO", {"run", "all"}),
     ("--timeout", "HYBRID_CASE_TIMEOUT", {"run", "all"}),
-    ("--base-url", "HYBRID_BASE_URL", {"run", "all", "probe", "generate"}),
+    ("--base-url", "HYBRID_BASE_URL", {"run", "all", "generate"}),
     ("--strict-locate", "HYBRID_STRICT_LOCATE", {"run", "all"}),
 ]
 
