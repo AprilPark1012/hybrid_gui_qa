@@ -350,7 +350,7 @@ CASSETTE_README = """# hybrid_gui_qa · LLM 录像包（在**连不上外网**�
 而且**不需要 API key、全程不联网**。
 
 ## 交付形态 = 两件套（都用上才完整）
-1. **代码包** `hybrid_gui_qa_V<版本>_<日期>.zip` —— 含回放引擎 `framework/features/f08_replay/llm_cassette_explore.py`
+1. **代码包** `hybrid_gui_qa_V<版本>_<打包时刻，YYYYMMDDHHMM>.zip` —— 含回放引擎 `framework/features/f08_replay/llm_cassette_explore.py`
    与一键脚本 `build_tools/offline_explore_chain.py`
 2. **本录像包** —— 含录像数据 `llm_cassettes/` + 一份用法说明
 
@@ -533,8 +533,17 @@ def main() -> int:
     ver, vdate = _version()
     out_dir = Path(a.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    tag = f"hybrid_gui_qa_V{ver}_{vdate.replace('-', '')}"
+    # 包名带上**打包时刻**（到分钟）：`hybrid_gui_qa_V<版本>_<YYYYMMDDHHMM>`。
+    # [!] 2026-10-13 AprilPark1012定：原来只带日期 `_%Y%m%d`，同一版本一天打多次包就会**同名互撞**
+    #     （后打的静默覆盖先打的，谁是最新那版无从分辨）。加时刻后每次打包名字唯一。
+    # [!] 时刻取**打包时刻**（`datetime.now()`）而非 `vdate`（版本发布日期）：跨天打包时
+    #     「版本日期 + 打包时刻」会读成错误的日期（如版本日 10-12、10-13 打包会写成
+    #     `..._202610121030`，看起来像 10-12 打的）。版本号本身已唯一标识版本，
+    #     这里只需要唯一标识**这次打包**。
+    stamp = datetime.now().strftime("%Y%m%d%H%M")
+    tag = f"hybrid_gui_qa_V{ver}_{stamp}"
     out_zip = out_dir / f"{tag}.zip"
+    print(f"[pack] 版本发布日期 {vdate}（版本号 {ver}）· 本次打包时刻 {stamp}")
 
     files = collect_files()
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as z:
