@@ -266,6 +266,21 @@ FEATURES = [
                                                           "登记的特性夹都要真实存在、磁盘上的特性夹都要登记、" \
                                                           "不许声称有 f01 或每特性 api.py",
                  class1=["test_docs_structure_truth.py"], class2=[]),
+            dict(no="10.8", name="通用 LLM 入口", goal="一个开关接所有 OpenAI 兼容服务（GLM / Kimi / " \
+                                                        "通义 / 豆包 / 本地 vLLM）—— 必须走 function calling、" \
+                                                        "优先级最高、可被 cli config 发现、密钥不外泄",
+                 class1=["test_llm_provider_switch.py"], class2=[]),
+            dict(no="10.9", name="LLM 体检 + 思考档位", goal="换模型前先体检：`cli llm-doctor` 真发 2 次请求，" \
+                                                          "报「连通 / function calling 通不通 / 端点在用哪档思考」，" \
+                                                          "并区分「不可用」与「能用但打折（thinking 模式拒 tool_choice）」。"
+                                                          "配套 `LLM_REASONING_EFFORT` 旋钮压思考强度；"
+                                                          "旋钮必须真进请求体（断言产出而非调用）、不污染默认、可发现",
+                 class1=["test_llm_doctor.py"], class2=[]),
+            dict(no="10.10", name="思考模式端点兼容", goal="思考模式端点拒「指名函数」tool_choice 时**有界降级**为 auto：" \
+                                                          "只认特征明确的错（别的照抛）、只重试一次并记住端点特性、"
+                                                          "降级真发 auto 且不丢 reasoning_effort、留痕不静默；"
+                                                          "拿不到 tool_calls 如实抛错不许假装成功",
+                 class1=["test_llm_tool_choice_fallback.py"], class2=[]),
         ],
     ),
 

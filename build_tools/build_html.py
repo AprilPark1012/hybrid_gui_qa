@@ -61,13 +61,107 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.6"
-VERSION_DATE = "2026-10-13"
+VERSION = "8.6.1"
+VERSION_DATE = "2026-10-14"
 CHANGELOG = [
     dict(
-        version="8.6", date="2026-10-13", tag="当前版本",
+        version="8.6.1", date="2026-10-14", tag="当前版本",
+        theme="<b>通用 LLM 入口</b> —— 一个开关接所有 OpenAI 兼容服务",
+        summary="起因（用户提问）：<b>「框架除了 DeepSeek，还能用 GLM、Kimi 吗？」</b><br>"
+                "实测答案：<b>能</b> —— DeepSeek / GLM / Kimi 都是 OpenAI 兼容协议，"
+                "框架的 LLM 层只差三个环境变量。但原来变量名写死成 <code>DEEPSEEK_*</code>"
+                "（配 Kimi 却要写 <code>DEEPSEEK_API_KEY</code>，语义错乱），"
+                "且接第 6 家得改代码 —— 违背「补能力必须与场景解耦」。<br>"
+                "本次加<b>通用入口</b> <code>LLM_API_KEY</code> / <code>LLM_BASE_URL</code> / "
+                "<code>LLM_MODEL</code>：GLM / Kimi / 通义 / 豆包 / 本地 vLLM·Ollama 全走这一支，"
+                "<b>接第 N 家都不用再改代码</b>。未配置时行为完全不变（老用户零影响）。",
+        changed=[
+            "<b>通用入口优先级最高</b>：<code>LLM_*</code> &gt; <code>BROWSER_USE_API_KEY</code> "
+            "&gt; <code>OPENAI_API_KEY</code> &gt; <code>ANTHROPIC_API_KEY</code> &gt; "
+            "<code>GOOGLE_API_KEY</code> &gt; <code>DEEPSEEK_*</code>（旧写法仍支持）",
+            "<b>关键取舍（实测抓包定的，不是推断）</b>：通用入口用 "
+            "<code>ChatDeepSeek</code> 当 OpenAI 兼容客户端，<b>不用</b> <code>ChatOpenAI</code> —— "
+            "两者请求体实测对比：<code>ChatDeepSeek</code> 发 <code>tools</code> + <code>tool_choice</code>"
+            "（<b>function calling</b>，GLM / Kimi 官方都支持）；"
+            "<code>ChatOpenAI</code> 发 <code>response_format=json_schema(strict=True)</code> "
+            "<b>不发 tools</b>，第三方端点对 strict json_schema 支持度参差 —— "
+            "实测走它时「结构化输出路径」连续 3 次失败。类名里的 deepseek 只是实现出处"
+            "（<code>provider</code> 记 <code>'deepseek'</code>，仅影响日志）",
+            "<b>新能力：换模型后命中旧录像会告警</b>。录像键 <code>sha256(system+prompt)</code> "
+            "<b>刻意不含模型名</b>（为保住「有外网机器录、离线机器放」）=&gt; 换模型后"
+            "<b>仍会命中旧模型的录像</b>，离线机没配环境变量时更是静默通过。"
+            "现在回放时对比录像里的 <code>model</code> 与当前模型，不一致就告警并给出下一步"
+            "（清录像目录或 <code>--llm-record</code> 重录）。"
+            "<code>lookup()</code> 的三处 return（strict / struct / fuzzy）都带出 <code>_model</code>，"
+            "比对由 explorer 做（层间解耦：录像层只管带出来）",
+            "<b>可发现性</b>：<code>cli config</code> 新增 3 项并给出各家端点示例；"
+            "同时新增 <b>密钥脱敏</b>（<code>_SECRET_ENV_KEYS</code>）—— 密钥类项只报"
+            "「有没有设」、<b>不展示值</b>（该命令的用途是「让人发现有哪些旋钮」，"
+            "不该顺手把 key 打到终端 / CI 日志里）。"
+            "<code>LLM_BASE_URL</code> / <code>LLM_MODEL</code> 有 CLI 参数；"
+            "<code>LLM_API_KEY</code> <b>刻意不给</b>（密钥写进命令行会留 shell 历史）",
+            "失败提示同步：端点不可达 / 鉴权失败时提示 <code>LLM_BASE_URL</code>、"
+            "<code>LLM_API_KEY</code>（并保留旧名）",
+            "新增判据 <b>10.8「通用 LLM 入口」</b>（7 条）：必须走 function calling / 优先级最高 / "
+            "<code>auto_detect_llm</code> 认它 / <code>cli config</code> 能发现 / 密钥不外泄 / "
+            "密钥无 CLI 参数 / 换模型有告警",
+            "文档：README「配 LLM key」节重写（GLM / Kimi 示例 + 优先级 + 换模型重录提醒 + "
+            "function calling 要求），「LLM 编排（DeepSeek 直连）」口径改为「OpenAI 兼容模型直连」；"
+            "培训页同步 4 处。README 守住 <b>250 行</b>预算（细节挪进培训页）",
+            "<b>新增 `python -m framework.cli llm-doctor`（LLM 体检）</b>：真发 2 次请求"
+            "（① 纯文本验连通 ② 带极小 schema 验 function calling），报「端点 / 模型 / "
+            "思考档位 / 连通耗时 / tools 通不通」。<b>区分「不可用」（exit 2）与"
+            "「能用但打折」（exit 0，但标 [!!] 说清会怎样退化）</b>；<b>不打印密钥</b>；"
+            "只发 LLM 请求，所以<b>刻意不进浏览器预检名单</b>（没装浏览器也能做 LLM 体检）。"
+            "为什么要它：换模型这类问题只有真发一次请求才知道，查文档会查错，"
+            "而烧一次完整端到端要 4 分钟 + 十几次调用 —— 体检两秒出结论",
+            "<b>新增 `LLM_REASONING_EFFORT` 旋钮</b>（low/medium/high/max，空=不发该字段）："
+            "GLM-5.3 起<b>不允许完全关闭思考</b>且默认 max 档，而探索阶段每一步都要调一次 LLM "
+            "=&gt; 等于每步都跑最贵的推理级别。实现为新类 "
+            "<code>ChatOpenAICompatible</code>（子类覆盖 <code>_request_kwargs()</code> 注入 "
+            "<code>extra_body.reasoning_effort</code>），<b>与 deepseek-v4 的 thinking 开关"
+            "合并而非覆盖</b>（直接赋值会把那个开关吃掉 = 静默改变行为）；"
+            "空字符串按「没设」处理（`.env` 里写 <code>LLM_REASONING_EFFORT=</code> 是常见写法）",
+            "<b>体检第一次跑就抓到一个真问题，并当场修掉</b>：出厂配置的 "
+            "<code>deepseek-flash</code> 报 <b>400 <code>Thinking mode does not support "
+            "this tool_choice</code></b> =&gt; 框架的<b>结构化输出路径其实一直在失败、一直走"
+            "文本兜底</b>（V8.4.1 的降级逻辑兜住了，所以没炸，但少了结构约束）。<br>"
+            "① <b>定位</b>（实验，非推断）：该端点拒的是<b>「指名函数」与 <code>required</code></b>，"
+            "<b>接受 <code>auto</code> / 不传</b>；而 browser_use 内置客户端发的恰好是<b>指名函数</b>"
+            "（<code>deepseek/chat.py:170</code>）—— 正好撞上。<br>"
+            "② <b>修法</b>：撞到这个错就<b>改用 <code>tool_choice=auto</code> 自己发一次请求</b>"
+            "（结构化输出路径因此恢复）。<b>不借道</b>上游「只给 tools」那条分支 —— 实测它自己有 bug"
+            "（把 dict 塞进 <code>ChatInvokeCompletion(completion=&lt;dict&gt;)</code>，"
+            "pydantic 按 TypeVar 上界 <code>BaseModel</code> 校验直接报 "
+            "<code>BaseModel cannot be instantiated directly</code>）。<br>"
+            "③ <b>兜底的边界</b>：只认特征明确的错（别的错照抛，不拿兜底盖真故障）、"
+            "只重试一次、记住端点特性后续不白试、降级真发 auto 且不丢 "
+            "<code>reasoning_effort</code>、留痕不静默；拿不到 <code>tool_calls</code> "
+            "<b>如实抛错</b>——不许返回「看起来成功」的空壳。<br>"
+            "④ <b>实测对照</b>（真实 <code>api.deepseek.com</code>）：上游原生失败；新客户端"
+            "<b>成功拿到已校验对象</b>（<code>{'ok': True, 'word': '好'}</code>，1.32s）；"
+            "第二次 0.88s 且不再白试。<br>"
+            "另实测确认 <code>LLM_REASONING_EFFORT=low</code> <b>与这件事无关</b>"
+            "（设 low 仍会触发降级）—— 它治的是「默认跑 max 档、又慢又贵」",
+            "新增判据 <b>10.9「LLM 体检 + 思考档位」</b>（12 条）：旋钮<b>真的进请求体</b>"
+            "（断言 <code>_request_kwargs()</code> 的<b>产出</b>而非「我们调了它」—— 上游改签名"
+            "要能立刻红而不是静默失效）、不设时不发、与 thinking 合并、空值按没设、可发现；"
+            "命令注册齐全（CMD_FLAGS / ENV_TO_FLAG / _CMD_FUNCS / main 分发 四处缺一不可）、"
+            "不进浏览器预检、<b>不打印密钥</b>、无 key 时 exit 2 且给人话，"
+            "并用<b>真起的假 OpenAI 端点</b>端到端验健康路径与「能用但打折」路径（不依赖外网）",
+            "新增判据 <b>10.10「思考模式端点兼容」</b>（16 条）：专钉<b>兜底的边界</b>而非「能用」——"
+            "特征识别必须<b>窄</b>（7 组正反样本；误吞 = 拿兜底盖真故障）、"
+            "<b>穿透异常链</b>（上游把 APIStatusError 包成 ModelProviderError，只看外层会漏判）、"
+            "降级<b>真发 <code>tool_choice=auto</code></b> 且第一次确实发的是指名函数（否则兜底是空转）、"
+            "不丢 <code>reasoning_effort</code>、<b>只重试一次 + 记住端点</b>（第二次只发 1 个请求）、"
+            "留痕不静默、非 tool_choice 的错照抛且<b>不写进端点缓存</b>、"
+            "拿不到 tool_calls <b>如实抛错</b>、纯文本调用不被这层动到",
+        ],
+    ),
+    dict(
+        version="8.6", date="2026-10-13", tag="上一版本",
         theme="<b>收敛成一条链路</b> + 文档/判据与代码真值逐条对齐",
-        summary="按AprilPark1012 2026-10-13 定的 V8.6 目标做三件事："
+        summary="按用户 2026-10-13 定的 V8.6 目标做三件事："
                 "① <b>删除手搓链路</b>（probe 驱动的确定性链路整条退场，只留真 AI 链路）；"
                 "② <b>tests / README / training.html 与 framework 代码逐条对齐</b>，失效内容删除；"
                 "③ <b>交付打包口径</b>与上述要求的冲突排查与修正。<br>"
@@ -641,7 +735,7 @@ CHANGELOG = [
         ],
         fixed=[],
         notes=[
-            "为什么锁 <code>1.63.0</code>：这是团队（AprilPark1012本机）在用、且我已<b>两类验证都跑过</b>的版本。",
+            "为什么锁 <code>1.63.0</code>：这是用户本机在用、且我已<b>两类验证都跑过</b>的版本。",
             "<b>兼容性</b>：CLI 参数、用例格式、报告形态、判据口径不变；"
             "已装 1.63.0 的环境<b>无需任何动作</b>（pin 只是把「大家一致」写下来）。",
             "真值：一类 <b>463</b> passed / 0 red（新增 5 条版本判据：钉读得出 / 范围与注释不算锁 / "
@@ -1423,7 +1517,7 @@ CHANGELOG = [
             "<b>framework/shared/text_io.py</b>：跨平台文本口径的唯一入口 —— `utf8_env()`（给子进程注入 "
             "PYTHONUTF8/PYTHONIOENCODING）、`force_stdio()`（本进程 stdio 转 UTF-8 + Windows "
             "控制台代码页切 65001）、`run_capture()`（收子进程输出，显式 UTF-8 解码 + errors=replace）",
-            "<b>tests/特性9-质量闸门体系/test_utf8_io.py</b>（10 条）：含<b>用 zh_CN.gbk locale 精确复现AprilPark1012那条报错</b>"
+            "<b>tests/特性9-质量闸门体系/test_utf8_io.py</b>（10 条）：含<b>用 zh_CN.gbk locale 精确复现用户那条报错</b>"
             "（断言里就写着 `byte 0xbb in position 13`）+ <b>AST 全仓扫描</b>"
             "（谁再写出「靠系统默认编码」的 subprocess/read_text/open 就直接测试失败）",
             "生成的 scripts/generated/conftest.py 自带 UTF-8 自举：裸跑 pytest（不经 cli）也不会因中文/v 崩或乱码",
@@ -3379,7 +3473,7 @@ def build() -> str:
   <p class="sec-sub">一桌子两把刀，各有锋利处，别只拿一把。</p>
   <div class="card vs">
     <div class="vs-box ai">
-      <h3>[ai] LLM 语义编排（DeepSeek 直连 · 非 Agent）</h3>
+      <h3>[ai] LLM 语义编排（OpenAI 兼容模型 · 非 Agent）</h3>
       <ul>
         <li>[OK] 听得懂人话</li>
         <li>[OK] 会规划步骤、挑元素（只在<b>生成期</b>算一次）</li>
@@ -3415,7 +3509,28 @@ def build() -> str:
     <code class="code-inline">browser-use</code> 只声明在
     <code class="code-inline">requirements-ai.txt</code>（<b>可选</b>，仅 AI 探索用），
     <code class="code-inline">generate</code> / <code class="code-inline">run</code> 都不需要它。
-    代码里对此的原话是"<b>ChatDeepSeek 直连编排，非 Agent</b>"。
+    客户端用的是 <code class="code-inline">browser_use.llm</code> 里那个<b>走 function calling</b> 的
+    OpenAI 兼容实现（类名叫 <code class="code-inline">ChatDeepSeek</code>，但 base_url 可指向任何
+    OpenAI 兼容端点：DeepSeek / GLM / Kimi / 通义 / Qwen / MiniMax / 本地 vLLM 都行）——
+    <b>直连编排，非 Agent</b>，且换模型不改代码（通用入口
+    <code class="code-inline">LLM_API_KEY</code> / <code class="code-inline">LLM_BASE_URL</code> /
+    <code class="code-inline">LLM_MODEL</code>）。<br>
+    <b>换模型前先体检</b>：<code class="code-inline">python -m framework.cli llm-doctor</code>
+    —— 真发 2 次请求、两秒报出「连通 / function calling 通不通 / 端点在用哪档思考」，
+    比查文档可靠（文档会变，也会查错）。<br>
+    <b>[!] 一个实测发现的坑（已修）</b>：<b>思考模式</b>的端点（例如出厂配置的
+    <code class="code-inline">deepseek-flash</code>）会拒绝<b>指名函数</b>形式的
+    <code class="code-inline">tool_choice</code>（400
+    <code class="code-inline">Thinking mode does not support this tool_choice</code>），
+    而<b>接受 <code class="code-inline">auto</code> / 不传</b>；内置客户端发的恰好是「指名函数」，
+    所以正好撞上 —— 即<b>结构化输出路径一直在失败</b>。
+    V8.6.1 起框架的处置是<b>自动降级改用 <code class="code-inline">tool_choice=auto</code> 重试一次</b>
+    （结构约束因此保住，不再退到纯文本），并记住该端点特性、后续直接走降级形态不白试；
+    降级会打印一行痕迹，<b>不静默</b>。<br>
+    GLM-5.3 起连「完全关闭思考」都不允许、且默认 max 档，这类端点只会更多：
+    可用 <code class="code-inline">LLM_REASONING_EFFORT=low</code> 压思考强度
+    （治的是「服务端默认跑最贵档、又慢又贵」；<b>与上面的 tool_choice 降级是两件事</b>，
+    实测设 low 仍会触发降级）。
   </div>
   <h3 style="margin:20px 0 8px;">「混合」的准确定义：四段闭环（浏览器在两端）</h3>
   <div class="card">
@@ -3431,7 +3546,7 @@ def build() -> str:
       <tr>
         <td><b>2 LLM 出编排</b></td>
         <td>场景文字 + 第 1 段证据 -> 结构化步骤（含行定位字段）</td>
-        <td><b>是</b>（DeepSeek）</td>
+        <td><b>是</b>（LLM）</td>
         <td><code class="code-inline">explorer._ai_explore_async()</code></td>
         <td><code class="code-inline">cases/ai_*.json</code></td>
       </tr>
@@ -3561,7 +3676,7 @@ def build() -> str:
 │   └── training.html                这份培训文档(由 build_tools/build_html.py 生成)
 ├── README.md                         门面 + 快速上手(变更日志在 releases/)
 ├── pyproject.toml · requirements.txt · requirements-ai.txt   项目配置与依赖
-├── .env.example                     LLM key 配置模板(DeepSeek)
+├── .env.example                     LLM key 配置模板(通用入口 LLM_* / 各家专用变量)
 └── LICENSE                          MIT</pre>
   </div>
   <div style="margin-top:12px;">

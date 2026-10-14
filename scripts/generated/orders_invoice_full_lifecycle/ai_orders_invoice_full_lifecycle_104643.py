@@ -1,14 +1,14 @@
-"""hybrid_gui_qa 用例模块：ai_orders_invoice_full_lifecycle_231656（场景 orders_invoice_full_lifecycle）—— 由 cases/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_231656.json 自动生成。
+"""hybrid_gui_qa 用例模块：ai_orders_invoice_full_lifecycle_104643（场景 orders_invoice_full_lifecycle）—— 由 cases/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_104643.json 自动生成。
 
 **不要手改本文件**：改用例后重跑 generate 会覆盖它。要改行为 → 改用例 json / 场景 yml。
-数据抽离在 scripts/datasets/ai_orders_invoice_full_lifecycle_231656.json（脚本与数据分离）。
+数据抽离在 scripts/datasets/ai_orders_invoice_full_lifecycle_104643.json（脚本与数据分离）。
 一个用例一个文件（P20）：便于按 id 管理、按变化增量重生成。
 
 运行（推荐走 cli：自带资源预检 + run-id 隔离的日志/报告）:
   python -m framework.cli run --workers 2                 # 全量
-  python -m framework.cli run --debug --case ai_orders_invoice_full_lifecycle_231656        # 只调试这一条
+  python -m framework.cli run --debug --case ai_orders_invoice_full_lifecycle_104643        # 只调试这一条
 裸跑 pytest（未设 HYBRID_RUN_ID 时日志落 log/latest/）:
-  pytest scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_231656.py -v
+  pytest scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_104643.py -v
 """
 from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
@@ -39,7 +39,7 @@ from framework.features.f03_locate.scope_locate import drill as _drill
 import pytest
 from playwright.sync_api import expect as _pw_expect
 
-def test_ai_orders_invoice_full_lifecycle_231656(page, ctx):
+def test_ai_orders_invoice_full_lifecycle_104643(page, ctx):
     """【起手状态 · 最重要 · 不要写成步骤】本用例**开局时的页面就是「合同列表页」**，
    且已以**超级管理员**登录、已切换到**订单管理员**角色。
    这两件事由场景级前置 `probe_pre` 自动完成，**用例的第 1 步直接就是\"在合同列表页勾选合同\"**。
@@ -80,7 +80,7 @@ def test_ai_orders_invoice_full_lifecycle_231656(page, ctx):
 8. 切换到**发票管理员**角色；在订单列表里**选中该订单**，点「去开票」。
 9. 在开票页确认订单编号/合同编号已带入（发票号是系统生成的），填写发票行后点「保存」，完成发票创建。
 10. 进入发票列表页，在**订单名称**搜索框输入该订单名称，点「搜索」-> 能搜到刚创建的那张发票。"""
-    _CURRENT_LOG["case_id"] = "ai_orders_invoice_full_lifecycle_231656"
+    _CURRENT_LOG["case_id"] = "ai_orders_invoice_full_lifecycle_104643"
     _t = _Tabs(page)          # 多 tab：点了会开新 tab 的控件后 page 会被重新绑定到新 tab
     _goto(page, 'http://localhost:8000/login.html')
     # ---- 登录（V8.5.1 步骤化：场景声明 -> 框架展开，不交给 AI）----
@@ -93,7 +93,7 @@ def test_ai_orders_invoice_full_lifecycle_231656(page, ctx):
     _login_do(page, 'click', {'id': 'btn-login'})
     _login_wait(page, {'url_not': 'login.html'})
     # ---- 登录步骤结束 ----
-    _log(page, "场景开始", f"case=ai_orders_invoice_full_lifecycle_231656")
+    _log(page, "场景开始", f"case=ai_orders_invoice_full_lifecycle_104643")
 
     # step 1: 打开 【登录页】http://localhost:8000/login.html
     _goto(page, 'http://localhost:8000/')

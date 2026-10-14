@@ -726,13 +726,15 @@ def _llm_model_name(obj=None) -> str:
     """LLM 模型名（录像元信息 / 日志用；**不参与录像键**）。
 
     各 provider 的属性名不一样（model_name / model），逐个试 —— 都没有就退回环境默认。
+    环境默认同样按**通用入口优先**（LLM_MODEL > DEEPSEEK_MODEL）与 config.llm_from_env 对齐。
     """
     import os
     for attr in ("model_name", "model"):
         v = getattr(obj, attr, None)
         if isinstance(v, str) and v.strip():
             return v.strip()
-    return os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+    return (os.environ.get("LLM_MODEL") or os.environ.get("DEEPSEEK_MODEL")
+            or "unknown")
 
 
 def _note_err(errs: list, msg: str) -> None:
@@ -750,11 +752,12 @@ def _llm_failure_hint(detail: str) -> str:
     if re.search(r"Connection error|ConnectError|ConnectTimeout|timed out|Timeout|"
                  r"Name or service not known|getaddrinfo|nodename nor servname|"
                  r"Temporary failure in name resolution|SSL|Proxy|Connection refused", d, re.I):
-        return ("[!] 看起来是**网络 / 端点不可达**（不是解析问题）-> 检查 DEEPSEEK_BASE_URL、"
-                "代理、出网权限；\n   完全离线的机器改用录像：有外网的机器 --llm-record，本机 --llm-cassette。\n")
+        return ("[!] 看起来是**网络 / 端点不可达**（不是解析问题）-> 检查 LLM_BASE_URL（或旧名 "
+                "DEEPSEEK_BASE_URL）、代理、出网权限；\n   完全离线的机器改用录像：有外网的机器 --llm-record，本机 --llm-cassette。\n")
     if re.search(r"401|403|invalid_api_key|Authentication|Unauthorized|Incorrect API key|"
                  r"insufficient|balance", d, re.I):
-        return "[!] 看起来是 **key / 鉴权 / 额度**问题 -> 检查 DEEPSEEK_API_KEY 是否有效、余额是否够。\n"
+        return ("[!] 看起来是 **key / 鉴权 / 额度**问题 -> 检查 LLM_API_KEY（或旧名 "
+                "DEEPSEEK_API_KEY）是否有效、余额是否够。\n")
     if re.search(r"429|rate limit|Too Many Requests|overloaded", d, re.I):
         return "[!] 看起来是**上游限流** -> 稍后重试，或调大 HYBRID_LLM_ATTEMPTS（重试已带退避）。\n"
     return ""
@@ -827,6 +830,19 @@ def _replay_from_cassette(cassette, prompt: str, items: list[dict], first_url: s
     else:
         print(f"      [explore] [LLM] 回放录像 {rec.get('key')}（录制于 {rec.get('created_at')}，"
               f"模型 {rec.get('model')}）—— 本次**没有**实时调用 AI")
+        # V8.6.1：模型名**刻意不参与录像键**（为保住「A 机录、B 机放」的可用性，
+        # 见 llm_cassette.cassette_key 的说明）=> 换模型后**仍会命中旧模型的录像**。
+        # 这里主动把差异喊出来，否则用户会以为「我在用 GLM 跑」，
+        # 实际吃的却是 DeepSeek 录的那份结论（离线机没配环境变量时静默通过，最容易骗过人）。
+        _rec_model = str(rec.get("model") or "").strip()
+        _cur_model = _llm_model_name(None).strip()
+        if _rec_model and _cur_model not in ("", "unknown") and _rec_model != _cur_model:
+            print(f"      [explore] [LLM] [!] **模型不一致**：录像由 `{_rec_model}` 录制，"
+                  f"当前配置的是 `{_cur_model}`。\n"
+                  f"                       -> 录像键刻意不含模型名，所以换模型后仍会命中旧录像；"
+                  f"上面这些步骤是 `{_rec_model}` 的判断，**不是** `{_cur_model}` 的。\n"
+                  f"                       -> 想在 `{_cur_model}` 上重新出结论："
+                  f"清掉录像目录，或加 `--llm-record` 重录一份。")
     errs: list[str] = []
     for r in (rec.get("responses") or []):
         kind = r.get("kind")

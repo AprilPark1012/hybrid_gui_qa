@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.6）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.6.1）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.6 · 2026-10-13　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.6.1 · 2026-10-14　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -243,7 +243,7 @@
   <p class="sec-sub">一桌子两把刀，各有锋利处，别只拿一把。</p>
   <div class="card vs">
     <div class="vs-box ai">
-      <h3 id="sec-1-1">[ai] LLM 语义编排（DeepSeek 直连 · 非 Agent）</h3>
+      <h3 id="sec-1-1">[ai] LLM 语义编排（OpenAI 兼容模型 · 非 Agent）</h3>
       <ul>
         <li>[OK] 听得懂人话</li>
         <li>[OK] 会规划步骤、挑元素（只在<b>生成期</b>算一次）</li>
@@ -279,7 +279,28 @@
     <code class="code-inline">browser-use</code> 只声明在
     <code class="code-inline">requirements-ai.txt</code>（<b>可选</b>，仅 AI 探索用），
     <code class="code-inline">generate</code> / <code class="code-inline">run</code> 都不需要它。
-    代码里对此的原话是"<b>ChatDeepSeek 直连编排，非 Agent</b>"。
+    客户端用的是 <code class="code-inline">browser_use.llm</code> 里那个<b>走 function calling</b> 的
+    OpenAI 兼容实现（类名叫 <code class="code-inline">ChatDeepSeek</code>，但 base_url 可指向任何
+    OpenAI 兼容端点：DeepSeek / GLM / Kimi / 通义 / Qwen / MiniMax / 本地 vLLM 都行）——
+    <b>直连编排，非 Agent</b>，且换模型不改代码（通用入口
+    <code class="code-inline">LLM_API_KEY</code> / <code class="code-inline">LLM_BASE_URL</code> /
+    <code class="code-inline">LLM_MODEL</code>）。<br>
+    <b>换模型前先体检</b>：<code class="code-inline">python -m framework.cli llm-doctor</code>
+    —— 真发 2 次请求、两秒报出「连通 / function calling 通不通 / 端点在用哪档思考」，
+    比查文档可靠（文档会变，也会查错）。<br>
+    <b>[!] 一个实测发现的坑（已修）</b>：<b>思考模式</b>的端点（例如出厂配置的
+    <code class="code-inline">deepseek-flash</code>）会拒绝<b>指名函数</b>形式的
+    <code class="code-inline">tool_choice</code>（400
+    <code class="code-inline">Thinking mode does not support this tool_choice</code>），
+    而<b>接受 <code class="code-inline">auto</code> / 不传</b>；内置客户端发的恰好是「指名函数」，
+    所以正好撞上 —— 即<b>结构化输出路径一直在失败</b>。
+    V8.6.1 起框架的处置是<b>自动降级改用 <code class="code-inline">tool_choice=auto</code> 重试一次</b>
+    （结构约束因此保住，不再退到纯文本），并记住该端点特性、后续直接走降级形态不白试；
+    降级会打印一行痕迹，<b>不静默</b>。<br>
+    GLM-5.3 起连「完全关闭思考」都不允许、且默认 max 档，这类端点只会更多：
+    可用 <code class="code-inline">LLM_REASONING_EFFORT=low</code> 压思考强度
+    （治的是「服务端默认跑最贵档、又慢又贵」；<b>与上面的 tool_choice 降级是两件事</b>，
+    实测设 low 仍会触发降级）。
   </div>
   <h3 id="sec-1-3" style="margin:20px 0 8px;">「混合」的准确定义：四段闭环（浏览器在两端）</h3>
   <div class="card">
@@ -295,7 +316,7 @@
       <tr>
         <td><b>2 LLM 出编排</b></td>
         <td>场景文字 + 第 1 段证据 -> 结构化步骤（含行定位字段）</td>
-        <td><b>是</b>（DeepSeek）</td>
+        <td><b>是</b>（LLM）</td>
         <td><code class="code-inline">explorer._ai_explore_async()</code></td>
         <td><code class="code-inline">cases/ai_*.json</code></td>
       </tr>
@@ -425,7 +446,7 @@
 │   └── training.html                这份培训文档(由 build_tools/build_html.py 生成)
 ├── README.md                         门面 + 快速上手(变更日志在 releases/)
 ├── pyproject.toml · requirements.txt · requirements-ai.txt   项目配置与依赖
-├── .env.example                     LLM key 配置模板(DeepSeek)
+├── .env.example                     LLM key 配置模板(通用入口 LLM_* / 各家专用变量)
 └── LICENSE                          MIT</pre>
   </div>
   <div style="margin-top:12px;">
@@ -1268,12 +1289,12 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
 <!-- ========== 6. 框架特性设计实现说明（按特性/子特性 · 以代码为基准） ========== -->
 <section>
-  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 51 子特性）</h2>
+  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 54 子特性）</h2>
   <p class="sec-sub">第 5 章 5.2 讲「一条主线上有什么」；本章按 <b>特性 -&gt; 子特性</b> 横向拆开：每个子特性给「<b>关键实现逻辑</b> + <b>函数调用关系</b> + <b>证据（判据文件）</b>」，并配一张<b>图例</b>。编号 / 名称 / 目标 / 判据归属<b>直接读单一来源</b> <span class="code-inline">framework/features/f09_gate/feature_spec.py</span> 渲染（它同时被 <span class="code-inline">build_tools/build_feature_map.py</span> 渲染成 <span class="code-inline">docs/feature_map.md</span>）；实现逻辑以 <span class="code-inline">framework/</span> 下的<b>真实代码为准</b>。</p>
-  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 51 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
+  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 54 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
   <div class="card"><h4 style="margin-bottom:8px">图例 0 · 端到端函数调用地图（cli 是总入口，三条链共用同一条确定性下游）</h4><svg viewBox="0 0 920 252" width="100%" height="auto" role="img" style="background:#0d1117;border-radius:10px;padding:4px;display:block"><defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#64748b"/></marker></defs><rect x="40" y="14" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="40" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">python -m framework.cli  ->  main()</text><rect x="40" y="76" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="102" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_explore()  ->  explorer.ai_explore()</text><rect x="40" y="138" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="164" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_generate()  ->  generator.generate_scripts()</text><rect x="40" y="200" width="560" height="42" rx="9" fill="#0f2a20" stroke="#22c55e" stroke-width="1.2"/><text x="320" y="226" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_run()  ->  pytest  ->  生成物 _harness._act / _loc / _assert_*</text><line x1="320" y1="56" x2="320" y2="74" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="118" x2="320" y2="136" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="180" x2="320" y2="198" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><rect x="648" y="86" width="252" height="94" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="110" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">probe 层（只描述、不定位）</text><text x="774" y="132" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">scan_page / probe_page</text><text x="774" y="150" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">expandable / editable / modal</text><text x="774" y="168" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">anchor + path（容器下钻）</text><line x1="648" y1="110" x2="602" y2="104" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><line x1="648" y1="158" x2="602" y2="162" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><rect x="648" y="198" width="252" height="46" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="218" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">locator_bridge.resolve_locator()</text><text x="774" y="235" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">Tier1 精确 -> Tier2 指纹（唯一性校验）</text><line x1="648" y1="221" x2="602" y2="221" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/></svg></div>
   <div class="card">
-    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 51 子特性）</h4>
+    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 54 子特性）</h4>
     <table class="tbl"><tr><th style="width:46px">No</th><th style="width:230px">特性</th><th style="width:110px">key</th><th style="width:64px">子特性</th><th>目标</th></tr>
     <tr><td>1</td><td><b>混合链路</b></td><td><span class="code-inline">mixed_chain</span></td><td>3</td><td>两种链路（AI 生成 / 离线回放）都能跑通，且有一条统一验收入口</td></tr>
     <tr><td>2</td><td><b>语义识别与步骤编排</b></td><td><span class="code-inline">semantic</span></td><td>4</td><td>把「人的自然语言」变成「可执行的步骤序列」—— 面向生成，对人友好也对机器友好</td></tr>
@@ -1284,7 +1305,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <tr><td>7</td><td><b>并发与资源安全</b></td><td><span class="code-inline">concurrency</span></td><td>4</td><td>并行跑验证不许把内存打爆；资源闸门不许支配一类自测</td></tr>
     <tr><td>8</td><td><b>离线回放</b></td><td><span class="code-inline">replay</span></td><td>4</td><td>没有外网的机器也能跑 AI 链路 —— 靠 LLM 录像</td></tr>
     <tr><td>9</td><td><b>质量闸门体系</b></td><td><span class="code-inline">gate</span></td><td>8</td><td>框架自己守自己：布局/命名/环境/交付/就绪/安全六类契约，坏了就红</td></tr>
-    <tr><td>10</td><td><b>CLI 帮助契约</b></td><td><span class="code-inline">cli</span></td><td>7</td><td>命令行对新手友好：帮助自动覆盖、参数错必报错、退出码能区分好坏</td></tr>
+    <tr><td>10</td><td><b>CLI 帮助契约</b></td><td><span class="code-inline">cli</span></td><td>10</td><td>命令行对新手友好：帮助自动覆盖、参数错必报错、退出码能区分好坏</td></tr>
     <tr><td>11</td><td><b>交付即验证</b></td><td><span class="code-inline">verify</span></td><td>2</td><td>两档验证：① 产出物被闸门拦下 -&gt; 带具体原因让 AI 重生成；② 生成脚本后真跑一次 -&gt; 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、录像回放模式不重试、退出码可区分（2 产出侧 / 3 实跑侧）</td></tr>
     </table>
   </div>
@@ -1728,6 +1749,21 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p class="codesrc"><b>目标：</b>培训页/README 画的目录结构必须与磁盘一致：登记的特性夹都要真实存在、磁盘上的特性夹都要登记、不许声称有 f01 或每特性 api.py</p>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_docs_structure_truth.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
+    <div class="subfeat">
+      <h5 class="subfeat-title" id="sub-10.8" data-sub="10.8"><span class="sno">10.8</span>通用 LLM 入口</h5>
+      <p class="codesrc"><b>目标：</b>一个开关接所有 OpenAI 兼容服务（GLM / Kimi / 通义 / 豆包 / 本地 vLLM）—— 必须走 function calling、优先级最高、可被 cli config 发现、密钥不外泄</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_llm_provider_switch.py（7 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+    </div>
+    <div class="subfeat">
+      <h5 class="subfeat-title" id="sub-10.9" data-sub="10.9"><span class="sno">10.9</span>LLM 体检 + 思考档位</h5>
+      <p class="codesrc"><b>目标：</b>换模型前先体检：`cli llm-doctor` 真发 2 次请求，报「连通 / function calling 通不通 / 端点在用哪档思考」，并区分「不可用」与「能用但打折（thinking 模式拒 tool_choice）」。配套 `LLM_REASONING_EFFORT` 旋钮压思考强度；旋钮必须真进请求体（断言产出而非调用）、不污染默认、可发现</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_llm_doctor.py（13 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+    </div>
+    <div class="subfeat">
+      <h5 class="subfeat-title" id="sub-10.10" data-sub="10.10"><span class="sno">10.10</span>思考模式端点兼容</h5>
+      <p class="codesrc"><b>目标：</b>思考模式端点拒「指名函数」tool_choice 时**有界降级**为 auto：只认特征明确的错（别的照抛）、只重试一次并记住端点特性、降级真发 auto 且不丢 reasoning_effort、留痕不静默；拿不到 tool_calls 如实抛错不许假装成功</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_llm_tool_choice_fallback.py（10 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+    </div>
   </section>
   <section class="feat">
     <h4 class="feat-title" id="feat-11" data-feat="11"><span class="fno">特性 11</span>交付即验证 <span class="fkey">verify</span></h4>
@@ -2032,10 +2068,28 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.6</b>（2026-10-13）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.6.1</b>（2026-10-14）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.6</span><span class="cl-date">2026-10-13</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>收敛成一条链路</b> + 文档/判据与代码真值逐条对齐</span></div>
-      <p class="cl-sum">按AprilPark1012 2026-10-13 定的 V8.6 目标做三件事：① <b>删除手搓链路</b>（probe 驱动的确定性链路整条退场，只留真 AI 链路）；② <b>tests / README / training.html 与 framework 代码逐条对齐</b>，失效内容删除；③ <b>交付打包口径</b>与上述要求的冲突排查与修正。<br>为什么删：手搓链路的输入靠人手写用例，与「写场景让 AI 出用例」的主线思路重复，两条链的维护成本是双份（同一能力两条路 = 一处改两处验）。收敛成一条后，<b>判定与验证都只有一份真值</b>。</p>
+      <div class="cl-head"><span class="cl-ver">V8.6.1</span><span class="cl-date">2026-10-14</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>通用 LLM 入口</b> —— 一个开关接所有 OpenAI 兼容服务</span></div>
+      <p class="cl-sum">起因（用户提问）：<b>「框架除了 DeepSeek，还能用 GLM、Kimi 吗？」</b><br>实测答案：<b>能</b> —— DeepSeek / GLM / Kimi 都是 OpenAI 兼容协议，框架的 LLM 层只差三个环境变量。但原来变量名写死成 <code>DEEPSEEK_*</code>（配 Kimi 却要写 <code>DEEPSEEK_API_KEY</code>，语义错乱），且接第 6 家得改代码 —— 违背「补能力必须与场景解耦」。<br>本次加<b>通用入口</b> <code>LLM_API_KEY</code> / <code>LLM_BASE_URL</code> / <code>LLM_MODEL</code>：GLM / Kimi / 通义 / 豆包 / 本地 vLLM·Ollama 全走这一支，<b>接第 N 家都不用再改代码</b>。未配置时行为完全不变（老用户零影响）。</p>
+      <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">[tool] 改进</span><ul>
+        <li><b>通用入口优先级最高</b>：<code>LLM_*</code> &gt; <code>BROWSER_USE_API_KEY</code> &gt; <code>OPENAI_API_KEY</code> &gt; <code>ANTHROPIC_API_KEY</code> &gt; <code>GOOGLE_API_KEY</code> &gt; <code>DEEPSEEK_*</code>（旧写法仍支持）</li>
+        <li><b>关键取舍（实测抓包定的，不是推断）</b>：通用入口用 <code>ChatDeepSeek</code> 当 OpenAI 兼容客户端，<b>不用</b> <code>ChatOpenAI</code> —— 两者请求体实测对比：<code>ChatDeepSeek</code> 发 <code>tools</code> + <code>tool_choice</code>（<b>function calling</b>，GLM / Kimi 官方都支持）；<code>ChatOpenAI</code> 发 <code>response_format=json_schema(strict=True)</code> <b>不发 tools</b>，第三方端点对 strict json_schema 支持度参差 —— 实测走它时「结构化输出路径」连续 3 次失败。类名里的 deepseek 只是实现出处（<code>provider</code> 记 <code>'deepseek'</code>，仅影响日志）</li>
+        <li><b>新能力：换模型后命中旧录像会告警</b>。录像键 <code>sha256(system+prompt)</code> <b>刻意不含模型名</b>（为保住「有外网机器录、离线机器放」）=&gt; 换模型后<b>仍会命中旧模型的录像</b>，离线机没配环境变量时更是静默通过。现在回放时对比录像里的 <code>model</code> 与当前模型，不一致就告警并给出下一步（清录像目录或 <code>--llm-record</code> 重录）。<code>lookup()</code> 的三处 return（strict / struct / fuzzy）都带出 <code>_model</code>，比对由 explorer 做（层间解耦：录像层只管带出来）</li>
+        <li><b>可发现性</b>：<code>cli config</code> 新增 3 项并给出各家端点示例；同时新增 <b>密钥脱敏</b>（<code>_SECRET_ENV_KEYS</code>）—— 密钥类项只报「有没有设」、<b>不展示值</b>（该命令的用途是「让人发现有哪些旋钮」，不该顺手把 key 打到终端 / CI 日志里）。<code>LLM_BASE_URL</code> / <code>LLM_MODEL</code> 有 CLI 参数；<code>LLM_API_KEY</code> <b>刻意不给</b>（密钥写进命令行会留 shell 历史）</li>
+        <li>失败提示同步：端点不可达 / 鉴权失败时提示 <code>LLM_BASE_URL</code>、<code>LLM_API_KEY</code>（并保留旧名）</li>
+        <li>新增判据 <b>10.8「通用 LLM 入口」</b>（7 条）：必须走 function calling / 优先级最高 / <code>auto_detect_llm</code> 认它 / <code>cli config</code> 能发现 / 密钥不外泄 / 密钥无 CLI 参数 / 换模型有告警</li>
+        <li>文档：README「配 LLM key」节重写（GLM / Kimi 示例 + 优先级 + 换模型重录提醒 + function calling 要求），「LLM 编排（DeepSeek 直连）」口径改为「OpenAI 兼容模型直连」；培训页同步 4 处。README 守住 <b>250 行</b>预算（细节挪进培训页）</li>
+        <li><b>新增 `python -m framework.cli llm-doctor`（LLM 体检）</b>：真发 2 次请求（① 纯文本验连通 ② 带极小 schema 验 function calling），报「端点 / 模型 / 思考档位 / 连通耗时 / tools 通不通」。<b>区分「不可用」（exit 2）与「能用但打折」（exit 0，但标 [!!] 说清会怎样退化）</b>；<b>不打印密钥</b>；只发 LLM 请求，所以<b>刻意不进浏览器预检名单</b>（没装浏览器也能做 LLM 体检）。为什么要它：换模型这类问题只有真发一次请求才知道，查文档会查错，而烧一次完整端到端要 4 分钟 + 十几次调用 —— 体检两秒出结论</li>
+        <li><b>新增 `LLM_REASONING_EFFORT` 旋钮</b>（low/medium/high/max，空=不发该字段）：GLM-5.3 起<b>不允许完全关闭思考</b>且默认 max 档，而探索阶段每一步都要调一次 LLM =&gt; 等于每步都跑最贵的推理级别。实现为新类 <code>ChatOpenAICompatible</code>（子类覆盖 <code>_request_kwargs()</code> 注入 <code>extra_body.reasoning_effort</code>），<b>与 deepseek-v4 的 thinking 开关合并而非覆盖</b>（直接赋值会把那个开关吃掉 = 静默改变行为）；空字符串按「没设」处理（`.env` 里写 <code>LLM_REASONING_EFFORT=</code> 是常见写法）</li>
+        <li><b>体检第一次跑就抓到一个真问题，并当场修掉</b>：出厂配置的 <code>deepseek-flash</code> 报 <b>400 <code>Thinking mode does not support this tool_choice</code></b> =&gt; 框架的<b>结构化输出路径其实一直在失败、一直走文本兜底</b>（V8.4.1 的降级逻辑兜住了，所以没炸，但少了结构约束）。<br>① <b>定位</b>（实验，非推断）：该端点拒的是<b>「指名函数」与 <code>required</code></b>，<b>接受 <code>auto</code> / 不传</b>；而 browser_use 内置客户端发的恰好是<b>指名函数</b>（<code>deepseek/chat.py:170</code>）—— 正好撞上。<br>② <b>修法</b>：撞到这个错就<b>改用 <code>tool_choice=auto</code> 自己发一次请求</b>（结构化输出路径因此恢复）。<b>不借道</b>上游「只给 tools」那条分支 —— 实测它自己有 bug（把 dict 塞进 <code>ChatInvokeCompletion(completion=&lt;dict&gt;)</code>，pydantic 按 TypeVar 上界 <code>BaseModel</code> 校验直接报 <code>BaseModel cannot be instantiated directly</code>）。<br>③ <b>兜底的边界</b>：只认特征明确的错（别的错照抛，不拿兜底盖真故障）、只重试一次、记住端点特性后续不白试、降级真发 auto 且不丢 <code>reasoning_effort</code>、留痕不静默；拿不到 <code>tool_calls</code> <b>如实抛错</b>——不许返回「看起来成功」的空壳。<br>④ <b>实测对照</b>（真实 <code>api.deepseek.com</code>）：上游原生失败；新客户端<b>成功拿到已校验对象</b>（<code>{'ok': True, 'word': '好'}</code>，1.32s）；第二次 0.88s 且不再白试。<br>另实测确认 <code>LLM_REASONING_EFFORT=low</code> <b>与这件事无关</b>（设 low 仍会触发降级）—— 它治的是「默认跑 max 档、又慢又贵」</li>
+        <li>新增判据 <b>10.9「LLM 体检 + 思考档位」</b>（12 条）：旋钮<b>真的进请求体</b>（断言 <code>_request_kwargs()</code> 的<b>产出</b>而非「我们调了它」—— 上游改签名要能立刻红而不是静默失效）、不设时不发、与 thinking 合并、空值按没设、可发现；命令注册齐全（CMD_FLAGS / ENV_TO_FLAG / _CMD_FUNCS / main 分发 四处缺一不可）、不进浏览器预检、<b>不打印密钥</b>、无 key 时 exit 2 且给人话，并用<b>真起的假 OpenAI 端点</b>端到端验健康路径与「能用但打折」路径（不依赖外网）</li>
+        <li>新增判据 <b>10.10「思考模式端点兼容」</b>（16 条）：专钉<b>兜底的边界</b>而非「能用」——特征识别必须<b>窄</b>（7 组正反样本；误吞 = 拿兜底盖真故障）、<b>穿透异常链</b>（上游把 APIStatusError 包成 ModelProviderError，只看外层会漏判）、降级<b>真发 <code>tool_choice=auto</code></b> 且第一次确实发的是指名函数（否则兜底是空转）、不丢 <code>reasoning_effort</code>、<b>只重试一次 + 记住端点</b>（第二次只发 1 个请求）、留痕不静默、非 tool_choice 的错照抛且<b>不写进端点缓存</b>、拿不到 tool_calls <b>如实抛错</b>、纯文本调用不被这层动到</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.6</span><span class="cl-date">2026-10-13</span><span class="cl-tag">上一版本</span><span class="cl-theme"><b>收敛成一条链路</b> + 文档/判据与代码真值逐条对齐</span></div>
+      <p class="cl-sum">按用户 2026-10-13 定的 V8.6 目标做三件事：① <b>删除手搓链路</b>（probe 驱动的确定性链路整条退场，只留真 AI 链路）；② <b>tests / README / training.html 与 framework 代码逐条对齐</b>，失效内容删除；③ <b>交付打包口径</b>与上述要求的冲突排查与修正。<br>为什么删：手搓链路的输入靠人手写用例，与「写场景让 AI 出用例」的主线思路重复，两条链的维护成本是双份（同一能力两条路 = 一处改两处验）。收敛成一条后，<b>判定与验证都只有一份真值</b>。</p>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">[tool] 改进</span><ul>
         <li><b>手搓链路整体删除</b>：<code>cli.py</code> 里 <code>cmd_probe</code> 函数本体、<code>cmd_all</code> 的手搓分支、<code>main()</code> 分发、<code>_CMD_FUNCS</code> 注册表、<code>CMD_FLAGS['probe']</code>、浏览器预检名单里的 <code>probe</code>、模块 docstring 的 <code>cli probe</code> 示例，共 <b>14 处</b>一并清理；<code>cases/manual/</code> + <code>scripts/datasets/manual_*</code> + <code>scripts/generated/manual/</code> <b>三处产物同删</b>（只删一处会让「用例<->数据集一一对应」判据变红）</li>
         <li><b>不再隐式降级</b>：<code>all</code> 不带 <code>--ai</code> 时<b>显式报错 exit 2</b>（原来会悄悄走手搓链路）。静默兜底 = 造假，与框架一贯口径一致 —— 现在 <code>--ai</code> 不是「区分两条链路」的开关，而是唯一入口的必需参数</li>
@@ -2303,7 +2357,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         <li>预检/文档口径统一为：框架<b>不挑版本</b>、团队<b>用同一版本</b>（锁 = 可复现，不是锁能力）</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
-        <li>为什么锁 <code>1.63.0</code>：这是团队（AprilPark1012本机）在用、且我已<b>两类验证都跑过</b>的版本。</li>
+        <li>为什么锁 <code>1.63.0</code>：这是用户本机在用、且我已<b>两类验证都跑过</b>的版本。</li>
         <li><b>兼容性</b>：CLI 参数、用例格式、报告形态、判据口径不变；已装 1.63.0 的环境<b>无需任何动作</b>（pin 只是把「大家一致」写下来）。</li>
         <li>真值：一类 <b>463</b> passed / 0 red（新增 5 条版本判据：钉读得出 / 范围与注释不算锁 / <b>repo 必须锁定</b>的回归 / 不一致必须告警且给命令 / 边界不炸）· <code>setup --check</code> 真跑显示「锁定 1.63.0 · 环境 1.63.0 [OK] 一致」· 培训页 <b>243.3</b> KB · <code>cli --version</code> -> v8.2.4 (2026-09-23)</li>
       </ul></div>
@@ -2684,7 +2738,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p class="cl-sum">修掉一个「在中文 Windows 上必崩」的编码缺陷：`explore --ai` 默认带 --verify，而 --verify 里用 subprocess 收子进程输出时没指定编码 -> 父进程按系统默认编码（中文 Windows = cp936/gbk）去解码子进程的 <b>UTF-8 中文输出</b>，报 `UnicodeDecodeError: 'gbk' codec can't decode byte 0xbb in position 13`（用例和脚本都生成了，偏偏校验这一步炸）。现在全链路显式 UTF-8，并且本机 <b>用 zh_CN.gbk locale 把原始报错复现到「同一个字节、同一个位置」</b>后再修，修完同一条命令实测通过。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">[go] 新增</span><ul>
         <li><b>framework/shared/text_io.py</b>：跨平台文本口径的唯一入口 —— `utf8_env()`（给子进程注入 PYTHONUTF8/PYTHONIOENCODING）、`force_stdio()`（本进程 stdio 转 UTF-8 + Windows 控制台代码页切 65001）、`run_capture()`（收子进程输出，显式 UTF-8 解码 + errors=replace）</li>
-        <li><b>tests/特性9-质量闸门体系/test_utf8_io.py</b>（10 条）：含<b>用 zh_CN.gbk locale 精确复现AprilPark1012那条报错</b>（断言里就写着 `byte 0xbb in position 13`）+ <b>AST 全仓扫描</b>（谁再写出「靠系统默认编码」的 subprocess/read_text/open 就直接测试失败）</li>
+        <li><b>tests/特性9-质量闸门体系/test_utf8_io.py</b>（10 条）：含<b>用 zh_CN.gbk locale 精确复现用户那条报错</b>（断言里就写着 `byte 0xbb in position 13`）+ <b>AST 全仓扫描</b>（谁再写出「靠系统默认编码」的 subprocess/read_text/open 就直接测试失败）</li>
         <li>生成的 scripts/generated/conftest.py 自带 UTF-8 自举：裸跑 pytest（不经 cli）也不会因中文/v 崩或乱码</li>
         <li>limits.py 在 Windows 上用 GlobalMemoryStatusEx 读可用内存（以前读不到 /proc 就恒判 1 并发）</li>
         <li>启动期<b>文件系统编码告警</b>：文件系统编码不是 UTF-8（中文 Windows / GBK locale）时 cli 会大声提示「中文文件名会落成 GBK 字节名，请用 PYTHONUTF8=1 重跑」——实测踩到过 scripts/datasets/ 里留下一个 GBK 字节名残留（连工具读文件名都会 surrogate 报错）</li>
@@ -2806,7 +2860,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.6</b>（2026-10-13）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.6.1</b>（2026-10-14）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
@@ -2816,7 +2870,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <li class="toc-chap has-sub">
       <a href="#chap-1"><span class="tn">1</span> 为什么是「混合」？</a>
       <ul class="toc-l2">
-        <li class="toc-sub"><a href="#sec-1-1">[ai] LLM 语义编排（DeepSeek 直连 · 非 Agent）</a></li>
+        <li class="toc-sub"><a href="#sec-1-1">[ai] LLM 语义编排（OpenAI 兼容模型 · 非 Agent）</a></li>
         <li class="toc-sub"><a href="#sec-1-2">[OK] Playwright（确定）</a></li>
         <li class="toc-sub"><a href="#sec-1-3">「混合」的准确定义：四段闭环（浏览器在两端）</a></li>
         <li class="toc-sub"><a href="#sec-1-4">兜底原则：explore 做不到的，后三段兜 —— 但约定优于兜底</a></li>
@@ -2846,7 +2900,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       </ul>
     </li>
     <li class="toc-chap has-sub">
-      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 51 子特性）</a>
+      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 54 子特性）</a>
       <ul class="toc-l2">
         <li class="toc-feat">
           <a href="#feat-1">特性 1混合链路 mixed_chain</a>
@@ -2955,6 +3009,9 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
             <li><a href="#sub-10.5">10.5推荐路径口径</a></li>
             <li><a href="#sub-10.6">10.6文档真值契约</a></li>
             <li><a href="#sub-10.7">10.7文档结构真值契约</a></li>
+            <li><a href="#sub-10.8">10.8通用 LLM 入口</a></li>
+            <li><a href="#sub-10.9">10.9LLM 体检 + 思考档位</a></li>
+            <li><a href="#sub-10.10">10.10思考模式端点兼容</a></li>
           </ul>
         </li>
         <li class="toc-feat">

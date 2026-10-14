@@ -1,6 +1,6 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.6**（2026-10-13）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
+> 当前版本 **V8.6.1**（2026-10-14）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
 > · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/) · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
 
 **一句话**：把 **LLM 语义编排（AI 智能探索）** 和 **Playwright（浏览器采集证据 + 确定性执行）** 组合成一套混合测试框架 ——
@@ -42,7 +42,7 @@ AI 负责理解意图、规划步骤、挑元素；Playwright 负责精确定位
 纯 AI 测试不可靠（会幻觉、点错控件、不可复现、每次烧 token）；纯脚本测试不可维护（UI 一改红一片）。
 本框架把两者**按能力切开**：
 
-| 能力 | LLM 编排（DeepSeek 直连 · 非 Agent） | Playwright（确定性） |
+| 能力 | LLM 编排（OpenAI 兼容模型直连 · 非 Agent） | Playwright（确定性） |
 |---|---|---|
 | 理解自然语言测试意图 | ✅ 强 | ❌ |
 | 规划步骤 / 挑元素 | ✅ 强 | ❌ |
@@ -137,18 +137,22 @@ HYBRID_CASE_TIMEOUT=600 HYBRID_STRICT_LOCATE=1 \
 4. 切角色到**发票管理员** → 订单列表勾选刚建那单 → 「去开票」→ 填客户/销售员/行类型/数量 → 行保存 → 提交发票
 5. 去发票列表按订单名称搜 —— **能搜到那张发票** = 整条链路通 ✅
 
-### 3. 配 DeepSeek key（**只有 AI 链路需要**）
+### 3. 配 LLM key（**只有 AI 链路需要**）
+
+框架走 **OpenAI 兼容协议** ⇒ **GLM（智谱）/ Kimi / 通义 / 豆包 / MiniMax / 本地 vLLM·Ollama** 都能直接用，换哪家只动三个变量：
 
 ```bash
-# 项目根建 .env（可复制 .env.example）：
-DEEPSEEK_API_KEY=sk-你的密钥
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-DEEPSEEK_MODEL=deepseek-chat
+# 项目根建 .env（可复制 .env.example）
+LLM_API_KEY=你的 key
+LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4   # Kimi 换 https://api.moonshot.cn/v1
+LLM_MODEL=glm-5.3                                    # Kimi 换 kimi-k3，Qwen 换 qwen3.6-plus
 ```
 
-> **真 AI 链路**（`all --ai`）需要 key（`explore` 要调 LLM）。不带 AI 的部分（`generate` / `run`）
-> 是确定性的、不需要 key；所以无 key 环境下可以用「录像回放」跑完整的 AI 链路。
-> 无外网机器要用 AI 链路 ⇒ 走**录像回放**（`build_tools/offline_explore_chain.py` + 随包发出的录像包）。
+> **换模型前先体检**：`python -m framework.cli llm-doctor` —— 真发 2 次请求、两秒报出「连通 / function calling 通不通 / 端点在用哪档思考」，并点出「能用但打折」的情形（比查文档可靠：文档会变、还能查错）。
+> 优先级 `LLM_*` > `BROWSER_USE_API_KEY` > `OPENAI_API_KEY` > `ANTHROPIC_API_KEY` > `GOOGLE_API_KEY` > `DEEPSEEK_*`（旧写法仍支持）；当前用的哪档 `cli config` 一屏可见（密钥不显示值）；各家端点与取舍见培训页。
+> 可选旋钮 `LLM_REASONING_EFFORT=low` 压思考强度（GLM-5.3 起不能关思考且默认 max，探索阶段每步都跑最贵档）；**换模型后要重录录像**（录像键不含模型名，会命中旧模型的录像，框架回放时会告警），模型需支持 **function calling**（GLM-5.x / Kimi K2·K3 / Qwen3.6 / MiniMax-M2.7+ 均支持）。
+
+> **真 AI 链路**（`all --ai`）需要 key（`explore` 要调 LLM）；不带 AI 的部分（`generate` / `run`）确定性执行、不需要 key，无 key 或无外网环境都能用**录像回放**跑完整 AI 链路（`build_tools/offline_explore_chain.py` + 随包录像包）。
 
 ## 项目结构与链路
 

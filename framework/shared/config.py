@@ -96,7 +96,7 @@ GENERATED_DIR = SCRIPTS_DIR / "generated"     # ★P20 生成脚本目录（<sce
 def llm_from_env():
     """按 .env 里配了哪个 key，构造对应的 LLM 客户端实例
     （来自 browser_use.llm 包；**不使用** browser-use 的 Agent）。
-    优先级: ChatBrowserUse > OpenAI > Anthropic > Google > DeepSeek(ChatDeepSeek 原生)。"""
+    优先级: 通用 LLM_* > ChatBrowserUse > OpenAI > Anthropic > Google > DeepSeek(ChatDeepSeek 原生)。"""
     try:
         from browser_use.llm import ChatBrowserUse, ChatOpenAI, ChatAnthropic, ChatGoogle
     except ImportError as e:
@@ -104,6 +104,38 @@ def llm_from_env():
             "browser-use 未安装。pip install browser-use 后重试。"
         ) from e
 
+    # 0) 通用 OpenAI 兼容入口（V8.6.1）—— 一个开关接所有 OpenAI 兼容服务：
+    #    智谱 GLM / 月之暗面 Kimi / 通义 / 豆包 / 本地 vLLM·Ollama…全都走这一支。
+    #
+    # 为什么单开一组变量，而不是让用户复用 DEEPSEEK_*：
+    #   那组名字把厂商写死了 —— 配 Kimi 却要写 DEEPSEEK_API_KEY，语义错乱，
+    #   每接一家都得重新解释一遍（用户 2026-10-14 实测提问引出）。
+    #
+    # [!] 这里**借用 ChatDeepSeek 当通用 OpenAI 兼容客户端**，不用 ChatOpenAI —— 实测对比：
+    #     · ChatDeepSeek 用 **function calling**（请求带 tools + tool_choice），
+    #       而 GLM / Kimi 官方都明确支持 tool calling；
+    #     · ChatOpenAI 用 **response_format=json_schema(strict=True)**（或把 schema 塞 system
+    #       prompt），第三方端点对 strict json_schema 的支持度参差 —— 实测走它时
+    #       "结构化输出路径"连续 3 次失败（框架的解析层拿不到步骤）。
+    #     两者请求体都干净（只发 model / messages / temperature / tools），
+    #     所以选**与框架既有链路一致**的那个，风险最低。
+    #     名字里的 deepseek 只是实现出处：provider 字段会记 'deepseek'，仅影响日志。
+    #
+    # [!] 客户端用 `ChatOpenAICompatible`（= ChatDeepSeek + reasoning_effort），原因：
+    #     这一代国产旗舰正在集体**取消「关闭思考」的选项**（GLM-5.3 起完全不能关、
+    #     默认 max 档；MiniMax-M3.1 不允许 disabled）。探索阶段每步都要调一次 LLM，
+    #     走服务端默认档 = 每次都跑最贵推理级别。给个旋钮把强度压下来。
+    if os.environ.get("LLM_API_KEY"):
+        from framework.shared.llm_compat import ChatOpenAICompatible
+        return ChatOpenAICompatible(
+            api_key=os.environ["LLM_API_KEY"],
+            base_url=os.environ.get("LLM_BASE_URL") or None,   # 空 = 让服务方决定（默认 DeepSeek）
+            model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+            temperature=0.0,
+            # 空字符串按「没设」处理（.env 里 `LLM_REASONING_EFFORT=` 是常见写法，
+            # 不能让它变成发一个空字段出去）。
+            reasoning_effort=os.environ.get("LLM_REASONING_EFFORT") or None,
+        )
     # 1) Browser Use 自家优化模型
     if os.environ.get("BROWSER_USE_API_KEY"):
         return ChatBrowserUse()
@@ -124,14 +156,17 @@ def llm_from_env():
             temperature=0.0,
         )
     raise RuntimeError(
-        "未检测到 LLM 环境变量。请在 .env 配置 BROWSER_USE_API_KEY / "
-        "OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / DEEPSEEK_API_KEY 之一。"
+        "未检测到 LLM 环境变量。请在 .env 配置 LLM_API_KEY（通用 OpenAI 兼容：GLM / Kimi / "
+        "通义 / 豆包 / 本地 vLLM·Ollama 等，配 LLM_BASE_URL + LLM_MODEL）/ "
+        "BROWSER_USE_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / "
+        "DEEPSEEK_API_KEY 之一。"
     )
 
 
 def auto_detect_llm() -> bool:
     """是否检测到可用的 LLM key（Healer 的 Level-B 语义重猜才启用）。"""
-    return bool(os.environ.get("BROWSER_USE_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    return bool(os.environ.get("LLM_API_KEY")
+                or os.environ.get("BROWSER_USE_API_KEY") or os.environ.get("OPENAI_API_KEY")
                 or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("GOOGLE_API_KEY")
                 or os.environ.get("DEEPSEEK_API_KEY"))
 

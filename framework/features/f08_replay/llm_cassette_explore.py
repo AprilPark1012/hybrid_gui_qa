@@ -395,7 +395,7 @@ class Cassette:
             self.hits += 1
             self.last_key = key
             self.last_match = "strict"
-            return dict(rec, _match="strict")
+            return dict(rec, _match="strict", _model=rec.get("model") or "")
 
         if strict_only or not struct_key_value:
             return None
@@ -441,7 +441,7 @@ class Cassette:
                 print(f"      [cassette] 结构键命中了 {len(struct_hits)} 份录像 -> "
                       f"取**最新录制**的 {fname}（{created or '时间未知'}）；"
                       f"其余 {[h[1] for h in struct_hits[1:]][:4]} 是更早录的，未采用")
-            return dict(rec, _match="struct")
+            return dict(rec, _match="struct", _model=rec.get("model") or "")
 
         # ---- 第三级：相似度匹配（默认开；HYBRID_CASSETTE_FUZZY=0 可关）----
         import os as _os
@@ -490,7 +490,7 @@ class Cassette:
             print(f"      [cassette] [!] 该录像录于 {rec.get('created_at','?')}"
                   f"（框架 {rec.get('framework_version','?')}）—— 步骤是**当时那批数据**下做的判断，"
                   f"换了数据请人工核对产物。")
-            return dict(rec, _match="fuzzy", _fuzzy_similarity=r)
+            return dict(rec, _match="fuzzy", _model=rec.get("model") or "", _fuzzy_similarity=r)
         return None
 
     def store(self, prompt: str, model: str, system: str, responses: list[dict],

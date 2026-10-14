@@ -1202,6 +1202,8 @@ FLAG_SPECS: dict[str, str | None] = {
     # 而项目 .env 不入库、现状压根不存在 -> 用户根本没处发现它们。
     "--ai-retry": "value", "--shots": None, "--video": None,
     "--timeout": "value", "--base-url": "value", "--strict-locate": None,
+    # V8.6.1：LLM 通用入口 + 体检 —— 换模型不改代码（这三个都能命令行临时覆盖）
+    "--llm-base-url": "value", "--llm-model": "value", "--reasoning-effort": "value",
     }
 # 对 run/all 生效的通用参数（main 统一解析）
 _COMMON_FLAGS = {"--workers", "--debug", "--headed", "--force-workers", "--isolated-target",
@@ -1230,6 +1232,9 @@ CMD_FLAGS: dict[str, set[str]] = {
               "--keep-runs", "--keep-days", "--max-delete"},
     "setup": {"--check", "--force-browser", "--with-ai"},
     "config": set(),
+    # LLM 体检（V8.6.1）：只发 2 次 LLM 请求，**不需要浏览器** ->
+    #   所以它刻意**不在** main() 的浏览器预检名单里（体检不该被浏览器缺失挡住）。
+    "llm-doctor": {"--llm-base-url", "--llm-model", "--reasoning-effort"},
 }
 # 已移除的参数：给"为什么没了 + 该用什么"，而不是笼统的"不认识"
 REMOVED_FLAGS = {
@@ -1247,6 +1252,18 @@ REMOVED_FLAGS = {
 # [!] 只登记**用户可能需要动**的项。框架运行期自设的（RUN_ID / PARTITION / W / CASSETTE_STRICT,
 #     以及测试专用的 BAD_PY / DAILY_SKIP）**刻意不列** —— 列出来只会让用户误以为该去调它。
 TUNABLE_CATALOG: list[tuple[str, str, str]] = [
+    ("LLM_API_KEY", "(密钥 · 不展示)",
+     "**通用 OpenAI 兼容入口**的 key：设了它就走通用入口，可接 GLM / Kimi / 通义 / 豆包 / "
+     "本地 vLLM·Ollama；优先级高于下面各家专用变量（密钥值不在此展示）"),
+    ("LLM_BASE_URL", "(空)",
+     "LLM 端点（与 LLM_API_KEY 配套）：智谱 GLM=`https://open.bigmodel.cn/api/paas/v4` · "
+     "Kimi=`https://api.moonshot.cn/v1` · 空=官方 OpenAI 端点"),
+    ("LLM_MODEL", "gpt-4o-mini",
+     "LLM 模型名（与 LLM_BASE_URL 配套）：如 `glm-5.3` / `kimi-k3` / `qwen3.6-plus` / "
+     "`MiniMax-M2.7`；配了 LLM_API_KEY 才生效"),
+    ("LLM_REASONING_EFFORT", "(空)",
+     "**思考强度**（只对通用入口生效）：`low`/`medium`/`high`/`max`，空=不发这个字段（用端点默认）。"
+     "GLM-5.3 起不能关思考且默认 max -> 探索阶段每步都跑最贵档，建议设 `low`"),
     ("HYBRID_AI_RETRY", "2", "AI 产出校验不合格时的重试次数（0=关闭 · 上界 5）"),
     ("HYBRID_WAIT_DEFAULT_MS", "30000",
      "等待类断言的**有界默认**时长（毫秒）；场景声明了业务时长时以声明为准（见 declared_wait）"),
@@ -1306,6 +1323,13 @@ TUNABLE_CATALOG: list[tuple[str, str, str]] = [
 ]
 
 
+#: 密钥类项：`cli config` **只报「有没有设」，不展示值**。
+# 为什么单列：这个命令的用途是「让人发现有哪些旋钮」，顺手把密钥打到终端/CI 日志里
+# 就违背了它自己的用途（同类教训：log/*/traces 因含明文凭据 -> 永不外发）。
+_SECRET_ENV_KEYS = {"LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY",
+                    "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "BROWSER_USE_API_KEY"}
+
+
 def cmd_config(rest: list[str] = None) -> None:
     """列出全部可调项：**当前值 + 来源 + 怎么在命令行上调**（V8.4）。
 
@@ -1322,7 +1346,11 @@ def cmd_config(rest: list[str] = None) -> None:
     print("  " + "-" * 104)
     for env, default, desc in TUNABLE_CATALOG:
         raw = os.environ.get(env)
-        if raw is None or raw == "":
+        if env in _SECRET_ENV_KEYS:
+            # 密钥：只报有没有设，值一律不展示
+            cur = "已设置(值不展示)" if raw else "未设置"
+            src = "环境变量" if raw else "默认"
+        elif raw is None or raw == "":
             cur, src = default, "默认"
         else:
             cur, src = raw, "环境变量"
@@ -1336,6 +1364,164 @@ def cmd_config(rest: list[str] = None) -> None:
           f"（见上表最后一列）")
     print("[config] 框架运行期自设的变量（RUN_ID / PARTITION / W 等）刻意不列："
           "那些不该由用户去调")
+    print("[config] 密钥类项（LLM_API_KEY 等）只报「有没有设」，值不展示")
+
+
+def cmd_llm_doctor(rest: list[str] = None) -> int:
+    """给当前配置的 LLM 做一次真体检：连通 / function calling / 思考档位（V8.6.1）。
+
+    为什么有它：用户问「框架除了 DeepSeek，还能用 GLM / Kimi / Qwen / MiniMax 吗」——
+    这种问题**只有真发一次请求才知道**，查文档会查错（我自己就查错过：一度说 GLM-5.2
+    不在册，实际它 2026-06-16 就发布了）。而烧一次完整端到端要 4 分钟、十几二十次调用；
+    体检只发 2 次请求，两秒出结论 —— 换模型前先跑它。
+
+    它验什么（读的是**当前生效配置**，与真 AI 链路同一套变量 => 验的就是真链路用的那个）：
+        (1) 生效配置：provider / 端点 / 模型 / 思考档位 / key 有没配（**不打印 key 值**）
+        (2) 第 1 次请求：纯文本 —— 只验「通不通、多快」
+        (3) 第 2 次请求：带一个**极小 schema** —— 验「function calling（tools）走不走得通」
+
+    [!] 边界（必须说清，否则等于给假保证）：schema 只有一个字段，所以它**只证明 tools
+        通了，不证明产出质量**。产出质量得跑真场景（`explore --ai`）。
+    [!] 「能用但打折」会被单独标出来：思考模式的端点常**拒绝 tool_choice**
+        （DeepSeek thinking mode 就 400 `Thinking mode does not support this tool_choice`），
+        而 GLM-5.3 起**不能关思考** —— 这时框架会退到纯文本路径（能跑，少了结构约束）。
+
+    退出码：0 = 可用（含"能用但打折"）；2 = 不可用（没配 key / 连不通 / tools 不通）。
+
+    参数（与真链路同一套可调项，可临时覆盖）：
+        --llm-base-url  --llm-model  --reasoning-effort
+    """
+    import asyncio
+    import time
+
+    try:
+        from framework.shared import config as _cfg
+        from framework.shared.llm_compat import REASONING_EFFORT_EXAMPLES
+    except ImportError as e:
+        print(f"[llm-doctor] [NG] 框架自身导入失败：{e}")
+        return 2
+
+    print("[llm-doctor] 体检开始（真发 2 次请求，几秒钟）")
+
+    # ---- (1) 生效配置（密钥只报有没有配）----
+    try:
+        obj = _cfg.llm_from_env()
+    except Exception as e:
+        print(f"[llm-doctor] [NG] 拿不到 LLM 客户端：{type(e).__name__}: {str(e)[:200]}")
+        print("[llm-doctor]       -> 在项目根 .env 里配 LLM_API_KEY（通用入口，接任意 OpenAI "
+              "兼容服务）或 DEEPSEEK_API_KEY 等；起手可复制 .env.example。")
+        return 2
+
+    prov = getattr(obj, "provider", None) or "(未知)"
+    model = getattr(obj, "model", None) or getattr(obj, "model_name", None) or "(未知)"
+    base = getattr(obj, "base_url", None) or "(由 provider 决定)"
+    effort = getattr(obj, "reasoning_effort", None) or "(未设 -> 服务端默认)"
+    print(f"[llm-doctor] provider  {prov}")
+    print(f"[llm-doctor] 端点      {base}")
+    print(f"[llm-doctor] 模型      {model}")
+    print(f"[llm-doctor] 思考档位  {effort}")
+    print("[llm-doctor] 说明：思考档位给 low 通常更省更快；取值举例 " + " / ".join(REASONING_EFFORT_EXAMPLES)
+          + "（不校验，最终由端点说了算）")
+    print()
+
+    # ---- (2)(3) 两次真请求 ----
+    try:
+        from pydantic import BaseModel
+        from browser_use.llm.messages import UserMessage
+    except ImportError as e:
+        print(f"[llm-doctor] [NG] 缺依赖：{e}（AI 依赖装了吗？`cli setup --with-ai`）")
+        return 2
+
+    class _PingModel(BaseModel):
+        """体检用极小 schema —— 只验「tools 通不通」，不验产出质量。"""
+        ok: bool
+
+    async def _probe() -> dict:
+        out: dict = {}
+        t0 = time.monotonic()
+        try:
+            await asyncio.wait_for(
+                obj.ainvoke([UserMessage(content="请只回复两个字：正常")]), timeout=60)
+            out["text"] = ("ok", time.monotonic() - t0, "")
+        except Exception as e:
+            out["text"] = ("ng", time.monotonic() - t0, f"{type(e).__name__}: {str(e)[:200]}")
+        t1 = time.monotonic()
+        try:
+            r = await asyncio.wait_for(
+                obj.ainvoke([UserMessage(content="把 ok 字段设为 true")], output_format=_PingModel),
+                timeout=60)
+            got = getattr(r, "completion", None)
+            out["struct"] = ("ok" if got is not None else "ng", time.monotonic() - t1,
+                             "" if got is not None else "请求通了，但返回里解析不出字段")
+        except Exception as e:
+            out["struct"] = ("ng", time.monotonic() - t1, f"{type(e).__name__}: {str(e)[:200]}")
+        return out
+
+    try:
+        res = asyncio.run(_probe())
+    except Exception as e:
+        print(f"[llm-doctor] [NG] 体检本身崩了：{type(e).__name__}: {str(e)[:200]}")
+        return 2
+
+    # 复用一个「失败分类」实现（框架铁律：同一能力收敛成唯一入口）—— 别再写第二份
+    #   端点不可达 / 鉴权失败 各是什么现象、下一步查什么，f02 那份是实测沉淀出来的。
+    from framework.features.f02_semantic.explorer_explore import _llm_failure_hint
+
+    st, dt, err = res["text"]
+    if st == "ok":
+        print(f"[llm-doctor] [OK] 连通      {dt:.2f}s")
+    else:
+        print(f"[llm-doctor] [NG] 连不通（{dt:.2f}s）: {err}")
+        hint = _llm_failure_hint(err)
+        if hint:
+            print(f"[llm-doctor] {hint.strip()}")
+        return 2
+
+    degraded = False
+    st, dt, err = res["struct"]
+    # 这次调用有没有**被兜底救回来**：据实报出来，不能因为"通了"就说"正常" ——
+    #   体检的全部价值就是让用户知道「真链路上会发生什么」，藏掉降级等于给假保证。
+    from framework.shared.llm_compat import _REJECTED_ENDPOINTS, _endpoint_key
+    fell_back = _endpoint_key(obj) in _REJECTED_ENDPOINTS
+    if st == "ok" and fell_back:
+        print(f"[llm-doctor] [OK] function calling **可用**（{dt:.2f}s）"
+              f"—— 但端点拒「指名函数」tool_choice，是**框架自动降级**才通的")
+        print("[llm-doctor]      -> 处置：降级改用 `auto` 重试（结构约束保住），"
+              "代价是**每次进程首个结构化调用多一次请求**；该端点记下后不重复白试。")
+    elif st == "ok":
+        print(f"[llm-doctor] [OK] function calling 正常（tool_calls 能解析）  {dt:.2f}s")
+    else:
+        low = err.lower()
+        if ("tool_choice" in low) or ("thinking" in low and "support" in low):
+            degraded = True
+            print(f"[llm-doctor] [!!] function calling 被端点拒了（{dt:.2f}s）: {err}")
+            print("[llm-doctor]      -> 连降级（`auto`）都被拒 —— 该端点不接受任何 tool_choice。"
+                  "框架会自动退到纯文本路径：能跑，但少了结构约束（产出质量会打折）。")
+            print("[llm-doctor]      -> 机理（实测得出，不是猜）：这类端点拒的是「指名函数」和 "
+                  "`required` 这两种取值，**接受 `auto` / 不传**；连 auto 都拒的很少见。")
+            print("[llm-doctor]      -> 注意：LLM_REASONING_EFFORT 与这个问题**无关**"
+                  "（实测设 low 仍会触发降级）。它治的是「端点默认跑 max 档、太慢太贵」。")
+        else:
+            print(f"[llm-doctor] [NG] function calling 不通（{dt:.2f}s）: {err}")
+            hint = _llm_failure_hint(err)
+            if hint:
+                print(f"[llm-doctor] {hint.strip()}")
+            return 2
+
+    print()
+    if degraded:
+        print("[llm-doctor] 结论：**能用，但 function calling 不可用** -> 真链路走文本兜底"
+              "（产出约束变弱，不报错）。建议换一个不强制思考的模型。")
+    elif fell_back:
+        print("[llm-doctor] 结论：**可以用**。注意该端点需走框架的 `auto` 降级才通"
+              "（结果一致，每次进程首个结构化调用多一次请求）。")
+    else:
+        print("[llm-doctor] 结论：**可以用**（连通 + function calling 都正常）。")
+    print("[llm-doctor] 提醒：换模型后要**重录录像**（录像键不含模型名，会命中旧模型的录像；"
+          "框架回放时会告警）—— 加 `--llm-record` 重录。")
+    print("[llm-doctor] 提醒：本体检用的是极小 schema，只证明「tools 通」；产出质量要跑 "
+          "`explore --ai` 才知道。")
+    return 0
 
 
 #: 环境变量 -> CLI 参数 的映射（V8.4）。
@@ -1344,6 +1530,11 @@ def cmd_config(rest: list[str] = None) -> None:
 #     暴露给用户=误导（设了只会把链路搞乱）。判据 test_internal_only_vars_have_no_cli_flag 守着这条。
 # [!] 一个环境变量只许映射一个参数（项目铁律：同一能力收敛成唯一入口）。
 ENV_TO_FLAG: dict[str, str] = {
+    "LLM_BASE_URL": "--llm-base-url",
+    "LLM_MODEL": "--llm-model",
+    "LLM_REASONING_EFFORT": "--reasoning-effort",
+    # 注意：LLM_API_KEY **刻意不映射 CLI 参数** —— 密钥写进命令行会留 shell 历史，
+    # 而 .env 本来就是它该待的地方（同一能力唯一入口）。
     "HYBRID_AI_RETRY": "--ai-retry",
     "HYBRID_SHOTS": "--shots",
     "HYBRID_VIDEO": "--video",
@@ -1551,6 +1742,8 @@ def main():
         rc = cmd_prune(rest)
     elif cmd == "config":
         rc = cmd_config(rest)
+    elif cmd == "llm-doctor":
+        rc = cmd_llm_doctor(rest)
     if isinstance(rc, int) and rc != 0:
         raise SystemExit(rc)
 
@@ -1752,7 +1945,7 @@ def _browser_state() -> tuple[bool, str]:
 
 _CMD_FUNCS = {"generate": cmd_generate, "explore": cmd_explore,
               "run": cmd_run, "all": cmd_all, "verify": cmd_verify, "prune": cmd_prune,
-              "setup": cmd_setup, "config": cmd_config}
+              "setup": cmd_setup, "config": cmd_config, "llm-doctor": cmd_llm_doctor}
 
 
 if __name__ == "__main__":
