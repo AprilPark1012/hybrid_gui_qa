@@ -69,6 +69,41 @@ def test_general_entry_uses_function_calling_not_json_schema():
     assert "response_format" not in seg, "通用入口不该自己拼 response_format"
 
 
+def test_fix_applies_to_default_deepseek_entry_too(monkeypatch):
+    """**出厂默认配置**（只配 `DEEPSEEK_API_KEY`）必须也吃到 tool_choice 兜底。
+
+    为什么单列一条（2026-10-14 踩过，值得记）：最初只在「通用入口 `LLM_*`」那支把客户端
+    换成 `ChatOpenAICompatible`，**忘了 `DEEPSEEK_*` 那一支** —— 而**出厂 `.env` 用的正是
+    `DEEPSEEK_*`**（通用入口是新加的、默认没配）。后果：
+      · 手工构造 `ChatOpenAICompatible(...)` 做实验 -> 通过，看起来修好了；
+      · 真链路走 `llm_from_env()` -> 拿到裸 `ChatDeepSeek` -> 兜底**从未触发**。
+    即 **「修了但没生效」**。这条判据专门钉「修复是否覆盖真实默认路径」，
+    而不是只钉「那个类本身对不对」。
+    """
+    for k in ("LLM_API_KEY", "BROWSER_USE_API_KEY", "OPENAI_API_KEY",
+              "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+    monkeypatch.delenv("LLM_REASONING_EFFORT", raising=False)
+
+    from framework.shared import config as cfg
+    from framework.shared.llm_compat import ChatOpenAICompatible
+
+    obj = cfg.llm_from_env()
+    assert isinstance(obj, ChatOpenAICompatible), (
+        f"出厂默认配置（DEEPSEEK_*）拿到的是 {type(obj).__name__} —— tool_choice 兜底没覆盖到它，"
+        f"等于默认配置下这个修复不存在（真实链路会走文本兜底而没人知道）"
+    )
+    assert type(obj).__name__ != "ChatDeepSeek", "拿到的是上游裸客户端，没有兜底能力"
+
+    # 思考档位旋钮在这支也必须生效（否则用户在默认配置下设了 low 却无效 = 静默失效）
+    monkeypatch.setenv("LLM_REASONING_EFFORT", "low")
+    obj2 = cfg.llm_from_env()
+    assert getattr(obj2, "reasoning_effort", None) == "low", (
+        "DeepSeek 入口没吃 LLM_REASONING_EFFORT —— 可调项在默认配置下静默失效"
+    )
+
+
 def test_secret_has_no_cli_flag():
     """`LLM_API_KEY` 不许映射 CLI 参数（密钥写进命令行会留 shell 历史）。"""
     src = CLI.read_text(encoding="utf-8")

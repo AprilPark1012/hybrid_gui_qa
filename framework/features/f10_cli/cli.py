@@ -1262,8 +1262,8 @@ TUNABLE_CATALOG: list[tuple[str, str, str]] = [
      "LLM 模型名（与 LLM_BASE_URL 配套）：如 `glm-5.3` / `kimi-k3` / `qwen3.6-plus` / "
      "`MiniMax-M2.7`；配了 LLM_API_KEY 才生效"),
     ("LLM_REASONING_EFFORT", "(空)",
-     "**思考强度**（只对通用入口生效）：`low`/`medium`/`high`/`max`，空=不发这个字段（用端点默认）。"
-     "GLM-5.3 起不能关思考且默认 max -> 探索阶段每步都跑最贵档，建议设 `low`"),
+     "**思考强度**（通用入口与 DeepSeek 入口都认）：`low`/`medium`/`high`/`max`，空=不发这个字段"
+     "（用端点默认）。GLM-5.3 起不能关思考且默认 max -> 探索阶段每步都跑最贵档，建议设 `low`"),
     ("HYBRID_AI_RETRY", "2", "AI 产出校验不合格时的重试次数（0=关闭 · 上界 5）"),
     ("HYBRID_WAIT_DEFAULT_MS", "30000",
      "等待类断言的**有界默认**时长（毫秒）；场景声明了业务时长时以声明为准（见 declared_wait）"),

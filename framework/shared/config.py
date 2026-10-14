@@ -146,14 +146,20 @@ def llm_from_env():
         return ChatAnthropic(model="claude-sonnet-4-0", temperature=0.0)
     if os.environ.get("GOOGLE_API_KEY"):
         return ChatGoogle(model="gemini-flash-latest")
-    # 3) DeepSeek —— 用 browser-use 0.13.10 原生 ChatDeepSeek（OpenAI 兼容，走 function calling）
+    # 3) DeepSeek —— OpenAI 兼容，走 function calling
+    # [!] 这里**必须和上面「通用入口」用同一个客户端类** `ChatOpenAICompatible`，
+    #     不能用 browser_use 原生的裸 `ChatDeepSeek`。原因（2026-10-14 踩过）：
+    #     裸 `ChatDeepSeek` 不给「指名函数被拒」留兜底，而**出厂 .env 走的正是这一支**
+    #     （默认配 DEEPSEEK_API_KEY）—— 只在通用入口上做修复 = 默认配置根本吃不到，
+    #     属于「修了但没生效」。判据 test_llm_provider_switch 里有一条专门钉这件事。
     if os.environ.get("DEEPSEEK_API_KEY"):
-        from browser_use.llm.deepseek.chat import ChatDeepSeek
-        return ChatDeepSeek(
+        from framework.shared.llm_compat import ChatOpenAICompatible
+        return ChatOpenAICompatible(
             api_key=os.environ["DEEPSEEK_API_KEY"],
             base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
             model=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"),
             temperature=0.0,
+            reasoning_effort=os.environ.get("LLM_REASONING_EFFORT") or None,
         )
     raise RuntimeError(
         "未检测到 LLM 环境变量。请在 .env 配置 LLM_API_KEY（通用 OpenAI 兼容：GLM / Kimi / "

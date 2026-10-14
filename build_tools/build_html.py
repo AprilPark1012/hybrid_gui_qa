@@ -143,6 +143,17 @@ CHANGELOG = [
             "第二次 0.88s 且不再白试。<br>"
             "另实测确认 <code>LLM_REASONING_EFFORT=low</code> <b>与这件事无关</b>"
             "（设 low 仍会触发降级）—— 它治的是「默认跑 max 档、又慢又贵」",
+            "<b>[!] 这次修复差点白做 —— 一个必须记的坑</b>：最初只在「通用入口 "
+            "<code>LLM_*</code>」那一支把客户端换成 <code>ChatOpenAICompatible</code>，"
+            "<b>忘了 <code>DEEPSEEK_*</code> 那一支</b> —— 而 <b>出厂 <code>.env</code> 走的正是 "
+            "<code>DEEPSEEK_*</code></b>（通用入口是新加的、默认没人配）。后果："
+            "手工构造客户端做实验 → 通过，看起来修好了；真链路走 <code>llm_from_env()</code> → "
+            "拿到上游裸 <code>ChatDeepSeek</code> → <b>兜底从未触发</b>。"
+            "是 <code>llm-doctor</code> 把这件事喊出来的（它走的就是真链路的构造路径）。"
+            "已把两支统一（同一客户端类），并新增判据 "
+            "<code>test_fix_applies_to_default_deepseek_entry_too</code> —— "
+            "它钉的是「<b>修复有没有覆盖真实默认路径</b>」，而不是「那个类本身对不对」。"
+            "通用教训：<b>实验里手工构造的对象 ≠ 真链路拿到的对象</b>，验证必须走真入口",
             "新增判据 <b>10.9「LLM 体检 + 思考档位」</b>（12 条）：旋钮<b>真的进请求体</b>"
             "（断言 <code>_request_kwargs()</code> 的<b>产出</b>而非「我们调了它」—— 上游改签名"
             "要能立刻红而不是静默失效）、不设时不发、与 thinking 合并、空值按没设、可发现；"

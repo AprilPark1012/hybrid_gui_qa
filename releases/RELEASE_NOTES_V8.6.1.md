@@ -165,22 +165,48 @@ LLM**（一次端到端十几二十次）⇒ 等于每步都跑最贵的推理�
 > ⚠️ `LLM_REASONING_EFFORT=low` **与这件事无关**（实测设 low 仍会触发降级）——
 > 它治的是「端点默认跑 max 档、又慢又贵」。两件事别混。
 
+### ⑥ ⚠️ 这次修复**差点白做** —— 一条必须记的教训
+
+**现象**：修完之后跑 `llm-doctor`（走的是真链路的构造路径 `llm_from_env()`），它报
+「连降级（`auto`）都被拒」—— 而**手工构造 `ChatOpenAICompatible(...)` 的实验明明是成功的**。
+
+**根因**：我最初只在「通用入口 `LLM_*`」那一支把客户端换成了 `ChatOpenAICompatible`，
+**忘了 `DEEPSEEK_*` 那一支** —— 而出厂 `.env` 走的**正是 `DEEPSEEK_*`**
+（通用入口是这次新加的，默认没人配）。于是：
+
+| 路径 | 拿到的客户端 | 兜底 |
+|---|---|---|
+| 手工构造（我的实验）| `ChatOpenAICompatible` | ✅ 生效 → 看起来修好了 |
+| 真链路 `llm_from_env()` | **上游裸 `ChatDeepSeek`** | ❌ **从未触发** |
+
+**⇒ 典型的「修了但没生效」**。是 `llm-doctor` 把它喊出来的 —— 体检写出来第二天就证明了自己的价值。
+
+**处置**：
+1. 两支统一成同一个客户端类（`DEEPSEEK_*` 入口也用 `ChatOpenAICompatible`，思考档位旋钮对它同样生效）；
+2. **新增判据** `test_fix_applies_to_default_deepseek_entry_too` —— 它钉的是
+   「**修复有没有覆盖真实默认路径**」，而不是「那个类本身对不对」；
+3. 重跑体检确认：真链路现在打印降级行 + `[OK] function calling 可用（0.94s）`。
+
+**通用教训（已写进 skill）**：
+> **实验里手工构造的对象 ≠ 真链路拿到的对象**。验证修复时必须走**真入口**
+> （这里是 `llm_from_env()`），否则验的是「那个类对不对」，而不是「线上的那条路通不通」。
+
 ## 改了什么
 
 | 文件 | 改动 |
 |---|---|
-| `framework/shared/config.py` | `llm_from_env()` 新增通用入口分支（**优先级最高**）；`auto_detect_llm()` 认 `LLM_API_KEY`；通用分支改用 `ChatOpenAICompatible` 并接 `LLM_REASONING_EFFORT`（空值按「没设」）|
+| `framework/shared/config.py` | `llm_from_env()` 新增通用入口分支（**优先级最高**）；`auto_detect_llm()` 认 `LLM_API_KEY`；**通用入口与 `DEEPSEEK_*` 入口都改用 `ChatOpenAICompatible`**（见 ⑥）并接 `LLM_REASONING_EFFORT`（空值按「没设」）|
 | **`framework/shared/llm_compat.py`**（新） | `ChatOpenAICompatible` = `ChatDeepSeek` 子类：① 覆盖 `_request_kwargs()` 注入 `extra_body.reasoning_effort`（**与 deepseek-v4 的 thinking 开关合并而非覆盖**）；② **`tool_choice` 拒绝时有界降级**（撞 400 就改用 `auto` 自己发一次请求，记住端点特性后不白试）|
 | `framework/features/f02_semantic/explorer_explore.py` | `_llm_model_name()` 退路按 `LLM_MODEL > DEEPSEEK_MODEL`；**新增换模型告警**；失败提示补通用变量名 |
 | `framework/features/f08_replay/llm_cassette_explore.py` | `lookup()` 三处 return（strict / struct / fuzzy）带出 `_model`（层间解耦：录像层只管带出来，比对由 explorer 做）|
 | `framework/features/f10_cli/cli.py` | **新增 `cmd_llm_doctor`** + 4 处注册（`CMD_FLAGS` / `ENV_TO_FLAG` / `_CMD_FUNCS` / `main` 分发）；`FLAG_SPECS` 补 3 项；`cli config` 新增 4 项；**新增密钥脱敏**；`LLM_API_KEY` **刻意不给 CLI 参数**（密钥写进命令行会留 shell 历史）|
-| `tests/特性10-CLI帮助契约/test_llm_provider_switch.py` | 7 条判据（并把「通用入口」断言升级为**行为级**：`issubclass(ChatOpenAICompatible, ChatDeepSeek)`）|
+| `tests/特性10-CLI帮助契约/test_llm_provider_switch.py` | 8 条判据（①「通用入口」断言升级为**行为级** `issubclass(ChatOpenAICompatible, ChatDeepSeek)`；② **新增 `test_fix_applies_to_default_deepseek_entry_too`** —— 钉「修复有没有覆盖真实默认路径」，见 ⑥）|
 | **`tests/特性10-CLI帮助契约/test_llm_doctor.py`**（新） | 12 条判据（见下），含**真起假 OpenAI 端点**的端到端测试（不依赖外网）|
 | **`tests/特性10-CLI帮助契约/test_llm_tool_choice_fallback.py`**（新） | 16 条判据，专钉**兜底的边界**而非「能用」（见下）|
 | `.env.example` | 补通用入口（GLM/Kimi/Qwen/MiniMax 端点举例）+ `LLM_REASONING_EFFORT`；删掉停留在旧版本的注释 |
 | `README.md` / `docs/training.html` | 文档同步：配置示例更新到 `glm-5.3`；新增体检入口与思考档位说明；培训页补上「思考模式拒 `tool_choice`」这个实测坑 |
 
-## 新增判据（10.8 通用入口 7 条 + 10.9 LLM 体检 12 条 + 10.10 tool_choice 降级 16 条）
+## 新增判据（10.8 通用入口 8 条 + 10.9 LLM 体检 13 条 + 10.10 tool_choice 降级 16 条）
 
 **10.8**：① 通用入口必须**走 function calling** ② 优先级最高 ③ `auto_detect_llm()` 认 `LLM_API_KEY`
 ④ 可被 `cli config` 发现 ⑤ 密钥值不许被打印 ⑥ `LLM_API_KEY` 不许映射 CLI 参数 ⑦ 换模型命中旧录像必须告警。
@@ -197,11 +223,12 @@ LLM**（一次端到端十几二十次）⇒ 等于每步都跑最贵的推理�
 
 | 项 | 结果 |
 |---|---|
-| 全量判据 | `1165 passed / 3 skipped / 0 failed` |
+| 全量判据 | `1167 passed / 3 skipped / 0 failed` |
 | `cli config` | 新增 4 项可见，`LLM_API_KEY` 只报「未设置」不显示值 |
 | 实测（本地假 OpenAI 端点抓请求体）| 走 `LLM_*` 时收到 `model='kimi-k3'` + `tools=1/tools=0` 交替 —— 与老路径行为完全一致 |
 | 体检跑真端点 | 对 `api.deepseek.com` 真发请求：纯文本 `[OK] 连通 1.89s`；带 tools 得 400 `Thinking mode does not support this tool_choice` —— **即下条发现的来源** |
 | `tool_choice` 取值实验 | 不传 / `auto` ✅ 返回 tool_calls；`required` / 指名函数 ❌ 400（详见 ⑤）|
 | 思考档位实验 | `LLM_REASONING_EFFORT=low` 对该模型**无效**（仍 400）—— 如实说明，不含糊 |
 | **tool_choice 降级（真实端点对照）** | 上游原生**失败**；新客户端**成功**拿到已校验对象（1.32s）；第二次 0.88s 且不再白试；特征识别反向自证 4/4 |
+| **真链路构造路径复验** | `cli llm-doctor`（走 `llm_from_env()`）：打印降级行 → `[OK] 连通 1.37s` + `[OK] function calling 可用 0.94s` |
 | 端到端 | 见提交时实测（回放模式，不烧 LLM 费用）|
