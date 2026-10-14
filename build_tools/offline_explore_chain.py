@@ -1,6 +1,6 @@
 """离线一条命令：explore 语义识别（录像回放）→ generate 生成用例脚本 [→ run 试跑]。
 
-为什么单独一个脚本：工作电脑连不上外网 LLM，要靠录像包回放才能跑 AI 链路；而「回放」有几个
+为什么单独一个脚本：工作电脑连不上外网 LLM，要靠**包里的录像**回放才能跑 AI 链路；而「回放」有几个
 前置（录像目录 / demo 在跑 / **代码版本配套**），步骤散在 CLI 里容易漏。这里串起来逐条给结论，
 并且**强制把 LLM 端点指到黑洞（127.0.0.1:9）**—— 证明这次跑下来真的没联网、也没用 key。
 
@@ -179,7 +179,7 @@ def main():
         exp_py.read_text(encoding="utf-8", errors="replace")
     if "--llm-cassette" not in blob or "llm_cassette" not in blob:
         bad("这套代码**不含录像回放功能**（CLI 里没有 --llm-cassette）")
-        info("录像包只能配「带 cassette 的版本」用 -> 先拿到含该功能的代码（V7.7 起）再来跑")
+        info("录像只能配「带 cassette 的版本」用 -> 先拿到含该功能的代码（V7.7 起）再来跑")
         return 2
     ok("代码含录像回放（--llm-cassette）")
 
@@ -207,8 +207,8 @@ def main():
     cas = sorted(cassette.glob("*.json"))
     if not cas:
         bad("录像目录里没有录像：%s" % cassette)
-        info("把录像包（hybrid_gui_qa_llm_cassettes_*.zip）解开，把里面的 llm_cassettes/ 整个目录")
-        info("放到 %s" % (repo / "output"))
+        info("录像就随交付包一起发（整个工程一个 zip）：解开 hybrid_gui_qa_V*.zip 后确认")
+        info("%s 里有 *.json" % cassette)
         return 2
     ok("录像 %d 份（%s）" % (len(cas), cassette.name))
 

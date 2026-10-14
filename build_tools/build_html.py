@@ -167,6 +167,12 @@ CHANGELOG = [
             "不丢 <code>reasoning_effort</code>、<b>只重试一次 + 记住端点</b>（第二次只发 1 个请求）、"
             "留痕不静默、非 tool_choice 的错照抛且<b>不写进端点缓存</b>、"
             "拿不到 tool_calls <b>如实抛错</b>、纯文本调用不被这层动到",
+            "<b>交付形态归一：一个 zip</b>（用户口径纠正）—— 录像 <code>llm_cassettes</code> 本就住在工程 "
+            "<code>output/</code> 下，「整个工程打包」自然要把它带进<b>同一个</b>包；"
+            "旧的「两件套（代码包 + 独立录像包）」<b>已废弃</b>，独立打录像包的 <code>pack_cassettes()</code> 整段删除。"
+            "录像覆盖体检从「挂在 <code>--with-cassettes</code> 后面」改成<b>打包时默认执行</b>"
+            "（覆盖不全就不出包）；包内新增 <code>output/llm_cassettes/README.md</code> 用法说明；"
+            "判据同步改成三条：<b>① 只有一个 zip ② 录像真在包里（按份数核对）③ 反向拦截两件套复活</b>",
         ],
     ),
     dict(
@@ -3672,7 +3678,7 @@ def build() -> str:
 │   ├── _runner/                     runner:run_verifications.py(二类统一入口,Windows 通用) · run_acceptance.py(四项验收一条命令) · rerecord_cassettes.py · fixtures/
 │   └── conftest.py                  pytest 全局夹具(把 _helpers 补进 sys.path)
 ├── <b>build_tools/</b>                开发期工具(不属于被测应用,也不进运行链)
-│   ├── pack_release.py              交付打包器:组装 zip + 自检包内产物(不达标不出包；--with-cassettes 另打录像包)
+│   ├── pack_release.py              交付打包器:组装**一个** zip + 自检包内产物(不达标不出包；录像随包走 + 打包前体检覆盖)
 │   ├── build_html.py                生成 docs/training.html 培训页(**版本号单一来源**)
 │   ├── check_cassettes.py           录像体检(零成本:哪些场景没有可用录像 —— 不联网/不要 key)
 │   ├── record_cassettes.py          批量重录录像(需 key + 外网,发版前跑一次)

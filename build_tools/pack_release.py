@@ -148,11 +148,20 @@ def collect_files(exclude_test_artifacts: bool = False) -> list[Path]:
     #   （这正是当年 V8.3.4 给 `_auth.json` 用过的"不入库也要入包"手法，差别在
     #     这次补的是**该进包**的东西，而 `_auth.json` 那次后来反转成了反向拦截。）
     #   只补**最新 1 份**：见 `_latest_element_map()` 的说明。
-    #   [!] 录像（`output/llm_cassettes`）**不在这里补** —— 它走「两件套」的录像包单独交付
-    #   （判据 `tests/特性1-混合链路/verify_offline_delivery.py`），塞进代码包会破坏那个设计。
+    #   [!] 2026-10-14 口径变更：录像（`output/llm_cassettes`）**也在下面补** ——
+    #   旧的「两件套 / 只走独立录像包」设计已废弃（见 `collect_files` 末尾那段说明）。
     _emap = _latest_element_map()
     if _emap is not None:
         out.append(_emap)
+
+    # [!] 2026-10-14（用户口径，纠正旧设计）：录像 `output/llm_cassettes/` **随代码包一起交付**。
+    #   "这里的 llm_cassettes 本来就是放在 output/ 目录下的，整个工程代码打包的时候就要
+    #    一起打进去啊，也就是一个 zip，而不是分成 2 个 zip"
+    #   => 旧的「两件套」（代码包 + 独立录像包）**已废弃**；录像不再单独一件。
+    #   体积不是问题：实测 1 份录像 340 KB 原始 / zip 后 ~43 KB。
+    if CASSETTE_SRC.is_dir():
+        out.extend(p for p in CASSETTE_SRC.rglob("*")
+                   if p.is_file() and "__pycache__" not in p.parts)
 
     return sorted(set(out))
 
@@ -192,7 +201,8 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
               expect_notes: int | None = None,
               legacy_notes: list[str] | None = None,
               expect_auth_json: bool = False,
-              expect_element_map: int | None = None) -> list[str]:
+              expect_element_map: int | None = None,
+              expect_cassettes: int | None = None) -> list[str]:
     """审计一个包：返回问题清单（空 = 通过）。**只用标准库，不依赖 unzip。**
 
     `legacy_notes`：可选的出参列表 —— 历史形态命中（结构变更前的包）会写进来，
@@ -253,16 +263,35 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
         if n_cases == 0:
             problems.append("包内没有任何 cases/**/*.json")
 
-        # [!] 2026-10-13（AprilPark1012第 ④ 条）：`output/` 从「整体不许」放宽成
-        #   「只许 `output/element_maps/` 下的快照」；`log/` 与其它 output 子目录
-        #   （traces / verify / archived_* / *_shots）仍不许进包。
+        # [!] 2026-10-13（用户第 ④ 条）：`output/` 从「整体不许」放宽成
+        #   「只许 `output/element_maps/` 下的快照」。
+        # [!] 2026-10-14（用户口径纠正）：**`output/llm_cassettes/` 也允许且要求进包** ——
+        #   录像本就住在工程的 `output/` 下，「整个工程打包」自然要把它带进去
+        #   （旧的「两件套 / 独立录像包」已废弃）。
+        #   `log/` 与其它 output 子目录（traces / verify / archived_* / *_shots）仍不许进包。
         #   log 尤其不许：实测 `log/*/traces/*.zip` 记着登录过程（含明文凭据）。
+        _output_ok = ("output/element_maps/", "output/llm_cassettes/")
         bad = [k for k in rel
                if k.startswith("log/") or k.startswith(".venv/")
-               or (k.startswith("output/") and not k.startswith("output/element_maps/"))
+               or (k.startswith("output/") and not k.startswith(_output_ok))
                or k.endswith(".env") or "__pycache__" in k]
         if bad:
             problems.append(f"包内含不该发的内容：{bad[:5]}{' …' if len(bad) > 5 else ''}")
+
+        # 录像（2026-10-14）：随代码包交付 -> 按参数要求存在且份数正确。
+        #   `expect_cassettes=None`（默认）跳过：最小包构造的判据只塞几个文件，
+        #   无条件要求录像会把它们全误报一片（与 element_map / _auth.json 同一个坑）。
+        if expect_cassettes is not None:
+            n_cas = sum(1 for k in rel
+                        if k.startswith("output/llm_cassettes/") and k.endswith(".json"))
+            if n_cas != expect_cassettes:
+                problems.append(
+                    f"包内录像 {n_cas} 份，期望 {expect_cassettes} 份"
+                    f"（录像住 `output/llm_cassettes/`，按用户口径须随**同一个** zip 交付）")
+            if n_cas == 0:
+                problems.append(
+                    "包内没有任何 output/llm_cassettes/*.json -> 无外网的机器上 "
+                    "`explore --ai --llm-cassette` 直接跑不了（录像漏打了）")
 
         # elementMap（2026-10-13 第 ④ 条：它是交付生成物之一）—— **按参数检查**：
         #   `expect_element_map=None`（默认）跳过；否则要求恰好 N 份。
@@ -294,25 +323,28 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
     return problems
 
 
-# ---------- LLM 录像包：交付「两件套」的第二件（给连不上外网 LLM 的机器）----------
-# 2026-09-19 收编：原先它住在 ~/deliver_scripts/pack_cassettes.py（一个仓库外的独立脚本），
-# 结果是「录像包」这条交付形态没有任何判据、路径也容易漂（旧脚本里就残留着 build_html.py 的老路径）。
-# 现在与代码包同一个打包器管：代码包**不含**录像，录像单独一件。
-# [!] 2026-10-13：`output/` 不再是"整体不进包" —— elementMap 快照要随**代码包**交付
-#   （见 `collect_files` 里的 `_latest_element_map()`，只带最新 1 份）。
-#   但 `output/llm_cassettes/` **仍然只走录像包**（它就是"单独一件"的那一件），
-#   代码包夹带录像会被 `tests/特性1-混合链路/verify_offline_delivery.py` 判 leak。
+# ---------- LLM 录像：**随代码包一起交付 + 出厂前覆盖体检**（给连不上外网 LLM 的机器）----------
+# 2026-09-19 收编：原先录像由一个仓库外的独立脚本打（~/deliver_scripts/pack_cassettes.py），
+#   没有任何判据、路径也容易漂（旧脚本里就残留着 build_html.py 的老路径）。
+# [!] 2026-10-14 口径纠正（用户）：录像 `llm_cassettes` 本来就住在工程 `output/` 下，
+#   「整个工程打包」自然要把它带进**同一个** zip ——
+#   "也就是一个 zip，而不是分成 2 个 zip"。
+#   => 旧的「两件套（代码包 + 独立录像包）」**已废弃**，`pack_cassettes()` 整个删除；
+#      录像的收集在 `collect_files()` 末尾，用法说明由 `cassette_readme_text()` 生成、
+#      随包写进 `output/llm_cassettes/README.md`。
+#   => 覆盖体检 `cassette_coverage_problems()` **保留**，但改由 `main()` 在
+#      **打代码包时默认执行**（不再挂在 `--with-cassettes` 后面）：既然录像跟着走，
+#      就必须「逐个场景可用」，否则无外网的机器上那些场景直接跑不了。
 CASSETTE_SRC = REPO / "output" / "llm_cassettes"
-CASSETTE_HELPER = REPO / "build_tools" / "offline_explore_chain.py"
 CASSETTE_SCENARIO_DIR = REPO / "scenarios"
 CASSETTE_CHECK = REPO / "build_tools" / "check_cassettes.py"
 
 
 def cassette_coverage_problems(scenario_dir: Path | None = None,
                                cassette_dir: Path | None = None) -> list[str]:
-    """录像包**出厂前体检**：`scenarios/` 下每个场景都要有可用录像 -> 返回问题清单（空 = 通过）。
+    """录像**出厂前体检**：`scenarios/` 下每个场景都要有可用录像 -> 返回问题清单（空 = 通过）。
 
-    ★ 为什么必须拦（2026-09-22 实测）：录像包曾经「发出去之后才发现 5 个场景里只有 1 个有可用录像」
+    ★ 为什么必须拦（2026-09-22 实测）：曾经「发出去之后才发现 5 个场景里只有 1 个有可用录像」
     —— 包看着有内容（6 份录像），实际对另外 4 个场景毫无用处；无网机器上那些场景**直接跑不了**。
     打包环节以前**没有任何检查**会告诉你这件事。
 
@@ -340,25 +372,22 @@ def cassette_coverage_problems(scenario_dir: Path | None = None,
                 p.returncode, f"体检自身退出码 {p.returncode}")
     return [f"体检没跑成：{hint}"]
 
-CASSETTE_README = """# hybrid_gui_qa · LLM 录像包（在**连不上外网**的机器上跑 explore 用）
+# [!] 2026-10-14（用户口径）：录像**随代码包**交付 -> 用法说明直接放进包里的
+#   `output/llm_cassettes/README.md`。旧的「两件套 / 独立录像包」**已废弃**：
+#   "llm_cassettes 本来就是放在 output/ 目录下的，整个工程代码打包的时候就要一起打进去，
+#    也就是一个 zip，而不是分成 2 个 zip"
+CASSETTE_README = """# LLM 录像（离线回放用）
 
 生成时间：{ts} · 录像份数：{n} · 对应框架版本：V{ver}
 
 ## 这是什么
-`explore --ai` 每次问 LLM 的「prompt → 回答」原件。带上它们，**没有外网**的机器（工作电脑）
-也能跑**完整**的 AI 链路：`explore` 语义识别 → `generate` 生成用例脚本 → `run` 实测，
+`explore --ai` 每次问 LLM 的「prompt -> 回答」原件。带上它们，**没有外网**的机器也能跑
+**完整**的 AI 链路：`explore` 语义识别 -> `generate` 生成用例脚本 -> `run` 实测，
 而且**不需要 API key、全程不联网**。
 
-## 交付形态 = 两件套（都用上才完整）
-1. **代码包** `hybrid_gui_qa_V<版本>_<打包时刻，YYYYMMDDHHMM>.zip` —— 含回放引擎 `framework/features/f08_replay/llm_cassette_explore.py`
-   与一键脚本 `build_tools/offline_explore_chain.py`
-2. **本录像包** —— 含录像数据 `llm_cassettes/` + 一份用法说明
-
-## 最快上手（一条命令，含前置体检）
-1. 解开**代码包**，把本包里的 `llm_cassettes/` 整个目录放到仓库根的 `output/` 下
-   （`output/` 已在 .gitignore，不会被提交）
-2. 起被测 demo：`python -m demo.app`
-3. 跑：
+## 怎么用（录像就在本包的 `output/llm_cassettes/` 里，不需要另外找包）
+1. 起被测 demo：`python -m demo.app`
+2. 跑：
    ```
    python build_tools/offline_explore_chain.py --repo . --run
    ```
@@ -377,7 +406,7 @@ python -m framework.cli run --workers 1
 
 ## 三条铁律（不满足会「跑不起来」，报错会告诉你差在哪）
 1. **代码必须是含回放功能的版本**（CLI 里有 `--llm-cassette`；V7.7 起）。老版本会 exit 2 ——
-   录像包单独放进去没用，它只是「LLM 的回答」，**功能在代码里**。
+   录像只是「LLM 的回答」，**功能在代码里**。
 2. **demo 与场景文件必须与录制时同版本**。回放键包含：场景文案 · 页面清单（页名 + url，含端口）·
    每个控件的骨架（semantic_name / role / name / label / placeholder / test_id / opens_new_tab / page）。
    -> 改过 demo 页面、场景文案、端口，或升级了改动**命名逻辑**的框架版本，都会不命中。
@@ -393,50 +422,15 @@ python -m framework.cli run --workers 1
 python -m framework.cli explore --ai --scenario-file <场景.yml> --llm-record --no-cases --no-verify
 python -m framework.cli explore --ai --scenario-dir scenarios/ --llm-record --no-cases --no-verify
 ```
-改 demo 页面 / 场景文案 / 命名逻辑后**必须重录并重打本包**。
+改 demo 页面 / 场景文案 / 命名逻辑后**必须重录**，然后重新打包。
 
-## 包内清单
-- `build_tools/offline_explore_chain.py` · 一条命令跑通「回放 → generate → run」+ 前置体检
-- `llm_cassettes_README.md` · 本文件
-- 录像 {n} 份（场景 → 键 → 录制时间 → 大小）：
+## 包内清单（录像 {n} 份：场景 -> 键 -> 录制时间 -> 大小）
 {listing}
 """
 
 
-def pack_cassettes(out_dir: Path, ver: str, *, allow_missing: bool = False,
-                   scenario_dir: Path | None = None,
-                   cassette_src: Path | None = None) -> Path | None:
-    """打**独立**录像包（代码包保持干净、不夹带运行时数据）→ 路径；无录像 / 体检不过则 None。
-
-    ★ 出厂闸门（2026-09-22）：打包**前**强制体检「scenarios/ 里每个场景都有可用录像」，
-    不通过就**不产包**（返回 None -> main 里 return 2）。实测教训：录像包曾「发出去之后才发现
-    5 个场景只有 1 个有可用录像」，那种包在无网机器上等于废包。
-    `allow_missing` = 显式调试逃生口（问题照样打出来，只降噪不掩盖）。
-    `scenario_dir` / `cassette_src` 只为判据可注入（默认走仓库真实路径）。
-    """
-    src = Path(cassette_src) if cassette_src else CASSETTE_SRC
-    files = sorted(src.glob("*.json"))
-    if not files:
-        print(f"[pack] [NG] --with-cassettes：录像目录为空（{src}）"
-              f" -> 先在**有外网**的机器上 `--llm-record` 录一份")
-        return None
-
-    problems = cassette_coverage_problems(scenario_dir, src)
-    if problems:
-        if not allow_missing:
-            print(f"[pack] [NG] 录像包体检不过（{len(problems)} 项）-> **不产包**"
-                  f"（无网机器上这些场景会直接跑不了）：")
-            for x in problems[:10]:
-                print(f"       - {x}")
-            print("[pack]    修法：python build_tools/record_cassettes.py --missing-only"
-                  "（需 key + 外网；录完再跑 build_tools/check_cassettes.py 复检）")
-            print("[pack]    调试逃生口（**交付永不用**）：--allow-missing-cassettes")
-            return None
-        print("[pack] [!][!] --allow-missing-cassettes 生效：体检问题只警告不拦（**永不允许用于交付**）")
-        for x in problems[:10]:
-            print(f"       - {x}")
-
-    zp = out_dir / f"hybrid_gui_qa_llm_cassettes_{date.today().strftime('%Y%m%d')}.zip"
+def cassette_readme_text(files: list[Path], ver: str) -> str:
+    """渲染录像用法说明（放进包内 `output/llm_cassettes/README.md`）。"""
     rows, total = [], 0
     for f in files:
         rec = {}
@@ -449,26 +443,14 @@ def pack_cassettes(out_dir: Path, ver: str, *, allow_missing: bool = False,
         total += size
         rows.append(f"- `{f.name}` · 录制于 {rec.get('created_at', '?')} · 模型 "
                     f"{rec.get('model', '?')} · 回答 {kinds or '?'} · {size} B")
-    readme = (CASSETTE_README.replace("{ts}", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-              .replace("{n}", str(len(files))).replace("{listing}", "\n".join(rows))
-              .replace("{ver}", ver))
-    with zipfile.ZipFile(zp, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in files:
-            z.write(f, f"llm_cassettes/{f.name}")
-        z.writestr("llm_cassettes_README.md", readme)
-        if CASSETTE_HELPER.exists():
-            z.write(CASSETTE_HELPER, f"build_tools/{CASSETTE_HELPER.name}")
-    with zipfile.ZipFile(zp) as z:            # 自检：别把「打出来是坏的」发出去
-        broken = z.testzip()
-        n_json = sum(1 for n in z.namelist() if n.endswith(".json"))
-    if broken or n_json != len(files):
-        zp.unlink(missing_ok=True)
-        print(f"[pack] [NG] 录像包自检失败 -> 已删除，不交付（坏条目={broken} · 录像数 {n_json}≠{len(files)}）")
-        return None
-    print(f"[pack] [OK] 录像包：{zp.name}（录像 {len(files)} 份 · 原始 {total} B · "
-          f"zip {zp.stat().st_size} B · 含一键脚本 {CASSETTE_HELPER.exists()}）")
-    print(f"[pack]    sha256 {hashlib.sha256(zp.read_bytes()).hexdigest()}")
-    return zp
+    return (CASSETTE_README.replace("{ts}", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            .replace("{n}", str(len(files))).replace("{listing}", "\n".join(rows))
+            .replace("{ver}", ver))
+
+
+# 2026-10-14：`pack_cassettes()`（独立录像包）**整体删除** —— 录像随代码包交付，
+#   交付形态只有一个 zip。录像覆盖体检 `cassette_coverage_problems()` 保留，
+#   并改由 `main()` 在**打代码包时**强制执行（体检不过就不产包）。
 
 
 def refresh_sums(out_dir: Path) -> None:
@@ -501,11 +483,9 @@ def main() -> int:
     ap.add_argument("--allow-broken-artifacts", action="store_true",
                     help="调试逃生口：跳过「坏产物」判据（交付永不用）")
     ap.add_argument("--with-cassettes", action="store_true",
-                    help="同时打**独立的 LLM 录像包**（给连不上外网 LLM 的机器；"
-                         "交付形态 = 代码包 + 录像包「两件套」）；"
-                         "★ 打包前强制体检「每个场景都有可用录像」，不过就不产包")
+                    help="[已废弃·留此只为不报错] 录像现在**总是**随代码包交付（一个 zip），无需该开关")
     ap.add_argument("--allow-missing-cassettes", action="store_true",
-                    help="调试逃生口：录像体检不过也照打录像包（**交付永不用**；"
+                    help="调试逃生口：录像覆盖体检不过也照打包（**交付永不用**；"
                          "正常情形请先跑 record_cassettes.py --missing-only 补齐再打）")
     a = ap.parse_args()
 
@@ -546,16 +526,41 @@ def main() -> int:
     print(f"[pack] 版本发布日期 {vdate}（版本号 {ver}）· 本次打包时刻 {stamp}")
 
     files = collect_files()
+    # 录像用法说明（包内 `output/llm_cassettes/README.md`）：录像随包交付，收包人得知道怎么用。
+    cas_files = sorted(CASSETTE_SRC.glob("*.json")) if CASSETTE_SRC.is_dir() else []
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as z:
         for p in files:
             z.write(p, arcname=f"{tag}/{p.relative_to(REPO).as_posix()}")
-    print(f"[pack] 已写出 {out_zip}（{len(files)} 个文件，{out_zip.stat().st_size / 1024:.0f} KB）")
+        if cas_files:
+            z.writestr(f"{tag}/output/llm_cassettes/README.md",
+                       cassette_readme_text(cas_files, ver))
+    print(f"[pack] 已写出 {out_zip}（{len(files)} 个仓库文件"
+          f" + 录像用法说明 {bool(cas_files)}，{out_zip.stat().st_size / 1024:.0f} KB）")
+
+    # 录像覆盖体检（2026-10-14 口径变更）：原先挂在 `--with-cassettes` 上；
+    #   现在录像**总是**随代码包交付 -> 体检改成**默认执行**：既然带你走，
+    #   就必须「逐个场景可用」，否则无外网的机器上那些场景直接跑不了。
+    #   报表口径复用 `cassette_coverage_problems()`（内部 subprocess 调同一份体检脚本）。
+    if not a.allow_missing_cassettes:
+        cov = cassette_coverage_problems()
+        if cov:
+            out_zip.unlink(missing_ok=True)      # 不留半成品包
+            print(f"[pack] [NG] 录像覆盖体检不过（{len(cov)} 项）→ 已删除该 zip，不产出交付物：")
+            for p in cov:
+                print(f"       - {p}")
+            print("[pack]    修法：python build_tools/record_cassettes.py --missing-only"
+                  "（需 key + 外网；录完跑 build_tools/check_cassettes.py 复检）")
+            return 2
+    else:
+        print("[pack] [!] --allow-missing-cassettes 生效：跳过录像覆盖体检（**永不允许用于交付**）")
 
     legacy: list[str] = []
     problems = check_zip(out_zip, expect_cases=repo_cases, require_notes_for=ver,
                          expect_auth_json=True,
                          # 2026-10-13 第 ④ 条：elementMap 随包交付，且只带最新 1 份
                          expect_element_map=1,
+                         # 2026-10-14 口径：录像也随**同一个** zip 交付（旧的「两件套」已废弃）
+                         expect_cassettes=(None if a.allow_missing_cassettes else len(cas_files)),
                          expect_notes=len(repo_notes) or None, legacy_notes=legacy)
     for n in legacy:          # 新包不该出现（出现=打包收集漏了当前布局）-> 大声打出来
         print(f"[pack] [!] {n}")
@@ -575,14 +580,15 @@ def main() -> int:
         return 2
 
     sha = hashlib.sha256(out_zip.read_bytes()).hexdigest()
-    print(f"[pack] [OK] 包内自检通过（cases={repo_cases} · 升级日志 {len(repo_notes)} 份 · "
-          f"未映射=0 · _goto 接线在 · 运行时证据不入包"
-          f"（log/ 不进包；output/ 下只放行 element_maps 最新 1 份））")
+    print(f"[pack] [OK] 包内自检通过（cases={repo_cases} · elementMap 最新 1 份 · "
+          f"录像 {len(cas_files)} 份 · 升级日志 {len(repo_notes)} 份 · 未映射=0 · _goto 接线在 · "
+          f"运行时证据不入包（log/ 不进包；output/ 下只放行 element_maps + llm_cassettes））")
     print(f"[pack] sha256 {sha}")
 
     if a.with_cassettes:
-        if pack_cassettes(out_dir, ver, allow_missing=a.allow_missing_cassettes) is None:
-            return 2                       # 显式要了却打不出来 / 体检不过 -> 别当成功
+        # 保留只是为了不报「无法识别的参数」——录像现在总是随包交付
+        print("[pack] [!] --with-cassettes 已废弃：录像现在**总是**随代码包交付（一个 zip，"
+              "不再有独立的录像包）")
     refresh_sums(out_dir)
     return 0
 

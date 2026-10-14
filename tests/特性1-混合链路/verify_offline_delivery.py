@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""交付形态判据：「两件套」必须打得出来、且各自内部完整（不碰仓库、不联网）。
+"""交付形态判据：**一个 zip** 必须打得出来、内容齐、且不夹带运行时证据（不碰仓库、不联网）。
 
-为什么单独一条：**没有外网的机器**要跑 AI 链路，靠的是「代码包 + 录像包」**两件套**
-（代码包里有回放引擎，录像包里有 LLM 的 prompt→回答 数据）。
-2026-09-19 之前录像包由一个**仓库外的独立脚本**打 -> 没有任何判据、交付形态全靠人记；
+为什么单独一条：**没有外网的机器**要跑 AI 链路，靠的是包里的两样东西 ——
+回放引擎（`framework/features/f08_replay/llm_cassette_explore.py`）
++ 录像数据（`output/llm_cassettes/*.json` 的「prompt -> 回答」原件）。
+2026-09-19 之前录像由一个**仓库外的独立脚本**打 -> 没有任何判据、交付形态全靠人记；
 实测后果：把新代码包单独发给团队，对方**根本跑不起来**（缺录像数据），而没人会发现。
 
+[!] 2026-10-14 口径纠正（用户）：录像本来就住在工程 `output/` 下，
+    「整个工程打包」自然要把它带进**同一个** zip ——
+    旧的「两件套（代码包 + 独立录像包）」**已废弃**，此处顺带**反向拦截**它复活。
+
 判据（每条都在 /tmp 里做，仓库零副作用）：
-1. 代码包能打出且包内自检通过，并且**不含录像**（2026-10-13 起 `output/` 只放行
-   `element_maps/` **最新 1 份** —— elementMap 是交付生成物之一；其余运行时证据
-   （traces / verify / archived_* / *_shots）仍不进交付物，录像走第 2 条的录像包）
-2. 录像包能打出，且含：录像 `llm_cassettes/*.json` + 用法说明 + 一键脚本 `build_tools/offline_explore_chain.py`
-3. 录像包的用法说明里必须写清「端点指黑洞 127.0.0.1:9」（可证伪性：证明真的没联网）
-4. `SHA256SUMS.txt` 与目录里**现存包**逐个 sha256 一致（清单不许与事实脱节）
+1. 打包能出且退出码 0，产出**恰好一个** `hybrid_gui_qa_V*.zip`，
+   且**没有**第二个 `*llm_cassettes_*.zip`（防「两件套」偷偷回来）
+2. 包内自检通过、zip 完整（testzip），含回放引擎 + 一键脚本 `build_tools/offline_explore_chain.py`
+3. **含录像**：`output/llm_cassettes/*.json` 份数与本机一致
+4. 包内 `output/llm_cassettes/README.md` 用法说明里写明「端点指黑洞 127.0.0.1:9」
+   （可证伪性：证明离线回放真的没联网）
+5. `output/` 下只放行 `element_maps/`（最新 1 份）与 `llm_cassettes/`；
+   `log/` 与其它运行时证据（traces / verify / archived_* / *_shots）不得进包
+6. `SHA256SUMS.txt` 与目录里**现存包**逐个 sha256 一致（清单不许与事实脱节）
 
 跑法： python tests/特性1-混合链路/verify_offline_delivery.py
       python -m pytest tests/特性1-混合链路/verify_offline_delivery.py -q
@@ -33,6 +41,8 @@ BASE = Path(__file__).resolve().parent.parent.parent
 PY = sys.executable
 OK, FAIL, USAGE, SKIP = 0, 1, 2, 3
 
+README_REL = "output/llm_cassettes/README.md"
+
 
 def force_stdio():
     for s in (sys.stdout, sys.stderr):
@@ -45,7 +55,7 @@ def force_stdio():
 def main() -> int:
     force_stdio()
     print("=" * 64)
-    print("  交付形态判据 · 离线链路「两件套」（代码包 + 录像包）")
+    print("  交付形态判据 · 离线链路（**一个 zip**：代码 + 回放引擎 + 录像）")
     print(f"  仓库: {BASE}")
     print("=" * 64)
     if not (BASE / "build_tools" / "pack_release.py").exists():
@@ -61,7 +71,8 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="verify_offline_delivery_"))
     bad: list[str] = []
     try:
-        r = subprocess.run([PY, "build_tools/pack_release.py", "--out", str(tmp), "--with-cassettes"],
+        # [!] 不再传 `--with-cassettes`：录像**总是**随代码包交付（那个开关已废弃）
+        r = subprocess.run([PY, "build_tools/pack_release.py", "--out", str(tmp)],
                            cwd=str(BASE), capture_output=True, text=True,
                            encoding="utf-8", errors="replace")
         out = (r.stdout or "") + (r.stderr or "")
@@ -69,46 +80,49 @@ def main() -> int:
             print(f"  [NG] 打包失败（exit={r.returncode}）：{out[-500:]}")
             return FAIL
 
-        code_zips = [p for p in tmp.glob("hybrid_gui_qa_V*.zip")]
-        cas_zips = [p for p in tmp.glob("*llm_cassettes_*.zip")]
-        print(f"  {'[OK]' if code_zips else '[NG]'} (1) 代码包已产出：{[p.name for p in code_zips]}")
-        print(f"  {'[OK]' if cas_zips else '[NG]'} (1) 录像包已产出：{[p.name for p in cas_zips]}")
-        if not (code_zips and cas_zips):
-            bad.append("两件套没齐")
+        code_zips = sorted(tmp.glob("hybrid_gui_qa_V*.zip"))
+        cas_zips = sorted(tmp.glob("*llm_cassettes_*.zip"))
+        print(f"  {'[OK]' if code_zips else '[NG]'} (1) 主包已产出：{[p.name for p in code_zips]}")
+        print(f"  {'[OK]' if not cas_zips else '[NG]'} (1) **没有**第二个录像包"
+              f"（交付只有一个 zip）：{[p.name for p in cas_zips]}")
+        if not code_zips:
+            bad.append("主包没打出来")
+        if cas_zips:
+            bad.append("又出现了独立的录像包（两件套复活）")
 
         if code_zips:
             with zipfile.ZipFile(code_zips[0]) as z:
                 names = z.namelist()
                 broken = z.testzip()
-            leaks = [n for n in names if "llm_cassettes/" in n]
-            has_engine = any(n.endswith("framework/features/f08_replay/llm_cassette_explore.py") for n in names)
+                # [!] 包内路径带 tag 前缀（`hybrid_gui_qa_V…/output/llm_cassettes/README.md`），
+                #     按**后缀**找 —— 精确名匹配只能命中不带前缀的形态（会把自己判成 NG）。
+                _rm = next((n for n in names if n.endswith("/" + README_REL)), None)
+                readme = z.read(_rm).decode("utf-8", "replace") if _rm else ""
+            has_engine = any(n.endswith("framework/features/f08_replay/llm_cassette_explore.py")
+                             for n in names)
             has_helper = any(n.endswith("build_tools/offline_explore_chain.py") for n in names)
-            print(f"  {'[OK]' if not broken else '[NG]'} (2) 代码包 zip 完整（testzip = {broken}）")
-            print(f"  {'[OK]' if has_engine else '[NG]'} (2) 代码包含回放引擎 framework/features/f08_replay/llm_cassette_explore.py")
-            print(f"  {'[OK]' if has_helper else '[NG]'} (2) 代码包含一键脚本 build_tools/offline_explore_chain.py")
-            print(f"  {'[OK]' if not leaks else '[NG]'} (3) 代码包**不含录像**（不夹带运行时数据）：命中 {len(leaks)} 条")
-            if broken or not has_engine or not has_helper or leaks:
-                bad.append("代码包内容不符")
-
-        if cas_zips:
-            with zipfile.ZipFile(cas_zips[0]) as z:
-                names = z.namelist()
-                broken = z.testzip()
-                readme = z.read("llm_cassettes_README.md").decode("utf-8") \
-                    if "llm_cassettes_README.md" in names else ""
-            n_rec = len([n for n in names if n.startswith("llm_cassettes/") and n.endswith(".json")])
-            print(f"  {'[OK]' if not broken else '[NG]'} (4) 录像包 zip 完整（testzip = {broken}）")
-            print(f"  {'[OK]' if n_rec == len(cass) else '[NG]'} (4) 录像份数：包内 {n_rec} / 本机 {len(cass)}")
-            print(f"  {'[OK]' if 'offline_explore_chain.py' in ' '.join(names) else '[NG]'} "
-                  f"(4) 录像包含一键脚本")
-            print(f"  {'[OK]' if '127.0.0.1:9' in readme else '[NG]'} (4) 用法说明写明「端点指黑洞」"
-                  f"（可证伪性）")
-            if broken or n_rec != len(cass) or "127.0.0.1:9" not in readme:
-                bad.append("录像包内容不符")
+            n_rec = len([n for n in names
+                         if "/output/llm_cassettes/" in n and n.endswith(".json")])
+            leaks = [n for n in names
+                     if "/output/" in n and "element_maps/" not in n and "llm_cassettes/" not in n]
+            logs = [n for n in names if "/log/" in n or n.endswith("/log")]
+            print(f"  {'[OK]' if not broken else '[NG]'} (2) zip 完整（testzip = {broken}）")
+            print(f"  {'[OK]' if has_engine else '[NG]'} (2) 含回放引擎 llm_cassette_explore.py")
+            print(f"  {'[OK]' if has_helper else '[NG]'} (2) 含一键脚本 offline_explore_chain.py")
+            print(f"  {'[OK]' if n_rec == len(cass) else '[NG]'} (3) 录像在**同一个**包里："
+                  f"包内 {n_rec} / 本机 {len(cass)}")
+            print(f"  {'[OK]' if '127.0.0.1:9' in readme else '[NG]'} (4) 录像用法说明写明"
+                  f"「端点指黑洞」（可证伪性）")
+            print(f"  {'[OK]' if not logs else '[NG]'} (5) 不含 log/：命中 {len(logs)} 条")
+            print(f"  {'[OK]' if not leaks else '[NG]'} (5) output/ 下只放行 element_maps + "
+                  f"llm_cassettes：越界 {len(leaks)} 条 {leaks[:3]}")
+            if (broken or not has_engine or not has_helper or n_rec != len(cass)
+                    or "127.0.0.1:9" not in readme or logs or leaks):
+                bad.append("包内容不符")
 
         sums = tmp / "SHA256SUMS.txt"
         if not sums.exists():
-            print("  [NG] (5) 没有生成 SHA256SUMS.txt")
+            print("  [NG] (6) 没有生成 SHA256SUMS.txt")
             bad.append("缺清单")
         else:
             listed = {}
@@ -118,7 +132,7 @@ def main() -> int:
                     listed[name.strip()] = h
             actual = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in tmp.glob("*.zip")}
             same = listed == actual
-            print(f"  {'[OK]' if same else '[NG]'} (5) 清单与现存包逐个 sha256 一致"
+            print(f"  {'[OK]' if same else '[NG]'} (6) 清单与现存包逐个 sha256 一致"
                   f"（清单 {len(listed)} 条 / 现存 {len(actual)} 个）")
             if not same:
                 bad.append("清单与包不一致")
@@ -129,7 +143,7 @@ def main() -> int:
     if bad:
         print(f"  [NG] 未通过：{' / '.join(bad)}")
         return FAIL
-    print("  [OK] 全部通过（代码包 + 录像包都能打、内容齐、清单与事实一致）")
+    print("  [OK] 全部通过（一个 zip：代码 + 回放引擎 + 录像 + 用法说明，清单与事实一致）")
     return OK
 
 

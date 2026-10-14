@@ -91,22 +91,29 @@ def ai_cases() -> set[str]:
 
 
 def ensure_cassettes() -> tuple[bool, str]:
-    """录像可用？没有就从录像包现取（解到 output/llm_cassettes）。"""
+    """录像可用？没有就从**交付包**（一个 zip）现取（解到 output/llm_cassettes）。
+
+    [!] 2026-10-14 口径变更：录像随**主包**交付 —— 从 `hybrid_gui_qa_V*.zip` 里取
+        `output/llm_cassettes/*.json`。旧的独立录像包（`*llm_cassettes*.zip`）已废弃，
+        不再找它（找它 = 让「两件套」悄悄复活）。
+    """
     if list(CASSETTE.glob("*.json")):
         return True, f"录像就在 {CASSETTE}（{len(list(CASSETTE.glob('*.json')))} 份）"
-    zips = sorted((REPO / "releases").glob("*cassettes*.zip"))
-    if zips:
-        CASSETTE.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(zips[-1]) as z:
-            n = 0
-            for name in z.namelist():
-                if name.startswith("llm_cassettes/") and name.endswith(".json"):
+    for zp in sorted((REPO / "releases").glob("hybrid_gui_qa_V*.zip"), reverse=True):
+        try:
+            with zipfile.ZipFile(zp) as z:
+                hits = [n for n in z.namelist()
+                        if "/output/llm_cassettes/" in n and n.endswith(".json")]
+                if not hits:
+                    continue
+                CASSETTE.mkdir(parents=True, exist_ok=True)
+                for name in hits:
                     (CASSETTE / Path(name).name).write_bytes(z.read(name))
-                    n += 1
-        if n:
-            return True, f"从 {zips[-1].name} 取了 {n} 份录像到 {CASSETTE}"
-    return False, (f"没有可用录像（{CASSETTE} 为空，且 releases/ 里没有 *cassettes*.zip）-> "
-                   f"无法验证场景1 离线链路（**不算通过**）")
+        except zipfile.BadZipFile:
+            continue
+        return True, f"从交付包 {zp.name} 取了 {len(hits)} 份录像到 {CASSETTE}"
+    return False, (f"没有可用录像（{CASSETTE} 为空，且 releases/ 里的交付包也没带）-> "
+                   f"无法验证离线链路（**不算通过**）")
 
 
 def run_chain(*, cassette: str | None = None, scenario: Path | None = None,

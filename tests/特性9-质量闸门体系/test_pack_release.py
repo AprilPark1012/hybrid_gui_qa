@@ -25,12 +25,16 @@ pack_release = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(pack_release)
 
 
-# ---------------- 录像包打包闸门（2026-09-22）----------------
-# 背景（实测）：录像包曾经「发出去之后才发现 5 个场景只有 1 个有可用录像」-> 无网机器上那 4 个场景
-# 必失败，而打包环节**没有任何检查**会告诉你这件事。下面三条把闸门钉住：
-#   (1) 接线必须在（源码级锁，防「改着改着把闸门绕过去了」）；
-#   (2) 覆盖不全 **必须拦**（不许产包）；
-#   (3) 显式逃生口必须有效（否则现场需要临时绕过时只能改代码 —— 那更糟）。
+# ---------------- 录像随包交付的闸门（2026-10-14 口径变更：只有一个 zip）----------------
+# 背景（实测）：录像曾经「发出去之后才发现 5 个场景只有 1 个有可用录像」-> 无网机器上那 4 个场景
+# 必失败，而打包环节**没有任何检查**会告诉你这件事。
+# [!] 2026-10-14（用户口径纠正）：`llm_cassettes` 本来就住在工程 `output/` 下，
+#   「整个工程打包」自然要把它带进**同一个** zip —— 旧的「两件套 / 独立录像包」**已废弃**。
+#   闸门因此从「打录像包前体检」改成「**打代码包时默认体检**」。下面钉四件事：
+#   (1) 接线必须在，且**不能藏在 --with-cassettes 后面**（源码级锁）；
+#   (2) 覆盖不全 **必须拦**（不留半成品包）；
+#   (3) 显式逃生口必须有效（否则现场要临时绕过时只能改代码 —— 那更糟）；
+#   (4) 录像**必须真的在包里**（按份数核对，而不是「看着像打进去了」）。
 
 def _make_cassette_json(name: str, scenario_line: str) -> dict:
     return {
@@ -42,52 +46,85 @@ def _make_cassette_json(name: str, scenario_line: str) -> dict:
     }
 
 
-def test_cassette_pack_gate_is_wired():
-    """源码级接线锁：打包录像包前必须过体检，且复用同一份口径 + 留了显式逃生口。"""
+def test_cassette_gate_is_wired_into_default_pack():
+    """源码级接线锁：**默认**打包路径就要过录像体检（不复用一份口径 = 迟早漂）。"""
     src = (REPO / "build_tools" / "pack_release.py").read_text(encoding="utf-8")
-    assert "cassette_coverage_problems" in src, "录像包打包没接体检 -> 坏包照样出厂"
+    assert "cassette_coverage_problems()" in src, "默认打包没接录像体检 -> 坏包照样出厂"
     assert "check_cassettes.py" in src, "体检必须复用同一份口径（build_tools/check_cassettes.py）"
     assert "--allow-missing-cassettes" in src, "缺逃生口 -> 需要临时绕过时只能改代码"
+    # 反证：体检不能再躲在 `if a.with_cassettes:` 后面（那就是「只有显式要才查」）
+    tail = src.split("if a.with_cassettes:", 1)[-1]
+    assert "cassette_coverage_problems" not in tail, (
+        "录像体检又躲回 --with-cassettes 后面了 -> 默认打包不做检查（交付可能带坏录像）")
+    # 独立录像包机制应已删除（交付只有一个 zip）
+    assert "def pack_cassettes(" not in src, "独立的录像包机制应已删除"
 
 
-def test_cassette_pack_blocked_when_coverage_incomplete(tmp_path):
-    """★ 行为判据：录像目录**有文件**、但 scenarios/ 里的场景没有对应录像 -> **不许产包**。
+def _cov_dirs(tmp_path, *, covered: bool):
+    """造一对 (scenarios, cassettes) 目录 —— 可控「场景有没有被录像覆盖」。"""
+    cass = tmp_path / "cass"
+    cass.mkdir()
+    scen = tmp_path / "scen"
+    scen.mkdir()
+    (scen / "a.yml").write_text("scenario: 现在这个场景\n", encoding="utf-8")
+    line = "现在这个场景" if covered else "某个早就改过的老场景（录像里根本没有）"
+    rec = _make_cassette_json("deadbeef00000000.json", line)
+    (cass / "deadbeef00000000.json").write_text(
+        json.dumps(rec, ensure_ascii=False), encoding="utf-8")
+    return scen, cass
 
-    （这是最容易被漏掉的形态：「有录像」不等于「场景被覆盖」——包看着有内容，实际是坏的。）
+
+def test_cassette_coverage_reports_uncovered_scenario(tmp_path):
+    """★ 行为：录像目录**有文件**、但场景没被覆盖 -> 必须报问题。
+
+    这是最容易被漏掉的形态：「有录像」不等于「场景被覆盖」——
+    包看着有内容，到无网机器上那些场景**直接跑不了**。
     """
-    cass = tmp_path / "cass"
-    cass.mkdir()
-    rec = _make_cassette_json("deadbeef00000000.json", "某个早就改过的老场景")
-    (cass / "deadbeef00000000.json").write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
-    scen = tmp_path / "scen"
-    scen.mkdir()
-    (scen / "a.yml").write_text("scenario: 现在这个场景（录像里根本没有）\n", encoding="utf-8")
-    out = tmp_path / "out"
-    out.mkdir()
-
-    got = pack_release.pack_cassettes(out, "9.9", scenario_dir=scen, cassette_src=cass)
-
-    assert got is None, "覆盖不全却打出了录像包 -> 闸门没生效（无网机器上那些场景会直接跑不了）"
-    assert not list(out.glob("*.zip")), f"闸门拦下后不该留下包：{list(out.glob('*.zip'))}"
+    scen, cass = _cov_dirs(tmp_path, covered=False)
+    problems = pack_release.cassette_coverage_problems(scen, cass)
+    assert problems, "覆盖不全却没报问题 -> 坏包会照样出厂"
 
 
-def test_cassette_pack_escape_hatch_still_produces_package(tmp_path):
-    """负向自证：显式给逃生口时**允许**产包 —— 逃生口必须有效（否则会被改代码绕过）。"""
-    cass = tmp_path / "cass"
-    cass.mkdir()
-    rec = _make_cassette_json("deadbeef00000000.json", "某个早就改过的老场景")
-    (cass / "deadbeef00000000.json").write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
-    scen = tmp_path / "scen"
-    scen.mkdir()
-    (scen / "a.yml").write_text("scenario: 现在这个场景（录像里根本没有）\n", encoding="utf-8")
-    out = tmp_path / "out"
-    out.mkdir()
+def test_cassette_coverage_passes_when_covered(tmp_path):
+    """反向自证：覆盖完整时必须**零问题**（闸门误拦 = 人就会去绕过它）。"""
+    scen, cass = _cov_dirs(tmp_path, covered=True)
+    problems = pack_release.cassette_coverage_problems(scen, cass)
+    assert problems == [], f"覆盖完整却报问题（误拦）：{problems}"
 
-    got = pack_release.pack_cassettes(out, "9.9", scenario_dir=scen, cassette_src=cass,
-                                      allow_missing=True)
 
-    assert got is not None and got.exists(), "给了逃生口却没产包 -> 逃生口失效"
-    assert got.parent == out
+def test_pack_blocks_when_coverage_incomplete(tmp_path, monkeypatch):
+    """★ 端到端接线：覆盖不全时 `main()` 必须 exit 2，且**不留半成品包**。
+
+    用 monkeypatch 把「收集哪些文件 / 包内自检」换成最小值 —— 本条要验的是
+    **录像闸门在默认打包路径上真的会拦**，不是整个工程打包能不能过。
+    """
+    monkeypatch.setattr(pack_release, "cassette_coverage_problems",
+                        lambda *a, **k: ["[NG] 场景 a.yml 缺可用录像"])
+    monkeypatch.setattr(pack_release, "collect_files", lambda: [REPO / "README.md"])
+    monkeypatch.setattr(pack_release, "check_zip", lambda *a, **k: [])
+    monkeypatch.setattr(sys, "argv", ["pack_release.py", "--out", str(tmp_path)])
+
+    rc = pack_release.main()
+
+    assert rc == 2, f"覆盖不全却没拦住（rc={rc}）-> 坏包会出厂"
+    assert not list(tmp_path.glob("*.zip")), \
+        f"拦下后不该留下半成品包：{[p.name for p in tmp_path.glob('*.zip')]}"
+
+
+def test_pack_escape_hatch_allows_incomplete_coverage(tmp_path, monkeypatch):
+    """负向自证：显式给逃生口时必须**放过**（逃生口失效 = 现场只能改代码绕过，那更糟）。"""
+    monkeypatch.setattr(pack_release, "cassette_coverage_problems",
+                        lambda *a, **k: ["[NG] 场景 a.yml 缺可用录像"])
+    monkeypatch.setattr(pack_release, "collect_files", lambda: [REPO / "README.md"])
+    monkeypatch.setattr(pack_release, "check_zip", lambda *a, **k: [])
+    monkeypatch.setattr(sys, "argv", ["pack_release.py", "--out", str(tmp_path),
+                                      "--allow-missing-cassettes"])
+
+    rc = pack_release.main()
+
+    assert rc == 0, f"给了逃生口却没放过（rc={rc}）"
+    assert list(tmp_path.glob("*.zip")), "逃生口生效却没产包"
+
 
 GOOD_TESTS = '''"""生成物（正例）。"""
 def test_ok(page, ctx):
@@ -226,48 +263,52 @@ def test_case_count_mismatch_is_caught(tmp_path):
     assert any("cases/**/*.json 数量" in p or "没有任何 cases" in p for p in problems), problems
 
 
-def test_cassette_pack_contains_recordings_readme_and_helper(tmp_path, monkeypatch):
-    """★ 交付「两件套」的第二件：录像包必须含 录像 + 用法说明 + 一键脚本。
+def test_cassette_readme_text_carries_listing_and_falsifiability(tmp_path):
+    """★ 包内用法说明：收包人得知道「这是什么 / 怎么用 / 怎么证明没联网」。
 
-    背景（2026-09-19）：此前录像包由一个**仓库外的独立脚本**打（~/deliver_scripts/pack_cassettes.py），
-    没有任何判据、路径还漂了（里面残留 build_html.py 的老路径）-> 收进打包器并钉住内容。
+    为什么留这份 README：录像现在是**随包交付**的一份数据，光有 json 说不清用途；
+    说明里必须写清「端点指黑洞 127.0.0.1:9」——那是**可证伪**的（证明真没联网）。
     """
     src = tmp_path / "llm_cassettes"
     src.mkdir()
     (src / "abc123.json").write_text(json.dumps(
         {"created_at": "2026-09-18T13:05:21+08:00", "model": "deepseek-chat",
          "responses": [{"kind": "plan"}]}), encoding="utf-8")
-    helper = tmp_path / "offline_explore_chain.py"
-    helper.write_text("# helper\n", encoding="utf-8")
-    monkeypatch.setattr(pack_release, "CASSETTE_SRC", src)
-    monkeypatch.setattr(pack_release, "CASSETTE_HELPER", helper)
-    out = tmp_path / "out"
-    out.mkdir()
 
-    # 本条只测「包内形态」（readme / 一键脚本 / 录像份数）-> 用逃生口跳过**覆盖体检**：
-    # tmp 里的假录像本就不对应任何真实场景，走闸门必然被拦。覆盖闸门由
-    # test_cassette_pack_gate_is_wired / test_cassette_pack_blocked_when_coverage_incomplete 管。
-    zp = pack_release.pack_cassettes(out, "9.9", allow_missing=True)
-    assert zp is not None and zp.exists()
-    with zipfile.ZipFile(zp) as z:
-        names = z.namelist()
-        readme = z.read("llm_cassettes_README.md").decode("utf-8")
-    assert "llm_cassettes/abc123.json" in names, names
-    assert "llm_cassettes_README.md" in names, names
-    assert "build_tools/offline_explore_chain.py" in names, names
-    assert "V9.9" in readme and "abc123.json" in readme, "用法说明里要有版本与录像清单"
-    assert "127.0.0.1:9" in readme, "必须写清「端点指黑洞」这条可证伪性"
+    text = pack_release.cassette_readme_text(sorted(src.glob("*.json")), "9.9")
+
+    assert "V9.9" in text and "abc123.json" in text, "用法说明里要有版本与录像清单"
+    assert "127.0.0.1:9" in text, "必须写清「端点指黑洞」这条可证伪性"
+    assert "output/llm_cassettes/" in text, "要说清录像就在本包哪个位置（收包人不用找第二个包）"
+    assert "两件套" not in text, "说明里不该再出现已废弃的「两件套」说法"
 
 
-def test_cassette_pack_refuses_when_no_recordings(tmp_path, monkeypatch):
-    """★ 负向：没有录像时必须**打不出包**（返回 None），绝不产出一个空包糊过去。"""
-    empty = tmp_path / "empty"
-    empty.mkdir()
-    monkeypatch.setattr(pack_release, "CASSETTE_SRC", empty)
-    out = tmp_path / "out"
-    out.mkdir()
-    assert pack_release.pack_cassettes(out, "9.9") is None
-    assert not list(out.glob("*.zip")), "不许留下空包"
+def test_zip_check_catches_missing_or_wrong_cassette_count(tmp_path):
+    """★ 负向：录像**必须真的在包里** —— 按份数核对，不靠「看着像打进去了」。
+
+    背景：录像漏打时，无外网的机器上 `explore --ai --llm-cassette` 直接跑不了，
+    而包本身「看着是完整的」—— 正是那种发出去才发现的坏包。
+    """
+    zp = tmp_path / "x.zip"
+    with zipfile.ZipFile(zp, "w") as z:
+        z.writestr("tag/README.md", "hi")
+
+    none_at_all = pack_release.check_zip(zp, expect_cassettes=1)
+    assert any("没有任何 output/llm_cassettes" in p for p in none_at_all), none_at_all
+
+    with zipfile.ZipFile(zp, "a") as z:
+        z.writestr("tag/output/llm_cassettes/a.json", "{}")
+    # [!] 只滤**录像类**问题：这个最小 zip 本来就会缺一堆必需项（那不在本条射程内），
+    #     拿全部问题判「误拦」会自己绊自己。
+    cas_problems = [p for p in pack_release.check_zip(zp, expect_cassettes=1)
+                    if "llm_cassettes" in p]
+    assert cas_problems == [], f"有 1 份却报录像问题（误拦）：{cas_problems}"
+
+    wrong = [p for p in pack_release.check_zip(zp, expect_cassettes=2) if "期望 2 份" in p]
+    assert wrong, "份数不对却没报"
+
+    # 默认不传 -> 不查（最小包构造的判据只塞几个文件，不该被录像要求误报一片）
+    assert not [p for p in pack_release.check_zip(zp) if "llm_cassettes" in p]
 
 
 def test_refresh_sums_lists_existing_zips_and_keeps_ledger(tmp_path):
@@ -309,13 +350,19 @@ def test_collect_files_keeps_sources_and_drops_runtime_cruft():
                  "scripts/generated", "scripts/generated/index.json", "demo/app.py",
                  "tests/特性9-质量闸门体系/test_artifacts_health.py", "tests/特性9-质量闸门体系/verify_html_sync.py", "cases", "scenarios"):
         assert any(r == must or r.startswith(must + "/") for r in rel), f"漏了 {must}"
-    # 2026-10-13（AprilPark1012第 ④ 条）：`output/` 只放行 element_maps（交付生成物之一）；
-    # log/ 与其它 output 子目录（traces / verify / archived_* / *_shots）仍不得进包。
+    # 2026-10-13（用户第 ④ 条）：`output/` 放行 element_maps（交付生成物之一）。
+    # 2026-10-14（用户口径纠正）：`output/llm_cassettes/` **也要放行** ——
+    #   它本就在工程 output/ 下，整个工程打包自然带进**同一个** zip（旧的「两件套」已废弃）。
+    #   log/ 与其它 output 子目录（traces / verify / archived_* / *_shots）仍不得进包。
     bad = [r for r in rel
            if r.startswith(("log/", ".venv/"))
-           or (r.startswith("output/") and not r.startswith("output/element_maps/"))
+           or (r.startswith("output/")
+               and not r.startswith(("output/element_maps/", "output/llm_cassettes/")))
            or "__pycache__" in r or r.endswith((".zip", ".tar.gz", ".env"))]
     assert not bad, f"包里有不该发的内容：{bad[:5]}"
+    # 录像必须在包里（按用户口径与代码包同一个 zip）
+    cas = [r for r in rel if r.startswith("output/llm_cassettes/") and r.endswith(".json")]
+    assert cas, "录像（output/llm_cassettes/*.json）没被收进包 -> 无网机器上回放直接跑不了"
     # elementMap 必须随包交付，且**只带最新 1 份**（42 份历史快照会让包从 ~2M 涨到 20M+）
     emaps = [r for r in rel if r.startswith("output/element_maps/")]
     assert len(emaps) == 1, f"element_maps 应只收最新 1 份，实收 {len(emaps)} 份：{emaps[:3]}"

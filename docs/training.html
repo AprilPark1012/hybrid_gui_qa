@@ -431,7 +431,7 @@
 │   ├── _runner/                     runner:run_verifications.py(二类统一入口,Windows 通用) · run_acceptance.py(四项验收一条命令) · rerecord_cassettes.py · fixtures/
 │   └── conftest.py                  pytest 全局夹具(把 _helpers 补进 sys.path)
 ├── <b>build_tools/</b>                开发期工具(不属于被测应用,也不进运行链)
-│   ├── pack_release.py              交付打包器:组装 zip + 自检包内产物(不达标不出包；--with-cassettes 另打录像包)
+│   ├── pack_release.py              交付打包器:组装**一个** zip + 自检包内产物(不达标不出包；录像随包走 + 打包前体检覆盖)
 │   ├── build_html.py                生成 docs/training.html 培训页(**版本号单一来源**)
 │   ├── check_cassettes.py           录像体检(零成本:哪些场景没有可用录像 —— 不联网/不要 key)
 │   ├── record_cassettes.py          批量重录录像(需 key + 外网,发版前跑一次)
@@ -1659,7 +1659,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>交付包与文档同步：<span class="code-inline">build_tools/pack_release.py</span> 打包（内容完整、只留一份 README）、<span class="code-inline">build_tools/build_html.py</span> 是<b>版本号单一来源</b>且生成<b>可复现</b>（换哈希种子逐字节一致）、<span class="code-inline">build_tools/build_feature_map.py</span> 渲染特性映射文档。判据把「文档与代码一致」钉成红。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">build_html.build()</span> -> docs/training.html；<span class="code-inline">build_feature_map.render()</span> -> docs/feature_map.md；<span class="code-inline">verify_html_sync.py</span> 校验可复现 + 与代码一致。</p>
       <div class="flow2"><span class="fnode">pack_release.py</span><span class="farrow">-></span><span class="fnode">build_html.build()（版本单一来源）</span><span class="farrow">-></span><span class="fnode">build_feature_map.render()</span><span class="farrow">-></span><span class="fnode">verify_html_sync.py</span><span class="farrow">-></span><span class="fnode g">可复现 + 与代码同步</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_pack_release.py（19 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_pack_release_requires_generated_dir.py（1 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_readme_structure.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_docs_sync.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_build_html_hl.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_html_sync.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_pack_release.py（21 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_pack_release_requires_generated_dir.py（1 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_readme_structure.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_docs_sync.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_build_html_hl.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_html_sync.py</span></p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-9.5" data-sub="9.5"><span class="sno">9.5</span>保留与产物健康</h5>
@@ -2086,6 +2086,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         <li><b>[!] 这次修复差点白做 —— 一个必须记的坑</b>：最初只在「通用入口 <code>LLM_*</code>」那一支把客户端换成 <code>ChatOpenAICompatible</code>，<b>忘了 <code>DEEPSEEK_*</code> 那一支</b> —— 而 <b>出厂 <code>.env</code> 走的正是 <code>DEEPSEEK_*</code></b>（通用入口是新加的、默认没人配）。后果：手工构造客户端做实验 → 通过，看起来修好了；真链路走 <code>llm_from_env()</code> → 拿到上游裸 <code>ChatDeepSeek</code> → <b>兜底从未触发</b>。是 <code>llm-doctor</code> 把这件事喊出来的（它走的就是真链路的构造路径）。已把两支统一（同一客户端类），并新增判据 <code>test_fix_applies_to_default_deepseek_entry_too</code> —— 它钉的是「<b>修复有没有覆盖真实默认路径</b>」，而不是「那个类本身对不对」。通用教训：<b>实验里手工构造的对象 ≠ 真链路拿到的对象</b>，验证必须走真入口</li>
         <li>新增判据 <b>10.9「LLM 体检 + 思考档位」</b>（12 条）：旋钮<b>真的进请求体</b>（断言 <code>_request_kwargs()</code> 的<b>产出</b>而非「我们调了它」—— 上游改签名要能立刻红而不是静默失效）、不设时不发、与 thinking 合并、空值按没设、可发现；命令注册齐全（CMD_FLAGS / ENV_TO_FLAG / _CMD_FUNCS / main 分发 四处缺一不可）、不进浏览器预检、<b>不打印密钥</b>、无 key 时 exit 2 且给人话，并用<b>真起的假 OpenAI 端点</b>端到端验健康路径与「能用但打折」路径（不依赖外网）</li>
         <li>新增判据 <b>10.10「思考模式端点兼容」</b>（16 条）：专钉<b>兜底的边界</b>而非「能用」——特征识别必须<b>窄</b>（7 组正反样本；误吞 = 拿兜底盖真故障）、<b>穿透异常链</b>（上游把 APIStatusError 包成 ModelProviderError，只看外层会漏判）、降级<b>真发 <code>tool_choice=auto</code></b> 且第一次确实发的是指名函数（否则兜底是空转）、不丢 <code>reasoning_effort</code>、<b>只重试一次 + 记住端点</b>（第二次只发 1 个请求）、留痕不静默、非 tool_choice 的错照抛且<b>不写进端点缓存</b>、拿不到 tool_calls <b>如实抛错</b>、纯文本调用不被这层动到</li>
+        <li><b>交付形态归一：一个 zip</b>（用户口径纠正）—— 录像 <code>llm_cassettes</code> 本就住在工程 <code>output/</code> 下，「整个工程打包」自然要把它带进<b>同一个</b>包；旧的「两件套（代码包 + 独立录像包）」<b>已废弃</b>，独立打录像包的 <code>pack_cassettes()</code> 整段删除。录像覆盖体检从「挂在 <code>--with-cassettes</code> 后面」改成<b>打包时默认执行</b>（覆盖不全就不出包）；包内新增 <code>output/llm_cassettes/README.md</code> 用法说明；判据同步改成三条：<b>① 只有一个 zip ② 录像真在包里（按份数核对）③ 反向拦截两件套复活</b></li>
       </ul></div>
     </div>
     <div class="card cl">

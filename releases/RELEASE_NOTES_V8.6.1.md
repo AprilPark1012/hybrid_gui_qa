@@ -191,6 +191,35 @@ LLM**（一次端到端十几二十次）⇒ 等于每步都跑最贵的推理�
 > **实验里手工构造的对象 ≠ 真链路拿到的对象**。验证修复时必须走**真入口**
 > （这里是 `llm_from_env()`），否则验的是「那个类对不对」，而不是「线上的那条路通不通」。
 
+### ⑦ 交付形态归一：**一个 zip**（用户口径纠正）
+
+**旧设计（已废弃）**：交付「两件套」= 代码包 + **独立录像包**，录像专门用
+`pack_release.py --with-cassettes` 打第二件。
+
+**用户口径（2026-10-14）**：
+> 「这里的 `llm_cassettes` 本来就是放在 `output/` 目录下的，整个工程代码打包的时候就要
+>   一起打进去啊，也就是**一个 zip**，而不是分成 2 个 zip 啊」
+
+**改法**：
+1. `collect_files()` 把 `output/llm_cassettes/**` 收进**同一个**包（与 element_maps 并列）；
+2. **`pack_cassettes()` 整段删除** —— 不再有第二件；
+3. 录像覆盖体检 `cassette_coverage_problems()` **保留**，但从「挂在 `--with-cassettes` 后面」
+   改成 **`main()` 里默认执行**：既然录像跟着走，就必须「逐个场景可用」，覆盖不全**不出包**；
+   `--allow-missing-cassettes` 仍是显式逃生口。
+4. 包内新增 `output/llm_cassettes/README.md`（由 `cassette_readme_text()` 生成）——
+   收包人得知道这是什么、怎么跑、以及「端点指黑洞 `127.0.0.1:9`」这条**可证伪性**；
+5. `--with-cassettes` 保留为**废弃 no-op**（只打印提示）——避免旧命令报「无法识别的参数」。
+
+**判据同步改**（这就是「改机制必须查全消费方」）：
+| 判据 | 变化 |
+|---|---|
+| `tests/特性9-质量闸门体系/test_pack_release.py` | 删掉 4 条 `pack_cassettes` 判据；新增：**默认打包路径**必须接体检（源码锁 + 反证不藏在 flag 后）、覆盖体检正反例、`main()` 覆盖不全时 exit 2 **且不留半成品包**、逃生口有效、`check_zip(expect_cassettes=N)` 抓漏打 |
+| `tests/特性1-混合链路/verify_offline_delivery.py` | 从「两件套各自完整」改成「**只有一个 zip**、录像×份数在包内、无 `log/`、`output/` 只放行 element_maps + llm_cassettes」，并**反向拦截**独立录像包复活 |
+| `tests/特性8-离线回放/verify_e2e_scenario3_replay.py` | 「没有录像就从录像包现取」改成**从交付包**（`hybrid_gui_qa_V*.zip`）里取 `output/llm_cassettes/*.json` |
+| `build_tools/offline_explore_chain.py` · 培训页 · `run_acceptance.py` | 话术里「录像包 / 两件套」全部改成「录像随包一起发」 |
+
+---
+
 ## 改了什么
 
 | 文件 | 改动 |

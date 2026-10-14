@@ -32,7 +32,7 @@ AprilPark1012 2026-09-22 刷新的 R7 四条：
     python tests/_runner/run_acceptance.py --min-mem 400   # 内存阈值（透传给二类入口）
 
 场景1 的**在线真跑**（真调 DeepSeek）不进本入口的日常段：它要 key + 外网且 LLM 不稳定，按拍板只作
-**发版前手工一次**（结果写进发行说明）—— 那一次同时把录像重录 + 重打录像包（见 P15）。
+**发版前手工一次**（结果写进发行说明）—— 那一次同时把录像重录（重录后重新打包即可，录像随包走）。
 """
 from __future__ import annotations
 
