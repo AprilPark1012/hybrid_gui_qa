@@ -278,3 +278,108 @@ def test_planner_prompt_passes_the_opener_map():
     body = _fn_src(EXPLORER, "_build_planner_prompt")
     assert "_opener_name_map(" in body, "_build_planner_prompt 没建入口映射 -> 悬空引用刷新不了"
     assert body.count("_compact_item(") == 1, "控件清单有多处各自压缩 -> 两条路径会不同步"
+
+
+# ====================== (6) 跨页同名 id：入口名必须按**条目自己那页**解析（2026-10-16 真数据 bug）
+# 真值（一次真实探索的录像，507+ 条目）：`nu-avatar`（右上角头像）这个 DOM id **在每一个页面上都存在**
+# -> 旧的「单个 element_id 做键」的映射被每页那条同 id 条目**反复覆盖**，最后只剩「合并时最后写进去
+# 的那页」（发票列表页）-> 18 个带 requires_open 的条目**全部**拿到同一个错值「订@发票列表页」，
+# 而它们真该引用的是**自己那页**上的入口名 —— 清单里确实存在
+# `{"semantic_name": "超", "semantic_role": "button", "page": "合同列表页"}`（真入口 = 那个头像）。
+# 修法口径：映射键 = (element_id, page)；解析顺序 = (id, 条目自己那页) -> 同一 id 的任一页（降级）
+# -> 保留原值（不静默清空）。
+
+
+def test_opener_map_keys_by_id_and_page_so_same_id_can_coexist():
+    """(a) 同一 element_id 出现在两页 -> 两条**共存**，各自带自己那页的名字（旧实现只剩一条）。"""
+    names = EX._opener_name_map([
+        {"semantic_name": "入口甲@页A", "element_id": "op-1", "page": "页A"},
+        {"semantic_name": "入口甲@页B", "element_id": "op-1", "page": "页B"},
+    ])
+    assert len(names) == 2, (
+        f"同一个 id 在不同页上的名字被覆盖掉了 -> 又塌缩成一个值：{names}"
+        "（键必须是 (element_id, page) 二元组，不是单 element_id）")
+    assert names.get(("op-1", "页A")) == "入口甲@页A"
+    assert names.get(("op-1", "页B")) == "入口甲@页B"
+
+
+def test_compact_item_resolves_opener_on_the_items_own_page():
+    """(a) 钉住「跨页同名时必须选对页」：每个条目解析到的是**自己那页**的入口名。"""
+    names = EX._opener_name_map([
+        {"semantic_name": "入口甲@页A", "element_id": "op-1", "page": "页A"},
+        {"semantic_name": "入口甲@页B", "element_id": "op-1", "page": "页B"},
+    ])
+    a = EX._compact_item(_menu_item(page="页A", requires_open_id="op-1"), set(), names)
+    b = EX._compact_item(_menu_item(page="页B", requires_open_id="op-1"), set(), names)
+    assert (a[FIELD], b[FIELD]) == ("入口甲@页A", "入口甲@页B"), (
+        f"条目没按自己那页解析（页A -> {a[FIELD]!r}、页B -> {b[FIELD]!r}）—— 跨页串值就是这个形态")
+
+
+def test_compact_item_falls_back_to_any_page_and_never_blanks():
+    """(b) 自己那页查不到同 id 条目 -> 降级到任一页；连 id 都查不到 -> 保留原值。**不许报错/清空**。"""
+    names = EX._opener_name_map([
+        {"semantic_name": "入口甲@页A", "element_id": "op-1", "page": "页A"}])
+    c = EX._compact_item(_menu_item(page="清单里没有的页", requires_open_id="op-1"), set(), names)
+    assert c[FIELD] == "入口甲@页A", (
+        f"降级路径失效（拿到的不是同一 id 任一页的名字：{c[FIELD]!r}）—— 该页没有同 id 条目不许报错")
+    # 连 id 都查不到 -> 保留探测期原值（_menu_item 打的是「入口甲」）
+    c2 = EX._compact_item(_menu_item(page="页Z", requires_open_id="根本没这个 id"), set(), names)
+    assert c2[FIELD] == "入口甲", (
+        "解析不到时被静默清空了 -> AI 会直接点那个没展开的控件（运行期 element is not visible）")
+
+
+def test_real_world_18_items_do_not_collapse_to_one_wrong_page_name():
+    """(c) 复现现实场景：每页都有 `nu-avatar`（真入口在自己那页叫「超」）—— 18 条不再全塌缩。"""
+    opener_rows = [("合同列表页", "超"), ("订单列表页", "超@订单列表页"),
+                   ("发票列表页", "订@发票列表页"), ("客户列表页", "订@客户列表页")]
+    names = EX._opener_name_map(
+        [{"semantic_name": nm, "element_id": "nu-avatar", "page": pg} for pg, nm in opener_rows])
+    pgs = [pg for pg, _nm in opener_rows]
+    items = [_menu_item(name=f"菜单项{i}", page=pgs[i % len(pgs)], requires_open_id="nu-avatar")
+             for i in range(18)]                      # 真数据就是 18 个条目
+    got = [EX._compact_item(x, set(), names)[FIELD] for x in items]
+    assert set(got) == set(nm for _pg, nm in opener_rows), (
+        f"18 个跨页条目仍塌缩成同一个名字：{set(got)}（旧实现全部 = 「订@发票列表页」）")
+    # 关键一条：落在「合同列表页」上的条目必须拿到**真入口名「超」**，而不是别页那个错值
+    on_contract = [g for x, g in zip(items, got) if x["page"] == "合同列表页"]
+    assert on_contract and set(on_contract) == {"超"}, (
+        f"错页串值仍在：合同列表页的条目拿到了 {set(on_contract)}（真入口是那个头像「超」）")
+    # 负向自证：旧口径（单 element_id 做键）确实只会给出**一个**值 —— 证明这条判据抓得住本 bug。
+    legacy: dict = {}
+    for _pg, nm in opener_rows:
+        legacy["nu-avatar"] = nm                     # 旧实现：单键 -> 被每页反复覆盖
+    collapsed = {legacy.get("nu-avatar") for _ in items}
+    assert len(collapsed) == 1, "负向自证失败：旧口径本就该塌缩成一个值"
+    assert collapsed != set(got), "新旧口径结果相同 -> 这条判据抓不到本 bug（形同虚设）"
+
+
+def test_compact_item_keeps_page_scoped_legacy_key_readable():
+    """无页名字段的条目（单页路径/老数据）仍按 id 单键可读 —— 不能让跨页修法把单页路径弄坏。"""
+    names = EX._opener_name_map([{"semantic_name": "入口甲", "element_id": "op-1"}])
+    assert names.get("op-1") == "入口甲"
+    assert names.get(("op-1", "")) is None, "无页名条目退化后不该再出现 (id, '') 这种半吊子键"
+    c = EX._compact_item(_menu_item(page="", requires_open_id="op-1"), set(), names)
+    assert c[FIELD] == "入口甲"
+
+
+def test_recorded_run_real_names_no_longer_cross_pages():
+    """(c) **真数据形态**：录像里合并清单 537 条、每个页面上 nu-avatar 各有一条（真值名字如下）。
+
+    真值（`build scan_pages` 合并后每条同 id 条目的语义名，按页唯一化）：
+      nu-avatar@合同列表页='订@合同列表页'、订单列表页='订@订单列表页'、订单详情页='订@订单详情页'、
+      开票页='订@开票页'、发票列表页='订@发票列表页'；20 个 requires_open 条目**分布在这 5 页上**。
+    旧口径（单 id 键）实测：20 条**全部**解析成 '订@发票列表页'（= 最后写进字典的那页）——
+    合同列表页上的条目拿到的是发票列表页的名字，AI 会去点**别的页面**上的入口 -> 白跑一轮。
+    """
+    real = [("合同列表页", "订@合同列表页"), ("订单列表页", "订@订单列表页"),
+            ("订单详情页", "订@订单详情页"), ("开票页", "订@开票页"), ("发票列表页", "订@发票列表页")]
+    names = EX._opener_name_map(
+        [{"semantic_name": nm, "element_id": "nu-avatar", "page": pg} for pg, nm in real])
+    items = [_menu_item(name=f"切换为发票管理员@菜单{i}", page=pg, requires_open_id="nu-avatar")
+             for pg, _nm in real for i in range(4)]        # 真数据是每页 4 条、共 20 条
+    assert len(items) == 20
+    got_pairs = [(x["page"], EX._compact_item(x, set(), names)[FIELD]) for x in items]
+    assert set(got_pairs) == set(real), (
+        f"没有按各自页解析到真值名字：{sorted(set(got_pairs))}")
+    assert dict(got_pairs)["合同列表页"] != "订@发票列表页", (
+        "合同列表页上的条目仍被解析成发票列表页的入口名（旧实现 20 条全塌缩成这一个值）")

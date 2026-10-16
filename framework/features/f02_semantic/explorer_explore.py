@@ -2400,17 +2400,73 @@ def ambiguous_base_names(items: list[dict]) -> set[str]:
     return {k for k, n in seen.items() if n > 1}
 
 
-def _opener_name_map(items: list[dict]) -> dict[str, str]:
-    """`element_id -> semantic_name`：把「入口的 DOM id」映射到**最终清单里的权威名字**。
+def _opener_key_parts(key) -> tuple[str, str]:
+    """拆一个入口映射键 -> `(element_id, page)`。
+
+    键的形态是 `(element_id, page)` 二元组；**无页名字段**的条目（单页路径 / 老数据）退化成
+    单键 `element_id`，此处页名取空串（退化理由见 `_opener_name_map` 的注释）。
+    """
+    if isinstance(key, tuple):
+        return (str(key[0] or ""), str(key[1] or "") if len(key) > 1 else "")
+    return (str(key or ""), "")
+
+
+def _opener_name_map(items: list[dict]) -> dict:
+    """`(element_id, page) -> semantic_name`：把「入口的 DOM id」映射到**最终清单里的权威名字**。
 
     为什么需要（C2'）：`requires_open` 是探测期打上的（`expandable_probe.mark_requires_open`），
     而探测是**多轮 + 跨页**的，`_merge_items` 会在合并之后 `assign_semantic_names()` **重算一次命名**
     （同名冲突会让某个控件从裸名变成 `甲@页名`）-> 探测中途抓到的那个名字可能已经**悬空**。
     AI 只能引用清单里真实存在的名字，给一个悬空名字 = 白跑一轮（生成期被映射闸拦下）。
     -> 组装提示词时按**稳定 id**（DOM id）在最终清单里重新解析一次，拿不到就保留原值（不静默清空）。
+
+    ★键为什么必须是 **(element_id, page) 二元组**（2026-10-16 真数据定位的 bug，不是理论洁癖）：
+      入口 id（`nu-avatar` = 右上角头像）**在每一个页面上都存在**（全局导航控件）。
+      旧实现拿**单个 element_id** 当键 -> 每页那条同 id 条目把同一个 key **反复覆盖**，
+      最后只剩「合并时最后写进去的那页」（发票列表页）-> 全部 18 个 `requires_open` 条目
+      都被解析成「订@发票列表页」这个**页码错位**的名字，而它们真该引用的是**自己那页**上的「超」
+      （真值：清单里确实存在 `{"semantic_name": "超", ..., "page": "合同列表页"}`）。
+      键带上页名之后，同一个 id 在不同页上的名字才能**共存**，18 条各自解析到自己那页。
+    为什么无页名条目不写 `(id, "")` 而退化成单键：单页/老数据根本没有页维度，此时单键与
+      `(id, "")` 等价；退化后仍与本文件既有的「按 id 单键读」的调用点与判据兼容
+      （不必为一个空维度改一圈签名 —— 但不许**反过来**：有页名时必须带页名，否则又是本 bug）。
     """
-    return {str(it.get("element_id") or "").strip(): str(it.get("semantic_name") or "").strip()
-            for it in (items or []) if str(it.get("element_id") or "").strip()}
+    out: dict = {}
+    for it in (items or []):
+        oid = str(it.get("element_id") or "").strip()
+        if not oid:
+            continue
+        nm = str(it.get("semantic_name") or "").strip()
+        pg = str(it.get("page") or "").strip()
+        out[(oid, pg) if pg else oid] = nm
+    return out
+
+
+def _opener_name_of(opener_id, page, opener_names) -> str:
+    """解析某条目应引用的入口名 —— 三档，命中即返回（都不中给空串 = 调用方保留原值）。
+
+      (1) **(opener_id, 该条目自己所在页)** —— 正解：入口名是**分页的**，同一个 DOM id 在
+          每页上的语义名各不相同（唯一化会加 `@页名`）；必须用条目**自己那页**去取。
+      (2) 同一 id 的**任一页**             —— **降级路径**（见下面的警告）。
+      (3) 空串                              —— 交给调用方保留探测期原值（绝不静默清空）。
+
+    [!] 为什么 (2) 必须在注释里写明是**降级**：它正是本 bug 的旧行为 —— 当一个 DOM id 在每页
+        都存在时，「任取一页」等于**随机挑一页的名字**（实测 18 条全塌缩成发票列表页那个）。
+        只有「该条目自己那页确实没有这个 id 的条目」时才允许走到这里 —— 宁可给一个可能错页的
+        线索（生成期会被映射闸拦住并告警），也不静默清空（清空连告警都没有）。
+    """
+    oid = str(opener_id or "").strip()
+    if not oid or not opener_names:
+        return ""
+    pg = str(page or "").strip()
+    for k in ((oid, pg), oid):
+        v = opener_names.get(k)
+        if v:
+            return str(v)
+    # (2) 降级：同一 id 的任一页。按页名排序取第一条 -> 结果稳定，不随字典插入顺序抖动。
+    cands = sorted((_opener_key_parts(k)[1], v) for k, v in opener_names.items()
+                   if _opener_key_parts(k)[0] == oid and v)
+    return str(cands[0][1]) if cands else ""
 
 
 def _compact_item(it: dict, ambiguous: set[str] | None = None,
@@ -2461,8 +2517,14 @@ def _compact_item(it: dict, ambiguous: set[str] | None = None,
     if it.get("requires_open"):
         _ref = str(it.get("requires_open") or "")
         _oid = str(it.get("requires_open_id") or "").strip()
-        if opener_names and _oid and opener_names.get(_oid):
-            _ref = opener_names[_oid]
+        # 值优先用入口控件的语义名；探测中途抓到的名字可能已被合并重命名 -> 按「稳定 id + **本条目
+        # 自己所在页**」在最终清单里重新解析成最终名。
+        # ★跨页同名 id（`nu-avatar` 每页都有）必须**按自己那页**解析：旧实现只按 id 单键取，
+        #   取到的是被最后一页覆盖的那个错页名字（实测 18 条全塌缩成「订@发票列表页」）。
+        #   解析不到时 `_opener_name_of` 自己会降级/返回空串 -> 保留原值，绝不静默清空。
+        _nm = _opener_name_of(_oid, it.get("page"), opener_names)
+        if _nm:
+            _ref = _nm
         out["requires_open"] = _ref
     # C1：DOM 事实 —— **只写非默认值**（默认值靠"不写"隐含，口径句见 `_DOM_FACT_LEGEND`）。
     #   为什么不能写全：这段本就是 86.5K 转储的根因 —— `visible: true` / `disabled: false` /
