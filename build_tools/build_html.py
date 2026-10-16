@@ -61,11 +61,75 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.6.2"
+VERSION = "8.6.3"
 VERSION_DATE = "2026-10-16"
 CHANGELOG = [
     dict(
-        version="8.6.2", date="2026-10-16", tag="当前版本",
+        version="8.6.3", date="2026-10-16", tag="当前版本",
+        theme="<b>以代码实现为基准的大扫除</b> —— 删掉 <b>649 行</b>失效物，"
+              "并把两处「双实现」收敛成一个",
+        summary="V8.6 把手搓链路整条删掉之后，<b>它的残留就是失效物</b>："
+                "只剩「看着还在用、实际永远走不到」的死代码、死模块、死判据与死文档。<br>"
+                "本版按<b>「以代码实现为基准」</b>逐处核对，分两批清干净：<br>"
+                "· <b>第一批</b>：删真死代码 / 死模块（含一份已无调用方的 runner 第二实现），"
+                "同步修引用它们的文本与路径，并收敛失效判据<br>"
+                "· <b>第二批</b>：把自写的重复判定换成<b>唯一权威</b>，"
+                "文档口径与数字按代码真值改齐<br>"
+                "结果：<b>删掉 649 行</b>，全量判据 <b>1217 passed / 3 skipped / 0 failed</b>。",
+        changed=[
+            "<b>第一批 · 删死模块</b>：<code>f06_healer/runner_unused.py</code>（<b>149 行</b>）"
+            "—— 一份<b>已无任何调用方的 runner 第二实现</b>，手搓链路整体删除后再没人 import 它",
+            "<b>第一批 · 删死函数</b>：<code>mock_explore</code>（无 key 演示用的旧入口，"
+            "真 AI 链路已不依赖它）",
+            "<b>第一批 · 删死符号</b>：<code>_light_signal</code> 与 <code>_JS_COUNT</code>、"
+            "<code>ancestors_from_dom</code>、<code>_row_fields_of</code>、"
+            "<code>new_vars</code> / <code>seed_vars_from_input</code> / <code>new_case_ctx</code>、"
+            "<code>_headed_from</code>、<code>_verify_case</code>、<code>run_gates</code>"
+            "—— 逐个核对<b>零引用</b>后才删（不凭印象）",
+            "<b>第一批 · 同步修叁处引用</b>：删了实现、注释 / 路径还教人去用 = 另一种漂移"
+            "（把读者引向死路）-> 文本与路径引用一并改对",
+            "<b>第一批 · 收敛失效判据</b>：删<b>空转假绿 3 条</b> + 删<b>无测试使用的 fixture</b>"
+            " + 删<b>已删子命令的段落</b> —— 判据绿不等于判据有效；"
+            "盯守已删机制 / 恒过空转的判据，比没有更危险（它给假信心）",
+            "<b>第二批 · 收敛重复判定（唯一权威）</b>：<code>explorer_explore</code> 里"
+            "「<b>自己再写一份</b>判断端点支不支持指名 <code>tool_choice</code>」的启发式 "
+            "-> 改为复用唯一权威 "
+            "<code>framework/shared/llm_compat.py::rejects_named_tool_choice</code>。"
+            "同一件事两份实现 = 一处改两处验（改了一处、另一处静默漂移）",
+            "<b>第二批 · README 止损</b>：删失效段落；数字改代码真值"
+            "（判据 <b>1123 -> 1215</b>、子特性 <b>50 -> 54</b>）；去掉已废弃的"
+            "「<b>录像单独成包</b>」口径（现状是<b>单包即离线可跑</b>）；"
+            "修 <code>_helpers</code> / <code>_runner</code> 的自相矛盾段",
+            "<b>第二批 · 培训页文案改齐</b>：<code>build_html.py</code> 模板区 <b>28 处</b>"
+            "「两条链路 / 三种链路 / <code>cli probe</code> / 固化成手搓用例」的措辞"
+            "-> 按<b>唯一链路</b>口径重写",
+            "<b>第二批 · 规格同步</b>：<code>feature_spec.py</code> 子特性 1.3 "
+            "「交付两件套」-> 「<b>单包即离线可跑</b>」；特性 1 名「<b>混合链路</b>」-> "
+            "「<b>AI 链路与离线回放</b>」（名字取自代码现状，不再留着已删链路的词）",
+        ],
+        added=[
+            "<b>新增判据 <code>test_reasoning_effort_advice_consistency.py</code></b>"
+            "（<code>tests/特性10-CLI帮助契约/</code>）：钉「<b>思考档位</b>」口径在"
+            "<b>文档 / 提示 / 体检</b>之间一致 —— V8.6.2 刚把档位坑（只认 low/high/max、"
+            "大 prompt 上用 low 不返回 <code>tool_calls</code>）写进多处，"
+            "散落两处就会再次漂移",
+        ],
+        fixed=[
+            "<b>钉死「自写启发式绝迹」</b>：补 <b>4 条判据</b>（含<b>负向自证</b>）—— "
+            "把「自写 tool_choice 判定」这种坏输入喂给判据逻辑<b>必须判红</b>；"
+            "否则「收敛成唯一权威」只是口号，下次有人再抄一份没人拦",
+        ],
+        notes=[
+            "<b>本版唯一的口径（值得留下）</b>：<b>残留 = 失效物</b> —— V8.6 删了手搓链路之后，"
+            "凡只剩「看着还在用」的一律按死物清掉；判据是<b>「以代码实现为基准」逐处核对</b>，"
+            "不是凭印象。「实现已经不在、可它还被引用 / 还留在判据里」的每一处，都是漂移源",
+            "全量判据 <b>1217 passed / 3 skipped / 0 failed</b>；"
+            "3 skipped 是<b>仓库当前状态不满足</b>（缺探针快照 / element_maps 快照 / "
+            "带 <code>data:</code> 段的场景），属环境跳过、非失败",
+        ],
+    ),
+    dict(
+        version="8.6.2", date="2026-10-16", tag="上一版本",
         theme="<b>同一个框架，只换模型名就从「四轮不过」变成「一次过」</b> + 探索提示词瘦身 38%",
         summary="本版结论来自<b>同一场景、同一判据、各跑一整轮真 AI 链路</b>的实测对照：<br>"
                 "· 主链 <b><code>glm-5.3</code> + <code>LLM_REASONING_EFFORT=high</code></b> -> "
