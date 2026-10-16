@@ -1,6 +1,6 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.6.1**（2026-10-14）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
+> 当前版本 **V8.6.2**（2026-10-16）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
 > · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/) · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
 
 **一句话**：把 **LLM 语义编排（AI 智能探索）** 和 **Playwright（浏览器采集证据 + 确定性执行）** 组合成一套混合测试框架 ——
@@ -150,7 +150,7 @@ LLM_MODEL=glm-5.3                                    # Kimi 换 kimi-k3，Qwen �
 
 > **换模型前先体检**：`python -m framework.cli llm-doctor` —— 真发 2 次请求、两秒报出「连通 / function calling 通不通 / 端点在用哪档思考」，并点出「能用但打折」的情形（比查文档可靠：文档会变、还能查错）。
 > 优先级 `LLM_*` > `BROWSER_USE_API_KEY` > `OPENAI_API_KEY` > `ANTHROPIC_API_KEY` > `GOOGLE_API_KEY` > `DEEPSEEK_*`（旧写法仍支持）；当前用的哪档 `cli config` 一屏可见（密钥不显示值）；各家端点与取舍见培训页。
-> 可选旋钮 `LLM_REASONING_EFFORT=low` 压思考强度（GLM-5.3 起不能关思考且默认 max，探索阶段每步都跑最贵档）；**换模型后要重录录像**（录像键不含模型名，会命中旧模型的录像，框架回放时会告警），模型需支持 **function calling**（GLM-5.x / Kimi K2·K3 / Qwen3.6 / MiniMax-M2.7+ 均支持）。
+> 可选旋钮 `LLM_REASONING_EFFORT` 压思考强度（GLM-5.3 起不能关思考且默认 max，探索阶段每步都跑最贵档）。**取值合法性由端点决定**：GLM-5.3 / 5.3-Flash 只接受 `low` / `high` / `max`（发 `medium` 直接 400 code=1210）；**别拿 `low` 当省钱解**——实测在 8.9 万 token 的大 prompt 上会让模型**完全不返回 tool_calls**（`finish_reason=stop`），结构化输出路径直接失效。**本框架实测推荐 `high`**（同一份 prompt：`high` 312s / 思考 12,899 token，对比不设档 685s / 28,734）。**换模型后要重录录像**（录像键不含模型名，会命中旧模型的录像，框架回放时会告警），模型需支持 **function calling**（GLM-5.x / Kimi K2·K3 / Qwen3.6 / MiniMax-M2.7+ 均支持）。
 
 > **真 AI 链路**（`all --ai`）需要 key（`explore` 要调 LLM）；不带 AI 的部分（`generate` / `run`）确定性执行、不需要 key，无 key 或无外网环境都能用**录像回放**跑完整 AI 链路（`build_tools/offline_explore_chain.py` + 随包录像包）。
 
