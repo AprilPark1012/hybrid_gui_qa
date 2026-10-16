@@ -290,6 +290,76 @@ def _case_quality_reasons(e) -> str:
     return "\n".join(lines)
 
 
+def _quality_warn_feedback(warns, *, already: str = "") -> str:
+    """把上一轮识别出的**质量警告**整理成给 AI 的「必须修正」反馈（C4 · 2026-10-16）。
+
+    为什么必须有这块：这些警告都是**确定性**缺陷（框架自己算出来的，不是猜测）——
+    但当前它们**只打印、不参与重试**（日志原话「N 条警告级提示（不拦产出，继续 generate/run）」），
+    于是同一个错被 AI 连犯三轮。把上一轮的警告拼进下一轮提示词 = 让「已经知道的事」不再是废话。
+
+    [!] 口径：**只回炉，不拦截**。警告照旧不判不合格、不 exit、不影响落 cases ——
+        这里只负责「把话说给 AI 听」，拦截与否仍由既有闸门决定。
+
+    `already`：**已经作为硬拦截原因**给过 AI 的那些问题 —— 同一句不再重复说
+      （重复一遍等于把 AI 的注意力摊薄，本项目口径：不许让下游在重复信息里找重点）。
+
+    返回 "" 当没有可说的 —— **绝不凭空多出一段**：没有警告却出现「上一轮有质量问题」，
+    等于每轮都在暗示 AI 做错了，会把它带偏（见判据 test_no_warnings_means_no_extra_block）。
+    """
+    items: list[str] = []
+    hard = str(already or "")
+    for w in warns or []:
+        s = str(w or "").strip()
+        if not s or s in items:
+            continue
+        if hard and s in hard:          # 硬原因已经逐字说过了 -> 不重复
+            continue
+        items.append(s)
+    if not items:
+        return ""
+    lines = ["【上一轮框架识别出的**质量警告**】（**必须修正**，不是建议 —— "
+             "这几条是框架**确定性**认出来的，不改会在运行期或闸门里再炸一次）："]
+    for i, s in enumerate(items, 1):
+        lines.append(f"  警告{i}. {s}")
+    # 「尤其 X」：点一条「先改这个」。并列 N 条时 AI 的注意力是**摊薄**的，
+    #   点一条能显著提高首轮修正率（与「页名硬约束前置」同源的经验：约束要带优先级）。
+    lines.append(f"  [!] **尤其「{items[0]}」** —— 先把它改掉，再保持其它部分正确；"
+                 "不要沿用上一轮同样的写法（同样的警告会被再次记下）。")
+    return "\n".join(lines) + "\n\n"
+
+
+def _next_round_feedback(hard: str, warns) -> str:
+    """拼「下一轮生成提示词」要带的上一轮问题：**硬失败原因 + 质量警告**（C4）。
+
+    为什么合成一个入口：两者走的是**同一条通道**（`retry_feedback` -> 提示词）。
+    分两处拼接必然出现「一边忘了带」的漂移（本项目已反复踩过：两个调用点轮流复发同一个 bug）。
+    顺序：硬原因在前（先看清死因），警告在后（再看告警）。
+    """
+    parts: list[str] = []
+    h = str(hard or "").strip()
+    if h:
+        parts.append(h)
+    wb = _quality_warn_feedback(warns, already=hard)
+    if wb:
+        parts.append(wb.rstrip())
+    return "\n\n".join(parts)
+
+
+def _ai_gate_warn_entries() -> list[str]:
+    """读 AI 产出闸门（`ai_output`）的 **WARN 级**条目 —— 供 C4 回炉。
+
+    为什么只取 WARN：BLOCK 级已经走 `_verify_cases_detailed` 的**硬拦截**
+    （带原因 return False），在这里再收一遍就是重复说。
+    读不到就返回空（收集失败不该毁掉重试本身）。
+    """
+    try:
+        from framework.features.f02_semantic.ai_output_gate_explore import AiOutputGate
+        res = AiOutputGate().check()
+        return [] if res.blocked else [str(x) for x in res.entries]
+    except Exception:                      # noqa: BLE001
+        return []
+
+
 def _report_case_quality(e) -> NoReturn:
     """假绿红线触发时的交代：哪条用例 / 什么证据没牙 / 怎么改 —— **绝不落产物**，exit 2。"""
     print(f"\n[质量闸] [NG] 假绿红线拦下：{len(e.entries)} 条用例、共 {e.total} 处 → 拒绝产出任何产物")
@@ -643,6 +713,14 @@ def cmd_explore(rest: list[str] = None):
     # 所以「生成所有 job -> verify -> 不合格就整轮重生成」是唯一顺序。
     l1_feedback = ""        # 实跑失败原因 -> 带给下一轮生成
     l1_attempt = 0
+    # C4（2026-10-16）：**上一轮识别出的质量警告**要喂回下一轮生成提示词。
+    # 为什么必须跨轮次存：生成发生在**下一轮的开头**，而警告是本轮**末尾**才拿到的 ——
+    #   不存下来就是「知道了却用不上」；实测后果是同一个错被 AI 连犯三轮（GLM 两轮就死在同一点）。
+    # 两个来源：① 每个场景的 L0 警告（`elementmap_to_cases_file` 回传的 warns —— 原来在这里被丢掉）；
+    #          ② L1 闸门的 WARN 级条目（`_ai_gate_warn_entries()`，轮次级，所有场景共用）。
+    # [!] 只「回炉」不「拦截」：警告照旧不判不合格、不 exit、不影响落 cases（行为不变）。
+    warn_carry: dict[int, list[str]] = {}
+    round_warns: list[str] = []
     while True:
         done = []           # 每轮重新收集（重跑时旧产物不该混进来）
         for idx, job in enumerate(jobs, 1):
@@ -650,12 +728,15 @@ def cmd_explore(rest: list[str] = None):
                 print(f"\n[explore] === 场景 {idx}/{len(jobs)}：{job['label']} ===")
             emap = cpath = None
             qerr = None
-            feedback = ""          # 本轮要带给 AI 的「上一轮失败原因」
+            # 本轮要带给 AI 的「上一轮问题」：硬原因（校验不通过 / 实跑失败）+ 上一轮的质量警告
+            _warns_in = list(warn_carry.get(idx) or []) + list(round_warns)
+            feedback = _next_round_feedback(l1_feedback, _warns_in)
+            cur_warns: list[str] = []
             prev_reason = ""
             attempt = 0
             while True:
                 try:
-                    emap, cpath, _, qerr = _explore_one(
+                    emap, cpath, warns, qerr = _explore_one(
                         job["text"], job["url"], label=job["label"], page_bg=job["page_bg"],
                         guard_text=job["guard_text"], guard_spec=job["guard_spec"],
                         case_id=job["case_id"], extra=job["extra"],
@@ -665,6 +746,7 @@ def cmd_explore(rest: list[str] = None):
                 except AiExploreError as e:
                     print(f"[explore] [NG] 【{job['label'] or '内联'}】{e}")
                     raise SystemExit(2) from None
+                cur_warns = list(warns or [])      # C4：接住本轮的质量警告（原来这里是 `_`）
                 if qerr is None:
                     break                       # 合格 -> 收工
                 print(f"[explore] [!] 第 {attempt + 1} 次产出**校验不合格**")
@@ -679,7 +761,8 @@ def cmd_explore(rest: list[str] = None):
                               "（再问也是同一个答案，不白烧 token）")
                     break
                 prev_reason = qerr
-                feedback = qerr
+                # C4：重试反馈 = 硬原因 + 上一轮的质量警告（上一轮警告仍然有效，不许被硬原因挤掉）
+                feedback = _next_round_feedback(qerr, _warns_in + cur_warns)
                 attempt += 1
                 print(f"[explore] -> 带着失败原因让 AI 重新生成"
                       f"（第 {attempt + 1}/{retry_limit + 1} 次尝试）")
@@ -690,6 +773,7 @@ def cmd_explore(rest: list[str] = None):
                 print(qerr)
                 raise SystemExit(2)
             last_emap = emap
+            warn_carry[idx] = cur_warns            # C4：留给下一轮（下一轮生成时才有机会用它）
             if cpath:
                 done.append((job["label"], cpath.stem))
 
@@ -712,6 +796,9 @@ def cmd_explore(rest: list[str] = None):
             raise SystemExit(3)
         l1_attempt += 1
         l1_feedback = reasons
+        # C4：闸门 WARN 级条目也回炉（**覆盖**上一轮的 —— 轮级警告只对下一轮有效，
+        #   留着会让旧警告在后续每轮反复出现，把注意力引到已经改掉的问题上）。
+        round_warns = _ai_gate_warn_entries()
         print(f"[explore] -> 带着**实跑失败原因**让 AI 重新生成"
               f"（第 {l1_attempt + 1}/{retry_limit + 1} 轮）")
 
@@ -1420,8 +1507,13 @@ def cmd_llm_doctor(rest: list[str] = None) -> int:
     print(f"[llm-doctor] 端点      {base}")
     print(f"[llm-doctor] 模型      {model}")
     print(f"[llm-doctor] 思考档位  {effort}")
-    print("[llm-doctor] 说明：思考档位给 low 通常更省更快；取值举例 " + " / ".join(REASONING_EFFORT_EXAMPLES)
-          + "（不校验，最终由端点说了算）")
+    print("[llm-doctor] 说明：思考档位的**合法取值由端点决定，各家不同** ——"
+          "GLM-5.3/5.3-Flash 只接受 low / high / max（发 medium 直接 400 code=1210）；"
+          "别家可能接受 " + " / ".join(REASONING_EFFORT_EXAMPLES)
+          + "（本工具不校验，最终由端点说了算）")
+    print("[llm-doctor]      [!] 别把 low 当省钱的万能解：实测在 8.9 万 token 的大 prompt 上，"
+          "low 会让模型**完全不返回 tool_calls**（finish_reason=stop），结构化输出路径失效；"
+          "GLM 上推荐 high（312s / 思考 12,899 token，对比不设档 685s / 28,734）")
     print()
 
     # ---- (2)(3) 两次真请求 ----

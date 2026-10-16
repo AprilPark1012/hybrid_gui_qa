@@ -142,6 +142,60 @@ def _names(items: list[dict]) -> set[str]:
     return {(it.get("semantic_name") or "") for it in items if it.get("semantic_name")}
 
 
+def opener_ref_for(opener_id: str, base_items: list[dict]) -> str:
+    """把「入口控件的 DOM id」翻成**可读身份**：优先语义名，拿不到才降级成 id。
+
+    为什么优先用语义名（而不是 id）：本项目铁律是**AI 只许引用清单里真实存在的 semantic_name**，
+    而入口控件（例如右上角那个头像按钮）本身是**可见**的 -> 它必然已被基础探测收进 `base_items`，
+    所以「按元素自身 id 反查清单」通常就能拿到那个**最终会出现在提示词里**的名字。
+    对应关系：探针条目里的 `element_id`（`probe.py` 采集的元素自身 DOM id）== 候选兄弟节点里的 `id`
+    （`_JS_SCAN` 回传的 `id` 字段，也就是 `expand_and_collect` 里的 `opener_id`）。
+
+    为什么降级而不是返回空：拿不到语义名时（该控件没被收进清单 —— 例如探针 `max_items` 截断，
+    或调用方传进来的 base_items 不是 `probe_page` 的原生产物、没有 `element_id`），
+    退回**可读的 DOM id** 至少能让人/AI 认出「说的是哪个入口」；返回空串则等于**没给任何线索**
+    （提示词里会变成一个空规则，AI 只能瞎猜）。注意降级值只是**线索**、不是可引用的名字 ——
+    所以提示词规则要求「用清单里该入口控件的 semantic_name」，而不是让 AI 把 id 当名字抄进步骤
+    （抄了会在生成期被映射闸拦下，属于**如实报错**，不是静默错点）。
+    """
+    oid = (opener_id or "").strip()
+    if not oid:
+        return ""
+    for it in base_items or []:
+        if str(it.get("element_id") or "").strip() == oid:
+            nm = str(it.get("semantic_name") or "").strip()
+            if nm:
+                return nm
+    return oid
+
+
+def mark_requires_open(items: list[dict], *, opener_id: str, opener_ref: str,
+                       container_key: str = "") -> int:
+    """给「因展开某入口才被发现」的控件打上 `requires_open` 标记（**纯函数 · 无浏览器依赖**，便于单测）。
+
+    字段（都是**新增**字段，不动任何既有字段）：
+      · `requires_open`           —— 入口控件的**语义名**（拿不到时是可读的 DOM id，
+                                     降级理由见 `opener_ref_for`）。提示词据它教 AI「先点开入口」。
+      · `requires_open_id`        —— 入口的 DOM id（**稳定结构事实**）。为什么必须留：`_merge_items`
+                                     会在「基础 + 菜单 + 弹层 + 编辑态」合并之后**重算一次命名**，
+                                     探测中途抓到的语义名可能因此改掉 -> 提示词组装时会用这个 id
+                                     在**最终清单**里重新解析一次（`explorer_explore._opener_name_map`），
+                                     免得给 AI 一个清单里根本不存在的**悬空引用**。
+      · `requires_open_container` —— 入口所在的容器 key（留痕用：出问题时一眼看出是哪个弹层）。
+
+    返回被打标的条目数（0 = 没有条目，调用方据此决定还要不要打印「补探到 N 个控件」）。
+    """
+    n = 0
+    for it in items or []:
+        it["requires_open"] = opener_ref
+        if opener_id:
+            it["requires_open_id"] = opener_id
+        if container_key:
+            it["requires_open_container"] = container_key
+        n += 1
+    return n
+
+
 def expand_and_collect(page: Page, base_items: list[dict], *, enabled: bool = True,
                        max_opens: int = 3, settle_s: float = 2.5) -> list[dict]:
     """扫「可展开容器」→ 逐个点开 → 有界等待新控件 → 并入清单 → **收尾关掉**。
@@ -253,6 +307,13 @@ def expand_and_collect(page: Page, base_items: list[dict], *, enabled: bool = Tr
         if got:
             for it in got:
                 seen.add(it.get("semantic_name") or "")
+            # C2'（本批新增）：这些控件是**点开入口之后**才被发现的 -> 给它们打上「先点开哪个入口」的
+            # 标记。为什么必须在**这里**打（而不是在提示词组装时反推）：只有这一刻框架才知道
+            # 「这一轮 fresh 是哪次展开换来的」（base_items 里没有、容器 key 也只有此刻在手）；
+            # 事后光看条目本身完全看不出它藏在哪个弹层后面 —— 这正是 AI 直接点它、30s 超时的根因。
+            mark_requires_open(got, opener_id=opener_id,
+                               opener_ref=opener_ref_for(opener_id, base_items),
+                               container_key=str(pick.get("container_key") or ""))
             fresh.extend(got)
             print(f"      [probe] [OK] 展开「{opener_id}」后补探到 {len(got)} 个控件"
                   f"（容器 {pick['container_key']}）")

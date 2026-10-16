@@ -6,14 +6,14 @@
 ## 总览
 
 - 大特性 **11** 个 · 子特性 **54** 条
-- 一类用例文件 **124** 个 / 用例函数 **1030** 条
+- 一类用例文件 **128** 个 / 用例函数 **1071** 条
 - 二类验证文件 **25** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
 | 1 | 混合链路 | 3 | 4 | 2 |
-| 2 | 语义识别与步骤编排 | 4 | 19 | 6 |
-| 3 | 分层定位与控件识别 | 9 | 22 | 6 |
+| 2 | 语义识别与步骤编排 | 4 | 22 | 6 |
+| 3 | 分层定位与控件识别 | 9 | 23 | 6 |
 | 4 | 选错控件兜底 | 4 | 4 | 2 |
 | 5 | 用例脚本数据三层分离 | 5 | 8 | 0 |
 | 6 | 自愈闭环 Healer | 1 | 0 | 0 |
@@ -44,7 +44,7 @@
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
 | 2.1 | 语义名生成与对齐 | AI 产出的语义名能落到真实控件上；宁可不映射（大声告警）也不许错映射（静默点错） | `test_name_alignment.py`(11) | - |
-| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_prompt_no_demo_literals.py`(2)、`test_ai_no_hardcoded_row_values.py`(5)、`test_semantic_mismatch_blocks.py`(3)、`test_llm_tool_choice_unsupported.py`(3)、`test_ai_can_express_row_checkbox.py`(14)、`test_required_field_coverage.py`(8)、`test_required_fields_hard_checklist.py`(5)、`test_prompt_list_clipping_is_general.py`(15) | `verify_role_switch_click.py` |
+| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_prompt_no_demo_literals.py`(2)、`test_ai_no_hardcoded_row_values.py`(5)、`test_semantic_mismatch_blocks.py`(3)、`test_llm_tool_choice_unsupported.py`(3)、`test_ai_can_express_row_checkbox.py`(14)、`test_required_field_coverage.py`(8)、`test_required_fields_hard_checklist.py`(5)、`test_prompt_list_clipping_is_general.py`(15)、`test_prompt_dom_facts_merged.py`(11)、`test_prompt_wait_page_rule_compact.py`(6)、`test_quality_warnings_feed_next_round.py`(8) | `verify_role_switch_click.py` |
 | 2.3 | 步骤到定位的合成 | 步骤里的语义名/属性如何合成可执行定位表达式 | `test_scope_locate_expr.py`(17)、`test_locate_by_title.py`(8) | `verify_scope_locate.py` |
 | 2.4 | 场景声明契约 | 人写的那部分：pages / pre / auth / data / probe_url —— 声明必须由场景提供，框架不懂具体系统 | `test_login_stepwise_contract.py`(8)、`test_scenario_auth_spec.py`(8)、`test_page_pre_actions.py`(3)、`test_probe_pre_consistency.py`(10)、`test_probe_url_and_occurrence.py`(6)、`test_login_priming_coverage.py`(4) | `verify_login_priming.py`、`test_page_pre_actions_force_fallback.py`、`test_scenario_probe_pre.py`、`verify_page_pre_actions.py` |
 
@@ -58,7 +58,7 @@
 |---|---|---|---|---|
 | 3.1 | 顶层锚点加容器内下钻 | 真实系统只有顶层元素有 testid；子元素靠「锚点 + 容器内相对语义路径」定位 | `test_element_anchor_path.py`(17)、`test_row_fields_cover_all_columns.py`(5)、`test_row_columns_are_named_items.py`(5) | `verify_scope_locate.py` |
 | 3.2 | 多层嵌套容器 | 容器套容器（区域内表格、表单里分组）时路径仍能唯一 | `test_element_anchor_path.py`(17) | - |
-| 3.3 | 弹出层与可展开容器 | 藏在 display:none 菜单里、点开才出现的弹层控件、以及**只在编辑态/动态新增之后才存在**的控件都能被探到并用起来（框架开的必须由框架关） | `test_expandable_menu_discovery.py`(6)、`test_probe_single_entry.py`(15)、`test_probe_page_scope.py`(8)、`test_probe_incremental.py`(7)、`test_editable_state_probe.py`(12) | `verify_expandable_menu.py`、`verify_probe_path_parity.py`、`verify_editable_state_probe.py` |
+| 3.3 | 弹出层与可展开容器 | 藏在 display:none 菜单里、点开才出现的弹层控件、以及**只在编辑态/动态新增之后才存在**的控件都能被探到并用起来（框架开的必须由框架关）；探到的「藏在哪个入口后面」必须**告诉 AI**（`requires_open` + 规则 1c），否则生成的用例会直接点未展开的弹层控件 -> `element is not visible` 超时 | `test_expandable_menu_discovery.py`(6)、`test_probe_single_entry.py`(15)、`test_probe_page_scope.py`(8)、`test_probe_incremental.py`(7)、`test_editable_state_probe.py`(12)、`test_requires_open_hint.py`(16) | `verify_expandable_menu.py`、`verify_probe_path_parity.py`、`verify_editable_state_probe.py` |
 | 3.4 | 跨页面元素 | 多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧；explore 期喂给 AI 的**完整清单**必须落盘，作为映射表与运行时快照的**唯一名字来源** | `test_runtime_name_source_is_explore_snapshot.py`(12)、`test_elementmap_list_contract.py`(9)、`test_explore_manifest_authoritative.py`(13)、`test_page_identity_contract.py`(9) | `verify_cross_page.py` |
 | 3.5 | 属性直定位 | 探测清单兜不住时，用属性（by+value）直接定位；select 的 index 语义 = 第 N 个非空选项（跳过 placeholder） | `test_select_by_index.py`(3)、`test_select_without_value.py`(3)、`test_text_assert_prefers_visible.py`(3) | `verify_select_index_skips_placeholder.py` |
 | 3.6 `[未实现]` | iframe 内控件 | [!] 未实现（缺口）：iframe 内以及跨 iframe 的控件识别与操作 | - | - |

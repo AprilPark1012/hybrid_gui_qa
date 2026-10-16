@@ -2089,6 +2089,11 @@ def _collect_dom_context(pg) -> list[dict]:
     比 probe 的语义清单更"全"：额外拿到全局索引(idx)、可见性(visible)、
     启用/可编辑状态(disabled/readonly)、可访问名(aria_label) —— 这些
     正是 AI 在复杂/弹窗页面判别"该选哪个控件"时的关键依据。
+
+    [!] C1（2026-10-16）：这份记录**不再整段转储进提示词**（实测占 40.7% 篇幅、九成默认值噪音），
+        而是由 `_apply_dom_facts` 把「清单里没有的事实」**并进语义清单条目**。
+        因此这里多采一个 `element_id`（元素自身 id）：它是把记录**对回**探针条目的最强键
+        （序号对不上——两侧的选择器集合不同，见 `_dom_match_keys` 的说明）。
     """
     try:
         return pg.evaluate(
@@ -2105,6 +2110,7 @@ def _collect_dom_context(pg) -> list[dict]:
                         (el.tagName==='INPUT' && (el.type==='checkbox'?'checkbox':el.type==='button'?'button':'textbox')) ||
                         (el.tagName==='BUTTON'?'button': el.tagName==='SELECT'?'combobox': el.tagName==='A'?'link':'') ,
                   test_id: el.getAttribute('data-testid') || '',
+                  element_id: el.id || '',
                   placeholder: el.getAttribute('placeholder') || '',
                   aria_label: el.getAttribute('aria-label') || el.getAttribute('title') || '',
                   text: (el.textContent||'').trim().slice(0,60),
@@ -2119,6 +2125,119 @@ def _collect_dom_context(pg) -> list[dict]:
         )
     except Exception:
         return []
+
+
+# ---- C1（2026-10-16）：DOM 事实**并进清单条目**，取代【额外 DOM 上下文】整段转储 ---------------
+# 为什么改（实测）：那段转储 86,608 字符 = explore 提示词的 40.7% —— 把 364 个元素的
+#   idx/tag/role/test_id/placeholder/aria_label/text/name/visible/disabled/readonly/page
+#   整份打印了一遍，而**同一批元素**在同一条提示词的语义清单里已经逐页描述过一次
+#   （semantic_name/role/placeholder/ctx_token/nearby_text/container_heading），
+#   转储里九成还是默认值噪音（test_id="" / visible=true / disabled=false / readonly=false）。
+# 但那段并非全无价值：提示词要求 AI「同名控件用 visible + 邻近文本综合判断是否为目标」，
+#   而 disabled/readonly/test_id 也都是框架已经测到的 DOM 事实 -> 口径不是删掉了事，
+#   而是**只把清单里没有的事实并进条目、且只写非默认值**（默认靠"不写"隐含）。
+_DOM_FACT_LEGEND = (
+    "  条目里只写**非默认值**：`idx` = 该控件在页面里的交互元素序号；"
+    "`visible: false` = 当前不可见（多半要先点开入口/展开菜单/切换身份）；"
+    "`disabled: true` = 已禁用（点了没用）；`readonly: true` = 只读（填不进去）；"
+    "`test_id` = 该控件的埋点 id。\n"
+    "  **没写 `visible` / `disabled` / `readonly` / `test_id` = 默认值**（可见 / 未禁用 / 未只读 / 无埋点）。\n"
+    "  不要把「没写」当成「信息缺失」；同名控件务必用 `visible` + 邻近文本综合判断哪个才是目标。\n"
+)
+
+
+def _dom_match_keys(d: dict, page: str, *, wildcard_page: bool = False) -> list:
+    """一个元素（DOM 记录**或**探针条目）的候选匹配键，强 -> 弱。
+
+    为什么按身份匹配、不按序号：DOM 记录按 `_DOM_INTERACTIVE_SELECTOR` 编号，探针条目按
+    `INTERACTIVE_SELECTOR` 编号 —— 两者的元素集合不同（探针只收 a[href]，还按可见性过滤掉一批），
+    序号必然错位。能跨两侧对齐的只有**元素自身的稳定身份**：id / data-testid / 标签+可访问名。
+
+    `wildcard_page`：单页路径下 DOM 记录没有 `page` 字段，而条目可能带着声明的页名
+    -> 给条目额外产出一个「无页名」的键，让它还能与记录配上（多页路径下记录都带页名，不受影响）。
+
+    `txt` 键要求两边都有 `tag`（探针条目与 DOM 记录都有；行内列控件那类**合成条目**没有 `tag`
+    -> 它们不参与弱键匹配，只可能靠强键配上 —— 少并好过错并）。强键（id / test_id）不受此限。
+    """
+    pages = ["", page] if (wildcard_page and page) else [page]
+    eid = str(d.get("element_id") or d.get("id") or "").strip()
+    tid = str(d.get("test_id") or "").strip()
+    tag = str(d.get("tag") or "").strip().lower()
+    names = {_norm_name(str(d.get(k) or "")) for k in
+             ("aria_label", "name", "text", "placeholder", "label")} - {""}
+    out: list = []
+    for pg in pages:
+        if eid:
+            out.append(("id", pg, eid))
+        if tid:
+            out.append(("tid", pg, tid))
+        if tag:
+            for nm in sorted(names):
+                out.append(("txt", pg, tag, nm))
+    return out
+
+
+def _apply_dom_facts(items: list[dict], dom_ctx: list[dict] | None) -> list[dict]:
+    """把 DOM 上下文里**语义清单没有的事实**并入条目（C1）。返回**新列表**，不改调用方数据。
+
+    口径：**只并两边都唯一**的键 —— DOM 记录与条目一对一配上才并；配不上就不并
+    （宁可少给，绝不错配：错配的 visible/disabled 会直接误导 AI 去点一个不该点/点不动的控件，
+    比不给更糟）。默认值也一律不写（写了就是换一种噪音，长度一样回不去）。
+
+    配不上的记录**如实报条数**：它们多半是按可见性过滤掉的元素（AI 本来也操作不了），
+    但「静默丢」与「说明白丢」是两件事（铁律 10：不许让下游在残缺依据上推理）。
+    """
+    if not items or not dom_ctx:
+        return items
+    recs = [r for r in dom_ctx if isinstance(r, dict)]
+    if not recs:
+        return items
+
+    def _nondefault(r: dict) -> bool:
+        return bool(r.get("visible") is False or r.get("disabled") or r.get("readonly")
+                    or str(r.get("test_id") or "").strip())
+
+    out = [dict(it) for it in items]
+    by_item: dict = {}
+    for n, it in enumerate(out):
+        for k in _dom_match_keys(it, str(it.get("page") or ""), wildcard_page=True):
+            by_item.setdefault(k, []).append(n)
+    by_rec: dict = {}
+    for m, r in enumerate(recs):
+        for k in _dom_match_keys(r, str(r.get("page") or "")):
+            by_rec.setdefault(k, []).append(m)
+
+    taken: set = set()
+    done: set = set()
+    merged = stat_merged = 0
+    for k, ns in by_item.items():
+        ms = by_rec.get(k)
+        if not ms or len(ms) != 1 or len(ns) != 1:
+            continue
+        n, m = ns[0], ms[0]
+        if n in done or m in taken:
+            continue
+        r = recs[m]
+        done.add(n)
+        taken.add(m)
+        merged += 1
+        stat_merged += (1 if _nondefault(r) else 0)
+        idx = r.get("idx")
+        out[n]["dom_idx"] = int(idx) if isinstance(idx, (int, float)) else 0
+        out[n]["dom_visible"] = bool(r.get("visible", True))
+        out[n]["dom_disabled"] = bool(r.get("disabled"))
+        out[n]["dom_readonly"] = bool(r.get("readonly"))
+        # 埋点 id：探针条目自己也有这个字段（通常同值）；条目为空时用记录里的补上 ——
+        # 它是**真实系统里最稳的定位锚**之一，不能因为"这条记录来自 DOM 侧"就丢掉。
+        if str(r.get("test_id") or "").strip() and not str(out[n].get("test_id") or "").strip():
+            out[n]["test_id"] = str(r["test_id"]).strip()
+    miss = len(recs) - merged
+    print(f"      [explore] DOM 事实：{len(recs)} 条记录（{sum(1 for r in recs if _nondefault(r))} 条带"
+          f"非默认状态），已并入清单 {merged} 条（其中带状态 {stat_merged} 条）"
+          + (f"，未并入 {miss} 条（对应元素不在本次清单里 —— 多为按可见性过滤掉的，AI 本来也操作不了）"
+             if miss else ""))
+    return out
+
 
 
 
@@ -2281,12 +2400,29 @@ def ambiguous_base_names(items: list[dict]) -> set[str]:
     return {k for k, n in seen.items() if n > 1}
 
 
-def _compact_item(it: dict, ambiguous: set[str] | None = None) -> dict:
+def _opener_name_map(items: list[dict]) -> dict[str, str]:
+    """`element_id -> semantic_name`：把「入口的 DOM id」映射到**最终清单里的权威名字**。
+
+    为什么需要（C2'）：`requires_open` 是探测期打上的（`expandable_probe.mark_requires_open`），
+    而探测是**多轮 + 跨页**的，`_merge_items` 会在合并之后 `assign_semantic_names()` **重算一次命名**
+    （同名冲突会让某个控件从裸名变成 `甲@页名`）-> 探测中途抓到的那个名字可能已经**悬空**。
+    AI 只能引用清单里真实存在的名字，给一个悬空名字 = 白跑一轮（生成期被映射闸拦下）。
+    -> 组装提示词时按**稳定 id**（DOM id）在最终清单里重新解析一次，拿不到就保留原值（不静默清空）。
+    """
+    return {str(it.get("element_id") or "").strip(): str(it.get("semantic_name") or "").strip()
+            for it in (items or []) if str(it.get("element_id") or "").strip()}
+
+
+def _compact_item(it: dict, ambiguous: set[str] | None = None,
+                  opener_names: dict[str, str] | None = None) -> dict:
     """把探针条目压成 **AI 真正需要**的最小字段集（压表示优先于截断）。
 
     保留：`semantic_name`（AI 要原样填进 element）、`role`/`tag`（决定用哪个 op）、
           `placeholder`（文本框辨识线索）、`ctx_token`（带 `*` = 页面标了必填）、
-          `opens_new_tab`（决定要不要 click_new_tab）；
+          `opens_new_tab`（决定要不要 click_new_tab）、`requires_open`（该控件藏在弹层入口后面 ->
+          必须**先点开入口**，见规则 1c）；
+          **DOM 事实**（C1，来自 `_apply_dom_facts` 的并入）：`idx` 页内序号、
+          `visible: false` / `disabled: true` / `readonly: true` / `test_id` 埋点 id；
           **同名控件**额外保留消歧字段（见 `_AMBIGUITY_FIELDS`，与提示词的指导对齐）。
     丢弃：与语义名重复的 `name`/`text`/`base_name`/`nearby_text`、空值字段、
           仅框架内部使用的 `name_source`/`base_conflict`、以及语义名已含 `@页名` 时的 `page`。
@@ -2319,6 +2455,29 @@ def _compact_item(it: dict, ambiguous: set[str] | None = None) -> dict:
     #   不该让 AI 猜；框架测得就给它）。
     if int(it.get("multi_match") or 1) > 1:
         out["multi_match"] = int(it["multi_match"])
+    # C2'：**藏在弹层入口后面**的控件 —— 必须把这个事实告诉 AI，否则它直接点 -> 运行期
+    #   `TimeoutError: … element is not visible`（控件在 DOM 里、定位也 resolve 成功，但没展开就是不可见）。
+    #   值优先用入口控件的语义名；探测中途抓到的名字可能已被合并重命名 -> 按稳定 id 重新解析成最终名。
+    if it.get("requires_open"):
+        _ref = str(it.get("requires_open") or "")
+        _oid = str(it.get("requires_open_id") or "").strip()
+        if opener_names and _oid and opener_names.get(_oid):
+            _ref = opener_names[_oid]
+        out["requires_open"] = _ref
+    # C1：DOM 事实 —— **只写非默认值**（默认值靠"不写"隐含，口径句见 `_DOM_FACT_LEGEND`）。
+    #   为什么不能写全：这段本就是 86.5K 转储的根因 —— `visible: true` / `disabled: false` /
+    #   `readonly: false` / `test_id: ""` 写在每个条目上，等于把转储拆开重贴一遍。
+    if it.get("dom_idx") is not None:
+        out["idx"] = int(it["dom_idx"])
+    if it.get("dom_visible") is False:
+        out["visible"] = False
+    if it.get("dom_disabled"):
+        out["disabled"] = True
+    if it.get("dom_readonly"):
+        out["readonly"] = True
+    _tid = str(it.get("test_id") or "").strip()
+    if _tid:                                   # 埋点：非空才有信息量（探针本来就有这个字段）
+        out["test_id"] = _tid
     return out
 
 
@@ -2422,6 +2581,11 @@ def _declared_wait_block(scenario: str) -> str:
     不说的话它只能凭空猜（或干脆不提等待），而等待类断言**恰恰只能靠这个声明**。
     口径：**框架按场景声明设置等待时长**（AI 不需要、也没有新字段来表达它）；
     AI 要做的只是把「等什么、为什么值得等」写进 desc，别用固定 sleep。
+
+    [!] C3（2026-10-16）：本段只留**约束**、不留解释。它与紧随其后的页名口径在真实提示词里
+        是一条低信息密度长带；其中真正约束 AI 的只有「时长数字 + 3 条做法」，
+        其余都是从这两样派生出来的复述。压缩时**数字与 3 条做法一个字不动**，
+        砍的只是解释性从句 —— 砍的是篇幅，不是约束（少说要紧的，别少说该说的）。
     """
     from framework.shared.declared_wait import declared_wait_ms
     ms = declared_wait_ms(scenario)
@@ -2430,9 +2594,9 @@ def _declared_wait_block(scenario: str) -> str:
     return (
         "===== 本场景声明的业务等待时长（重要）=====\n"
         f"本场景原文声明的业务等待是 **{ms}ms（约 {round(ms / 1000)} 秒）**"
-        "（例如「提交后 N 秒自动关闭」这类**按时间自动推进**的动作）。\n"
-        "=> 写这类「等它自己变」的断言时：\n"
-        "   1) desc 里写清**等什么、以及为什么值得等**（如「有界等待订单状态流转到已关闭」）；\n"
+        "（如「提交后 N 秒自动关闭」这类**按时间自动推进**的动作）。\n"
+        "=> 写这类「等它自己变」的断言：\n"
+        "   1) desc 写清**等什么、为什么值得等**（如「有界等待订单状态流转到已关闭」）；\n"
         "   2) **等待时长由框架按本声明自动设置**（你不用猜、也不用给时长）；\n"
         "   3) 绝不写固定 sleep 硬等，也绝不写成「只等几秒」——那必然失败。\n"
         "\n"
@@ -2447,7 +2611,11 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                          row_fields: list[dict] | None = None,
                          auth: dict | None = None,
                          retry_feedback: str = "") -> str:
-    """构造给 LLM 的规划提示：自然语言场景 + probe 语义清单 + 富 DOM 上下文，要求产出轻量步骤 JSON。
+    """构造给 LLM 的规划提示：自然语言场景 + probe 语义清单，要求产出轻量步骤 JSON。
+
+    dom_ctx（DOM 上下文）：C1（2026-10-16）之后**不再单独成段** —— 它的事实
+      （idx / visible=false / disabled / readonly / 埋点 id）在这里由 `_apply_dom_facts`
+      **并进清单条目**，默认值一律不写；原先那段 86.6K 全量转储正是"同一批元素描述两遍"。
 
     page_bg / guard：来自 scenario 文件（见 framework/features/f02_semantic/scenario_generate.py）——
       page_bg 是【页面背景】（页面说明+前置条件+领域上下文），guard 是【本场景断言护栏】。
@@ -2474,16 +2642,22 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
     #   `保存@详细信息`（把**容器名/区块名**当页名）、`保存@订单详情`（近义造词）。
     #   这些后缀一律映射不上，整条链在生成期被拦，报出来的却只是「缺失项」。
     #   页名只有一个来源：场景声明的 `pages[].name`（AI 与手搓用例都只看得见它）。
+    # C3（2026-10-16）：白名单是**权威口径**（短、只列页名），排除清单才是说教 ——
+    #   实测这一带（等待段 + 页名口径）是全提示词里信息密度最低的长带之一。
+    #   口径：**列约束、不列举例**。白名单与「一个字都不能改」的强度逐字保留；
+    #   「不是页名」的举例由「除上面这几个外一律不是页名」这句**替代**
+    #   （覆盖而非穷举：说清"除了白名单全是错的"，比罗列"哪几类不常见"更硬），
+    #   只留 3 个最容易误用的反例（系统名/容器名/近义造词）——它们正是实测踩过的那三种。
     _page_names = [str(_p.get("name") or "").strip() for _p in (pages or [])
                    if isinstance(_p, dict) and str(_p.get("name") or "").strip()]
-    _pname_rule = ("[!] **本场景的页名只有下面这几个**（来自场景声明，是权威口径）："
+    _pname_rule = ("[!] **本场景的页名只有下面这几个**（场景声明的权威口径；`@页名` 后缀"
+                   "**只能从这几个里选，一个字都不能改**）："
                    + "、".join(f"「{_x}」" for _x in _page_names) + "\n"
-                   "  语义名里的 `@页名` 后缀**只能从这几个里选，一个字都不能改**。"
-                   "**下面这些都不是页名，不许当后缀用**：\n"
-                   "    · 系统名 / 模块名 / 应用名（如场景文案里提到的别的叫法）；\n"
-                   "    · **容器名 / 区块名 / 面板标题**（如「详细信息」「发票行」）；\n"
-                   "    · 自己按语义近义造出来的词（如把「订单详情页」写成「订单详情」）。\n"
-                   "  写错后缀会让该控件映射不上，框架会在生成期直接拦下整条链。\n\n") \
+                   "  除上面这几个外**一律不是页名，不许当后缀用** —— 写错后缀该控件就映射不上，"
+                   "框架在生成期直接拦下整条链。最易误用的三类反例："
+                   "系统名/模块名/应用名（场景里提到的别的叫法）；"
+                   "**容器名/区块名/面板标题**（如「详细信息」「发票行」）；"
+                   "近义造词（把「订单详情页」写成「订单详情」）。\n\n") \
         if _page_names else ""
     if multi:
         prompt = (_pname_rule + "\n".join(lines) + "\n"
@@ -2529,13 +2703,22 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                    + "、".join(f"「{x}」" for x in _pp_now) + "\n"
                    "  —— 请从**该身份已就绪之后**的页面开始规划；**不要**再生成这些动作的步骤"
                    "（重复生成会在'点开容器/菜单'那一步漏写，导致整条用例失败）。\n\n")
+    # C1（2026-10-16）：把 DOM 上下文里「清单没有的事实」（idx / visible=false / disabled /
+    #   readonly / 埋点 id）**并进条目** —— 返回的是**副本**，调用方的探测结果不受影响
+    #   （后面映射闸 / ElementMap 还要用它）。原先这些是另拼一段 86.6K 的全量转储，
+    #   同一批元素被描述两遍；现在只在条目上补差异，转储整段删除。
+    if dom_ctx:
+        items = _apply_dom_facts(items, dom_ctx)
     _sel = select_controls_for_prompt(items, pages if multi else None, scenario)
     _amb = globals().get("_LAST_AMBIGUOUS_NAMES") or set()
+    _opener_names = _opener_name_map(items)      # C2'：按稳定 DOM id 解析入口的**最终**语义名
     prompt += ("页面已探测出以下可交互控件（只有这些可用，绝不自己编造 selector；"
                + ("**已按页分组**）：\n" if multi else "）：\n"))
+    if dom_ctx:
+        prompt += _DOM_FACT_LEGEND      # 字段口径：只写非默认值，没写=默认（不解释=AI 会把没写当缺失）
     for nm, picked, hidden in _sel:
         head = f"【{nm}】" if nm else ""
-        prompt += (head + json.dumps([_compact_item(x, _amb) for x in picked],
+        prompt += (head + json.dumps([_compact_item(x, _amb, _opener_names) for x in picked],
                                      ensure_ascii=False, indent=1) + "\n")
         if hidden:
             # ④ 裁剪**必须明示**：静默给残缺清单 = AI 在残缺依据上推理（铁律 10 的根源）
@@ -2583,16 +2766,10 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         prompt += f"页面背景（来自场景文件，供你判断控件语义与数据规则）:\n{page_bg}\n\n"
     if guard:
         prompt += (f"本场景断言护栏（**优先级高于下面的通用规则**，必须遵守）:\n{guard}\n\n")
-    # 富 DOM 上下文：给 AI 额外的可见性/状态/索引，判断"该选哪个"更准
-    if dom_ctx:
-        _dc, _dc_hidden = _clip_by_chars(dom_ctx)
-        prompt += (
-            f"额外 DOM 上下文（含全局索引 idx / 可见性 visible / 状态 disabled,readonly；"
-            f"同名控件务必用 visible + 邻近文本综合判断是否为目标）:\n"
-            f"{json.dumps(_dc, ensure_ascii=False, indent=1)}\n"
-            + (f"  （[!] 另有 {_dc_hidden} 条 DOM 记录未列出 —— 按篇幅裁剪）\n" if _dc_hidden else "")
-            + "\n"
-        )
+    # [!] C1（2026-10-16）：这里原来还拼一段【额外 DOM 上下文】全量转储（实测 86,608 字符 =
+    #   整条提示词的 40.7%，364 条记录里九成是默认值噪音）。它的信息量已经**并进上面的条目**
+    #   （idx / visible=false / disabled / readonly / 埋点 id，见 `_apply_dom_facts` + `_compact_item`）
+    #   -> 整段删除。删前全仓检索过 `dom_ctx`：没有第二个消费方（唯一用途就是这个段）。
     prompt += (
         f"规则:\n"
         f"1. action 只允许: goto / click / fill / check / select / expect_text / expect_url / press_enter / "
@@ -2604,6 +2781,15 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         f"（它只用于「从新开的 tab 返回」，不要拿 goto 代替 —— 那样 tab 没关，也没验到关 tab 这个行为）；\n"
         f"   每完成一次切/关 tab，都要紧跟一条**到达证据**：expect_url（目标 tab 独有的 URL 片段）"
         f"或 expect_text（该页独有文案）；\n"
+        f"1c. **藏在弹层/菜单里的控件：必须先点开入口、再操作它**（清单里带 `requires_open` 字段的条目）——\n"
+        f"   该字段给的是**入口控件**的身份：这些控件是探测期「点开那个入口之后」才被发现的，\n"
+        f"   所以你的步骤里**必须先有一条 click 步骤点开那个入口**（用清单里**该入口控件**的 "
+        f"semantic_name，逐字复制），之后才 click / fill / select 目标控件；\n"
+        f"   [!] 不先点开就直接操作，**运行期必然失败**：报错是 `element is not visible` "
+        f"（控件确实在 DOM 里、定位也 resolve 成功，但它藏在**未展开**的弹层里 -> 不可见 -> 点击 30 秒超时），"
+        f"这类失败会被框架实跑当场拦下；\n"
+        f"   [!] **同一个入口只需要开一次**：该入口下的多个控件**共用同一次打开动作** —— "
+        f"不要给每个控件都点一遍入口（重复点会把刚打开的菜单又关掉，后面的控件同样不可见）；\n"
         f"2. semantic_name 必须**原样复制**上面清单里的 semantic_name（含下划线，如 请输入合同名称 / "
         f"请选择_0021_0451_1031），禁止自造、禁止写你自己的描述性名字（“合同名称”≠`请输入合同名称`）；\n"
         f"   [!] **逐字**：名字必须**恰好等于清单里某一项的完整名字** —— 不要自己拼后缀、也不要截断后缀。"
@@ -2669,7 +2855,8 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         f"   或按页面数据规则可推出的记录标识（如清单里 合同编号=HT-1007、名称=合同7 这类）。\n"
         f"   严禁出现只能在运行时才知道的内容 —— 「共 N 条」「命中 N 条」等计数、时间戳、随机值，\n"
         f"   你无法算出正确数字，写进 assertion 就是猜，会直接导致用例失败或假绿\n"
-        f"8. assertion 里的关键文本（如记录编号/名称）必须能在上面的控件清单或 DOM 上下文中找到依据，\n"
+        f"8. assertion 里的关键文本（如记录编号/名称）必须能在上面的控件清单里找到依据"
+        f"（清单条目自带 idx/visible/disabled 这些事实；C1 之后不再有单独的 DOM 段落），\n"
         f"   找不到依据就不要写断言，宁可不写 expect_text 步骤\n"
     )
 
@@ -2702,7 +2889,7 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
     )
     prompt += (
         "【数据接地】（**必须遵守**）：\n"
-        "  · 所有 value 只能**取自本提示里真实出现过的内容**（自然语言场景 / 控件清单 / DOM 上下文）；\n"
+        "  · 所有 value 只能**取自本提示里真实出现过的内容**（自然语言场景 / 控件清单）；\n"
         "  · **不许编造**任何业务数据（账号、密码、编号、名称、金额…）；\n"
         "  · 场景没给具体值时，优先用清单里真实存在的文案，或留空交由框架数据层处理；\n"
         "  · 凭经验臆造一个「看起来合理」的值 = 幻觉，会直接让用例失败。\n\n"

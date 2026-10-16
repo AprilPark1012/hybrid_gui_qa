@@ -36,7 +36,10 @@ FEATURES = [
                  class1=["test_step_direct_locator.py", "test_ai_scenario_preconditions.py", "test_prompt_no_demo_literals.py", "test_ai_no_hardcoded_row_values.py",
                           "test_semantic_mismatch_blocks.py", "test_llm_tool_choice_unsupported.py", "test_ai_can_express_row_checkbox.py",
                           "test_required_field_coverage.py", "test_required_fields_hard_checklist.py",
-                          "test_prompt_list_clipping_is_general.py"],
+                          "test_prompt_list_clipping_is_general.py", "test_prompt_dom_facts_merged.py",
+                          # C3/C4（2026-10-16）：提示词的两条「少说废话/别重复犯错」纪律 ——
+                          #   段要紧凑（只留约束）、质量警告要回炉进下一轮（同一个错不许连犯三轮）
+                          "test_prompt_wait_page_rule_compact.py", "test_quality_warnings_feed_next_round.py"],
                  class2=["verify_role_switch_click.py"]),
             dict(no="2.3", name="步骤到定位的合成", goal="步骤里的语义名/属性如何合成可执行定位表达式",
                  class1=["test_scope_locate_expr.py", "test_locate_by_title.py"],
@@ -61,10 +64,12 @@ FEATURES = [
                  class2=[]),
             dict(no="3.3", name="弹出层与可展开容器", goal="藏在 display:none 菜单里、点开才出现的弹层控件、"
                                                      "以及**只在编辑态/动态新增之后才存在**的控件都能被探到并用起来"
-                                                     "（框架开的必须由框架关）",
+                                                     "（框架开的必须由框架关）；"
+                                                     "探到的「藏在哪个入口后面」必须**告诉 AI**（`requires_open` + 规则 1c），"
+                                                     "否则生成的用例会直接点未展开的弹层控件 -> `element is not visible` 超时",
                  class1=["test_expandable_menu_discovery.py", "test_probe_single_entry.py",
                          "test_probe_page_scope.py", "test_probe_incremental.py",
-                         "test_editable_state_probe.py"],
+                         "test_editable_state_probe.py", "test_requires_open_hint.py"],
                  class2=["verify_expandable_menu.py", "verify_probe_path_parity.py",
                          "verify_editable_state_probe.py"]),
             dict(no="3.4", name="跨页面元素", goal="多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧；"
