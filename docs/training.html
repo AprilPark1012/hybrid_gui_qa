@@ -1325,11 +1325,11 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-1.2" data-sub="1.2"><span class="sno">1.2</span>统一验收入口</h5>
-      <p class="codesrc"><b>目标：</b>四条验收原则能用一条命令跑完；跳过策略（如 --skip-ai）必须显式留痕，不许静默少跑</p>
+      <p class="codesrc"><b>目标：</b>四条验收原则能用一条命令跑完（run_acceptance）。[!] 跳过策略（如 --skip-ai 必须显式留痕、SKIP != 通过）的判据物理住在 tests/特性9-质量闸门体系/，按「登记目录 == 物理目录」登记在 9.2</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b><span class="code-inline">tests/_runner/run_acceptance.py</span> 把 R7 四项（框架自测 / 特性自测 / demo 新鲜度 / E2E 三场景）收成一条命令，顺序按「便宜先跑 + fail fast」：[0] 闸门自检 -> [1] demo 新鲜度 -> [2] 框架自测 <span class="code-inline">pytest tests/</span> -> [3] E2E 场景3->2->1 -> [4] 特性自测。退出码：0 通过 / 1 有失败 / 2 用法错 / 3 有跳过（<b>SKIP != 通过</b>）。跳过策略（如 <span class="code-inline">--skip-ai</span>）必须显式留痕、如实标「跳过」且不算通过，不许静默少跑。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">run_acceptance.py</span> -> 子进程跑<span class="code-inline">verify_*.py</span> / <span class="code-inline">pytest</span> -> 汇总退出码；<span class="code-inline">--list</span> 只看不跑、<span class="code-inline">--only</span> 只跑某项、<span class="code-inline">--keep-going</span> 跑完再汇总。</p>
       <div class="flow2"><span class="fnode">run_acceptance.py</span><span class="farrow">-></span><span class="fnode g">step_gate_selfcheck()</span><span class="farrow">-></span><span class="fnode g">step_framework_selftest()</span><span class="farrow">-></span><span class="fnode">step_e2e() 3->2->1</span><span class="farrow">-></span><span class="fnode r">SKIP != 通过 -> exit 3</span><span class="farrow">-></span><span class="fnode">退出码 0/1/2/3</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_acceptance_entry.py（8 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_acceptance_skip_policy.py（6 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_acceptance_entry.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-1.3" data-sub="1.3"><span class="sno">1.3</span>单包即离线可跑</h5>
@@ -1355,19 +1355,19 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-2.2" data-sub="2.2"><span class="sno">2.2</span>自然语言步骤编排</h5>
-      <p class="codesrc"><b>目标：</b>场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单</p>
+      <p class="codesrc"><b>目标：</b>场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单；**AI 产出的有界重试口径**也归这里（产出侧被闸门拦下 -&gt; 带原因重生成、上一轮缺陷记账不许留给下一轮；实跑档失败 -&gt; 带原因整轮重来）—— 原登记在特性11，V8.6.3 按「登记目录 == 物理目录」改挂此处</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>场景 yml 的自然语言 -> 步骤序列。<span class="code-inline">_build_planner_prompt()</span> 把「场景 + 控件清单 + DOM 上下文 + 必填控件块 + 声明等待块」组装成提示词；<span class="code-inline">_parse_steps_text()</span> 解析结构化（function calling）或文本两种输出；<span class="code-inline">_apply_semantic_calibration()</span> 做语义校准；<span class="code-inline">_reject_login_steps()</span> 拒绝 AI 自编登录流程；<span class="code-inline">reject_hardcoded_row_values()</span> 拒绝写死行内业务值；<span class="code-inline">check_required_field_coverage()</span> 校验必填字段覆盖。失败自动闭环：<span class="code-inline">HYBRID_AI_RETRY</span>（默认 2、上界 5）配 <span class="code-inline">_should_retry_again()</span>（同因不重试，避免白烧 token）。步骤还能<b>直接声明定位</b>（by+value），不依赖探测清单：<span class="code-inline">generator._step_direct_locator_expr()</span>。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">cmd_explore()</span> -> <span class="code-inline">ai_explore()</span> -> <span class="code-inline">_build_planner_prompt()</span> -> LLM -> <span class="code-inline">_parse_steps_text()</span> -> <span class="code-inline">_apply_semantic_calibration()</span> -> 校验族 -> ElementMap；重试：<span class="code-inline">cmd_explore</span> 收 <span class="code-inline">_case_quality_reasons()</span> -> <span class="code-inline">_should_retry_again()</span> -> 带 retry_feedback 再问一轮。</p>
       <div class="flow2"><span class="fnode">场景文案 + 控件清单</span><span class="farrow">-></span><span class="fnode">_build_planner_prompt()</span><span class="farrow">-></span><span class="fnode">LLM</span><span class="farrow">-></span><span class="fnode">_parse_steps_text()</span><span class="farrow">-></span><span class="fnode y">_apply_semantic_calibration()</span><span class="farrow">-></span><span class="fnode r">校验族（拒编登录/写死行值/必填）</span><span class="farrow">-></span><span class="fnode">ElementMap</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/test_step_direct_locator.py（15 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_scenario_preconditions.py（10 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_no_demo_literals.py（2 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_no_hardcoded_row_values.py（5 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_semantic_mismatch_blocks.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_llm_tool_choice_unsupported.py（4 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_can_express_row_checkbox.py（14 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_required_field_coverage.py（8 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_required_fields_hard_checklist.py（5 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_list_clipping_is_general.py（15 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_dom_facts_merged.py（11 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_wait_page_rule_compact.py（6 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_quality_warnings_feed_next_round.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/verify_role_switch_click.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/test_step_direct_locator.py（15 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_scenario_preconditions.py（10 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_no_demo_literals.py（2 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_no_hardcoded_row_values.py（5 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_semantic_mismatch_blocks.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_llm_tool_choice_unsupported.py（4 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_can_express_row_checkbox.py（14 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_required_field_coverage.py（8 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_required_fields_hard_checklist.py（5 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_list_clipping_is_general.py（15 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_dom_facts_merged.py（11 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_wait_page_rule_compact.py（6 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_quality_warnings_feed_next_round.py（8 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_production_defects_gate_l1.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_incomplete_output_retries.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_retry_leaves_no_stale_notes.py（4 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_retry_loop.py（10 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_retry_same_cause.py（5 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/verify_role_switch_click.py</span></p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-2.3" data-sub="2.3"><span class="sno">2.3</span>步骤到定位的合成</h5>
-      <p class="codesrc"><b>目标：</b>步骤里的语义名/属性如何合成可执行定位表达式</p>
+      <p class="codesrc"><b>目标：</b>步骤里的语义名/属性如何合成可执行定位表达式（`verify_scope_locate.py` 物理住在 tests/特性3-分层定位与控件识别/，按「登记目录 == 物理目录」只挂 3.1）</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>步骤里的语义名 / 属性合成可执行定位表达式：<span class="code-inline">generator._semantic_to_locator_expr(it, scope, by)</span> 按 Tier1 顺序产出；带 <span class="code-inline">anchor</span> + <span class="code-inline">path</span> 的子元素优先产「容器下钻」表达式（<span class="code-inline">scope_locate.path_expr()</span>），静态拼不出（如 <span class="code-inline">col.header</span> 要运行时读表头）就退到<span class="code-inline">_drill(p, anchor, path)</span> 运行期下钻。<span class="code-inline">_primary_lambda()</span> 负责拼成 <span class="code-inline">lambda p: p.&lt;expr&gt;</span> 并处理 occurrence（.nth）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">_render_pytest_case()</span> -> <span class="code-inline">_semantic_to_locator_expr()</span> -> <span class="code-inline">scope_locate.path_expr()</span> 或 <span class="code-inline">_primary_lambda()</span>。</p>
       <div class="flow2"><span class="fnode">语义名 + anchor/path</span><span class="farrow">-></span><span class="fnode">path_expr()</span><span class="farrow">-></span><span class="fnode g">静态拼出 -> lambda p: ...</span><span class="farrow">-></span><span class="fnode y">拼不出 -> _drill() 运行期下钻</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/test_scope_locate_expr.py（17 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_locate_by_title.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/verify_scope_locate.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/test_scope_locate_expr.py（17 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_locate_by_title.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-2.4" data-sub="2.4"><span class="sno">2.4</span>场景声明契约</h5>
@@ -1640,11 +1640,11 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-9.2" data-sub="9.2"><span class="sno">9.2</span>质量闸</h5>
-      <p class="codesrc"><b>目标：</b>用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤**；**闸门统一契约 + 全量注册表**（B′：实现跟特性走、登记进 core/gates.py）</p>
+      <p class="codesrc"><b>目标：</b>用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤**；**闸门统一契约 + 全量注册表**（B′：实现跟特性走、登记进 core/gates.py）；**验收入口的跳过策略**同归此（跳过必须显式留痕、SKIP != 通过、失败优先于跳过 —— `test_acceptance_skip_policy.py` 物理住本目录）</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>质量闸：用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，且<b>不许误伤</b>。红线实现：<span class="code-inline">case_builder.case_errors()</span>（换页证据没区分力等假绿）、<span class="code-inline">case_warnings()</span>（断言 = 输入回显 / 猜出来的运行时值）、<span class="code-inline">generator._gate_false_green()</span>（生成前拦）。<span class="code-inline">test_no_false_positive_blocks_ai.py</span> 专门守「闸门不许误伤 AI 链路」。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">generate_scripts()</span> -> <span class="code-inline">_gate_false_green()</span>；落盘前 <span class="code-inline">case_errors()</span> / <span class="code-inline">case_warnings()</span>。</p>
       <div class="flow2"><span class="fnode">用例/生成/新鲜度/同步闸</span><span class="farrow">-></span><span class="fnode">case_errors() / case_warnings()</span><span class="farrow">-></span><span class="fnode y">_gate_false_green() 生成前拦</span><span class="farrow">-></span><span class="fnode r">坏就红</span><span class="farrow">-></span><span class="fnode y">宁漏不误伤</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_case_quality_gate.py（14 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_generate_quality_gate.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_gate_protocol_registry.py（8 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_demo_freshness_gate.py（35 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_ai_case_scenario_sync.py（2 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_daily_skip_marker.py（4 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_no_false_positive_blocks_ai.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_demo_freshness.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_case_quality_gate.py（14 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_generate_quality_gate.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_gate_protocol_registry.py（8 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_demo_freshness_gate.py（35 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_ai_case_scenario_sync.py（2 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_daily_skip_marker.py（4 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_acceptance_skip_policy.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_no_false_positive_blocks_ai.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_demo_freshness.py</span></p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-9.3" data-sub="9.3"><span class="sno">9.3</span>环境与编码适配</h5>
@@ -1692,7 +1692,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>特性/子特性/用例归属的规格与磁盘<b>双向一致</b>：<span class="code-inline">feature_spec.py</span> 是唯一来源，<span class="code-inline">build_feature_map.py</span> 渲染 <span class="code-inline">docs/feature_map.md</span>，<span class="code-inline">test_feature_spec_contract.py</span> 校验「规格里列的文件必须存在、磁盘上的用例必须有归属、编号规范、目录不漂移、文档与规格同步」。本章即由该规格驱动渲染。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">feature_spec.FEATURES</span> -> build_feature_map.render() -> docs/feature_map.md；build_html 本段 -> 本章。</p>
       <div class="flow2"><span class="fnode">feature_spec.FEATURES（唯一来源）</span><span class="farrow">-></span><span class="fnode">build_feature_map.render()</span><span class="farrow">-></span><span class="fnode g">双向一致</span><span class="farrow">-></span><span class="fnode r">不一致 -> 红</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_feature_spec_contract.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_feature_spec_contract.py（10 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
   <section class="feat">
@@ -1722,7 +1722,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>新增子命令 / 参数必须自动出现在 <span class="code-inline">--help</span> 总览里：<span class="code-inline">_print_help()</span> 的每一行都由代码生成 —— 子命令清单与每个子命令的全部参数取自 <span class="code-inline">CMD_FLAGS</span>（唯一注册表），一句话说明取自各子命令函数 docstring 首行-> 人只需写那句 docstring。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">main()</span>（无参/--help）-> <span class="code-inline">_print_help()</span> -> 遍历 <span class="code-inline">CMD_FLAGS</span> + inspect.getdoc()。</p>
       <div class="flow2"><span class="fnode">main() --help -> _print_help()</span><span class="farrow">-></span><span class="fnode">CMD_FLAGS（唯一注册表）</span><span class="farrow">-></span><span class="fnode">inspect.getdoc() 取首行</span><span class="farrow">-></span><span class="fnode g">总览自动带上它</span><span class="farrow">-></span><span class="fnode r">漏了 -> 判据红</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_cli_help_coverage.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_cli_help_coverage.py（11 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-10.4" data-sub="10.4"><span class="sno">10.4</span>setup 与分发采纳</h5>
@@ -1770,14 +1770,14 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <h4 class="feat-title" id="feat-11" data-feat="11"><span class="fno">特性 11</span>交付即验证 <span class="fkey">verify</span></h4>
     <p class="feat-goal"><b>目标：</b>两档验证：① 产出物被闸门拦下 -&gt; 带具体原因让 AI 重生成；② 生成脚本后真跑一次 -&gt; 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、录像回放模式不重试、退出码可区分（2 产出侧 / 3 实跑侧）　<b>目录：</b><span class="code-inline">tests/特性11-交付即验证/</span></p>
     <div class="subfeat">
-      <h5 class="subfeat-title" id="sub-11.1" data-sub="11.1"><span class="sno">11.1</span>产出物档重试</h5>
-      <p class="codesrc"><b>目标：</b>AI 产出被质量闸拦下（写死行数据 / 严重误选 / 必填未编排 / 行定位缺失）-&gt; 带原因重生成；同因不重试、上一轮的缺陷记账不许留给下一轮</p>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性11-交付即验证/test_verify_entry_contract.py（6 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_production_defects_gate_l1.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_incomplete_output_retries.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_retry_leaves_no_stale_notes.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <h5 class="subfeat-title" id="sub-11.1" data-sub="11.1"><span class="sno">11.1</span>验证入口契约（两档重试口径）</h5>
+      <p class="codesrc"><b>目标：</b>`cli verify` 独立入口的契约（能单独重跑，不必再走一遍 explore）；两档重试的能力口径：① 产出物被质量闸拦下（写死行数据 / 严重误选 / 必填未编排 / 行定位缺失）-&gt; 带原因重生成；② 生成脚本后真跑一次 -&gt; 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、录像回放模式不重试、退出码可区分（2 产出侧 / 3 实跑侧）。[!] V8.6.3：本特性**只挂物理住在本目录的判据**；两档重试的其余判据物理住在 tests/特性2-语义识别与步骤编排/（登记在 2.2），按「登记目录 == 物理目录」不在此重复挂</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性11-交付即验证/test_verify_entry_contract.py（6 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
-      <h5 class="subfeat-title" id="sub-11.2" data-sub="11.2"><span class="sno">11.2</span>实跑档重试</h5>
-      <p class="codesrc"><b>目标：</b>generate + 逐条实跑 -&gt; 失败带原因整轮重来；录像回放模式不重试；实跑未过 exit 3</p>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_retry_loop.py（10 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_retry_same_cause.py（5 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <h5 class="subfeat-title" id="sub-11.2" data-sub="11.2"><span class="sno">11.2</span>实跑档重试（判据住特性2） <span class="code-inline">[判据住特性2]</span></h5>
+      <p class="codesrc"><b>目标：</b>实跑档（generate + 逐条实跑）失败 -&gt; 带原因整轮重来；录像回放模式不重试；实跑未过 exit 3 —— 能力口径保留在本条；其判据（test_ai_retry_loop / test_ai_retry_same_cause）物理住在 tests/特性2-语义识别与步骤编排/，按「登记目录 == 物理目录」登记在 2.2</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b>无<br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
   <div class="card" style="border-top:4px solid var(--brand);margin-top:18px"><h4>[pin] 读本章的顺序建议（新手路线）</h4><p style="font-size:.94rem;line-height:1.8">1 先读 <b>特性 1</b>（AI 链路怎么产出用例）-&gt; 2 再读 <b>特性 5</b>（用例/脚本/数据怎么分工，这是你日常改的东西）-&gt; 3 跑一遍第 5 章 5.2 的六个阶段对照代码 -&gt; 4 遇到点不中元素时回读 <b>特性 2 / 3 / 4</b> -&gt; 5 交付或换机器前读 <b>特性 8</b>（录像与出厂闸门）-&gt; 6 改完代码用 <b>特性 9 / 10</b> 的入口自检。</p><p class="codesrc">判据条数以实跑输出为准（<span class="code-inline">pytest tests/ -q</span> · <span class="code-inline">python tests/_runner/run_acceptance.py</span>）；本页条数是生成时从测试文件数出来的（与 build_feature_map.py 同口径）。</p></div>
@@ -2072,9 +2072,11 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <p class="sec-sub">当前版本 <b>V8.6.3</b>（2026-10-16）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
       <div class="cl-head"><span class="cl-ver">V8.6.3</span><span class="cl-date">2026-10-16</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>以代码实现为基准的大扫除</b> —— 删掉 <b>649 行</b>失效物，并把两处「双实现」收敛成一个</span></div>
-      <p class="cl-sum">V8.6 把手搓链路整条删掉之后，<b>它的残留就是失效物</b>：只剩「看着还在用、实际永远走不到」的死代码、死模块、死判据与死文档。<br>本版按<b>「以代码实现为基准」</b>逐处核对，分两批清干净：<br>· <b>第一批</b>：删真死代码 / 死模块（含一份已无调用方的 runner 第二实现），同步修引用它们的文本与路径，并收敛失效判据<br>· <b>第二批</b>：把自写的重复判定换成<b>唯一权威</b>，文档口径与数字按代码真值改齐<br>结果：<b>删掉 649 行</b>，全量判据 <b>1217 passed / 3 skipped / 0 failed</b>。</p>
+      <p class="cl-sum">V8.6 把手搓链路整条删掉之后，<b>它的残留就是失效物</b>：只剩「看着还在用、实际永远走不到」的死代码、死模块、死判据与死文档。<br>本版按<b>「以代码实现为基准」</b>逐处核对，分两批清干净：<br>· <b>第一批</b>：删真死代码 / 死模块（含一份已无调用方的 runner 第二实现），同步修引用它们的文本与路径，并收敛失效判据<br>· <b>第二批</b>：把自写的重复判定换成<b>唯一权威</b>，文档口径与数字按代码真值改齐<br>· <b>补充轮（同版）</b>：删掉一个<b>从不被读取</b>的开关、把 7 处「判据登记 != 物理目录」改齐、并补一条判据钉住这个洞<br>结果：<b>删掉 649 行</b>，全量判据 <b>1222 passed / 3 skipped / 0 failed</b>。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">[go] 新增</span><ul>
         <li><b>新增判据 <code>test_reasoning_effort_advice_consistency.py</code></b>（<code>tests/特性10-CLI帮助契约/</code>）：钉「<b>思考档位</b>」口径在<b>文档 / 提示 / 体检</b>之间一致 —— V8.6.2 刚把档位坑（只认 low/high/max、大 prompt 上用 low 不返回 <code>tool_calls</code>）写进多处，散落两处就会再次漂移</li>
+        <li><b>新增判据 <code>test_registered_feature_dir_equals_physical_dir</code></b>（<code>tests/特性9-质量闸门体系/test_feature_spec_contract.py</code>）：<b>真读 <code>feature_spec.py</code> 的登记 + 真看磁盘目录</b>，断言「每个判据文件登记的特性目录 == 它实际所在的 <code>tests/特性N-*/</code> 目录」。为什么要它：原有的规格判据只查「文件存在 / 有主 / 集合相等」，<b>查不出「挂错特性」</b> —— 挂错不会红，只会让文档里那条子特性<b>看起来有验证、实际在别处</b>（正是本版审计抓到的 7 处）</li>
+        <li><b>新增判据（<code>--changed</code> 不许被写回来）</b>：<code>tests/特性10-CLI帮助契约/test_cli_help_coverage.py</code> 再加 3 条 —— ① 注册表里不许有它、<code>REMOVED_FLAGS</code> 里必须有它、<b>总览与 <code>generate --help</code> 里都不许出现它</b>；② 真传 <code>generate --changed</code> 必须 <b>exit 2 + 给替代做法</b>；③ <b>负向自证</b>：把它写回注册表 / 喂进帮助文本，守门逻辑<b>必须报红</b></li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#1d4ed8;background:#dbeafe">[tool] 改进</span><ul>
         <li><b>第一批 · 删死模块</b>：<code>f06_healer/runner_unused.py</code>（<b>149 行</b>）—— 一份<b>已无任何调用方的 runner 第二实现</b>，手搓链路整体删除后再没人 import 它</li>
@@ -2086,13 +2088,16 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         <li><b>第二批 · README 止损</b>：删失效段落；数字改代码真值（判据 <b>1123 -> 1215</b>、子特性 <b>50 -> 54</b>）；去掉已废弃的「<b>录像单独成包</b>」口径（现状是<b>单包即离线可跑</b>）；修 <code>_helpers</code> / <code>_runner</code> 的自相矛盾段</li>
         <li><b>第二批 · 培训页文案改齐</b>：<code>build_html.py</code> 模板区 <b>28 处</b>「两条链路 / 三种链路 / <code>cli probe</code> / 固化成手搓用例」的措辞-> 按<b>唯一链路</b>口径重写</li>
         <li><b>第二批 · 规格同步</b>：<code>feature_spec.py</code> 子特性 1.3 「交付两件套」-> 「<b>单包即离线可跑</b>」；特性 1 名「<b>混合链路</b>」-> 「<b>AI 链路与离线回放</b>」（名字取自代码现状，不再留着已删链路的词）</li>
+        <li><b>补充轮 · 删掉从不被读取的 <code>--changed</code> 开关</b>：<code>generate</code> 声明了它，<b>代码里却从来没读过</b>（真实现 = 「不是 <code>--force</code> 就算增量」）—— 它不过是把<b>默认行为</b>写成了一个 flag，而「传了也没用」的开关只会让人误以为不传就不是增量的。-> 从 <code>FLAG_SPECS</code> / <code>CMD_FLAGS['generate']</code> / 子命令 docstring 一并删除，并按本仓<b>既有的 REMOVED_FLAGS 友好提示机制</b>登记：传了 <b>exit 2</b> + 明说「增量已是默认行为，要全量重写用 <code>--force</code>」，<b>绝不静默忽略</b>；帮助总览与 <code>generate --help</code> 里都不再出现它（历史条目（如 8.2.5）里写的「默认 <code>--changed</code>」是当时的说法 —— 按本版口径读：<b>那是默认行为、不是开关</b>）</li>
+        <li><b>补充轮 · 判据登记与物理目录改齐（7 处）</b>：审计发现 <code>feature_spec.py</code> 里 7 处「登记的特性归属 != 文件实际所在的 <code>tests/特性N-*/</code>」—— 按<b>物理目录为准</b>只改登记、<b>不搬文件</b>：<code>test_acceptance_skip_policy.py</code> 1.2 -> <b>9.2</b>（特性9）· <code>verify_scope_locate.py</code> 2.3 -> 只留 <b>3.1</b>（特性3）· 5 条 AI 重试判据（<code>test_production_defects_gate_l1</code> / <code>test_ai_incomplete_output_retries</code> / <code>test_retry_leaves_no_stale_notes</code> / <code>test_ai_retry_loop</code> / <code>test_ai_retry_same_cause</code>）11.1/11.2 -> <b>2.2</b>（特性2）。因此变空的子特性<b>同步改名字与目标</b>（不留空壳）：11.1 收窄为「验证入口契约（两档重试口径）」、11.2 改名「实跑档重试（判据住特性2）」并把「判据物理住哪」写进目标 —— 改完特性11 目录只剩 <code>test_verify_entry_contract.py</code>，登记与它一致</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">[bug] 修复</span><ul>
         <li><b>钉死「自写启发式绝迹」</b>：补 <b>4 条判据</b>（含<b>负向自证</b>）—— 把「自写 tool_choice 判定」这种坏输入喂给判据逻辑<b>必须判红</b>；否则「收敛成唯一权威」只是口号，下次有人再抄一份没人拦</li>
       </ul></div>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
         <li><b>本版唯一的口径（值得留下）</b>：<b>残留 = 失效物</b> —— V8.6 删了手搓链路之后，凡只剩「看着还在用」的一律按死物清掉；判据是<b>「以代码实现为基准」逐处核对</b>，不是凭印象。「实现已经不在、可它还被引用 / 还留在判据里」的每一处，都是漂移源</li>
-        <li>全量判据 <b>1217 passed / 3 skipped / 0 failed</b>；3 skipped 是<b>仓库当前状态不满足</b>（缺探针快照 / element_maps 快照 / 带 <code>data:</code> 段的场景），属环境跳过、非失败</li>
+        <li>全量判据 <b>1222 passed / 3 skipped / 0 failed</b>；3 skipped 是<b>仓库当前状态不满足</b>（缺探针快照 / element_maps 快照 / 带 <code>data:</code> 段的场景），属环境跳过、非失败</li>
+        <li><b>遗留待办已登记（不在本版做）</b>：审计同时发现 <b>5 组重复判据</b>（同一件事被两条判据分别守着），留到 <b>V8.6.4 合并</b>——本版先不动，是为了让「大扫除」这一步可验证（一次只改一类事，diff 可审、回归可归因）。清单与理由见项目 BACKLOG（台账）</li>
       </ul></div>
     </div>
     <div class="card cl">
@@ -3070,8 +3075,8 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
           <a href="#feat-11">特性 11交付即验证 verify</a>
           <button class="toc-caret" type="button" aria-expanded="true" data-target="tocsub-feat-11" title="收起/展开子特性">-</button>
           <ul class="toc-l3 open" id="tocsub-feat-11">
-            <li><a href="#sub-11.1">11.1产出物档重试</a></li>
-            <li><a href="#sub-11.2">11.2实跑档重试</a></li>
+            <li><a href="#sub-11.1">11.1验证入口契约（两档重试口径）</a></li>
+            <li><a href="#sub-11.2">11.2实跑档重试（判据住特性2） [判据住特性2]</a></li>
           </ul>
         </li>
       </ul>

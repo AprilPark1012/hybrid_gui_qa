@@ -15,6 +15,8 @@
   (3) 编号规范：特性连续 1..N、子特性形如 `N.M` 且同层唯一
   (4) 规格里声明的目录**必须存在**，且磁盘上的特性夹**必须都在规格里**（防目录漂移）
   (5) 生成的文档与规格一致（`build_feature_map.py --check`）
+  (6) **登记目录必须等于物理目录**（V8.6.3）：一个判据文件挂在哪个特性下，
+      就必须真的住在那条 `tests/特性N-*/` 里 —— 含负向自证（挂错必须被抓）
 
   负向自证已在设计时验证：把一个文件的归属删掉 / 加一个未挂的 test_*.py => 本文件立刻红。
 """
@@ -153,3 +155,67 @@ def test_spec_covers_all_case_files_by_count():
         f"  仅规格有：{sorted(spec - disk_names)}\n"
         f"  仅磁盘有：{sorted(disk_names - spec)}"
     )
+
+
+# ---------------- (7) 登记目录必须等于物理目录（V8.6.3） ----------------
+#
+# 起因：审计发现 7 处「登记的特性归属 != 文件实际所在的 tests/特性N-*/ 目录」
+# （test_acceptance_skip_policy / verify_scope_locate / 5 条 AI 重试判据）。
+# 上面 (1)(2)(6) 只查「文件存在 / 有主 / 集合相等」，**查不出「挂错特性」**
+# —— 挂错特性不会红，只会让文档里那条子特性看起来有验证、实际在别处。
+# 本条把这个洞补上：登记目录必须逐文件等于物理目录。
+
+def _dir_mismatches(features) -> list[str]:
+    """「规格登记的目录」 vs 「磁盘的物理目录」-> 不一致清单。
+
+    口径：一个判据文件只能住在一个 `tests/特性N-*/` 目录里；它挂的每个子特性，
+    其所属特性的 `dir` 都必须**就是**那个物理目录。判据与负向自证**共用**本函数
+    （避免「判据口径」与「自证口径」各写一套 -> 各自漂移）。
+    """
+    disk: dict[str, set[str]] = {}
+    for d in TESTS.iterdir():
+        if not d.is_dir() or not d.name.startswith("特性"):
+            continue
+        for f in d.glob("*.py"):
+            if f.name.startswith(("test_", "verify_")):
+                disk.setdefault(f.name, set()).add(d.name)
+    out: list[str] = []
+    for f in features:
+        fdir = f.get("dir")
+        for s in f.get("subs", []):
+            for fn in ((s.get("class1") or []) + (s.get("class2") or [])):
+                locs = disk.get(fn)
+                if not locs:
+                    out.append(f"{fn}（挂 {s['no']}）在 tests/特性*/ 下找不到物理文件")
+                elif fdir not in locs:
+                    out.append(f"{fn}：登记 {s['no']} / {fdir}，实际住 {sorted(locs)}")
+    return out
+
+
+def test_registered_feature_dir_equals_physical_dir():
+    """登记目录必须逐文件等于物理目录（防「挂错特性」这种静默漂移）。"""
+    bad = _dir_mismatches(FEATURES)
+    assert not bad, (
+        "这些判据文件登记的特性目录与它实际所在的 tests/特性N-*/ 目录不一致：\n  - "
+        + "\n  - ".join(bad)
+        + "\n=> 二选一：把文件搬到登记的目录（git mv），或把登记改成与物理目录一致"
+          "（framework/features/f09_gate/feature_spec.py，改完重跑 build_feature_map.py）。"
+    )
+
+
+def test_negative_dir_mismatch_is_detected():
+    """负向自证：故意挂错 / 挂不存在的文件 -> 必须被抓；挂对 -> 必须零报。
+
+    （不做这一步，上面那条可能压根没在看 —— 「判据绿」不等于「判据有效」。）
+    """
+    def _one(fdir: str, fn: str) -> list[dict]:
+        return [dict(no=9, dir=fdir, subs=[dict(no="9.1", class1=[fn], class2=[])])]
+
+    # 对照组：物理住 特性9 的文件挂到 特性9 -> 零报（防判据恒红 / 乱报）
+    assert _dir_mismatches(_one("特性9-质量闸门体系", "test_acceptance_skip_policy.py")) == []
+    # 错配对 1：真文件挂到别的特性 -> 必须报，且报出「登记 X / 实际 Y」
+    probs = _dir_mismatches(_one("特性1-混合链路", "test_acceptance_skip_policy.py"))
+    assert len(probs) == 1 and "实际住" in probs[0], probs
+    assert "特性9-质量闸门体系" in probs[0], probs
+    # 错配对 2：磁盘上根本没有这个文件 -> 也必须报（防「名字写错」静默通过）
+    assert _dir_mismatches(_one("特性9-质量闸门体系", "test_no_such_file_2026.py")), "不存在的文件没被抓"

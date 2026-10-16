@@ -154,14 +154,74 @@ def test_subcommand_help_lists_all_its_flags(cmd):
 # ---------- 判据自身的负向证明 ----------
 def test_negative_parser_flags_a_missing_flag():
     """喂一段「少一个参数」的总览文本 -> 判定必须报出缺口（防判据写成恒真）。"""
-    good = "子命令：\n  generate  读用例生成脚本。\n            参数：--changed --force --only\n"
+    good = "子命令：\n  generate  读用例生成脚本。\n            参数：--force --only --base-url\n"
     gaps = [g for g in _gaps(_parse_overview(good)) if g.startswith("generate:")]
     assert gaps == ["generate: 总览漏了参数 %s" % sorted(
-        set(CMD_FLAGS["generate"]) - {"--changed", "--force", "--only"})]
+        set(CMD_FLAGS["generate"]) - {"--force", "--only", "--base-url"})]
 
 
 def test_negative_parser_flags_a_stale_flag():
     """喂一段「多一个假参数」的文本 -> 也必须被抓（防只查漏、不查多）。"""
-    bad = "子命令：\n  generate  说明。\n            参数：--changed --force --only --ghost\n"
+    bad = "子命令：\n  generate  说明。\n            参数：--force --only --ghost\n"
     gaps = [g for g in _gaps(_parse_overview(bad)) if g.startswith("generate:")]
     assert any("--ghost" in g for g in gaps), f"假参数没被抓：{gaps}"
+
+
+# ---------- (5) 废弃开关不许被无意识写回来：--changed（V8.6.3） ----------
+def _changed_flag_problems_from_texts(overview: str, sub_help: str) -> list[str]:
+    """注册表 + 两段帮助文本 -> 问题清单（判据与负向自证**共用**同一口径）。"""
+    out: list[str] = []
+    if "--changed" in FLAG_SPECS:
+        out.append("FLAG_SPECS 里又声明了 --changed（它从来没被读过，不该再声明）")
+    if "--changed" in CMD_FLAGS.get("generate", set()):
+        out.append("CMD_FLAGS['generate'] 里又挂上了 --changed")
+    if "--changed" not in REMOVED_FLAGS:
+        out.append("REMOVED_FLAGS 里没有 --changed（删了却不给提示 = 用户只看到「不认识」）")
+    for label, text in (("--help", overview), ("generate --help", sub_help)):
+        if "--changed" in text:
+            out.append(f"{label} 的输出里又出现了 --changed")
+    return out
+
+
+def _changed_flag_problems() -> list[str]:
+    """真跑 CLI 取两段帮助文本（总览 + 子命令），再走上面那个纯口径。"""
+    ro, rs = _cli("--help"), _cli("generate", "--help")
+    out = _changed_flag_problems_from_texts(ro.stdout, rs.stdout)
+    if ro.returncode != 0:
+        out.append(f"--help 退出码 {ro.returncode}")
+    if rs.returncode != 0:
+        out.append(f"generate --help 退出码 {rs.returncode}")
+    return out
+
+
+def test_changed_flag_stays_removed():
+    """`--changed` 必须是「已移除」而不是「已注册」，且帮助里不再出现它。"""
+    problems = _changed_flag_problems()
+    assert problems == [], "\n  - ".join(problems)
+
+
+def test_removed_changed_flag_gives_a_hint_and_exits_2():
+    """真传它必须**报错 + 给替代做法**（绝不静默忽略，也不静默当默认行为）。"""
+    r = _cli("generate", "--changed")
+    text = (r.stdout or "") + (r.stderr or "")
+    assert r.returncode == 2, f"传 --changed 应 exit 2，实际 {r.returncode}"
+    assert "已移除" in text, f"没报「已移除」：{text[-400:]}"
+    assert "--force" in text, f"没给出替代做法：{text[-400:]}"
+
+
+def test_negative_changed_flag_guard_bites_when_written_back(monkeypatch):
+    """负向自证：把 `--changed` 写回注册表 / 写回帮助文本 -> 守门判据**必须**报红。
+
+    （只断言「现在是干净的」等于没验 —— 判据可能压根没在看。）
+    帮助那一项走**纯口径**喂假文本（子进程读的是真实注册表，喂不进 monkeypatch）。
+    """
+    monkeypatch.setitem(FLAG_SPECS, "--changed", None)
+    monkeypatch.setitem(CMD_FLAGS, "generate",
+                        set(CMD_FLAGS["generate"]) | {"--changed"})
+    problems = _changed_flag_problems_from_texts(
+        "子命令：\n  generate  说明。\n            参数：--changed --force\n",
+        "用法：python -m framework.cli generate --changed")
+    assert problems, "把 --changed 写回去，守门判据却没感觉（说明它没在检查）"
+    assert any("FLAG_SPECS" in p for p in problems), problems
+    assert any("CMD_FLAGS" in p for p in problems), problems
+    assert any("--help" in p for p in problems), f"帮助文本那一项没被抓：{problems}"

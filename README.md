@@ -104,7 +104,7 @@ python tests/_runner/run_acceptance.py                # ③ 四项验收一条�
 ```
 
 > **判据住哪**（2026-10-12 更正）：判据按**特性**分目录，在 `tests/特性1-…/` ... `tests/特性11-…/` 下
-> （`test_*.py` 一类 + `verify_*.py` 二类混放同一特性目录；条数以 `pytest tests/ -q` 实跑为准，实测 1217 passed / 3 skipped）。
+> （`test_*.py` 一类 + `verify_*.py` 二类混放同一特性目录；条数以 `pytest tests/ -q` 实跑为准，实测 1222 passed / 3 skipped）。
 > `tests/_helpers/` 只是**共享辅助**（artifacts / demo_freshness / repo_files / testid_policy），
 > **不含任何 `test_*.py`** —— 直接跑它会 `no tests collected`。
 
@@ -125,7 +125,7 @@ HYBRID_CASE_TIMEOUT=600 HYBRID_STRICT_LOCATE=1 \
 | 命令 | 期望 | 耗时 |
 |---|---|---|
 | 上面那条端到端 | `1 passed` | ~220s |
-| `pytest tests/ -q` | `1217 passed / 3 skipped`，0 failed | ~50s |
+| `pytest tests/ -q` | `1222 passed / 3 skipped`，0 failed | ~50s |
 | `run_verifications.py` | 绝大部分通过；**唯一遗留 `verify_slow_target`**（慢环境缺陷，见 BACKLOG L22） | ~14 min |
 | `run_acceptance.py` | 四项闸门全过 | — |
 

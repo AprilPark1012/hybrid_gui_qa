@@ -75,7 +75,9 @@ CHANGELOG = [
                 "同步修引用它们的文本与路径，并收敛失效判据<br>"
                 "· <b>第二批</b>：把自写的重复判定换成<b>唯一权威</b>，"
                 "文档口径与数字按代码真值改齐<br>"
-                "结果：<b>删掉 649 行</b>，全量判据 <b>1217 passed / 3 skipped / 0 failed</b>。",
+                "· <b>补充轮（同版）</b>：删掉一个<b>从不被读取</b>的开关、"
+                "把 7 处「判据登记 != 物理目录」改齐、并补一条判据钉住这个洞<br>"
+                "结果：<b>删掉 649 行</b>，全量判据 <b>1222 passed / 3 skipped / 0 failed</b>。",
         changed=[
             "<b>第一批 · 删死模块</b>：<code>f06_healer/runner_unused.py</code>（<b>149 行</b>）"
             "—— 一份<b>已无任何调用方的 runner 第二实现</b>，手搓链路整体删除后再没人 import 它",
@@ -106,6 +108,30 @@ CHANGELOG = [
             "<b>第二批 · 规格同步</b>：<code>feature_spec.py</code> 子特性 1.3 "
             "「交付两件套」-> 「<b>单包即离线可跑</b>」；特性 1 名「<b>混合链路</b>」-> "
             "「<b>AI 链路与离线回放</b>」（名字取自代码现状，不再留着已删链路的词）",
+            "<b>补充轮 · 删掉从不被读取的 <code>--changed</code> 开关</b>："
+            "<code>generate</code> 声明了它，<b>代码里却从来没读过</b>"
+            "（真实现 = 「不是 <code>--force</code> 就算增量」）"
+            "—— 它不过是把<b>默认行为</b>写成了一个 flag，"
+            "而「传了也没用」的开关只会让人误以为不传就不是增量的。"
+            "-> 从 <code>FLAG_SPECS</code> / <code>CMD_FLAGS['generate']</code> / "
+            "子命令 docstring 一并删除，并按本仓<b>既有的 REMOVED_FLAGS 友好提示机制</b>登记："
+            "传了 <b>exit 2</b> + 明说「增量已是默认行为，要全量重写用 <code>--force</code>」，"
+            "<b>绝不静默忽略</b>；帮助总览与 <code>generate --help</code> 里都不再出现它"
+            "（历史条目（如 8.2.5）里写的「默认 <code>--changed</code>」是当时的说法 —— "
+            "按本版口径读：<b>那是默认行为、不是开关</b>）",
+            "<b>补充轮 · 判据登记与物理目录改齐（7 处）</b>：审计发现 "
+            "<code>feature_spec.py</code> 里 7 处「登记的特性归属 != 文件实际所在的 "
+            "<code>tests/特性N-*/</code>」—— 按<b>物理目录为准</b>只改登记、<b>不搬文件</b>："
+            "<code>test_acceptance_skip_policy.py</code> 1.2 -> <b>9.2</b>（特性9）· "
+            "<code>verify_scope_locate.py</code> 2.3 -> 只留 <b>3.1</b>（特性3）· "
+            "5 条 AI 重试判据（<code>test_production_defects_gate_l1</code> / "
+            "<code>test_ai_incomplete_output_retries</code> / "
+            "<code>test_retry_leaves_no_stale_notes</code> / <code>test_ai_retry_loop</code> / "
+            "<code>test_ai_retry_same_cause</code>）11.1/11.2 -> <b>2.2</b>（特性2）。"
+            "因此变空的子特性<b>同步改名字与目标</b>（不留空壳）："
+            "11.1 收窄为「验证入口契约（两档重试口径）」、11.2 改名「实跑档重试（判据住特性2）」"
+            "并把「判据物理住哪」写进目标 —— 改完特性11 目录只剩 "
+            "<code>test_verify_entry_contract.py</code>，登记与它一致",
         ],
         added=[
             "<b>新增判据 <code>test_reasoning_effort_advice_consistency.py</code></b>"
@@ -113,6 +139,19 @@ CHANGELOG = [
             "<b>文档 / 提示 / 体检</b>之间一致 —— V8.6.2 刚把档位坑（只认 low/high/max、"
             "大 prompt 上用 low 不返回 <code>tool_calls</code>）写进多处，"
             "散落两处就会再次漂移",
+            "<b>新增判据 <code>test_registered_feature_dir_equals_physical_dir</code></b>"
+            "（<code>tests/特性9-质量闸门体系/test_feature_spec_contract.py</code>）："
+            "<b>真读 <code>feature_spec.py</code> 的登记 + 真看磁盘目录</b>，"
+            "断言「每个判据文件登记的特性目录 == 它实际所在的 <code>tests/特性N-*/</code> 目录」。"
+            "为什么要它：原有的规格判据只查「文件存在 / 有主 / 集合相等」，"
+            "<b>查不出「挂错特性」</b> —— 挂错不会红，只会让文档里那条子特性"
+            "<b>看起来有验证、实际在别处</b>（正是本版审计抓到的 7 处）",
+            "<b>新增判据（<code>--changed</code> 不许被写回来）</b>："
+            "<code>tests/特性10-CLI帮助契约/test_cli_help_coverage.py</code> "
+            "再加 3 条 —— ① 注册表里不许有它、<code>REMOVED_FLAGS</code> 里必须有它、"
+            "<b>总览与 <code>generate --help</code> 里都不许出现它</b>；"
+            "② 真传 <code>generate --changed</code> 必须 <b>exit 2 + 给替代做法</b>；"
+            "③ <b>负向自证</b>：把它写回注册表 / 喂进帮助文本，守门逻辑<b>必须报红</b>",
         ],
         fixed=[
             "<b>钉死「自写启发式绝迹」</b>：补 <b>4 条判据</b>（含<b>负向自证</b>）—— "
@@ -123,9 +162,13 @@ CHANGELOG = [
             "<b>本版唯一的口径（值得留下）</b>：<b>残留 = 失效物</b> —— V8.6 删了手搓链路之后，"
             "凡只剩「看着还在用」的一律按死物清掉；判据是<b>「以代码实现为基准」逐处核对</b>，"
             "不是凭印象。「实现已经不在、可它还被引用 / 还留在判据里」的每一处，都是漂移源",
-            "全量判据 <b>1217 passed / 3 skipped / 0 failed</b>；"
+            "全量判据 <b>1222 passed / 3 skipped / 0 failed</b>；"
             "3 skipped 是<b>仓库当前状态不满足</b>（缺探针快照 / element_maps 快照 / "
             "带 <code>data:</code> 段的场景），属环境跳过、非失败",
+            "<b>遗留待办已登记（不在本版做）</b>：审计同时发现 <b>5 组重复判据</b>"
+            "（同一件事被两条判据分别守着），留到 <b>V8.6.4 合并</b>——"
+            "本版先不动，是为了让「大扫除」这一步可验证（一次只改一类事，"
+            "diff 可审、回归可归因）。清单与理由见项目 BACKLOG（台账）",
         ],
     ),
     dict(

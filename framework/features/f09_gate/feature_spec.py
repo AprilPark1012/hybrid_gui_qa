@@ -15,8 +15,10 @@ FEATURES = [
             dict(no="1.1", name="AI 链路与离线回放", goal="真 AI 链路（all --ai）与离线回放（录像）各自可独立跑通（不含已删除的手搓链路）",
                  class1=["test_acceptance_entry.py", "test_offline_chain_python.py"],
                  class2=["verify_e2e_scenario1_online.py"]),
-            dict(no="1.2", name="统一验收入口", goal="四条验收原则能用一条命令跑完；跳过策略（如 --skip-ai）必须显式留痕，不许静默少跑",
-                 class1=["test_acceptance_entry.py", "test_acceptance_skip_policy.py"],
+            dict(no="1.2", name="统一验收入口", goal="四条验收原则能用一条命令跑完（run_acceptance）。"
+                                             "[!] 跳过策略（如 --skip-ai 必须显式留痕、SKIP != 通过）的判据物理住在 "
+                                             "tests/特性9-质量闸门体系/，按「登记目录 == 物理目录」登记在 9.2",
+                 class1=["test_acceptance_entry.py"],
                  class2=[]),
             dict(no="1.3", name="单包即离线可跑", goal="无外网机器解压交付包即可离线跑通 AI 链路（录像随代码包一起发，只有一个 zip）",
                  class1=["test_render_entrypoint.py"],
@@ -32,18 +34,26 @@ FEATURES = [
             dict(no="2.1", name="语义名生成与对齐", goal="AI 产出的语义名能落到真实控件上；宁可不映射（大声告警）也不许错映射（静默点错）",
                  class1=["test_name_alignment.py"],
                  class2=[]),
-            dict(no="2.2", name="自然语言步骤编排", goal="场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单",
+            dict(no="2.2", name="自然语言步骤编排", goal="场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单；"
+                                                        "**AI 产出的有界重试口径**也归这里（产出侧被闸门拦下 -> 带原因重生成、上一轮缺陷记账不许留给下一轮；"
+                                                        "实跑档失败 -> 带原因整轮重来）—— 原登记在特性11，V8.6.3 按「登记目录 == 物理目录」改挂此处",
                  class1=["test_step_direct_locator.py", "test_ai_scenario_preconditions.py", "test_prompt_no_demo_literals.py", "test_ai_no_hardcoded_row_values.py",
                           "test_semantic_mismatch_blocks.py", "test_llm_tool_choice_unsupported.py", "test_ai_can_express_row_checkbox.py",
                           "test_required_field_coverage.py", "test_required_fields_hard_checklist.py",
                           "test_prompt_list_clipping_is_general.py", "test_prompt_dom_facts_merged.py",
                           # C3/C4（2026-10-16）：提示词的两条「少说废话/别重复犯错」纪律 ——
                           #   段要紧凑（只留约束）、质量警告要回炉进下一轮（同一个错不许连犯三轮）
-                          "test_prompt_wait_page_rule_compact.py", "test_quality_warnings_feed_next_round.py"],
+                          "test_prompt_wait_page_rule_compact.py", "test_quality_warnings_feed_next_round.py",
+                          # V8.6.3：这 5 条原挂在特性11（11.1/11.2），物理目录一直是特性2 -> 登记改挂此处
+                          "test_production_defects_gate_l1.py", "test_ai_incomplete_output_retries.py",
+                          "test_retry_leaves_no_stale_notes.py", "test_ai_retry_loop.py",
+                          "test_ai_retry_same_cause.py"],
                  class2=["verify_role_switch_click.py"]),
-            dict(no="2.3", name="步骤到定位的合成", goal="步骤里的语义名/属性如何合成可执行定位表达式",
+            dict(no="2.3", name="步骤到定位的合成", goal="步骤里的语义名/属性如何合成可执行定位表达式"
+                                                       "（`verify_scope_locate.py` 物理住在 tests/特性3-分层定位与控件识别/，"
+                                                       "按「登记目录 == 物理目录」只挂 3.1）",
                  class1=["test_scope_locate_expr.py", "test_locate_by_title.py"],
-                 class2=["verify_scope_locate.py"]),
+                 class2=[]),
             dict(no="2.4", name="场景声明契约", goal="人写的那部分：pages / pre / auth / data / probe_url —— 声明必须由场景提供，框架不懂具体系统",
                  class1=["test_login_stepwise_contract.py", "test_scenario_auth_spec.py", "test_page_pre_actions.py", "test_probe_pre_consistency.py",
                          "test_probe_url_and_occurrence.py", "test_login_priming_coverage.py"],
@@ -212,10 +222,14 @@ FEATURES = [
                          "test_wait_text_kind.py", "test_demo_testid_policy.py"],
                  class2=[]),
             dict(no="9.2", name="质量闸", goal="用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤**；"
-                                                     "**闸门统一契约 + 全量注册表**（B′：实现跟特性走、登记进 core/gates.py）",
+                                                     "**闸门统一契约 + 全量注册表**（B′：实现跟特性走、登记进 core/gates.py）；"
+                                                     "**验收入口的跳过策略**同归此（跳过必须显式留痕、SKIP != 通过、失败优先于跳过 —— "
+                                                     "`test_acceptance_skip_policy.py` 物理住本目录）",
                  class1=["test_case_quality_gate.py", "test_generate_quality_gate.py", "test_gate_protocol_registry.py",
                          "test_demo_freshness_gate.py", "test_ai_case_scenario_sync.py",
                          "test_daily_skip_marker.py",
+                         # V8.6.3：原登记在 1.2（特性1），物理目录一直是特性9 -> 登记改挂此处
+                         "test_acceptance_skip_policy.py",
                          # V8.4.3：Windows 实测两次误拦（语义校准漏 help_text / 写死检测不对照场景原文）
                          "test_no_false_positive_blocks_ai.py"],
                  class2=["verify_demo_freshness.py"]),
@@ -295,16 +309,22 @@ FEATURES = [
              "两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、录像回放模式不重试、退出码可区分（2 产出侧 / 3 实跑侧）",
         dir="特性11-交付即验证",
         subs=[
-            dict(no="11.1", name="产出物档重试",
-                 goal="AI 产出被质量闸拦下（写死行数据 / 严重误选 / 必填未编排 / 行定位缺失）-> 带原因重生成；"
-                      "同因不重试、上一轮的缺陷记账不许留给下一轮",
-                 class1=["test_verify_entry_contract.py", "test_production_defects_gate_l1.py",
-                         "test_ai_incomplete_output_retries.py", "test_retry_leaves_no_stale_notes.py"],
+            dict(no="11.1", name="验证入口契约（两档重试口径）",
+                 goal="`cli verify` 独立入口的契约（能单独重跑，不必再走一遍 explore）；"
+                      "两档重试的能力口径：① 产出物被质量闸拦下（写死行数据 / 严重误选 / 必填未编排 / 行定位缺失）"
+                      "-> 带原因重生成；② 生成脚本后真跑一次 -> 失败带原因整轮重来。"
+                      "两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、录像回放模式不重试、"
+                      "退出码可区分（2 产出侧 / 3 实跑侧）。"
+                      "[!] V8.6.3：本特性**只挂物理住在本目录的判据**；"
+                      "两档重试的其余判据物理住在 tests/特性2-语义识别与步骤编排/（登记在 2.2），"
+                      "按「登记目录 == 物理目录」不在此重复挂",
+                 class1=["test_verify_entry_contract.py"],
                  class2=[]),
-            dict(no="11.2", name="实跑档重试",
-                 goal="generate + 逐条实跑 -> 失败带原因整轮重来；录像回放模式不重试；实跑未过 exit 3",
-                 class1=["test_ai_retry_loop.py", "test_ai_retry_same_cause.py"],
-                 class2=[]),
+            dict(no="11.2", name="实跑档重试（判据住特性2）",
+                 goal="实跑档（generate + 逐条实跑）失败 -> 带原因整轮重来；录像回放模式不重试；实跑未过 exit 3 —— "
+                      "能力口径保留在本条；其判据（test_ai_retry_loop / test_ai_retry_same_cause）"
+                      "物理住在 tests/特性2-语义识别与步骤编排/，按「登记目录 == 物理目录」登记在 2.2",
+                 class1=[], class2=[], status="判据住特性2"),
         ],
     ),
 ]

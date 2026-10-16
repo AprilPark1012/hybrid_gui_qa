@@ -379,10 +379,12 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
       --live-probe          强制现场重新 probe（忽略快照，最准但最慢）
       --allow-unmapped      【调试用】放行「有语义名映射不上」的情况，仍然产出产物（含 pytest.fail 存根）；
                             默认**拒绝落盘并 exit 2**（防止产出/交付一份全是 fail 存根的假脚本）
-      --changed             【默认】只重写**变了**的用例脚本（三指纹：用例 / 场景 / 探测结果）——
-                            P20 起的增量生成：一个用例一个文件，没变的不动字节
-      --force               全量重写所有用例脚本（发版/核对用；不看指纹）
       --only <id[,id...]>   只重生成指定的用例（其余一动不动，连 index 条目都保留）
+      --force               全量重写所有用例脚本（发版/核对用；不看指纹）
+
+    默认行为 = **只重写「变了」的用例脚本**（四指纹：用例 / 场景 / 探测结果 / 渲染模板）——
+    P20 起的增量生成：一个用例一个文件，没变的不动字节。[!] 旧的「增量开关」已删除
+    （它从来没被代码读过，只是把默认行为写成了一个 flag），传了会报错并给出替代做法。
 
     无法获得定位时**不产出产物**：宁可生成阶段就红，也不给出一份「看着合法、跑起来 50 条失败」的东西。
     """
@@ -1259,7 +1261,7 @@ FLAG_SPECS: dict[str, str | None] = {
     "--case": "value", "--slowmo": "value",
     "--element-map": "value", "--live-probe": None,
     "--allow-unmapped": None,
-    "--only": "value", "--changed": None, "--force": None,
+    "--only": "value", "--force": None,
     "--ai": None, "--no-cases": None,
     "--verify": None, "--no-verify": None,
     "--scenario": "value", "--scenario-file": "value", "--scenario-dir": "value",
@@ -1285,7 +1287,7 @@ _COMMON_FLAGS = {"--workers", "--debug", "--headed", "--force-workers", "--isola
                 "--case", "--slowmo"}
 CMD_FLAGS: dict[str, set[str]] = {
     "generate": {"--element-map", "--live-probe", "--allow-unmapped",
-                  "--only", "--changed", "--force", "--base-url"},
+                  "--only", "--force", "--base-url"},
     "explore": {"--ai", "--no-cases", "--no-verify", "--verify",
                 "--scenario", "--scenario-file", "--scenario-dir", "--tag", "--limit",
                 "--llm-cassette", "--llm-record", "--llm-cassette-strict", "--ai-retry"},
@@ -1314,6 +1316,11 @@ CMD_FLAGS: dict[str, set[str]] = {
 # 已移除的参数：给"为什么没了 + 该用什么"，而不是笼统的"不认识"
 REMOVED_FLAGS = {
     "--to-cases": "落 cases/ai_*.json 已是默认行为；要关掉用 --no-cases",
+    # V8.6.3（2026-10-16）：`--changed` 从来没有被代码读过 —— 真实现是
+    #   「not --force 就算增量」，即「增量」本来就是默认行为。
+    #   一个「传了也没用」的开关只会让人以为不传就不是增量的 -> 删除，改成友好提示。
+    "--changed": "增量生成已是 generate 的**默认行为**（没变的不重写），无需再传；"
+                 "要全量重写用 --force",
     # P25 片 9（D5，AprilPark1012 2026-10-11 拍定）：删除 mock 降级 —— 它是一条能产出**假 AI 用例**的路。
     "--mock-fallback": "AI 链路不再提供 mock 降级（mock 产物不是 AI 产物，会污染用例库）；"
                        "LLM 不可用时如实报错 —— 离线请用 --llm-cassette 回放，"
