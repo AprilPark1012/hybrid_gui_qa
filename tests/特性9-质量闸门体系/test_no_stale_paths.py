@@ -198,7 +198,7 @@ def test_negative_new_paths_are_not_flagged(tmp_path):
     """不能误伤新路径（假红与假绿一样会摧毁闸门）。"""
     good = "\n".join([
         "from framework.features.f03_locate.probe import probe_page",
-        "见 framework/features/f06_healer/runner_unused.py",
+        "见 framework/features/f06_healer/healer_run.py",
         "python build_tools/pack_release.py --with-cassettes",
         "python build_tools/build_html.py",
         "设计见内部设计文档「慢目标与并发修复方案」",

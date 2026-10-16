@@ -400,7 +400,7 @@
 │   │   ├── f04_ambiguity/           同名歧义处置:ambiguity_gate_generate.py
 │   │   ├── f05_layers/              弹层/展开态补探与数据:probe_snapshot_generate.py ·
 │   │   │                            data_gate_generate.py · data_driven_generate.py
-│   │   ├── f06_healer/              自愈闭环:healer_run.py · runner_unused.py
+│   │   ├── f06_healer/              自愈闭环:healer_run.py
 │   │   ├── f07_concurrency/         并发安全与归档:limits.py · retention_run.py
 │   │   ├── f08_replay/              LLM 录像/回放:llm_cassette_explore.py
 │   │   ├── f09_gate/                质量闸门体系:gates.py · feature_spec.py
@@ -461,7 +461,7 @@
 <!-- ========== 3. 整体流程 ========== -->
 <section>
   <h2 class="sec-title" id="chap-3"><span class="n">3</span>整体流程：explore(AI 产用例) -> cases/ -> generate -> run(带自愈)</h2>
-  <p class="sec-sub">本框架有<b>两种业务场景</b>，但<b>入口只有一条命令</b>：<b>(1) 真 AI 链路（主推）</b> <code>cli all --ai</code> —— 自然语言场景 -> AI 语义识别/编排 -> 用例落 <code>cases/ai_*.json</code> -> 生成 -> 真跑（花 token）；<b>(2) 手搓链路（暂冻结）</b> <code>cli all</code>（不带 <code>--ai</code>）—— 手搓 <code>cases/*.json</code> -> 生成脚本+数据分离 -> 执行（零 token）。<b>两条链路共用 <code>all</code>，用 <code>--ai</code> 区分，不另开命令</b>；两条链路在 <code>cases/*.json</code> 汇合，下游是同一条确定性执行链。</p>
+  <p class="sec-sub"><b>入口只有一条命令</b>：<b>真 AI 链路（唯一）</b> <code>cli all --ai</code> —— 自然语言场景 -> AI 语义识别/编排 -> 用例落 <code>cases/ai_*.json</code> -> 生成 -> 真跑（花 token）；<b>离线回放</b>用录像替代 LLM（<code>--llm-cassette</code>），同样的语义识别 -> 生成 -> 执行，<b>不联网、零 token</b>。<b>手搓链路已在 V8.6 整体删除</b>（不带 <code>--ai</code> 的 <code>all</code> 直接报错 exit 2）；两条路在 <code>cases/*.json</code> 汇合，下游是同一条确定性执行链。</p>
   <div class="card" style="margin:12px 0;">
     <b>命令 -> 职责 -> 是否用 AI（最容易搞混的一张表）：</b>
     <table class="tbl" style="width:100%;">
@@ -473,10 +473,10 @@
         <td><code class="code-inline">cases/ai_*.json</code> + <code class="code-inline">output/element_maps/element_map_*.json</code> + 生成物 + 报告</td>
       </tr>
       <tr>
-        <td><code class="code-inline">probe</code></td>
-        <td>Playwright 探页面 -> 元素语义清单</td>
-        <td>否</td>
-        <td><code class="code-inline">output/element_maps/probe_*.json</code></td>
+        <td><code class="code-inline">explore --ai</code></td>
+        <td>AI 语义识别（分段用法）：场景 -> ElementMap + 用例；元素探测是它内部的一步</td>
+        <td><b>是</b></td>
+        <td><code class="code-inline">output/element_maps/element_map_*.json</code>（含元素语义清单）</td>
       </tr>
       <tr>
         <td><code class="code-inline">generate</code></td>
@@ -497,13 +497,13 @@
         <td>同上面几条</td>
       </tr>
       <tr>
-        <td><code class="code-inline">all</code>（暂冻结，不加 <code class="code-inline">--ai</code>）</td>
-        <td><b>= probe -> generate -> run</b>（手搓链路一条龙，<b>不含</b> explore）</td>
+        <td><code class="code-inline">all --ai --llm-cassette</code></td>
+        <td><b>离线回放</b>：用录像替代 LLM 跑同一条 AI 链路（语义识别 -> 生成 -> 执行，<b>不联网、零 token</b>）</td>
         <td>否</td>
         <td>同上面几条</td>
       </tr>
     </table>
-    <p style="margin:8px 0 0;">[*] 最常被搞混的一点（<b>2026-10-12 更正</b>）：<code class="code-inline">all</code> 会把 <code>cases/</code> 里<b>所有</b>用例（AI 产的和手搓的）都跑掉；<b>带 <code class="code-inline">--ai</code> 时它<b>同时会</b>生成新用例</b>（先跑 <code class="code-inline">explore --ai</code> 再 generate/run），不带 <code class="code-inline">--ai</code> 时<b>不会</b>生成、只跑既有的。旧文档写的「<code class="code-inline">all</code> 不会生成新用例」是 <code class="code-inline">all</code> 还不支持 <code class="code-inline">--ai</code> 时的口径，已作废。</p>
+    <p style="margin:8px 0 0;">[*] 最常被搞混的一点（<b>2026-10-12 更正</b>）：<code class="code-inline">all</code> 会把 <code>cases/</code> 里<b>所有</b>用例都跑掉；<b>带 <code class="code-inline">--ai</code> 时它<b>同时会</b>生成新用例</b>（先跑 <code class="code-inline">explore --ai</code> 再 generate/run），不带 <code class="code-inline">--ai</code> 时<b>直接报错 exit 2</b>（V8.6 起手搓链路已删除，<code class="code-inline">all</code> 只支持真 AI 链路）。</p>
   </div>
   <div class="flow">
     <div class="flow-step">
@@ -530,7 +530,7 @@
   </div>
   <div class="card" style="margin-top:14px;border-left:4px solid #3b6fdd;">
     <b>[ai] AI 分支（主推）：`cli all --ai`（AI 语义识别 + 生成 + 真跑一条龙，需 DeepSeek key）</b>
-    <p style="color:var(--muted);font-size:.9rem;margin-top:4px">给一句自然语言场景，AI 读场景 + probe 语义清单 + DOM 上下文 -> 挑对控件 -> 产出 <b>ElementMap</b>（步骤+语义引用），并默认<b>同步落 <span class="code-inline">cases/ai_*.json</span></b>（--no-cases 可关）。generate 会读它、优先消费 element_map 快照，AI 用例与手写用例走同一条确定性执行链路。<br>三道防假安全感闸：(1) <b>交付即验证</b>——落盘后默认 <span class="code-inline">--verify</span> 立刻试跑该用例，实测 PASSED 才算出活，FAILED 就 <b>[NG] + exit 3</b>（日志 <span class="code-inline">output/verify/</span>）；(2) <b>AI 失败即报错退出（exit 2）</b>，绝不静默用 mock 顶替（**框架不提供 mock 降级**，LLM 不可用就如实报错退出）；(3) 落盘前<b>用例质量校验</b>拦「断言=输入回显」与「断言=猜出来的运行时计数（共 N 条）」。<br>另有：DeepSeek function calling 有间歇性 JSON 抖动 -> 内置退避重试（HYBRID_LLM_ATTEMPTS 默认 3）；<span class="code-inline">cli prune</span> 给快照做归档保留（各留最近 N 个）。<br><b>场景文件</b>：<span class="code-inline">--scenario-file</span> / <span class="code-inline">--scenario-dir</span> 直接读 <span class="code-inline">scenarios/*.yml</span>（一文件=一场景，含 business_context 领域知识 与 assert_guard 断言护栏），与内联 <span class="code-inline">--scenario</span> 共用同一条下游链路。</p>
+    <p style="color:var(--muted);font-size:.9rem;margin-top:4px">给一句自然语言场景，AI 读场景 + probe 语义清单 + DOM 上下文 -> 挑对控件 -> 产出 <b>ElementMap</b>（步骤+语义引用），并默认<b>同步落 <span class="code-inline">cases/ai_*.json</span></b>（--no-cases 可关）。generate 会读它、优先消费 element_map 快照，AI 用例走同一条确定性执行链路。<br>三道防假安全感闸：(1) <b>交付即验证</b>——落盘后默认 <span class="code-inline">--verify</span> 立刻试跑该用例，实测 PASSED 才算出活，FAILED 就 <b>[NG] + exit 3</b>（日志 <span class="code-inline">output/verify/</span>）；(2) <b>AI 失败即报错退出（exit 2）</b>，绝不静默用 mock 顶替（**框架不提供 mock 降级**，LLM 不可用就如实报错退出）；(3) 落盘前<b>用例质量校验</b>拦「断言=输入回显」与「断言=猜出来的运行时计数（共 N 条）」。<br>另有：DeepSeek function calling 有间歇性 JSON 抖动 -> 内置退避重试（HYBRID_LLM_ATTEMPTS 默认 3）；<span class="code-inline">cli prune</span> 给快照做归档保留（各留最近 N 个）。<br><b>场景文件</b>：<span class="code-inline">--scenario-file</span> / <span class="code-inline">--scenario-dir</span> 直接读 <span class="code-inline">scenarios/*.yml</span>（一文件=一场景，含 business_context 领域知识 与 assert_guard 断言护栏），与内联 <span class="code-inline">--scenario</span> 共用同一条下游链路。</p>
   </div>
 </section>
 
@@ -540,10 +540,11 @@
   <p class="sec-sub">
     <b>主推路径是 AI 链路</b>：你写<b>自然语言场景</b>（<span class="code-inline">scenarios/*.yml</span>），
     AI 负责语义识别、编排步骤、识别控件，产出可执行用例。
-    <b>手搓用例降级为调试/回归辅助</b>——用在「需要精确断言 / 补一条边界负向 / 把 AI 产出固化成回归资产」这些场合。
-    两条链路在 <span class="code-inline">cases/*.json</span> <b>汇合</b>：那是它们<b>唯一的接口</b>。
+    <b>本框架只剩一条链路</b>（真 AI 链路，<span class="code-inline">all --ai</span>）；另有一条<b>离线回放</b>——
+    场景没变时用录像替代 LLM（<span class="code-inline">--llm-cassette</span>），不调 LLM、零 token。
+    两条路都在 <span class="code-inline">cases/*.json</span> <b>汇合</b>：那是它们<b>唯一的接口</b>，
     汇合之后完全同一条链（<span class="code-inline">generate</span> -> <span class="code-inline">run</span>），
-    这就是「<b>AI 产的用例</b>」和「<b>你手搓的用例</b>」能跑同一条执行链、拿到同一份报告的原因。
+    这就是真 AI 链路与离线回放能跑同一条执行链、拿到同一份报告的原因。
   </p>
 
   <h3 id="sec-4-1" style="margin:26px 0 6px">4.1 一条链路：写场景 → AI 出用例 → 执行</h3>
@@ -678,8 +679,8 @@ assert_guard:
   </ol>
 
   <h4 style="margin:18px 0 4px">写一个场景：五步</h4>
-  <pre class="tree"># (1) 先看被测页面有哪些控件（语义名的唯一来源）
-python -m framework.cli probe                 # -> output/element_maps/probe_*.json
+  <pre class="tree"># (1) 先看被测页面有哪些控件（语义名的唯一来源）—— 元素清单随 explore 产物落盘
+#     output/element_maps/element_map_*.json 里的 probe_items 就是完整语义清单
 
 # (2) 复制一个最像的现成场景，改 id / scenario / business_context
 cp scenarios/orders/orders_invoice_full_lifecycle.yml scenarios/contracts/&lt;你的场景id&gt;.yml
@@ -692,7 +693,7 @@ ls cases/ai_&lt;你的场景id&gt;_*.json
 ls log/&lt;run_id&gt;/                          # 用例日志 / 报告 / trace
 
 # (5) 不满意 -> 回去改 yml（改 scenario 文案或 business_context），再跑第(3)步
-#    满意   -> 固化成手搓用例（见 4.3），之后零 token 重跑
+#    满意   -> 场景没变时用 --llm-cassette 离线回放（零 token 重跑，见特性 8）
 </pre>
   <p style="color:var(--muted);font-size:.9rem">
     批量场景：<span class="code-inline">all --ai --scenario-dir scenarios/ --tag smoke</span>（可加 <span class="code-inline">--limit N</span> 限流）。
@@ -705,7 +706,7 @@ ls log/&lt;run_id&gt;/                          # 用例日志 / 报告 / trace
     顶层<b>只有 5 个字段</b>：<span class="code-inline">case_id</span>（唯一 id，也是产物里测试函数名的来源）、
     <span class="code-inline">name</span>（报告里显示的名字）、<span class="code-inline">base_url</span>、
     <span class="code-inline">steps</span>（动作序列）、<span class="code-inline">asserts</span>（断言序列）。
-    AI 产的用例（<span class="code-inline">ai_*.json</span>）和你手搓的<b>格式完全一样</b>。
+    <span class="code-inline">cases/</span> 下的用例<b>只有 AI 一个来源</b>（<span class="code-inline">ai_*.json</span>；手搓链路已在 V8.6 删除）。
   </p>
 
   <h4 style="margin:18px 0 4px">steps：支持的 7 个动作（照抄即用）</h4>
@@ -827,7 +828,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     </tr>
     <tr>
       <td><b>(5) 元素口径对齐生产</b></td>
-      <td>只有顶层容器有 <span class="code-inline">testid</span>，控件层没有 -> 手搓时用语义名，不用 testid 定位控件。</td>
+      <td>只有顶层容器有 <span class="code-inline">testid</span>，控件层没有 -> 用例用<b>语义名</b>定位控件，不写 testid。</td>
     </tr>
     <tr>
       <td><b>(6) 交付前自检</b></td>
@@ -843,13 +844,13 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <tr><th style="width:34%">我想干什么</th><th style="width:30%">写哪个文件</th><th>命令</th></tr>
     <tr><td>用自然语言批量铺覆盖</td><td><span class="code-inline">scenarios/&lt;模块&gt;/&lt;id&gt;.yml</span></td>
         <td><span class="code-inline">cli all --ai --scenario-file …</span></td></tr>
-    <tr><td>把 AI 产出的用例固化成回归资产</td><td><span class="code-inline">cases/&lt;id&gt;.json</span>（去掉 <span class="code-inline">ai_</span> 前缀）</td>
-        <td>改名 + <span class="code-inline">cli generate</span></td></tr>
-    <tr><td>补一条边界/负向用例</td><td><span class="code-inline">cases/&lt;id&gt;.json</span></td>
-        <td>抄现成的改 -> <span class="code-inline">cli generate</span> -> 单跑 <span class="code-inline">-k</span></td></tr>
+    <tr><td>让用例成为可回归资产</td><td>场景 yml 的 <span class="code-inline">assert_guard</span> / 步骤描述</td>
+        <td><span class="code-inline">cli all --ai …</span> 重跑 -> <span class="code-inline">cli generate</span></td></tr>
+    <tr><td>补一条边界/负向场景</td><td>新写 <span class="code-inline">scenarios/&lt;模块&gt;/&lt;id&gt;.yml</span></td>
+        <td><span class="code-inline">cli all --ai …</span> -> 单跑 <span class="code-inline">-k</span></td></tr>
     <tr><td>一组数据跑多条用例</td><td>场景文件的 <span class="code-inline">data:</span> 段</td>
         <td><span class="code-inline">cli all --ai …</span>（每组一条用例）</td></tr>
-    <tr><td>查某个控件叫什么</td><td>—</td><td><span class="code-inline">cli probe</span> -> <span class="code-inline">output/element_maps/probe_*.json</span></td></tr>
+    <tr><td>查某个控件叫什么</td><td>—</td><td>看 <span class="code-inline">output/element_maps/element_map_*.json</span> 的 <span class="code-inline">probe_items</span> 清单</td></tr>
     <tr><td>只跑我刚写的那条</td><td>—</td><td><span class="code-inline">pytest scripts/generated -q -k &lt;case_id&gt;</span></td></tr>
     <tr><td>跑不通，想确认是环境还是用例</td><td>—</td><td>看 <span class="code-inline">log/&lt;run_id&gt;/</span> 里该用例日志 + <span class="code-inline">report.html</span> + trace</td></tr>
   </table>
@@ -865,8 +866,8 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   <div class="tree">
 <b>cli.py 入口</b>   (python -m framework.cli <b>all</b> --workers 2)
 │
-├── <b>cmd_probe</b>      -> probe.probe_page()                    [[OK] Playwright]
-│       └─ _role_of / _accessible_name / _placeholder -> 元素语义清单
+├── (probe 子命令已在 V8.6 删除；元素探测现在是 explore 内部的一步)
+│       └─ probe.probe_page() -> _role_of / _accessible_name -> 元素语义清单
 │
 ├── <b>cmd_explore</b>    -> explorer.ai_explore()                 [[ai] AI · 需 DeepSeek key]
 │       ├─ 入口三选一(互斥): --scenario 内联 / --scenario-file / --scenario-dir
@@ -876,7 +877,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 │       └─ _verify_cases(): 立刻 generate + pytest 单跑 -> FAILED 则 exit 3
 │
 ├── <b>cmd_generate</b>   -> generator.generate_scripts()         [[OK] Playwright]
-│       ├─ 读 cases/*.json（手搓用例 + AI 用例，同一套格式）
+│       ├─ 读 cases/*.json（AI 链路 / 离线回放产出的用例，同一套格式）
 │       ├─ loc_map 来源优先级: element_map 快照(explore产物, 含权威清单 probe_items) &gt; probe 快照 &gt; 现场 probe
 │       ├─ element(语义名) -> _semantic_to_locator_expr: test_id &gt; role+name &gt; placeholder &gt; text
 │       ├─ 映射不到 -> 打印 [!] 仍未映射；该步生成 pytest.fail（绝不静默跳过）
@@ -896,10 +897,10 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         「Playwright 定位」之间的桥，也是防"点错元素"的闸门。
   </p>
 
-  <h4 style="margin:22px 0 6px">[img] 图 A：两种场景的函数级调用链路（图形化总览）</h4>
+  <h4 style="margin:22px 0 6px">[img] 图 A：函数级调用链路（图形化总览）</h4>
   <p style="color:var(--muted);font-size:.92rem;margin-bottom:10px">
-    两条泳道：<b>场景(1)</b>把自然语言变成用例（花 token）；<b>场景(2)</b>把用例变成脚本并执行（零 token）。
-    中间的琥珀色<b>【汇合点】cases/*.json</b> 是两条链路唯一的接口 —— 这正是"AI 产的用例"和"你手搓的用例"能跑同一条执行链的原因。
+    两条泳道：<b>场景(1)</b>把自然语言变成用例（花 token，真 AI 链路）；<b>场景(2)</b>把用例变成脚本并执行（零 token，AI 链路与离线回放共用）。
+    中间的琥珀色<b>【汇合点】cases/*.json</b> 是两段的接口 —— 这正是真 AI 链路与离线回放能跑同一条执行链的原因。
   </p>
   <svg viewBox="0 0 1200 932" width="100%" role="img" aria-label="两种场景的函数级调用链路图" style="background:#fff;border:1px solid #e2e8f0;border-radius:14px">
 <defs>
@@ -978,19 +979,19 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 <line x1="956" y1="256" x2="938" y2="256" stroke="#2563eb" stroke-width="2" marker-end="url(#a1)"/>
 <line x1="830.0" y1="302" x2="830.0" y2="334" stroke="#2563eb" stroke-width="2" marker-end="url(#a1)"/>
 <rect x="16" y="334" width="1168" height="72" rx="10" fill="#fffbeb" stroke="#b45309" stroke-width="1.8"/>
-<text x="34" y="360" fill="#b45309" font-size="14.5" font-weight="700">【汇合点】cases/*.json —— 两条链路共同的接口（同一套格式，所以手搓用例与 AI 用例能一起跑）</text>
+<text x="34" y="360" fill="#b45309" font-size="14.5" font-weight="700">【汇合点】cases/*.json —— 真 AI 链路与离线回放共同的接口（同一套格式，下游完全共用）</text>
 <text x="34" y="384" fill="#64748b" font-size="11.5">字段：case_id / name / base_url / steps[op,desc,element,value,url] / asserts[kind?,desc,expect?,element|selector,name?]　（AI 用例额外带 source_scenario / scenario_id 溯源字段，generator 会忽略）</text>
 <line x1="600" y1="406" x2="600" y2="434" stroke="#b45309" stroke-width="2" marker-end="url(#am)"/>
 <rect x="16" y="434" width="1168" height="36" rx="8" fill="#0f8f6a"/>
-<text x="30" y="458" fill="#fff" font-size="15.5" font-weight="700">场景(2)  手搓 case.json -&gt; 生成 playwright 脚本 + 数据分离 -&gt; 执行    入口: cli generate / run</text>
+<text x="30" y="458" fill="#fff" font-size="15.5" font-weight="700">场景(2)  确定性下游：cases/*.json -&gt; 生成 playwright 脚本 + 数据分离 -&gt; 执行    入口: cli generate / run</text>
 <rect x="18" y="478" width="276" height="120" rx="10" fill="#ecfdf5" stroke="#0f8f6a" stroke-width="1.5"/>
 <circle cx="35" cy="497" r="11.5" fill="#0f8f6a"/>
 <text x="35" y="501.5" fill="#fff" font-size="12.5" font-weight="700" text-anchor="middle">1</text>
-<text x="54" y="502" fill="#0f172a" font-size="14" font-weight="700">输入：手写用例</text>
-<text x="30" y="520.5" fill="#64748b" font-size="11.5">cases/manual/&lt;case_id&gt;.json</text>
-<text x="30" y="536.0" fill="#64748b" font-size="11.5">element 写 semantic_name</text>
-<text x="30" y="551.5" fill="#64748b" font-size="11.5">value 可写 {datetime}</text>
-<text x="30" y="567.0" fill="#64748b" font-size="11.5">（格式与 AI 用例一致）</text>
+<text x="54" y="502" fill="#0f172a" font-size="14" font-weight="700">输入：用例</text>
+<text x="30" y="520.5" fill="#64748b" font-size="11.5">cases/&lt;场景id&gt;/&lt;用例id&gt;.json</text>
+<text x="30" y="536.0" fill="#64748b" font-size="11.5">（AI 产出 / 离线回放，同一套格式）</text>
+<text x="30" y="551.5" fill="#64748b" font-size="11.5">element 写 semantic_name</text>
+<text x="30" y="567.0" fill="#64748b" font-size="11.5">value 可写占位符</text>
 <rect x="314" y="478" width="276" height="120" rx="10" fill="#ecfdf5" stroke="#0f8f6a" stroke-width="1.5"/>
 <circle cx="331" cy="497" r="11.5" fill="#0f8f6a"/>
 <text x="331" y="501.5" fill="#fff" font-size="12.5" font-weight="700" text-anchor="middle">2</text>
@@ -1057,7 +1058,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 <line x1="314" y1="684" x2="294" y2="684" stroke="#0f8f6a" stroke-width="2" marker-end="url(#a2)"/>
 <line x1="600" y1="744" x2="600" y2="768" stroke="#0f8f6a" stroke-width="2" marker-end="url(#a2)"/>
 <rect x="16" y="768" width="1168" height="148" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.6" stroke-dasharray="6 4"/>
-<text x="34" y="795" fill="#7c3aed" font-size="14.5" font-weight="700">两条链路共享的三样东西（看懂框架的关键）</text>
+<text x="34" y="795" fill="#7c3aed" font-size="14.5" font-weight="700">全框架共享的三样东西（看懂框架的关键）</text>
 <rect x="34" y="810" width="372" height="94" rx="9" fill="#fff" stroke="#7c3aed" stroke-width="1.2"/>
 <text x="46" y="832" fill="#0f172a" font-size="12.5" font-weight="700">(1) probe.probe_page() 出场两次</text>
 <text x="46" y="851" fill="#64748b" font-size="10.5">出场(1) explore 时「给 AI 看菜单」：语义清单 + 消歧上下文</text>
@@ -1072,23 +1073,23 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 <text x="818" y="832" fill="#0f172a" font-size="12.5" font-weight="700">(3) 执行层完全共用</text>
 <text x="818" y="851" fill="#64748b" font-size="10.5">locator_bridge + healer + limits + conftest</text>
 <text x="818" y="866" fill="#64748b" font-size="10.5">AI 只决定「有没有用例」</text>
-<text x="818" y="881" fill="#64748b" font-size="10.5">跑起来与手搓用例无差别</text>
+<text x="818" y="881" fill="#64748b" font-size="10.5">跑起来与用例来源无关（同一套 harness）</text>
 </svg>
   <p style="color:var(--muted);font-size:.88rem;margin-top:6px">
     图例：箭头 = 函数调用 / 数据传递方向（同一条泳道内**从左到右**推进，到行末**折回**继续，泳道之间**向下**交接）。
-     关键：【汇合点】那根琥珀色箭头是两条链路唯一相接的地方。每条箭头传递的具体数据，见下方 <b>图 B</b> 的函数级明细。
+     关键：【汇合点】那根琥珀色箭头是两段唯一相接的地方。每条箭头传递的具体数据，见下方 <b>图 B</b> 的函数级明细。
   </p>
   <h4 style="margin:22px 0 6px">[link] 图 B：函数级明细（每个函数的入参 / 产物 / 判定）</h4>
   <p style="color:var(--muted);font-size:.92rem;margin-bottom:10px">
-    上图是<b>模块级</b>地图；这一张按<b>两种场景</b>拆成两条函数级链路（每个方框都是真实函数，箭头标出「谁调谁 + 传了什么数据」），
-    两条链路<b>在 cases/*.json 汇合</b>。场景(2)那一侧的四个阶段：<span class="badge" style="background:#0f8f6a">[OK] 同步感知（Playwright）</span>
+    上图是<b>模块级</b>地图；这一张按<b>两段</b>拆成函数级链路（每个方框都是真实函数，箭头标出「谁调谁 + 传了什么数据」），
+    两段<b>在 cases/*.json 汇合</b>。场景(2)那一侧的四个阶段：<span class="badge" style="background:#0f8f6a">[OK] 同步感知（Playwright）</span>
     <span class="badge" style="background:#3b6fdd">[ai] 异步认知（AI）</span>
     <span class="badge" style="background:#8b5cf6">[pkg] 落盘（确定性）</span>
     <span class="badge" style="background:#b45309">[brick] 确定性翻译/执行</span>
   </p>
   <pre class="tree">
-<b>两条链路的分工（一句话）</b>：场景(1) 负责"把自然语言变成用例"（花 token、有 AI）；场景(2) 负责"把用例变成脚本并执行"（零 token、纯确定性）。
-             两条链路<b>在 cases/*.json 汇合</b> —— 场景(1)的产物就是场景(2)的输入，格式完全一致。
+<b>两段的分工（一句话）</b>：场景(1) 负责"把自然语言变成用例"（花 token、有 AI）；场景(2) 负责"把用例变成脚本并执行"（零 token、纯确定性，AI 链路与离线回放共用）。
+             两段<b>在 cases/*.json 汇合</b> —— 场景(1)的产物就是场景(2)的输入，格式完全一致。
 
 ╔══════════════════════════════════════════════════════════════════════════════════════════════╗
 ║ 场景(1)  自然语言用例 -> AI 语义识别/编排 -> 输出测试用例到 cases/      入口: cli all --ai        ║
@@ -1138,11 +1139,11 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       └─ cli.<b>_verify_cases()</b>  立刻 generate 一次 + pytest 逐条单跑 -> FAILED 则 [NG] <b>exit 3</b>
 
                                         │
-                                        ▼   【汇合】cases/*.json —— 两条链路共同的接口（格式一模一样）
+                                        ▼   【汇合】cases/*.json —— 两段共同的接口（格式一模一样）
 ╔══════════════════════════════════════════════════════════════════════════════════════════════╗
-║ 场景(2)  手搓 case.json -> 生成 playwright 脚本 + 数据分离 -> 执行    入口: cli generate / run   ║
+║ 场景(2)  cases/*.json   -> 生成 playwright 脚本 + 数据分离 -> 执行    入口: cli generate / run  ║
 ╚══════════════════════════════════════════════════════════════════════════════════════════════╝
- <b>(1) 输入（手写用例）</b>
+ <b>(1) 输入（用例：AI 产出 / 离线回放）</b>
     cases/&lt;case_id&gt;.json   =  case_id / name / base_url / steps[op,desc,element,value,url] / asserts[kind?,desc,expect?,element|selector,name?]
                               （element 写 probe 的 semantic_name；value 可写 &#123;datetime&#125; 等占位符）
       └─ cli.py::main() -> <b>cli.cmd_generate(rest)</b>
@@ -1174,7 +1175,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
                        Tier1 语义精确/唯一命中 -> Tier2 指纹+上下文加权 -> 意图复验
                        仍失败 -> healer.<b>try_heal()</b>（业务后置断言兜底；判真 bug 绝不掩盖）
 
-╔══ 两条链路共享的三样东西（看懂框架的关键）═══════════════════════════════════════════════════╗
+╔══ 全框架共享的三样东西（看懂框架的关键）══════════════════════════════════════════════════════╗
 ║ 1) <b>probe.probe_page()</b>    出场(1) 给 AI 看菜单 ｜ 出场(2) 把语义名翻成 locator                  ║
 ║ 2) <b>semantic_name 契约</b>    probe 起名(唯一) -> AI 引用 -> cases[].element -> generate 查 loc_map ║
 ║ 3) <b>执行层完全共用</b>        locator_bridge + healer + limits + conftest（AI 只决定"有没有用例"）║
@@ -1296,7 +1297,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   <div class="card">
     <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 54 子特性）</h4>
     <table class="tbl"><tr><th style="width:46px">No</th><th style="width:230px">特性</th><th style="width:110px">key</th><th style="width:64px">子特性</th><th>目标</th></tr>
-    <tr><td>1</td><td><b>混合链路</b></td><td><span class="code-inline">mixed_chain</span></td><td>3</td><td>两种链路（AI 生成 / 离线回放）都能跑通，且有一条统一验收入口</td></tr>
+    <tr><td>1</td><td><b>AI 链路与离线回放</b></td><td><span class="code-inline">mixed_chain</span></td><td>3</td><td>只剩真 AI 链路（all --ai）与离线回放两种运行形态：都能跑通，且有一条统一验收入口</td></tr>
     <tr><td>2</td><td><b>语义识别与步骤编排</b></td><td><span class="code-inline">semantic</span></td><td>4</td><td>把「人的自然语言」变成「可执行的步骤序列」—— 面向生成，对人友好也对机器友好</td></tr>
     <tr><td>3</td><td><b>分层定位与控件识别</b></td><td><span class="code-inline">locate</span></td><td>9</td><td>在生产系统的复杂页面上仍能唯一定位到目标控件 —— 面向执行</td></tr>
     <tr><td>4</td><td><b>选错控件兜底</b></td><td><span class="code-inline">ambiguity</span></td><td>4</td><td>同名/同区域控件不许被选错；选不准就大声失败，绝不静默点到错的</td></tr>
@@ -1310,14 +1311,14 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     </table>
   </div>
   <section class="feat">
-    <h4 class="feat-title" id="feat-1" data-feat="1"><span class="fno">特性 1</span>混合链路 <span class="fkey">mixed_chain</span></h4>
-    <p class="feat-goal"><b>目标：</b>两种链路（AI 生成 / 离线回放）都能跑通，且有一条统一验收入口　<b>目录：</b><span class="code-inline">tests/特性1-混合链路/</span></p>
-    <p class="codesrc" style="margin:2px 0 0">图例 · 三种链路在下游汇合（AI / 手搓 / 离线回放共用同一条确定性下游）</p>
-    <div class="flow2"><span class="fnode">场景 yml / 手搓 json / 录像</span><span class="farrow">-></span><span class="fnode">cases/*.json</span><span class="farrow">-></span><span class="fnode g">generate</span><span class="farrow">-></span><span class="fnode g">run（零 token）</span></div>
+    <h4 class="feat-title" id="feat-1" data-feat="1"><span class="fno">特性 1</span>AI 链路与离线回放 <span class="fkey">mixed_chain</span></h4>
+    <p class="feat-goal"><b>目标：</b>只剩真 AI 链路（all --ai）与离线回放两种运行形态：都能跑通，且有一条统一验收入口　<b>目录：</b><span class="code-inline">tests/特性1-混合链路/</span></p>
+    <p class="codesrc" style="margin:2px 0 0">图例 · 真 AI 链路与离线回放在下游汇合（共用同一条确定性下游）</p>
+    <div class="flow2"><span class="fnode">场景 yml / 录像</span><span class="farrow">-></span><span class="fnode">cases/*.json</span><span class="farrow">-></span><span class="fnode g">generate</span><span class="farrow">-></span><span class="fnode g">run（零 token）</span></div>
     <div class="subfeat">
-      <h5 class="subfeat-title" id="sub-1.1" data-sub="1.1"><span class="sno">1.1</span>两种链路可切换</h5>
-      <p class="codesrc"><b>目标：</b>AI 生成链路、离线回放链路两条路各自可独立跑通</p>
-      <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>三条链路在下游汇合于 <span class="code-inline">cases/*.json</span>：(1) AI 链路 <span class="code-inline">cli.py::cmd_explore()</span> -> <span class="code-inline">explorer.ai_explore()</span> 产 ElementMap，再由 <span class="code-inline">case_builder.elementmap_to_cases_file()</span> 落 <span class="code-inline">cases/ai_*.json</span>（默认落盘，<span class="code-inline">--no-cases</span> 关）；(2) 手搓链路：人写 <span class="code-inline">cases/&lt;scenario_id&gt;/&lt;case_id&gt;.json</span>；(3) 离线回放：<span class="code-inline">--llm-cassette</span> 走 <span class="code-inline">explorer._replay_from_cassette()</span>（不联网、不要 key）。三条链路产物形态一致，下游完全共用。</p>
+      <h5 class="subfeat-title" id="sub-1.1" data-sub="1.1"><span class="sno">1.1</span>AI 链路与离线回放</h5>
+      <p class="codesrc"><b>目标：</b>真 AI 链路（all --ai）与离线回放（录像）各自可独立跑通（不含已删除的手搓链路）</p>
+      <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>真 AI 链路与离线回放都在下游汇合于 <span class="code-inline">cases/*.json</span>：(1) 真 AI 链路 <span class="code-inline">cli.py::cmd_explore()</span> -> <span class="code-inline">explorer.ai_explore()</span> 产 ElementMap，再由 <span class="code-inline">case_builder.elementmap_to_cases_file()</span> 落 <span class="code-inline">cases/ai_*.json</span>（默认落盘，<span class="code-inline">--no-cases</span> 关）；(2) 离线回放：<span class="code-inline">--llm-cassette</span> 走 <span class="code-inline">explorer._replay_from_cassette()</span>（不联网、不要 key），出来是同一套用例。两条路产物形态一致，下游完全共用（手搓链路已在 V8.6 删除）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">main()</span> -> <span class="code-inline">cmd_explore()</span> -> <span class="code-inline">_collect_pages_context()</span> -> <span class="code-inline">page_scan.scan_page()</span> -> <span class="code-inline">probe.probe_page()</span> -> ElementMap -> <span class="code-inline">elementmap_to_cases_file()</span> -> cases；cases -> <span class="code-inline">generate_scripts()</span> -> <span class="code-inline">_render_pytest_case()</span> -> scripts/generated/；scripts -> <span class="code-inline">cmd_run()</span> -> pytest -> 生成物 <span class="code-inline">_harness._act/_loc</span> -> <span class="code-inline">locator_bridge.resolve_locator()</span>。</p>
       <div class="flow2"><span class="fnode">cases/*.json</span><span class="farrow">-></span><span class="fnode g">generate_scripts()</span><span class="farrow">-></span><span class="fnode">scripts/generated/*.py</span><span class="farrow">-></span><span class="fnode">pytest（零 token）</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_acceptance_entry.py（8 条）</span> <span class="code-inline">tests/特性1-混合链路/test_offline_chain_python.py（9 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性1-混合链路/verify_e2e_scenario1_online.py</span></p>
@@ -1331,8 +1332,8 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_acceptance_entry.py（8 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_acceptance_skip_policy.py（6 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
-      <h5 class="subfeat-title" id="sub-1.3" data-sub="1.3"><span class="sno">1.3</span>交付两件套</h5>
-      <p class="codesrc"><b>目标：</b>无外网机器靠「代码包 + LLM 录像包」即可跑 AI 链路</p>
+      <h5 class="subfeat-title" id="sub-1.3" data-sub="1.3"><span class="sno">1.3</span>单包即离线可跑</h5>
+      <p class="codesrc"><b>目标：</b>无外网机器解压交付包即可离线跑通 AI 链路（录像随代码包一起发，只有一个 zip）</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b><span class="code-inline">build_tools/pack_release.py</span> 打「代码包」（含运行期必需文件，外加 <span class="code-inline">output/element_maps/</span> 的 elementMap <b>最新 1 份</b>—— elementMap 是交付生成物之一；<b><span class="code-inline">log/</span> 与录像都不进代码包</b>），<span class="code-inline">--with-cassettes</span> 打「LLM 录像包」；打包前强制<span class="code-inline">build_tools/check_cassettes.py</span> 体检（覆盖不全就不产包，<span class="code-inline">--allow-missing-cassettes</span> 仅供调试）。无外网机器用 <span class="code-inline">build_tools/offline_explore_chain.py --repo . --run</span> 一键跑通（它把 LLM 端点指到黑洞 <span class="code-inline">127.0.0.1:9</span>，「有没有偷偷联网」因而是可证伪的）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">pack_release.main()</span> -> <span class="code-inline">check_cassettes.check()</span>（出厂闸门）-> 产包；<span class="code-inline">offline_explore_chain</span> -> <span class="code-inline">cli explore --llm-cassette</span> -> generate -> run。</p>
       <div class="flow2"><span class="fnode">pack_release.main()</span><span class="farrow">-></span><span class="fnode">check_cassettes.check()（出厂闸门）</span><span class="farrow">-></span><span class="fnode g">代码包 + 录像包</span><span class="farrow">-></span><span class="fnode">offline_explore_chain.main()</span><span class="farrow">-></span><span class="fnode y">cli explore --llm-cassette</span><span class="farrow">-></span><span class="fnode">generate -> run</span></div>
@@ -1358,7 +1359,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>场景 yml 的自然语言 -> 步骤序列。<span class="code-inline">_build_planner_prompt()</span> 把「场景 + 控件清单 + DOM 上下文 + 必填控件块 + 声明等待块」组装成提示词；<span class="code-inline">_parse_steps_text()</span> 解析结构化（function calling）或文本两种输出；<span class="code-inline">_apply_semantic_calibration()</span> 做语义校准；<span class="code-inline">_reject_login_steps()</span> 拒绝 AI 自编登录流程；<span class="code-inline">reject_hardcoded_row_values()</span> 拒绝写死行内业务值；<span class="code-inline">check_required_field_coverage()</span> 校验必填字段覆盖。失败自动闭环：<span class="code-inline">HYBRID_AI_RETRY</span>（默认 2、上界 5）配 <span class="code-inline">_should_retry_again()</span>（同因不重试，避免白烧 token）。步骤还能<b>直接声明定位</b>（by+value），不依赖探测清单：<span class="code-inline">generator._step_direct_locator_expr()</span>。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">cmd_explore()</span> -> <span class="code-inline">ai_explore()</span> -> <span class="code-inline">_build_planner_prompt()</span> -> LLM -> <span class="code-inline">_parse_steps_text()</span> -> <span class="code-inline">_apply_semantic_calibration()</span> -> 校验族 -> ElementMap；重试：<span class="code-inline">cmd_explore</span> 收 <span class="code-inline">_case_quality_reasons()</span> -> <span class="code-inline">_should_retry_again()</span> -> 带 retry_feedback 再问一轮。</p>
       <div class="flow2"><span class="fnode">场景文案 + 控件清单</span><span class="farrow">-></span><span class="fnode">_build_planner_prompt()</span><span class="farrow">-></span><span class="fnode">LLM</span><span class="farrow">-></span><span class="fnode">_parse_steps_text()</span><span class="farrow">-></span><span class="fnode y">_apply_semantic_calibration()</span><span class="farrow">-></span><span class="fnode r">校验族（拒编登录/写死行值/必填）</span><span class="farrow">-></span><span class="fnode">ElementMap</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/test_step_direct_locator.py（15 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_scenario_preconditions.py（10 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_no_demo_literals.py（2 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_no_hardcoded_row_values.py（5 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_semantic_mismatch_blocks.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_llm_tool_choice_unsupported.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_can_express_row_checkbox.py（14 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_required_field_coverage.py（8 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_required_fields_hard_checklist.py（5 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_list_clipping_is_general.py（15 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_dom_facts_merged.py（11 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_wait_page_rule_compact.py（6 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_quality_warnings_feed_next_round.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/verify_role_switch_click.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/test_step_direct_locator.py（15 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_scenario_preconditions.py（10 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_no_demo_literals.py（2 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_no_hardcoded_row_values.py（5 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_semantic_mismatch_blocks.py（3 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_llm_tool_choice_unsupported.py（4 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_can_express_row_checkbox.py（14 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_required_field_coverage.py（8 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_required_fields_hard_checklist.py（5 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_list_clipping_is_general.py（15 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_dom_facts_merged.py（11 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_prompt_wait_page_rule_compact.py（6 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_quality_warnings_feed_next_round.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/verify_role_switch_click.py</span></p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-2.3" data-sub="2.3"><span class="sno">2.3</span>步骤到定位的合成</h5>
@@ -1409,7 +1410,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-3.4" data-sub="3.4"><span class="sno">3.4</span>跨页面元素</h5>
       <p class="codesrc"><b>目标：</b>多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧；explore 期喂给 AI 的**完整清单**必须落盘，作为映射表与运行时快照的**唯一名字来源**</p>
-      <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>多页面场景下元素跨页可用；同名元素改成 <span class="code-inline">原名@页名</span> 消歧：<span class="code-inline">probe.uniquify_across_pages()</span> 把只出现在一页的名字保持原名，出现在多页的全部改名并记冲突（<span class="code-inline">name_source="page"</span>）。名字还有一条更硬的口径：<b>单一权威</b> —— explore 把<b>喂给 AI 的完整清单</b>随产物一起落盘（<span class="code-inline">ElementMap.probe_items</span>，实测 552 条 / 7 页），generate <b>两条链路同时</b>消费它：映射表 （<span class="code-inline">generator._load_loc_map_from_element_map()</span>）与运行时快照 （<span class="code-inline">probe_snapshot.items_from_element_map()</span>）。为什么必须落盘：element_map 的 steps 只含 <b>AI 实际用到</b>的名字，手搓用例 / 断言引用的控件名 AI 可能没用过；只靠「现场重探缺口那一两页」补不出它们（重探拿不到跨页唯一化上下文，实测补 0/1）=> 质量闸报「缺失项」，整条链卡死。<b>禁止只改一侧</b>：清单若只喂映射表不落快照（或反之）就是制造新的不一致（实测连踩两次打空）。</p>
+      <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>多页面场景下元素跨页可用；同名元素改成 <span class="code-inline">原名@页名</span> 消歧：<span class="code-inline">probe.uniquify_across_pages()</span> 把只出现在一页的名字保持原名，出现在多页的全部改名并记冲突（<span class="code-inline">name_source="page"</span>）。名字还有一条更硬的口径：<b>单一权威</b> —— explore 把<b>喂给 AI 的完整清单</b>随产物一起落盘（<span class="code-inline">ElementMap.probe_items</span>，实测 552 条 / 7 页），generate <b>两侧同时</b>消费它：映射表 （<span class="code-inline">generator._load_loc_map_from_element_map()</span>）与运行时快照 （<span class="code-inline">probe_snapshot.items_from_element_map()</span>）。为什么必须落盘：element_map 的 steps 只含 <b>AI 实际用到</b>的名字，用例 / 断言引用的控件名 AI 可能没用过；只靠「现场重探缺口那一两页」补不出它们（重探拿不到跨页唯一化上下文，实测补 0/1）=> 质量闸报「缺失项」，整条链卡死。<b>禁止只改一侧</b>：清单若只喂映射表不落快照（或反之）就是制造新的不一致（实测连踩两次打空）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b>探测 <span class="code-inline">_collect_pages_context()</span> -> <span class="code-inline">uniquify_across_pages()</span> -> <span class="code-inline">_finalize_map(manifest=...)</span>（<b>3 条产出路径都带</b>）-> <span class="code-inline">element_map_*.json</span>；消费 <span class="code-inline">generator._load_loc_map_from_element_map()</span> / <span class="code-inline">probe_snapshot.items_from_element_map()</span> -> <span class="code-inline">_probe_snapshot.json</span> -> 运行时 <span class="code-inline">probe_snapshot.load_snapshot()</span>。</p>
       <div class="flow2"><span class="fnode">多页探测</span><span class="farrow">-></span><span class="fnode">uniquify_across_pages()</span><span class="farrow">-></span><span class="fnode y">原名@页名</span><span class="farrow">-></span><span class="fnode">_finalize_map(manifest=...)</span><span class="farrow">-></span><span class="fnode y">probe_items（喂给 AI 的完整清单）</span><span class="farrow">-></span><span class="fnode g">映射表 + 运行时快照两侧同源</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_runtime_name_source_is_explore_snapshot.py（12 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_elementmap_list_contract.py（9 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_explore_manifest_authoritative.py（13 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_page_identity_contract.py（9 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/verify_cross_page.py</span></p>
@@ -1635,7 +1636,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>布局与命名契约：tests/ 与生成物的目录布局、跨平台路径拼接、命名空间、生成物形态都由判据钉住（<span class="code-inline">test_test_layout_contract.py</span> / <span class="code-inline">test_generated_layout_contract.py</span> / <span class="code-inline">test_path_join_contract.py</span> 等）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b>判据直接读磁盘布局与生成物文本做断言（秒级、不依赖 demo）。</p>
       <div class="flow2"><span class="fnode">布局/路径/命名空间 契约判据</span><span class="farrow">-></span><span class="fnode">test_*_contract.py（读磁盘布局）</span><span class="farrow">-></span><span class="fnode y">config._repo_root() 定仓库根</span><span class="farrow">-></span><span class="fnode r">坏了就红</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_test_layout_contract.py（13 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_generated_layout_contract.py（7 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_path_join_contract.py（2 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_case_scenario_contract.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_click_then_ready_contract.py（8 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_assert_kinds_render.py（11 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_wait_text_kind.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_demo_testid_policy.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_test_layout_contract.py（13 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_generated_layout_contract.py（7 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_path_join_contract.py（2 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_case_scenario_contract.py（4 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_click_then_ready_contract.py（8 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_assert_kinds_render.py（11 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_wait_text_kind.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_demo_testid_policy.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-9.2" data-sub="9.2"><span class="sno">9.2</span>质量闸</h5>
@@ -1682,7 +1683,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p class="codesrc"><b>目标：</b>用例替换不许破坏结构；闸门自身不许互相耦合</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>用例替换不许破坏结构；闸门自身不许互相耦合：<span class="code-inline">test_case_replacement_safety.py</span> 与 <span class="code-inline">test_no_gate_coupling.py</span> 分别钉住「替换安全」与「闸门解耦」。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b>判据静态/秒级校验（读生成物与闸门源码）。</p>
-      <div class="flow2"><span class="fnode">用例替换 write_case()（AI 用例换代）</span><span class="farrow">-></span><span class="fnode g">不误伤手搓/临时用例</span><span class="farrow">-></span><span class="fnode">闸门解耦 test_no_gate_coupling.py</span><span class="farrow">-></span><span class="fnode g">闸门之间不互相耦合</span></div>
+      <div class="flow2"><span class="fnode">用例替换 write_case()（AI 用例换代）</span><span class="farrow">-></span><span class="fnode g">不误伤非 AI / 临时用例</span><span class="farrow">-></span><span class="fnode">闸门解耦 test_no_gate_coupling.py</span><span class="farrow">-></span><span class="fnode g">闸门之间不互相耦合</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_case_replacement_safety.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_no_gate_coupling.py（2 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1734,9 +1735,9 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-10.5" data-sub="10.5"><span class="sno">10.5</span>推荐路径口径</h5>
       <p class="codesrc"><b>目标：</b>文档/提示/培训页的主推路径 = 真 AI 链路（V8.6 起是唯一链路）；不许把手搓链路写成可用入口（历史版本记录不改）</p>
-      <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>文档/提示/培训页的主推路径 = <b>AI 链路</b>；手搓用例降级为调试与回归辅助。为此把常用可调项开成 CLI 参数（<span class="code-inline">--ai-retry</span> / <span class="code-inline">--timeout</span> / <span class="code-inline">--strict-locate</span> ...）并由 <span class="code-inline">cli config</span>（<span class="code-inline">TUNABLE_CATALOG</span>）一屏可见，让「有哪些旋钮、当前多少、从哪来」不用翻源码。</p>
+      <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>文档/提示/培训页的主推路径 = <b>真 AI 链路（V8.6 起是唯一链路）</b>；不许把手搓链路写成可用入口。为此把常用可调项开成 CLI 参数（<span class="code-inline">--ai-retry</span> / <span class="code-inline">--timeout</span> / <span class="code-inline">--strict-locate</span> ...）并由 <span class="code-inline">cli config</span>（<span class="code-inline">TUNABLE_CATALOG</span>）一屏可见，让「有哪些旋钮、当前多少、从哪来」不用翻源码。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">main()</span> -> <span class="code-inline">cmd_config()</span> -> 遍历 <span class="code-inline">TUNABLE_CATALOG</span>；<span class="code-inline">ENV_TO_FLAG</span> 把 CLI 值落进环境变量（CLI > env > 默认）。</p>
-      <div class="flow2"><span class="fnode">AI 链路（主推）</span><span class="farrow">-></span><span class="fnode y">手搓用例（调试/回归辅助）</span><span class="farrow">-></span><span class="fnode">cmd_config() -> TUNABLE_CATALOG</span><span class="farrow">-></span><span class="fnode">ENV_TO_FLAG（CLI > env > 默认）</span></div>
+      <div class="flow2"><span class="fnode">真 AI 链路（唯一）</span><span class="farrow">-></span><span class="fnode y">离线回放（零 token）</span><span class="farrow">-></span><span class="fnode">cmd_config() -> TUNABLE_CATALOG</span><span class="farrow">-></span><span class="fnode">ENV_TO_FLAG（CLI > env > 默认）</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_ai_first_docs.py（6 条）</span> <span class="code-inline">tests/特性10-CLI帮助契约/test_tunables_exposed_as_flags.py（6 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
@@ -1757,7 +1758,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-10.9" data-sub="10.9"><span class="sno">10.9</span>LLM 体检 + 思考档位</h5>
       <p class="codesrc"><b>目标：</b>换模型前先体检：`cli llm-doctor` 真发 2 次请求，报「连通 / function calling 通不通 / 端点在用哪档思考」，并区分「不可用」与「能用但打折（thinking 模式拒 tool_choice）」。配套 `LLM_REASONING_EFFORT` 旋钮压思考强度；旋钮必须真进请求体（断言产出而非调用）、不污染默认、可发现</p>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_llm_doctor.py（13 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性10-CLI帮助契约/test_llm_doctor.py（13 条）</span> <span class="code-inline">tests/特性10-CLI帮助契约/test_reasoning_effort_advice_consistency.py（2 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-10.10" data-sub="10.10"><span class="sno">10.10</span>思考模式端点兼容</h5>
@@ -1779,7 +1780,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_retry_loop.py（10 条）</span> <span class="code-inline">tests/特性2-语义识别与步骤编排/test_ai_retry_same_cause.py（5 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
-  <div class="card" style="border-top:4px solid var(--brand);margin-top:18px"><h4>[pin] 读本章的顺序建议（新手路线）</h4><p style="font-size:.94rem;line-height:1.8">1 先读 <b>特性 1</b>（两条链路怎么汇合）-&gt; 2 再读 <b>特性 5</b>（用例/脚本/数据怎么分工，这是你日常改的东西）-&gt; 3 跑一遍第 5 章 5.2 的六个阶段对照代码 -&gt; 4 遇到点不中元素时回读 <b>特性 2 / 3 / 4</b> -&gt; 5 交付或换机器前读 <b>特性 8</b>（录像与出厂闸门）-&gt; 6 改完代码用 <b>特性 9 / 10</b> 的入口自检。</p><p class="codesrc">判据条数以实跑输出为准（<span class="code-inline">pytest tests/ -q</span> · <span class="code-inline">python tests/_runner/run_acceptance.py</span>）；本页条数是生成时从测试文件数出来的（与 build_feature_map.py 同口径）。</p></div>
+  <div class="card" style="border-top:4px solid var(--brand);margin-top:18px"><h4>[pin] 读本章的顺序建议（新手路线）</h4><p style="font-size:.94rem;line-height:1.8">1 先读 <b>特性 1</b>（AI 链路怎么产出用例）-&gt; 2 再读 <b>特性 5</b>（用例/脚本/数据怎么分工，这是你日常改的东西）-&gt; 3 跑一遍第 5 章 5.2 的六个阶段对照代码 -&gt; 4 遇到点不中元素时回读 <b>特性 2 / 3 / 4</b> -&gt; 5 交付或换机器前读 <b>特性 8</b>（录像与出厂闸门）-&gt; 6 改完代码用 <b>特性 9 / 10</b> 的入口自检。</p><p class="codesrc">判据条数以实跑输出为准（<span class="code-inline">pytest tests/ -q</span> · <span class="code-inline">python tests/_runner/run_acceptance.py</span>）；本页条数是生成时从测试文件数出来的（与 build_feature_map.py 同口径）。</p></div>
 </section>
 
 <!-- ========== 7. 常见坑 ========== -->
@@ -1850,7 +1851,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 <span class="prompt">$</span> pip install -r requirements.txt
 <span class="prompt">$</span> python -m playwright install chromium              <span class="cmt">#  别漏这一步</span>
 <span class="prompt">$</span> python -m playwright install --list                 <span class="cmt"># 自检：能看到 chromium-&lt;rev&gt; + chromium_headless_shell-&lt;rev&gt; 就对了</span>
-<span class="prompt">$</span> python -m framework.cli probe                       <span class="cmt"># 复验：能吐出元素清单 = 通了</span>
+<span class="prompt">$</span> python -m framework.cli setup --check             <span class="cmt"># 复验：依赖/浏览器/自检全过 = 通了</span>
 </pre>
 
   <h4 style="margin:18px 0 4px">浏览器到底装在哪儿？（离线 / 内网机器要用）</h4>
@@ -1937,7 +1938,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <pre class="cmd"><span class="prompt">$</span> cd ~/hybrid_gui_qa && source .venv/bin/activate
 <span class="prompt">$</span> python -m demo.app            <span class="cmt"># 起被测合同管理页 (8000)</span>
 
-<span class="prompt">$</span> python -m framework.cli probe          <span class="cmt"># (1) 探测页面交互元素</span>
+<span class="prompt">$</span> python -m framework.cli all --ai --scenario "…" <span class="cmt"># (1) 写场景 -> AI 出用例（内部含探测）</span>
 <span class="prompt">$</span> python -m framework.cli generate       <span class="cmt"># (2) 读 cases/ 用例 -> 生成 scripts/generated/(脚本) + datasets/(数据抽离)</span>
 <span class="prompt">$</span> python -m framework.cli run --workers 2 <span class="cmt"># (3) 并发执行 + 资源预检(内存不够自动降级)</span>
 
@@ -1952,7 +1953,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 <span class="prompt">$</span> python -m pytest tests/_helpers/ -q               <span class="cmt"># (6) 框架自测（一类）：秒级，不需要 demo / key</span></pre>
     <p style="margin-top:10px;color:var(--muted);font-size:.92rem">
       预期输出：<code>fill->在搜索框输入关键字</code>、<code>click->点击搜索按钮</code>、
-      <code>断言->搜索完成 v 全部通过</code>，<code>&lt;N&gt; passed</code>（<b>N 随 cases/ 里的用例数变化</b>，本文档写作时为 15 条：11 手写 + 4 AI），
+      <code>断言->搜索完成 v 全部通过</code>，<code>&lt;N&gt; passed</code>（<b>N 随 cases/ 里的用例数变化</b>，本文档不写死条数，以实跑为准），
       HTML 报告在 <code>log/&lt;run_id&gt;/report.html</code>（每次运行独立目录）。
     </p>
     <p style="margin-top:12px;color:var(--muted);font-size:.92rem;border-left:3px solid #999;padding-left:10px">
@@ -1975,9 +1976,9 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <b> R7 四项验收：一条命令跑完</b> —— <code>python tests/_runner/run_acceptance.py</code>。<br>
       执行顺序（<b>便宜先跑 + fail fast</b>，编号 ≠ 顺序）：
       闸门自检 -> (3) demo 新鲜度 -> (1) 框架自测 -> (4) E2E -> (2) 特性自测。<br>
-      (4) E2E 有<b>三个场景</b>：场景1 = 自然语言 -> <code>explore --ai</code> -> <code>cases/ai_*.json</code>
+      (4) E2E 有<b>三个场景</b>：场景1 = 自然语言 -> <code>all --ai</code> -> <code>cases/ai_*.json</code>
       -> <code>generate</code> -> <code>run</code>（日常走<b>离线录像回放</b>，不联网可证伪）；
-      场景2 = <code>generate</code> -> <code>run</code>（手写用例驱动）；
+      场景2 = <code>generate</code> -> <code>run</code>（确定性下游；V8.6 起无手搓输入，本场景入口已随之删除）；
       <b>场景3 = 录制回放验证</b>（录像可用性体检 + 体检有效性负向 + 不匹配必须 fail loud；
       <code>--with-record</code> 时加跑「录制 -> 回放闭环」，要 key + 外网）。<br>
       <b>录像运维</b>：<code>python build_tools/check_cassettes.py</code>（零成本体检：哪些场景没有可用录像）·
@@ -2929,12 +2930,12 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 54 子特性）</a>
       <ul class="toc-l2">
         <li class="toc-feat">
-          <a href="#feat-1">特性 1混合链路 mixed_chain</a>
+          <a href="#feat-1">特性 1AI 链路与离线回放 mixed_chain</a>
           <button class="toc-caret" type="button" aria-expanded="true" data-target="tocsub-feat-1" title="收起/展开子特性">-</button>
           <ul class="toc-l3 open" id="tocsub-feat-1">
-            <li><a href="#sub-1.1">1.1两种链路可切换</a></li>
+            <li><a href="#sub-1.1">1.1AI 链路与离线回放</a></li>
             <li><a href="#sub-1.2">1.2统一验收入口</a></li>
-            <li><a href="#sub-1.3">1.3交付两件套</a></li>
+            <li><a href="#sub-1.3">1.3单包即离线可跑</a></li>
           </ul>
         </li>
         <li class="toc-feat">

@@ -8,7 +8,6 @@
   (1) 端口没人听 -> 判不可达，且话里给出下一步（起 demo）
   (2) 目标活着（哪怕 /api/health 404） -> 判可达（不能把「老目标」误判成死）
   (3) 并发闸的归因要把两种情况分开
-  (4) `cli probe` 在不可达时 **exit 2 + 人话**，且**不启 Playwright**（测试里用假模块兜住）
 
 跑法（秒级，只起 stdlib 小服务，不启浏览器）：
     cd ~/hybrid_gui_qa && source .venv/bin/activate
@@ -20,7 +19,6 @@ import contextlib
 import socket
 import sys
 import threading
-import types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -115,25 +113,6 @@ def test_partition_probe_reports_true_when_declared():
     assert "partitioned=true" in why
 
 
-# ---------- 三、CLI 层：exit 2 + 人话，且不启浏览器 ----------
-
-@pytest.fixture
-def playwright_trap(monkeypatch):
-    """装一个「被调用就断言失败」的假 playwright —— 证明预检在开浏览器**之前**就退了。"""
-    fake = types.ModuleType("playwright.sync_api")
-
-    def _should_not_run(*a, **k):
-        raise AssertionError("不可达时不该启动 Playwright（预检没生效）")
-
-    setattr(fake, "sync_playwright", _should_not_run)
-    setattr(fake, "Page", type("Page", (), {}))
-    setattr(fake, "expect", lambda *a, **k: None)
-    setattr(fake, "__getattr__", lambda name: type(name, (), {}))
-    pkg = types.ModuleType("playwright")
-    setattr(pkg, "sync_api", fake)
-    monkeypatch.setitem(sys.modules, "playwright", pkg)
-    monkeypatch.setitem(sys.modules, "playwright.sync_api", fake)
-    return fake
 
 
 

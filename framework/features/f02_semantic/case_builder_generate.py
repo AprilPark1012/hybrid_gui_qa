@@ -495,14 +495,14 @@ def write_case(case: dict, cases_dir: Path | None = None, prune_previous: bool =
     **D3（2026-09-24 他定）：同一个场景只保留一条当前用例。**
     带 `scenario_id` 的用例（AI 用例都是）在写入后会把**同场景的更早用例连同它的 dataset 一起清掉**——
     因为「场景变了要刷新，保证同步」这件事只对"当前那一条"成立：留着历史旧件，它们必然与现场景不同步，
-    只会让 `cases/` 越长越脏、让一类判据永久发红。不带 scenario_id 的用例（手搓/临时）一律不动。
+    只会让 `cases/` 越长越脏、让一类判据永久发红。不带 scenario_id 的用例（非 AI 用例 / 临时用例）一律不动。
     """
     cases_dir = Path(cases_dir or CASES_DIR)
     cases_dir.mkdir(parents=True, exist_ok=True)
     cid = case["case_id"]
     # ★P20（2026-09-24 项目负责人定，口径(1)）：用例落盘改成「一个场景一个目录」
     #   AI 用例（case_id 形如 ai_<scenario_id>_<6位数字>）-> cases/<scenario_id>/<case_id>.json
-    #   手搓/临时用例 -> cases/manual/<case_id>.json
+    #   非 AI 用例 / 临时用例 -> cases/manual/<case_id>.json
     #   [!] 判定用 **case_id 的合法形态**，不用「有没有 scenario_id」——临时用例常**继承**样板
     #      场景的 scenario_id（今天静默删数据的真凶就在这），按后者会把它误当 AI 用例 X
     #   [!] cases_dir 仍保持指向 cases/ 根（下游 ds_dir 用它的 parent 推算 scripts/datasets）
@@ -513,7 +513,7 @@ def write_case(case: dict, cases_dir: Path | None = None, prune_previous: bool =
     # ★2026-09-24 事故(2)（真凶，由判据当场抓出）：同名冲突时落成 `xxx-2.json`，
     #   而清理逻辑按"路径比对"跳过的是 `-2` 那份 -> **原版被删** X
     # -> AI 用例是"幂等重生成"的产物（同一 case_id 就该是同一份）-> **直接覆盖**，不搞 `-2`；
-    #   只有**非 AI**（手搓/临时）用例才保留 `-2` 递增（避免覆盖用户手工产物）。
+    #   只有**非 AI**用例才保留 `-2` 递增（非 AI 用例的防误删守卫：避免覆盖用户手工产物）。
     _strict_for_path = bool(re.fullmatch(r"ai_.+_\d{6}", str(cid or "")))
     path = _target / f"{cid}.json"
     if not _strict_for_path:
@@ -524,11 +524,11 @@ def write_case(case: dict, cases_dir: Path | None = None, prune_previous: bool =
     path.write_text(json.dumps(case, ensure_ascii=False, indent=2), encoding="utf-8")
 
     sid = str(case.get("scenario_id") or "").strip()
-    # [!] 2026-09-24 事故（我引入的静默删数据 bug）：临时/手搓用例常**继承**样板场景的 scenario_id
+    # [!] 2026-09-24 事故（我引入的静默删数据 bug）：非 AI 用例 / 临时用例常**继承**样板场景的 scenario_id
     #   （例如 verify_data_expand 造的 `zz_verify_data_expand_tmp` 就是从真用例复制的，scenario_id 仍是
     #    `contracts_search_by_no`）-> 若按 scenario_id 一律清理，就会把**真用例删掉** XX
     # -> 清理只允许由 **AI 用例**（case_id 形如 `ai_<scenario_id>_<ts>`）触发；其余一律不碰。
-    # [!] 2026-09-24 事故（静默删数据，两轮才收干净）：临时/手搓用例会**继承**样板场景的 scenario_id，
+    # [!] 2026-09-24 事故（静默删数据，两轮才收干净）：非 AI 用例 / 临时用例会**继承**样板场景的 scenario_id，
     #   而"以 ai_ 开头"这种宽松守卫挡不住（迟早有 `ai_..._tmp` 这类 id）-> 改用**严格形态**：
     #   只有 `case_id == f"ai_{sid}_<6位数字>"`（= 本框架 AI 用例的唯一合法形态）才允许触发清理。
     _strict_ai = bool(re.fullmatch(rf"ai_{re.escape(sid)}_\d{{6}}", str(cid or ""))) if sid else False

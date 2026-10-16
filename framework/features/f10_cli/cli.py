@@ -115,11 +115,6 @@ def _debug_from(rest: list[str]) -> bool:
     return False
 
 
-def _headed_from(rest: list[str]) -> bool:
-    """兼容旧名：等价于 `_debug_from`。"""
-    return _debug_from(rest)
-
-
 def _has_display() -> bool:
     """本机有没有图形显示（决定调试开关走"开窗"还是"录制"）。"""
     import os
@@ -436,8 +431,7 @@ def cmd_generate(rest: list[str] = None, allow_unmapped: bool = False):
     # 脚本/CI 会把空用例集当成功 -> 明确失败并给下一步动作。
     if res["count"] == 0:
         print("[generate] [NG] cases/ 里一个用例都没有 -> 没有生成任何可执行测试。"
-              "推荐先跑 explore --ai --scenario-file <场景.yml> 让 AI 按场景生成用例（主推路径）；"
-              "也可手写 cases/*.json（仅用于调试/回归辅助）")
+              "推荐先跑 explore --ai --scenario-file <场景.yml> 让 AI 按场景生成用例（唯一主推路径）")
         raise SystemExit(2)
 
 
@@ -862,8 +856,7 @@ def cmd_verify(rest: list[str] | None = None):
 def _ai_cases_on_disk(only: list[str] | None = None) -> list[tuple[str, str]]:
     """扫 `cases/` 下的 AI 用例 -> `[(label 场景目录名, case_id)]`（verify 独立入口用）。
 
-    [!] 只认 `ai_*.json`：手搓用例（`cases/manual/*.json`）由 generate 自己的闸门守，
-    这里校验的是「AI 产出」这一档（要求 2/5 的口径）。
+    [!] 只认 `ai_*.json`：这里校验的是「AI 产出」这一档（要求 2/5 的口径）。
     """
     from framework.shared.config import CASES_DIR
     out: list[tuple[str, str]] = []
@@ -1003,11 +996,6 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
                     if len(reasons) < 40:                 # 有界：别把整份日志塞进提示词
                         reasons.append("  " + s[:200])
     return all_ok, "\n".join(reasons)
-
-
-def _verify_case(case_name: str) -> bool | None:
-    """单条校验（薄封装，保留原有调用形状）。"""
-    return _verify_cases([("", case_name)])
 
 
 def _int_flag(rest: list[str], name: str, default: int) -> int:
@@ -1303,7 +1291,7 @@ CMD_FLAGS: dict[str, set[str]] = {
                 "--llm-cassette", "--llm-record", "--llm-cassette-strict", "--ai-retry"},
     "run": set(_COMMON_FLAGS) | {"--shots", "--video", "--timeout", "--base-url",
                                  "--strict-locate"},
-    # P25 片 5：`all` 同时是**两条链路的统一入口**（不带 --ai 手搓 / 带 --ai 真 AI）——
+    # `all` = 真 AI 链路**唯一入口**，必须带 `--ai`（不带就显式报错 exit 2）——
     #   所以它要认得 explore 的全部参数（--ai/--scenario-*/--llm-cassette/...）。
     "all": set(_COMMON_FLAGS) | {"--allow-unmapped", "--shots", "--video", "--timeout",
                                  "--base-url", "--strict-locate",
@@ -1349,8 +1337,10 @@ TUNABLE_CATALOG: list[tuple[str, str, str]] = [
      "LLM 模型名（与 LLM_BASE_URL 配套）：如 `glm-5.3` / `kimi-k3` / `qwen3.6-plus` / "
      "`MiniMax-M2.7`；配了 LLM_API_KEY 才生效"),
     ("LLM_REASONING_EFFORT", "(空)",
-     "**思考强度**（通用入口与 DeepSeek 入口都认）：`low`/`medium`/`high`/`max`，空=不发这个字段"
-     "（用端点默认）。GLM-5.3 起不能关思考且默认 max -> 探索阶段每步都跑最贵档，建议设 `low`"),
+     "**思考强度**（通用入口与 DeepSeek 入口都认）：**取值合法性由端点决定** —— GLM-5.3 / 5.3-Flash "
+     "只接受 `low`/`high`/`max`（发 `medium` 直接 400 code=1210）；空=不发这个字段（用端点默认）。"
+     "别拿 `low` 当省钱解：实测在 8.9 万 token 的大 prompt 上会让模型**完全不返回 tool_calls**"
+     "（`finish_reason=stop`），结构化输出路径直接失效。本框架实测**推荐 `high`**"),
     ("HYBRID_AI_RETRY", "2", "AI 产出校验不合格时的重试次数（0=关闭 · 上界 5）"),
     ("HYBRID_WAIT_DEFAULT_MS", "30000",
      "等待类断言的**有界默认**时长（毫秒）；场景声明了业务时长时以声明为准（见 declared_wait）"),

@@ -23,7 +23,6 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 GENERATOR = REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py"
-RUNNER = REPO / "framework" / "features" / "f06_healer" / "runner_unused.py"
 
 
 def _harness_select_segment() -> str:
@@ -68,12 +67,27 @@ def test_harness_act_select_uses_first_real_option():
     )
 
 
-def test_runner_select_has_same_semantics():
-    """`run/runner.py` 里的 select 同族实现必须**同一口径**（项目铁律：同一能力收敛成唯一入口）。
+def test_harness_select_semantics_is_single_source():
+    """`_harness` 模板里的 select **只有一个口径**（项目铁律：同一能力收敛成唯一入口）。
 
-    两处不一致的话，手搓用例与 AI 用例在同一个下拉上会有不同行为 —— 那是最难查的一类问题。
+    [!] V8.6.3：原实现拿 `framework/features/f06_healer/runner_unused.py`（无 import 的死模块）
+    做对照 —— 该模块已删。现在钉**真实生效的实现**：`_harness` 模板就是生成物
+    `scripts/generated/_harness.py` 的**唯一真源**（由 generator 渲染），改生成物下次生成就被覆盖。
+    元素级（`_act`）与行内（`_act_row`）两条 select 分支必须同口径：
+    都不许把空串喂给 `select_option`，没给 value 一律按「选第一个真选项（跳过空占位）」。
     """
-    src = RUNNER.read_text(encoding="utf-8")
-    assert 'select_option(t.value or "")' not in src, (
-        "runner.py 仍在「没给 value」时传空串 —— 与 _harness 的修正口径不一致"
-    )
+    src = GENERATOR.read_text(encoding="utf-8")
+    i = src.index('elif action == "select":')
+    seg_act = src[i: i + 1400]
+    j = src.index('elif op == "select":')
+    seg_row = src[j: j + 1400]
+    # [!] 断言前先剔注释行：事故经过**就写在注释里**（原文含 `select_option("")`），
+    #     不剔会把「注释里描述旧实现」误判成「代码还在犯」（判据空转/误红，本项目踩过多次）。
+    segs = ["\n".join(ln for ln in s.splitlines() if not ln.lstrip().startswith("#"))
+            for s in (seg_act, seg_row)]
+    for seg in segs:
+        assert 'select_option("")' not in seg, (
+            "select 分支仍会把空串喂给 select_option —— Playwright 会去找 value='' 的选项并超时")
+        assert "select_option(index=" in seg, (
+            "select 分支没给 value 时没有按索引选第一项 —— 两条链路口径不一致"
+            "（同一能力不许有两个语义）")

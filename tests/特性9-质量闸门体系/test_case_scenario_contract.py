@@ -1,11 +1,14 @@
 """cases <-> scenarios 的**来源契约**（R8 · 2026-09-23 AprilPark1012定）。
 
-**契约（两条链路各自的来源，必须能一眼分清）**
+**契约（AI 用例的场景来源，必须能一眼分清）**
   · **场景(1)（AI 链路）**：`cases/ai_*.json` **必须**带场景来源 —— `scenario_id` + `source_scenario`，
     且 `source_scenario` 指向**真实存在**的 `scenarios/**/*.yml`。
     -> 内联 `--scenario "…"` 生成的用例**没有 yml 来源**，属**孤儿**：要么补一个场景文件，
     要么删掉（2026-09-23 就清掉一条这样的孤儿）。
-  · **场景(2)（手搓链路）**：**其他所有用例都是手搓**，**不得**带 `scenario_id` / `source_scenario`。
+  · **非 AI 用例**（`cases/manual/*.json` 等）：来源是 `cases/` 本身、不来自场景 ——
+    它们带不带 `scenario_id` **不再由本判据守**。原 `test_manual_cases_have_no_scenario_source`
+    在磁盘上 0 条非 AI 用例、循环体恒空 = **空转假绿**，V8.6.3 已删；
+    非 AI 用例的防误删守卫见 `tests/特性5-用例脚本数据三层分离/test_case_replacement_safety.py`。
 
 **为什么需要**：现场发现 cases/ 里混着一条孤儿 AI 用例
 （`ai_在合同列表页面的搜索框输入_1005_点击搜索按_235545`，内联场景生成、无 yml 来源，
@@ -63,18 +66,6 @@ def missing_scenario_sources(cases_dir: Path, repo: Path) -> list[str]:
     return bad
 
 
-def manual_cases_with_source(cases_dir: Path) -> list[str]:
-    """手搓用例里「带了场景来源字段」的（返回可读说明，空 = 合规）。"""
-    bad: list[str] = []
-    for p, d in iter_cases(cases_dir):
-        if p.name.startswith("ai_"):
-            continue
-        carried = [f for f in SRC_FIELDS if d.get(f)]
-        if carried:
-            bad.append(f"{p.name}：手搓用例不该带 {'/'.join(carried)}（场景(2)的来源是 cases/ 本身）")
-    return bad
-
-
 # ---------------- (1) AI 用例必须有真实场景来源 ----------------
 
 def test_ai_cases_have_existing_scenario():
@@ -82,13 +73,6 @@ def test_ai_cases_have_existing_scenario():
     assert not bad, (
         "AI 用例（ai_*.json）必须有**真实存在**的场景来源（场景(1)的契约）：\n  - " + "\n  - ".join(bad)
         + "\n  修法：补 `scenarios/**/*.yml` 后重跑 `explore --ai --scenario-file`，或删掉这条孤儿用例。")
-
-
-# ---------------- (2) 手搓用例不得带场景来源 ----------------
-
-def test_manual_cases_have_no_scenario_source():
-    bad = manual_cases_with_source(CASES)
-    assert not bad, "手搓用例（场景(2)）不该带场景来源字段：\n  - " + "\n  - ".join(bad)
 
 
 # ---------------- 负向自证（判据自身必须抓得住坏输入）----------------
@@ -120,12 +104,6 @@ def test_negative_dangling_scenario_reference_is_detected(tmp_path):
     assert len(bad) == 1 and "不存在" in bad[0], bad
 
 
-def test_negative_manual_case_with_source_is_detected(tmp_path):
-    """手搓用例偷偷带 source_scenario 也要被抓。"""
-    t = _fake(tmp_path, {"manual_x.json": {"case_id": "manual_x", "scenario_id": "x"}})
-    assert manual_cases_with_source(t / "cases") != []
-
-
 def test_negative_valid_pair_is_not_flagged(tmp_path):
     """合规样例不许误伤（假红与假绿一样会摧毁闸门）。"""
     t = _fake(tmp_path, {
@@ -134,4 +112,3 @@ def test_negative_valid_pair_is_not_flagged(tmp_path):
         "manual_ok.json": {"case_id": "manual_ok"},
     }, scenarios=("contracts/ok.yml",))
     assert missing_scenario_sources(t / "cases", t) == []
-    assert manual_cases_with_source(t / "cases") == []

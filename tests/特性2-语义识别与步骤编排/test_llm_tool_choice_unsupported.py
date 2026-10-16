@@ -1,71 +1,78 @@
 # -*- coding: utf-8 -*-
-"""特性2 · 上游不支持 `tool_choice`（thinking mode）时要**跳过结构化路径并降噪**（V8.4.1）。
+"""特性2 · 上游不支持 `tool_choice`（thinking mode）时：explorer 侧**复用唯一权威**（V8.6.3 收敛）。
 
 事故（AprilPark1012 2026-10-09 Windows 实录 · 每一轮都出现一次）：
     [explore] 第 1/3 次结构化输出失败 -> 结构化输出路径 ModelProviderError:
       Error code: 400 - {'error': {'message': 'Thinking mode does not support this tool_choice',
        'type': 'invalid_request_error'}}
 
-    4 轮实测里 **4 次**出现（每轮 1 次）。它有重试兜底（第 2 次能成），所以不致命；
-    但代价是：① 白烧一次 LLM 调用；② 用户看到一行 `ModelProviderError` 红字会以为框架坏了。
+口径（**V8.6.1 收敛，V8.6.3 收敛到唯一权威**）：
+    撞到这类**上游能力差异**（不是抖动）的**动作口径 = 降级为 `tool_choice=auto`、把结构化输出救回来**，
+    由 `framework/shared/llm_compat.py::ChatOpenAICompatible.ainvoke()` 承担 ——
+    判定函数是 `framework/shared/llm_compat.py::rejects_named_tool_choice`，
+    那个口径的**唯一权威判据**是 `tests/特性10-CLI帮助契约/test_llm_tool_choice_fallback.py`。
 
-口径：这是**上游能力差异**（不是抖动）—— 抖动该重试，能力缺失该**记住并换路**。
-      识别到「不支持 tool_choice」-> 本轮及后续**直接走纯文本路径**，日志降为 `[info]`。
+    [!] V8.6.3 之前 explorer 里另写了一套字符串匹配（`"tool_choice" in _low or "thinking mode" in _low`）
+    —— 与上面的权威**是两套口径**，已删除。现在 explorer **只复用** `rejects_named_tool_choice()`：
+      · 走到 explorer 的 except 且仍带该特征 -> 端点连**降级 auto** 都拒 -> 本会话禁用结构化路径、只走纯文本；
+      · 本文件钉的是「**复用唯一权威**」，不再钉「那套自写判定还在不在」。
 """
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 EXPLORER = REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py"
+
+#: 唯一权威所在的模块（判定函数必须从这里来，不许就地再写一套）
+AUTHORITY_MOD = "framework.shared.llm_compat"
+AUTHORITY_FN = "rejects_named_tool_choice"
 
 
 def _src() -> str:
     return EXPLORER.read_text(encoding="utf-8")
 
 
-def test_tool_choice_error_is_recognized():
-    """必须能识别「不支持 tool_choice / thinking mode」这类**能力差异**错误。"""
+def test_explorer_delegates_to_single_authority():
+    """explorer 必须**复用** llm_compat 的权威谓词，不许自写第二套「是不是 tool_choice 不支持」的判定。"""
     src = _src()
-    assert "tool_choice" in src, "没有针对 tool_choice 不支持的识别"
-    low = src.lower()
-    assert ("thinking" in low) or ("不支持" in src and "tool_choice" in src), (
-        "没识别 DeepSeek thinking mode 这条具体报错（实测原文含 'Thinking mode does not support'）"
+    assert AUTHORITY_FN in src, (
+        f"explorer 没有复用 {AUTHORITY_MOD}::{AUTHORITY_FN}()（又自己写了一判断？）"
+    )
+    assert AUTHORITY_MOD in src, (
+        f"{AUTHORITY_FN} 不是来自 {AUTHORITY_MOD}（唯一权威）"
     )
 
 
-def test_unsupported_short_circuits_to_text_path():
-    """识别到之后必须**跳过结构化路径**（不再每轮白试一次）。"""
+def test_handrolled_tool_choice_heuristic_is_gone():
+    """自写的字符串匹配判定必须绝迹 —— 两套口径并存正是本项要收敛掉的东西。"""
     src = _src()
-    assert "_no_structured" in src, (
-        "没有「本会话禁用结构化输出」的开关 -> 每轮都会重蹈覆辙（白烧一次调用）"
+    assert '"thinking mode" in _low' not in src, (
+        "还留着自写的 tool_choice 判定（两套口径）—— 必须只认 llm_compat 的权威谓词"
     )
-    # 开关必须真的被用在「进入结构化路径」的判断上
-    assert "not _no_structured" in src, (
-        "开关声明了但没接在结构化路径的判断上 -> 等于没写"
+    assert 'if "tool_choice" in _low' not in src, (
+        "还留着自写的 tool_choice 判定（两套口径）—— 必须只认 llm_compat 的权威谓词"
     )
-    # 且必须**在识别到能力差异的分支里**被置位。
-    # [!] 别用 `src.index("tool_choice")` 取窗口 —— 文件里 tool_choice 出现多处，
-    #     第一次可能在别处（第一版判据这么写就误判了）-> 直接看置位语句本身在不在。
-    assert "_no_structured = True" in src, (
-        "识别到 tool_choice 不支持后没有置位开关 -> 每轮都会重蹈覆辙"
-    )
-    i = src.index("_no_structured = True")
-    window = src[max(0, i - 700): i + 200]
-    assert "tool_choice" in window or "thinking mode" in window, (
-        "开关置位点不在「识别 tool_choice / thinking mode」的判定分支里"
+
+
+def test_no_structured_branch_is_gated_by_authority():
+    """`_no_structured` 的触发条件必须就是权威谓词的调用结果（不是别的东西）。"""
+    src = _src()
+    i = src.find(f"{AUTHORITY_FN}(e)")
+    assert i > 0, f"没有用权威谓词 {AUTHORITY_FN}(e) 判定结构化路径的失败"
+    window = src[max(0, i - 700): i + 700]
+    assert "_no_structured = True" in window, (
+        "权威判定的结果没有接到「禁用结构化路径」上 -> 复用只是装饰"
     )
 
 
 def test_log_is_downgraded_to_info():
-    """降噪：能力差异不是错误，日志该是 `[info]` 而不是 `ModelProviderError` 红字。"""
+    """降噪：能力差异不是错误，日志该是 `[info]` 而不是 ModelProviderError 红字。"""
     src = _src()
-    assert "[info]" in src, "没有把这类情况降级成 [info] 打印"
-    i = src.find("tool_choice")
-    assert i > 0, "找不到 tool_choice 处理处"
-    window = src[max(0, i - 1500): i + 1500]
+    i = src.find(f"{AUTHORITY_FN}(e)")
+    assert i > 0
+    window = src[max(0, i - 700): i + 700]
     assert "[info]" in window, (
         "tool_choice 处理处附近没有 [info] 降噪打印 -> 用户还是会看到红字"
     )

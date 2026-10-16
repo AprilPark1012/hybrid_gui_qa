@@ -180,7 +180,7 @@ class Scenario:
         if self.pages:                      # P3 跨页：把页面清单带进用例（质量闸与溯源都用）
             extra["pages"] = [p.to_dict() for p in self.pages]
         # [!] P25 片 6（修 10-A · 两条链路不同源）：**场景级探测前置也要落进用例**。
-        #   原来只写 scenario_id/pages，probe_pre 只在**手搓用例**里手工写 ——
+        #   原来只写 scenario_id/pages，probe_pre 只在**独立用例**里手工写 ——
         #   于是 AI 用例的 `probe_pre` 恒为 None，只能靠 `source_scenario` 回读，
         #   而回读失败时**只打印不抛**（静默降级成"没有前置"）=> 两条链路同名不同源。
         #   现在：用例落盘即带场景声明的**逐字副本**（同一权威来源），下游读哪一份都一致。

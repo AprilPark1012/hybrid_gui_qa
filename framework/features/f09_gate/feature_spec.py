@@ -8,17 +8,17 @@
 
 FEATURES = [
     dict(
-        no=1, key="mixed_chain", name="混合链路",
-        goal="两种链路（AI 生成 / 离线回放）都能跑通，且有一条统一验收入口",
+        no=1, key="mixed_chain", name="AI 链路与离线回放",
+        goal="只剩真 AI 链路（all --ai）与离线回放两种运行形态：都能跑通，且有一条统一验收入口",
         dir="特性1-混合链路",
         subs=[
-            dict(no="1.1", name="两种链路可切换", goal="AI 生成链路、离线回放链路两条路各自可独立跑通",
+            dict(no="1.1", name="AI 链路与离线回放", goal="真 AI 链路（all --ai）与离线回放（录像）各自可独立跑通（不含已删除的手搓链路）",
                  class1=["test_acceptance_entry.py", "test_offline_chain_python.py"],
                  class2=["verify_e2e_scenario1_online.py"]),
             dict(no="1.2", name="统一验收入口", goal="四条验收原则能用一条命令跑完；跳过策略（如 --skip-ai）必须显式留痕，不许静默少跑",
                  class1=["test_acceptance_entry.py", "test_acceptance_skip_policy.py"],
                  class2=[]),
-            dict(no="1.3", name="交付两件套", goal="无外网机器靠「代码包 + LLM 录像包」即可跑 AI 链路",
+            dict(no="1.3", name="单包即离线可跑", goal="无外网机器解压交付包即可离线跑通 AI 链路（录像随代码包一起发，只有一个 zip）",
                  class1=["test_render_entrypoint.py"],
                  class2=["verify_offline_delivery.py"]),
         ],
@@ -280,7 +280,7 @@ FEATURES = [
                                                           "并区分「不可用」与「能用但打折（thinking 模式拒 tool_choice）」。"
                                                           "配套 `LLM_REASONING_EFFORT` 旋钮压思考强度；"
                                                           "旋钮必须真进请求体（断言产出而非调用）、不污染默认、可发现",
-                 class1=["test_llm_doctor.py"], class2=[]),
+                 class1=["test_llm_doctor.py", "test_reasoning_effort_advice_consistency.py"], class2=[]),
             dict(no="10.10", name="思考模式端点兼容", goal="思考模式端点拒「指名函数」tool_choice 时**有界降级**为 auto：" \
                                                           "只认特征明确的错（别的照抛）、只重试一次并记住端点特性、"
                                                           "降级真发 auto 且不丢 reasoning_effort、留痕不静默；"

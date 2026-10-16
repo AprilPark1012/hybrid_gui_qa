@@ -34,7 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 __all__ = ["BLOCK", "WARN", "GateResult", "Gate", "GATE_REGISTRY",
-           "register", "registered_gates", "verify_registry", "run_gates"]
+           "register", "registered_gates", "verify_registry"]
 
 #: 闸门结果的两种档位：block = 拒产（exit 2）；warn = 只留痕
 BLOCK = "block"
@@ -121,19 +121,6 @@ def verify_registry(expected) -> list:
     return problems
 
 
-def run_gates(gates=None, **kw) -> list:
-    """按登记顺序跑闸门，返回结果清单（**只判定、不打印、不退出**）。
-
-    调用方（f09 报告层 / cli）负责：打印 + 按 level 决定退出码。
-    """
-    out = []
-    for g in (GATE_REGISTRY if gates is None else gates):
-        res = g.check(**kw)
-        if isinstance(res, GateResult):
-            out.append(res)
-    return out
-
-
 # ============================ 全量闸门导入（唯一入口）============================
 #: B′ 闸门落点（实现跟特性走）。**新增闸门必须同时加到这里 + 判据的 EXPECTED_GATES**。
 GATE_MODULES = (
@@ -165,5 +152,5 @@ def load_all_gates() -> list[str]:
     return failed
 
 
-#: 模块导入即填注册表（失败不抛：`load_all_gates()` 的返回值可被报告层展示）
-GATE_LOAD_ERRORS = load_all_gates()
+#: 模块导入即填注册表（副作用；返回值当前无人读取，失败项由 load_all_gates 自行吞掉不抛）
+load_all_gates()

@@ -104,7 +104,7 @@ python tests/_runner/run_acceptance.py                # ③ 四项验收一条�
 ```
 
 > **判据住哪**（2026-10-12 更正）：判据按**特性**分目录，在 `tests/特性1-…/` ... `tests/特性11-…/` 下
-> （`test_*.py` 一类 + `verify_*.py` 二类混放同一特性目录，共 122 个 `test_*` / 23 个 `verify_*`）。
+> （`test_*.py` 一类 + `verify_*.py` 二类混放同一特性目录；条数以 `pytest tests/ -q` 实跑为准，实测 1215 passed / 3 skipped）。
 > `tests/_helpers/` 只是**共享辅助**（artifacts / demo_freshness / repo_files / testid_policy），
 > **不含任何 `test_*.py`** —— 直接跑它会 `no tests collected`。
 
@@ -125,7 +125,7 @@ HYBRID_CASE_TIMEOUT=600 HYBRID_STRICT_LOCATE=1 \
 | 命令 | 期望 | 耗时 |
 |---|---|---|
 | 上面那条端到端 | `1 passed` | ~220s |
-| `pytest tests/ -q` | `1123 passed / 3 skipped`，0 failed | ~39s |
+| `pytest tests/ -q` | `1215 passed / 3 skipped`，0 failed | ~50s |
 | `run_verifications.py` | 绝大部分通过；**唯一遗留 `verify_slow_target`**（慢环境缺陷，见 BACKLOG L22） | ~14 min |
 | `run_acceptance.py` | 四项闸门全过 | — |
 
@@ -152,7 +152,7 @@ LLM_MODEL=glm-5.3                                    # Kimi 换 kimi-k3，Qwen �
 > 优先级 `LLM_*` > `BROWSER_USE_API_KEY` > `OPENAI_API_KEY` > `ANTHROPIC_API_KEY` > `GOOGLE_API_KEY` > `DEEPSEEK_*`（旧写法仍支持）；当前用的哪档 `cli config` 一屏可见（密钥不显示值）；各家端点与取舍见培训页。
 > 可选旋钮 `LLM_REASONING_EFFORT` 压思考强度（GLM-5.3 起不能关思考且默认 max，探索阶段每步都跑最贵档）。**取值合法性由端点决定**：GLM-5.3 / 5.3-Flash 只接受 `low` / `high` / `max`（发 `medium` 直接 400 code=1210）；**别拿 `low` 当省钱解**——实测在 8.9 万 token 的大 prompt 上会让模型**完全不返回 tool_calls**（`finish_reason=stop`），结构化输出路径直接失效。**本框架实测推荐 `high`**（同一份 prompt：`high` 312s / 思考 12,899 token，对比不设档 685s / 28,734）。**换模型后要重录录像**（录像键不含模型名，会命中旧模型的录像，框架回放时会告警），模型需支持 **function calling**（GLM-5.x / Kimi K2·K3 / Qwen3.6 / MiniMax-M2.7+ 均支持）。
 
-> **真 AI 链路**（`all --ai`）需要 key（`explore` 要调 LLM）；不带 AI 的部分（`generate` / `run`）确定性执行、不需要 key，无 key 或无外网环境都能用**录像回放**跑完整 AI 链路（`build_tools/offline_explore_chain.py` + 随包录像包）。
+> **真 AI 链路**（`all --ai`）需要 key（`explore` 要调 LLM）；不带 AI 的部分（`generate` / `run`）确定性执行、不需要 key，无 key 或无外网环境都能用**离线回放**跑完整 AI 链路（`build_tools/offline_explore_chain.py`；录像**随代码包一起发**，交付只有一个 zip）。
 
 ## 项目结构与链路
 
@@ -188,14 +188,14 @@ tests/        判据按**特性**分目录：特性1-…/ ... 特性11-…/（te
 releases/     发行说明 RELEASE_NOTES_V*.md（变更日志的家）+ 交付包（包不入库）
 docs/         training.html 培训页（对外文档）· feature_map.md 特性/子特性/用例映射表（自动生成，别手改）
 output/ log/  运行期证据：`output/element_maps/`（**elementMap 是交付生成物之一**，打包时随代码包
-              发最新 1 份）· `output/llm_cassettes/`（LLM 录像，走单独的录像包）· heals / traces /
-              verify / 逐用例日志 + report.html（**这些不进交付包**，log 可清理）
+              发最新 1 份）· `output/llm_cassettes/`（LLM 录像，**随代码包一起发** —— 交付只有一个 zip，
+              见 `pack_release.py`）· heals / traces / verify / 逐用例日志 + report.html（**这些不进包**，log 可清理）
 ```
 
 **断言 13 种**（`asserts[].kind`，缺省 = `text`）：`text` · `visible`/`hidden` · `count` · `attr` ·
 `value` · `url` · `checked`/`unchecked` · `enabled`/`disabled` · **`first_row`**（表格第一行某列，
 证明"它就是第一条"）· **`wait_text`**（有界等待式，等状态自动流转）。定位用 `element`（探测语义名）或
-`selector`（手写用例专用，**AI 链路禁用**）。契约与示例见培训页第 4 章；样例用例见 `cases/orders_invoice_full_lifecycle/`。
+`selector`（显式 CSS/Playwright 选择器；**AI 永不产 selector**，仅框架内部/判据使用）。契约与示例见培训页第 4 章；样例用例见 `cases/orders_invoice_full_lifecycle/`。
 
 ## 常见坑
 
@@ -230,10 +230,10 @@ output/ log/  运行期证据：`output/element_maps/`（**elementMap 是交付�
 
 - **培训页 [`docs/training.html`](docs/training.html)**（团队主文档，由 `build_tools/build_html.py` 生成）：
   1 为什么是「混合」· 2 目录结构 · 3 整体流程 · 4 场景/用例怎么写 · 5 函数调用地图 ·
-  6 框架特性设计实现（11 特性 / 50 子特性）· 7 常见坑 · 8 动手跑一遍（含**环境变量与运行开关**表）· 9 收尾
+  6 框架特性设计实现（11 特性 / 54 子特性）· 7 常见坑 · 8 动手跑一遍（含**环境变量与运行开关**表）· 9 收尾
 - **发行说明 [`releases/RELEASE_NOTES_V*.md`](releases/)**：每版改了什么（**变更日志都在这里**，随交付包一并发出）
 - **字段契约**：`scenarios/README.md`（场景文件）+ 培训页第 4 章（用例文件）
-- **框架判据**：`tests/_helpers/`（框架自验证，`test_*` 秒级、不需要 demo）+ `tests/_runner/`（特性自验证，`verify_*` 端到端且含**负向证伪**）
+- **框架判据**：一类 `test_*.py` / 二类 `verify_*.py` 都按**特性**住在 `tests/特性N-.../` 下（`test_*` 秒级、不需要 demo；`verify_*` 端到端且含**负向证伪**）；`tests/_helpers/` 是共享辅助模块（**不含任何 `test_*`**），`tests/_runner/` 是二类入口与工具
 - 想动手扩展：模块 docstring 即接口说明，`framework/features/` 按**特性**聚合（**f02..f11 共 10 个特性夹**），
   阶段归属看**文件名后缀**（`*_explore/_generate/_run/_verify` 等，无后缀 = 阶段无关）；
   跨特性的基础设施（配置/浏览器/登录/前置动作）在 `framework/shared/`，构建期工具在 `framework/tools/`。

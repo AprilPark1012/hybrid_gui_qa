@@ -25,37 +25,8 @@ _INTERACTIVE = ("button, input, select, textarea, a[href], "
                 "[role=button], [role=link], [role=checkbox], [role=radio], "
                 "[role=menuitem], [role=tab]")
 
-# 轻量信号：**只数**「当前可见的可交互元素」个数 —— 不取文本、不算锚点、不取行内路径，
-# 因此比 `probe_page` 便宜得多。用途见 `_light_signal` 的注释（2026-10-08 超时事故的修法）。
-_JS_COUNT = """() => {  /* COUNT_ONLY: light signal for expandable-wait */
-  const INTER = '%s';
-  let n = 0;
-  for (const el of document.querySelectorAll(INTER)) {
-    const r = el.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) n++;
-  }
-  return n;
-}""" % _INTERACTIVE
-
 # 展开后的轮询间隔（毫秒）。与 settle 的倍数关系决定最多轮询几次。
 _POLL_MS = 200
-
-
-def _light_signal(page) -> int:
-    """廉价信号：当前**可见**的可交互元素个数。
-
-    为什么要它（2026-10-08 实测事故）：展开的等待循环原先**每轮都调 `probe_page`**（全页重扫、
-    要取文本/算容器锚点/算行内相对路径）。对「点了没反应」的候选会跑满 `settle_s/0.2` 轮，
-    一页最多 3 个候选（`max_opens`）、跨页 7 页 -> `generate` 实测从 ~59s 涨到 **866s**。
-
-    修法：轮询只问这个**计数**；**只有计数变了**（说明页面上真有新东西出现，例如菜单从
-    `display:none` 变可见）才去做一次昂贵的全页重扫。取不到信号时返回 -1（调用方据此退化为原行为，
-    绝不因为"信号坏了"而漏探）。
-    """
-    try:
-        return int(page.evaluate(_JS_COUNT))
-    except Exception:                                                # noqa: BLE001
-        return -1
 
 
 # 一次 evaluate 扫全页：找「隐藏 + 内含交互控件」的容器，并把它的**兄弟节点**描述带回来。
@@ -258,8 +229,7 @@ def expand_and_collect(page: Page, base_items: list[dict], *, enabled: bool = Tr
             continue
 
         # ---- 有界等待：探到新控件就走（不固定 sleep）----
-        # 性能治理两刀（2026-10-08 实测 expand 118s/七页，最大单项）：
-        #   A：先把「整页重扫」用廉价信号挡一道（见下）；
+        # 性能治理（2026-10-08 实测 expand 118s/七页，最大单项）：
         #   D3：真要点扫的时候，**只探新出现的元素**（`only_indexes`）—— 点开一个菜单通常只新增
         #       几个控件，原先却把整页（212 元素 ≈ 13 次往返/元素）重探一遍，代价被页面规模放大。
         # 事故背景：原先每轮都 `probe_page`，对「点了没反应」的候选会跑满 settle_s/0.2 轮；
@@ -286,7 +256,7 @@ def expand_and_collect(page: Page, base_items: list[dict], *, enabled: bool = Tr
                 continue
             new_keys = set(kmap) - seen_keys
             if not new_keys:
-                continue                          # 没有新 key -> 这一轮不必探测（A 的门）
+                continue                          # 没有新 key -> 这一轮不必探测
             seen_keys |= set(kmap)
             scanned_any = True
             try:

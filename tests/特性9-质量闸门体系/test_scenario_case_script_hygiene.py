@@ -6,7 +6,7 @@
 
 口径（他 2026-09-23 选 1：**孤儿直接红**，不告警放行）：
   (1) `cases/ai_*.json` 的 `scenario_id` **必须指向真实存在的场景文件** —— 孤儿 -> **红**；
-  (2) `scenarios/` 下的场景**要么有 AI 用例、要么有手搓用例**覆盖 —— 未覆盖只**告警**
+  (2) `scenarios/` 下的场景**要么有 AI 用例、要么有非 AI 用例**覆盖 —— 未覆盖只**告警**
      （场景可以先写、用例后补；这不是"无效文件"，不该拦住开发）；
   (3) 反向：`scripts/datasets/` 不许有孤儿数据集（= L15 判据，这里只做交叉引用，不重复实现）；
   (4) 负向自证：判据自己能抓坏输入（造孤儿 -> 必须报）。
@@ -54,7 +54,7 @@ def orphan_ai_cases(scen_dir: Path = SCENARIOS, cases_dir: Path = CASES) -> list
 
 
 def uncovered_scenarios(scen_dir: Path = SCENARIOS, cases_dir: Path = CASES) -> list[str]:
-    """场景中**既没有 AI 用例、也没有手搓用例点名**的那些（告警用，不拦）。"""
+    """场景中**既没有 AI 用例、也没有非 AI 用例点名**的那些（告警用，不拦）。"""
     ids = scenario_ids(scen_dir)
     covered: set[str] = set()
     for p in cases_dir.rglob("*.json"):
@@ -65,7 +65,7 @@ def uncovered_scenarios(scen_dir: Path = SCENARIOS, cases_dir: Path = CASES) -> 
         sid = str(payload.get("scenario_id", "")).strip()
         if sid:
             covered.add(sid)
-        # 手搓用例可能用 scenario 段或 name 里提场景 id（宽松认一次）
+        # 非 AI 用例可能用 scenario 段或 name 里提场景 id（宽松认一次）
         blob = json.dumps(payload, ensure_ascii=False)
         for sid2 in ids:
             if sid2 and sid2 in blob:
@@ -89,7 +89,7 @@ def test_scenarios_are_covered_by_some_case():
     """场景未覆盖只告警（场景可以先写、用例后补）—— 但要让它**看得见**。"""
     miss = uncovered_scenarios()
     if miss:
-        print(f"\n[!] 告警（不拦）：这些场景目前没有 AI 用例也没有手搓用例覆盖：{miss}"
+        print(f"\n[!] 告警（不拦）：这些场景目前没有 AI 用例也没有非 AI 用例覆盖：{miss}"
               "\n    -> 要么补用例，要么确认它只是备用的场景模板。")
 
 

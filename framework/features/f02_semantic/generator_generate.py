@@ -811,7 +811,7 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
     name = _gbk_safe(case.get("name") or cid).replace('"', '\\"')
     steps = case.get("steps", [])
     # 2026-10-11 V8.4.6（方案 ③ 框架兜底）：**能判死**的「行定位缺失」在这里补上。
-    #   为什么放渲染入口：这是两条链路（手搓用例 / AI 用例）**唯一的共同收口**；
+    #   为什么放渲染入口：这是所有用例（AI 产出 / 离线回放）**唯一的共同收口**；
     #   只补能判死的情形（见 `apply_row_locator_fallback` 的 R1），推不出来的照旧
     #   走到下面的闸门报红 —— 宁红不猜。信号来源与闸门**同源**（不另立一份）：
     #   `_MULTI_MATCH`（定位来源文件）+ `it_map`（含现场探测条目），只收 >1 的取值，
@@ -851,7 +851,7 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
     if _nt:
         print(f"[generate] [OK] 共升级 {_nt} 处新标签页点击（后续 page 会重绑到新标签页）")
     # P25：**场景起手页兜底**（与 explore 侧同一入口/同一规则 C1C2C3）——
-    #   这里是手搓用例与 AI 用例渲染的**共同收口**，放这里两条链路一起受益。
+    #   这里是用例渲染的**共同收口**，放这里所有来源一起受益。
     #   `case["pages"]` 的形状是 `[{"name","url"}, ...]`；取不到就传空串 ->
     #   规则 C3 不成立 -> **一步都不动**（宁漏不误伤，绝不猜）。
     _pages0 = list(case.get("pages") or [])
@@ -1051,7 +1051,7 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
                 continue
             if loc is None:
                 # 不静默跳过：只留注释的话，这一步被丢掉、用例照样 PASSED = 假绿
-                # （2026-09-11 实测：手搓用例把控件名写错 -> 生成的测试仍"通过"）。
+                # （历史 2026-09-11 实测：手搓用例把控件名写错 -> 生成的测试仍"通过"）。
                 reason = (f"元素未映射：语义名 {elem!r} 不在探测清单/快照里 → 该步无法定位"
                           f"（generate 日志有 [!] 仍未映射）；请检查用例里的 element 拼写，"
                           f"或先跑 probe 刷新快照")
@@ -1240,7 +1240,7 @@ def _load_loc_map_from_element_map(path: Path) -> dict:
 
     两个来源，缺一不可（2026-10-10 S1 收口）：
       · `steps[].element`：AI **实际用到**的名字（老行为）；
-      · `probe_items`：本次探索**喂给 AI 的完整清单**（权威名字来源）—— 手搓用例/断言引用的、
+      · `probe_items`：本次探索**喂给 AI 的完整清单**（权威名字来源）—— 用例/断言引用的、
         AI 没用过的控件名只能从这里拿到。现场重探补不出它们：重探只探缺口所属那一两页，
         拿不到跨页唯一化的上下文（实测补 0/1），页内消歧名也与猜写的页名后缀对不上。
     同名以**先出现的为准**（steps 优先），与快照侧口径一致。
@@ -1685,7 +1685,7 @@ def _probe_declared_pages(pages: list[tuple[str, str]],
 
     # [!] **按页名写的名字必须能命中带语境后缀的条目**（AprilPark1012 2026-10-12 拍板 B 的必要组成）：
     #   清单里同页重名的条目名是 `基础名@页名[语境]`（页名永远在 `@` 后第一段），
-    #   而 AI / 手搓用例按"页名唯一权威"的规则写的是 `基础名@页名`
+    #   而用例按"页名唯一权威"的规则写的是 `基础名@页名`
     #   => 精确查表必然落空 => 闸门报「缺失项」，看着像 AI 编名字，实为**清单名字多带了一段语境**。
     #   这里给 it_map 补一层**别名**：把 `基础名@页名[语境]` 也登记到 `基础名@页名` 这个键上。
     #   只在该键**恰好对应 1 条**条目时才加（多条同名 -> 不加，让调用方按"未映射"处理，
@@ -1851,7 +1851,7 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     datasets_dir.mkdir(parents=True, exist_ok=True)
     scripts_dir.mkdir(parents=True, exist_ok=True)
 
-    # ★P20（2026-09-24）用例布局改为 cases/<scenario_id>/<case_id>.json（手搓用例在 cases/manual/）
+    # ★P20（2026-09-24）用例布局改为 cases/<scenario_id>/<case_id>.json（非 AI 用例在 cases/manual/）
     #   -> 这里必须**递归**扫（向后兼容：老的平铺文件照样能找到，不会出现"扫到 0 条"的断链 X）
     case_files = sorted(p for p in cases_dir.rglob("*.json") if p.is_file())
     cases = [json.loads(f.read_text(encoding="utf-8")) for f in case_files]
@@ -1908,9 +1908,9 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
     #（从 cases 第一个非空 `source_scenario` 回读场景 yml 的 auth 段）。
     _decl_auth: dict = {}
     for _c0 in cases:
-        # P22 批 5：**两条路都支持** —— 用例自带 `auth`（手搓用例的常见形态）优先，
+        # P22 批 5：**两条路都支持** —— 用例自带 `auth`（独立用例的常见形态）优先，
         # 其次按 `source_scenario` 回读场景 yml 的 `auth:` 段。
-        # （为什么不能只认场景：手搓用例不来自场景 -> 实测回读为空 -> 现场探测没登录态 -> 只探到登录页控件。）
+        # （为什么不能只认场景：独立用例不来自场景 -> 实测回读为空 -> 现场探测没登录态 -> 只探到登录页控件。）
         _decl_auth = (dict(_c0.get("auth") or {})
                       or _scenario_auth_of(str(_c0.get("source_scenario") or "")))
         if _decl_auth:
@@ -2294,14 +2294,14 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
         if _rel and _rel not in _scen_pre_cache:
             _scen_pre_cache[_rel] = _scenario_probe_pre_of(_rel)
             _scen_host_cache[_rel] = _scenario_pre_host_of(_rel)
-        # 用例自带（手搓用例）优先，其次场景声明 —— 与 auth 同一优先级口径
+        # 用例自带优先，其次场景声明 —— 与 auth 同一优先级口径
         _pp = list(_c.get("probe_pre") or []) or list(_scen_pre_cache.get(_rel) or [])
         if not _pp:
             continue
         # host = 前置该在哪一页跑（带业务导航的页）：执行期**用例体之前**先去那儿把身份建立好，
         # 不依赖用例自己的路线（AI 会「等价直达」，可能全程不经过带导航的页）
         #
-        # [!] **host 缺省 = 工作页根址**（2026-10-12 修的真 bug）：独立用例（手搓）按 D11 可以
+        # [!] **host 缺省 = 工作页根址**（2026-10-12 修的真 bug）：独立用例按 D11 可以
         #   自带 `probe_pre` + `probe_pre_fingerprint` 自证，**不需要**绑场景、也不需要声明
         #   `probe_pre_host`。原先这里直接落空串，而执行期 `_harness` 是
         #   `if _steps and _host:` -> **前置根本不跑**；可收尾闸只看 `_steps` -> **照样判红**

@@ -232,9 +232,3 @@ def _collapse(items) -> None:
         _collapse_row_repeats(items)
     except Exception:
         pass
-
-
-def _row_fields_of(pg) -> list:
-    """行内列清单（唯一实现在 probe 侧）。"""
-    from framework.features.f03_locate.probe import probe_row_fields
-    return list(probe_row_fields(pg) or [])

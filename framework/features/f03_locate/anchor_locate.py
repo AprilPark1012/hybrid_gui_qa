@@ -145,22 +145,3 @@ def header_index(headers: list[str] | None, text: str | None) -> int | None:
         if str(h or "").strip() == want:
             return i
     return None
-
-
-def ancestors_from_dom(chain: list[dict] | None) -> list[dict]:
-    """（预留）把 DOM 侧采集到的祖先信息规整成本模块认的字段名。
-
-    probe 采集端已按 `tag/role/class/test_id/aria_label/heading` 命名 -> 这里只做一次字段兜底归一，
-    避免两个模块对字段名的理解漂移（本项目踩过"两处口径不一致"的坑）。
-    """
-    out: list[dict] = []
-    for node in (chain or []):
-        out.append({
-            "tag": node.get("tag"),
-            "role": node.get("role"),
-            "class": node.get("class") or node.get("className"),
-            "test_id": node.get("test_id") or node.get("testid"),
-            "aria_label": node.get("aria_label") or node.get("ariaLabel"),
-            "heading": node.get("heading"),
-        })
-    return out

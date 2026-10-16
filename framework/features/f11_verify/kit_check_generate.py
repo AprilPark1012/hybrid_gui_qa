@@ -39,8 +39,7 @@ def check_kit(cases_dir: Path | None = None, scripts_dir: Path | None = None,
               cassette_dir: Path | None = None) -> list[str]:
     """返回不齐套的问题清单（空列表 = 齐套）。
 
-    [!] 只查 `ai_*.json`：手搓用例的脚本由 generate 自己的闸门守，本函数针对的是
-    「真 AI 链路产出的那一套」（要求 2/7 的口径）。
+    [!] 只查 `ai_*.json`：本函数针对的是「真 AI 链路产出的那一套」（要求 2/7 的口径）。
     """
     cases_dir = Path(cases_dir or CASES_DIR)
     scripts_dir = Path(scripts_dir or SCRIPTS_DIR)

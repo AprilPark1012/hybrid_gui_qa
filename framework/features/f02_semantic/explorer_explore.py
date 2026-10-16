@@ -3,13 +3,11 @@
 职责：理解自然语言测试意图 → 规划步骤 → 从 probe 探测出的交互元素里
 挑出每个动作的目标元素 → 产出 ElementMap（步骤 + 元素语义引用）。
 
-两种模式：
+模式：
   - ai_explore()  : LLM 语义识别与步骤编排（**用 browser_use.llm 的 ChatDeepSeek 直连**
                     的 ainvoke(output_format) 拿结构化步骤；经 .env 配 LLM key 启用）
                     注：**不是** browser-use 的 Agent —— Agent 对 DeepSeek 有 input_text
                     schema bug（见 skill 实测记录），故走"方案C"直连编排，能力等价。
-  - mock_explore(): 不用 LLM，用一条简单的确定性规则挑元素拼出演示场景，
-                    让整条链路在无 key 环境下仍能跑通验证。
 
 + 本文件是【智能层】。它负责"理解与决策"，把每个步骤的【目标元素】
    用人类可读的语义引用出来。但它【不产生】最终 locator —— 定位永远
@@ -320,69 +318,6 @@ def _plan_to_steps(plan, items: list[dict]) -> list[TestStep]:
     return steps
 
 
-def _pick(items: list[dict], **conds) -> dict | None:
-    """从 probe 结果里挑第一个满足条件的元素。"""
-    for it in items:
-        if all(it.get(k) == v for k, v in conds.items()):
-            return it
-    return None
-
-
-def mock_explore(scenario: str, items: list[dict], url: str) -> ElementMap:
-    """【确定性 mock】无 LLM 也能跑：演示"填输入框→点添加→断言回显"。
-
-    仅用于无 key 环境验证链路 / 教学。真实场景请用 ai_explore()。
-    根据 scenario 关键词自动选一个演示场景（默认为添加待办）。
-    """
-    el = ElementMap(url=url, scenario=scenario)
-
-    # 兜底：textbox / add 按钮（get 不到就 None，下面的 ElementRef 会 fallback）
-    textbox = _pick(items, role="textbox", placeholder="添加新的待办事项...")
-    add_btn = _pick(items, role="button", name="添加")
-    span_item = _pick(items, tag="span", text="写周报")
-    checkbox = _pick(items, role="checkbox", nearby_text="写周报")
-
-    text_ref = ElementRef(
-        semantic_name=(textbox or {}).get("semantic_name", "todo_input"),
-        role="textbox", placeholder="添加新的待办事项...",
-        test_id=(textbox or {}).get("test_id"),
-    )
-    add_ref = ElementRef(
-        semantic_name=(add_btn or {}).get("semantic_name", "add_button"),
-        role="button", name="添加",
-        test_id=(add_btn or {}).get("test_id"),
-    )
-
-    # —— 演示2：勾选"写周报"（同名 checkbox 消歧场景）——
-    if "勾选" in scenario or "check" in scenario.lower():
-        cb_ref = ElementRef(
-            semantic_name=(checkbox or {}).get("semantic_name", "todo_checkbox"),
-            role="checkbox",
-            nearby_text=(checkbox or {}).get("nearby_text", "写周报"),
-        )
-        el.steps = [
-            TestStep(1, "goto", description=f"打开 {url}"),
-            TestStep(2, "check", cb_ref, description="勾选'写周报'那一项的 checkbox"),
-            TestStep(3, "expect_text", None, assertion="已更新",
-                     description="断言勾选后状态提示"),
-        ]
-        return el
-
-    # —— 默认演示1：添加待办 ——
-    span_ref = ElementRef(
-        semantic_name=(span_item or {}).get("semantic_name", "todo_item_text"),
-        text="写周报",
-    )
-    el.steps = [
-        TestStep(1, "goto", description=f"打开 {url}"),
-        TestStep(2, "fill", text_ref, value="学习混合测试框架", description="在输入框输入内容"),
-        TestStep(3, "click", add_ref, description="点击添加按钮"),
-        TestStep(4, "expect_text", None, assertion="学习混合测试框架",
-                 description="断言新增文案出现在页面"),
-    ]
-    return el
-
-
 class AiExploreError(RuntimeError):
     """AI 语义识别失败（LLM 不可用 / 产出不可用）。
 
@@ -550,7 +485,7 @@ def _register_pre_action_items(page_name: str, names, page_items: list[dict],
 
     [!] 合成条目必须与探针条目**同形状**（2026-10-10 补）：带上 test_id / help_text / label /
     placeholder 这些**定位锚**。否则下游 `by: title` 这种属性直定位从条目里取不到锚 ->
-    产物落 `pytest.fail` 存根（实测：手搓用例的「超@合同列表页 + by: title」就是这么炸的）。
+    产物落 `pytest.fail` 存根（历史实测：手搓用例的「超@合同列表页 + by: title」就是这么炸的）。
     """
     have = set()
     for it in (page_items or []):
@@ -979,11 +914,15 @@ async def _ai_explore_async(
                 except Exception as e:
                     raw_plan = None
                     _msg = f"{type(e).__name__}: {str(e)[:160]}"
-                    _low = _msg.lower()
-                    if "tool_choice" in _low or "thinking mode" in _low:
-                        # 能力差异(非抖动): 记住并**后续直接走纯文本**, 不再每轮白试
+                    # [!] V8.6.3 收敛：**不再自己判**「是不是端点拒指名 tool_choice」——
+                    #   这件事的**唯一权威**是 llm_compat.rejects_named_tool_choice()
+                    #   （ChatOpenAICompatible.ainvoke 撞到就自动降级 tool_choice=auto、把结构化输出救回来）。
+                    #   能走到这里仍带该特征 -> 降级 auto 之后**还是被拒**（端点连 auto 都不收）
+                    #   -> 本会话禁用结构化路径、只走纯文本。这里只**复用**权威判定，不重写第二套字符串匹配。
+                    from framework.shared.llm_compat import rejects_named_tool_choice
+                    if rejects_named_tool_choice(e):
                         _no_structured = True
-                        print(f"      [explore] [info] 上游不支持结构化输出({_msg[:70]})"
+                        print(f"      [explore] [info] 端点连降级后的 tool_choice=auto 也不收（{_msg[:70]}）"
                               f" -> 改用纯文本路径(不影响识别, 只少了这层约束)")
                     else:
                         _note_err(errs, f"结构化输出路径 {_msg}")
@@ -1448,7 +1387,7 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
 
     manifest（2026-10-10 · S1 收口）：本次探索**喂给 AI 的完整元素清单**（`page_items`）——
     原样落进 `ElementMap.probe_items`。为什么必须带：element_map 的 steps 只含 **AI 用到**的名字，
-    而手搓用例/断言引用的控件名 AI 可能没用过，generate 期只能靠现场重探重建，
+    而用例/断言引用的控件名 AI 可能没用过，generate 期只能靠现场重探重建，
     重探又拿不到跨页唯一化的上下文 => 报「缺失项」把链路卡死（实测取证详见
     `tests/特性3-分层定位与控件识别/test_explore_manifest_authoritative.py` 的文件头）。
     """
@@ -2703,7 +2642,7 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
     #   AI 在长上下文里没遵循 —— 写出 `订单名称@订单系统`（把**应用名**当页名）、
     #   `保存@详细信息`（把**容器名/区块名**当页名）、`保存@订单详情`（近义造词）。
     #   这些后缀一律映射不上，整条链在生成期被拦，报出来的却只是「缺失项」。
-    #   页名只有一个来源：场景声明的 `pages[].name`（AI 与手搓用例都只看得见它）。
+    #   页名只有一个来源：场景声明的 `pages[].name`（AI 用例与判据都只看得见它）。
     # C3（2026-10-16）：白名单是**权威口径**（短、只列页名），排除清单才是说教 ——
     #   实测这一带（等待段 + 页名口径）是全提示词里信息密度最低的长带之一。
     #   口径：**列约束、不列举例**。白名单与「一个字都不能改」的强度逐字保留；
