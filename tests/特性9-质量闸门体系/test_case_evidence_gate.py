@@ -1,5 +1,16 @@
 """换页证据质量闸（弱 url 断言 = 假绿）的回归测试（2026-09-17，服务目标 (2) AI 语义准）。
 
+V8.6.4（合并重复判据 · 第一批）两处改名说明：
+  · **文件改名** `test_case_quality_gate.py` -> `test_case_evidence_gate.py`：名实相符 ——
+    它守的是**换页证据**那一类（弱 url 断言 / 自造片段 / 红线拒绝产物），
+    不是整个"用例质量闸"；另两个闸门（生成质量、闸门协议注册表）各有自己的文件，本文件不合它们。
+    [!] 三个闸门文件**不合并**：它们测的是三个互不调用的函数，且 `test_generate_quality_gate.py`
+    带 autouse 隔离 fixture —— 合并会改变无关判据行为（那是把"合并重复判据"做成了"重排测试"）。
+  · **删掉一条等价双写** `test_g2_self_invented_url_fragment_is_redline`：它与本文件
+    `test_fabricated_fragment_is_redline_now` 守同一件事（自造换页片段 = 红线），
+    但走的是**私有入口+常量名**（`_url_evidence_issues` / `REDLINE` / `WARN`）。
+    留下那条走**公开出口** `case_errors()` 的 —— 公开出口不依赖内部常量名，改实现也不会假红。
+
 背景（2026-09-14 实测挖出）：AI 给「点返回列表回到列表页」产的 `expect_url` 只是 `localhost`
 —— 而**上一个页面的 URL 也含 localhost** -> 点击后立刻就能通过，「确实换页了」这件事根本没被验到。
 当时 AI 提示词甚至**在教 AI 这么写**（「列表页写 localhost 或留空不要写」），所以这是**根因级**修复：
@@ -15,7 +26,7 @@
 
 跑法（秒级，不需要 demo、不需要浏览器）：
     cd ~/hybrid_gui_qa && source .venv/bin/activate
-    python -m pytest tests/特性9-质量闸门体系/test_case_quality_gate.py -v
+    python -m pytest tests/特性9-质量闸门体系/test_case_evidence_gate.py -v
 """
 from __future__ import annotations
 
@@ -205,24 +216,3 @@ def test_prompt_no_longer_teaches_weak_evidence():
     src = (REPO / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
     assert "列表页写 localhost" not in src, "提示词还在教 AI 产弱换页证据"
     assert "每个页面都含" in src, "提示词缺少「禁止 host 片段」的说明"
-
-def test_g2_self_invented_url_fragment_is_redline():
-    """G2（2026-10-10 AprilPark1012拍定）：自造换页片段必须是**红线**，不能只警告。
-
-    事故：干净环境 E2E 里 AI 编了 `index.html` 当换页证据（场景声明的是 `http://localhost:8000/`），
-    闸门**只警告不拦** -> 注定失败的断言进了产物 -> 白跑一整轮 E2E（约 8 分钟）+ 一轮 AI 重试，
-    实跑才炸：`AssertionError: Page URL expected to be 're.compile('index\\.html')'`。
-    判据是纯字符串比对（片段 vs 全部声明 URL），**不存在误伤空间** => 该拦。
-    """
-    from framework.features.f02_semantic.case_builder_generate import REDLINE, WARN, _url_evidence_issues
-    case = {
-        "pages": [{"name": "合同列表页", "url": "http://localhost:8000/"},
-                  {"name": "订单列表页", "url": "http://localhost:8000/orders.html"}],
-        "steps": [{"op": "goto", "url": "http://localhost:8000/"}],
-        "asserts": [{"kind": "url", "expect": "index.html"}],        # 自造片段：谁都对不上
-    }
-    issues = _url_evidence_issues(case)
-    assert issues, "自造片段居然没有任何问题记录（判据前提失效）"
-    levels = [lv for lv, _ in issues]
-    assert REDLINE in levels, f"自造换页片段只报 WARN，没有升为红线：{issues}"
-    assert WARN not in levels or REDLINE in levels, "自造片段必须走红线分支"

@@ -221,8 +221,8 @@ def _fill_and_render(a: dict, scenario_text: str = "") -> str:
     """走**真实链路**：先 `apply_kind_defaults`（默认填充的唯一入口）再渲染。
 
     [!] 为什么不直接渲染断言：`refresh` 的缺省补位属于「默认填充」，归 `apply_kind_defaults`；
-        `_render_assert` 的契约是「不写 refresh 就不出参数」（`test_wait_text_refresh_policy`
-        的判据 2 守着）—— 两处职责不同，判据也得对着各自的入口测。
+        `_render_assert` 的契约是「不写 refresh 就不出参数」（`test_wait_text_render_contract`
+        的判据 5 守着）—— 两处职责不同，判据也得对着各自的入口测。
     """
     from framework.features.f02_semantic.generator_generate import apply_kind_defaults, _render_assert
     a = dict(a)

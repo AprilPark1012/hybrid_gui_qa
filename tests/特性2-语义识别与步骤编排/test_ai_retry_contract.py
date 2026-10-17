@@ -1,6 +1,21 @@
 # -*- coding: utf-8 -*-
 """特性2 · AI 产出的「校验 -> 自动重试」闭环（V8.4 · 用户 2026-10-08 选 B）。
 
+[!] V8.6.4（合并重复判据 · 第二批 · 组 1 遗留）两处变动，**文件改名**
+    `test_ai_retry_loop.py` -> **`test_ai_retry_contract.py`**（它现在守的是「上限 / 回炉 / 接线」这三条契约，
+    早已不只是 loop）：
+
+  1. **删掉 `test_same_reason_stops_retrying`**（原 :80-93）—— 它与同目录
+     `test_ai_retry_same_cause.py` 守**同一件事**（失败原因没变就不重试），但那条**更强**：
+     它走 `exec` 真函数体（连 `_retry_reason_fingerprint` 一起 exec）+ **指纹源码断言**，
+     而本条只是把同样的输入再喂一遍 —— 「日志路径时间戳让同因判不出来」那个真实事故，
+     旧版这条**抓不到**（它用的是手写短原因，没有路径）。
+     接手 = `test_ai_retry_same_cause.py`（5 条：指纹忽略日志路径 / 真差异不许抹平 /
+     走指纹比较 + 行为验证 / 换因仍重试 / 边界）。
+  2. **`test_prompt_without_feedback_is_clean` 交给** `test_retry_feedback_contract.py`
+     （V8.6.4 第二批 · 组 3 的合并文件），那里与质量警告通道的同类断言**取严**后并成一条
+     `test_prompt_stays_clean_without_feedback`。
+
 为什么需要（实测教训）：
     AI 编排是**非确定性**的。同一场景连续生成，逐轮暴露不同缺陷：
       · 第 1 轮：自己编登录流程 + 编造密码 `123456`（真值 super@123）-> 崩在第一步
@@ -75,25 +90,11 @@ def test_retry_limit_is_bounded_and_forgiving_of_garbage():
     assert _ai_retry_limit({"HYBRID_AI_RETRY": "999"}) <= 5, "必须有上界（否则一次跑可能烧掉几十次 LLM 调用）"
 
 
-# ---------------------------------------------------------------- 同因不重试
-
-def test_same_reason_stops_retrying():
-    """失败原因没变 -> 停（再问也是同一个答案，白烧 token）。"""
-    import sys
-    sys.path.insert(0, str(REPO))
-    from framework.cli import _should_retry_again
-
-    assert _should_retry_again(prev="假绿：换页证据用 index", new="假绿：换页证据用 index",
-                               attempt=0, limit=2) is False
-    assert _should_retry_again(prev="假绿：换页证据用 index", new="缺 value 的步骤渲染崩",
-                               attempt=0, limit=2) is True
-    # 第一轮没有 prev，必须允许重试
-    assert _should_retry_again(prev="", new="任意原因", attempt=0, limit=2) is True
-    # 次数用尽 -> 不许再试
-    assert _should_retry_again(prev="a", new="b", attempt=2, limit=2) is False
-
-
 # ---------------------------------------------------------------- 失败原因进提示词
+#
+# [!] V8.6.4：原「同因不重试」一条（test_same_reason_stops_retrying）已删 —— 接手 =
+#     tests/特性2-语义识别与步骤编排/test_ai_retry_same_cause.py（更强：走真函数体 exec +
+#     指纹源码断言，覆盖「日志路径时间戳让同因判不出来」那个真实事故）。
 
 def test_prompt_accepts_retry_feedback():
     """提示词必须能接收「上一轮为什么不合格」——否则重试只是再掷一次骰子。"""
@@ -122,15 +123,12 @@ def test_prompt_includes_retry_feedback_text():
     )
 
 
-def test_prompt_without_feedback_is_clean():
-    """**负向的另一面**：不给失败原因时，不许凭空出现「上一轮失败」这类字样（避免误导）。"""
-    import sys
-    sys.path.insert(0, str(REPO))
-    from framework.features.f02_semantic.explorer_explore import _build_planner_prompt
-
-    prompt = _build_planner_prompt("随便", [], "http://x/", auth={"username": "u"})
-    flat = prompt.replace("\n", "")
-    assert "上一轮" not in flat, "没重试却出现了「上一轮」字样 —— 会误导 AI 以为自己做错过"
+# [!] V8.6.4（第二批 · 组 3）：原 `test_prompt_without_feedback_is_clean` **已删** ——
+#     接手 = tests/特性2-语义识别与步骤编排/test_retry_feedback_contract.py
+#     `::test_prompt_stays_clean_without_feedback`（与「质量警告通道」的同类断言**取严**合并：
+#     `"上一轮" not in flat` 与 `"上一轮框架识别出的" not in prompt` 两条都查）。
+#     删的理由：两条判据守同一件事（「不给反馈时提示词里不许凭空出现回炉字样」），
+#     被接手那条更强 -> 本文件不再保留第二份。
 
 
 # ---------------------------------------------------------------- 接线
@@ -154,9 +152,10 @@ def test_replay_mode_skips_retry():
     )
 
 
-def test_quality_gate_not_weakened():
-    """**底线判据**：质量闸不许因为「要重试」而被弱化（该拦还得拦、该 exit 还得 exit）。"""
-    src = _src(CLI)
-    assert "raise SystemExit(2)" in _fn_src(CLI, "_report_case_quality") or "SystemExit(2)" in src, (
-        "假绿红线不再 exit 2 了 —— 重试不能以弱化闸门为代价"
-    )
+
+# [!] V8.6.4（合并重复判据 · 第一批）：删掉原 `test_quality_gate_not_weakened` —— 它是**假绿兜底**：
+# 断言写成 `... or "SystemExit(2)" in src`，而 `src` 取的是**整个 cli.py**，"SystemExit(2)" 全文有
+# **20 处** -> 后半句恒真：前半句（真去 `_report_case_quality` 里找 exit 2）坏掉了也不会红。
+# 它想守的语义（假绿红线必须真 exit 2、重试不许以弱化闸门为代价）已由
+# `tests/特性11-交付即验证/test_verify_entry_contract.py::test_verify_failure_exit_codes_are_distinct`
+# **完整**覆盖（那里钉的是两档退出码真的存在且可区分：`raise SystemExit(2)` + `raise SystemExit(3)`）。

@@ -43,10 +43,20 @@ FEATURES = [
                           "test_prompt_list_clipping_is_general.py", "test_prompt_dom_facts_merged.py",
                           # C3/C4（2026-10-16）：提示词的两条「少说废话/别重复犯错」纪律 ——
                           #   段要紧凑（只留约束）、质量警告要回炉进下一轮（同一个错不许连犯三轮）
-                          "test_prompt_wait_page_rule_compact.py", "test_quality_warnings_feed_next_round.py",
+                          "test_prompt_wait_page_rule_compact.py",
                           # V8.6.3：这 5 条原挂在特性11（11.1/11.2），物理目录一直是特性2 -> 登记改挂此处
+                          # V8.6.4：本文件删掉 1 条假绿兜底 `test_quality_gate_not_weakened`
+                          #   （`or "SystemExit(2)" in src` 在全文 20 处命中下恒真）；
+                          #   语义由特性11 `test_verify_failure_exit_codes_are_distinct` 完整接手
+                          # V8.6.4（第二批 · 组 3）：`test_quality_warnings_feed_next_round.py`
+                          #   与 `test_retry_leaves_no_stale_notes.py` **两条判据合一**并改名 ->
+                          #   `test_retry_feedback_contract.py`（守的是**同一条跨轮反馈通道**的两端：
+                          #   上一轮记账不许跨轮残留 + 记的账必须真递给 AI），登记合成本行一处
+                          # V8.6.4（第二批 · 组 1 遗留）：`test_ai_retry_loop.py` -> 改名
+                          #   `test_ai_retry_contract.py`（它守的是「上限 / 回炉 / 接线」契约）；
+                          #   「同因不重试」那条下放给更强的 `test_ai_retry_same_cause.py`
                           "test_production_defects_gate_l1.py", "test_ai_incomplete_output_retries.py",
-                          "test_retry_leaves_no_stale_notes.py", "test_ai_retry_loop.py",
+                          "test_retry_feedback_contract.py", "test_ai_retry_contract.py",
                           "test_ai_retry_same_cause.py"],
                  class2=["verify_role_switch_click.py"]),
             dict(no="2.3", name="步骤到定位的合成", goal="步骤里的语义名/属性如何合成可执行定位表达式"
@@ -217,16 +227,26 @@ FEATURES = [
         subs=[
             dict(no="9.1", name="布局与命名契约", goal="tests/ 与生成物的布局、路径拼接（跨平台）、命名空间契约",
                  class1=["test_test_layout_contract.py", "test_generated_layout_contract.py",
-                         "test_path_join_contract.py", "test_case_scenario_contract.py",
+                         "test_path_join_contract.py",
+                         # V8.6.4（第二批 · 组 2）：`test_case_scenario_contract.py` **整文件删** ->
+                         #   `source_scenario` 字段级校验 + `_YML_REF` 正则迁进 9.6 的
+                         #   `test_scenario_case_script_hygiene.py`（三者同源：都是「用例 <-> 场景」对账）
                          "test_click_then_ready_contract.py", "test_assert_kinds_render.py",
-                         "test_wait_text_kind.py", "test_demo_testid_policy.py"],
+                         # V8.6.4：`test_wait_text_kind.py` 摘走（三合一后整条落 9.6 ——
+                         #   它守的是「等待式断言的渲染契约」，不是布局/命名）
+                         "test_demo_testid_policy.py"],
                  class2=[]),
-            dict(no="9.2", name="质量闸", goal="用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，**且不许误伤**；"
+            dict(no="9.2", name="质量闸", goal="用例质量 / 生成质量 / demo 新鲜度，**且不许误伤**；"
                                                      "**闸门统一契约 + 全量注册表**（B′：实现跟特性走、登记进 core/gates.py）；"
                                                      "**验收入口的跳过策略**同归此（跳过必须显式留痕、SKIP != 通过、失败优先于跳过 —— "
                                                      "`test_acceptance_skip_policy.py` 物理住本目录）",
-                 class1=["test_case_quality_gate.py", "test_generate_quality_gate.py", "test_gate_protocol_registry.py",
-                         "test_demo_freshness_gate.py", "test_ai_case_scenario_sync.py",
+                 class1=[  # V8.6.4：`test_case_quality_gate.py` -> `test_case_evidence_gate.py`
+                           #   （名实相符：它只守**换页证据**那一类，不是整个用例质量闸）
+                           "test_case_evidence_gate.py", "test_generate_quality_gate.py", "test_gate_protocol_registry.py",
+                         "test_demo_freshness_gate.py",
+                         # V8.6.4（第二批 · 组 2）：`test_ai_case_scenario_sync.py` **整文件删** ->
+                         #   场景指纹同步 + 它的负向自证迁进 9.6 的
+                         #   `test_scenario_case_script_hygiene.py`（「AI 用例与场景同步」这一面随判据走）
                          "test_daily_skip_marker.py",
                          # V8.6.3：原登记在 1.2（特性1），物理目录一直是特性9 -> 登记改挂此处
                          "test_acceptance_skip_policy.py",
@@ -246,10 +266,20 @@ FEATURES = [
                  class1=["test_retention_runs.py", "test_artifacts_health.py"],
                  class2=["verify_retention_runs.py"]),
             dict(no="9.6", name="就绪与等待契约", goal="点击后等就绪、等文本刷新策略、选择器生效、"
-                                                     "**动作后置校验（做了 != 生效了）**",
-                 class1=["test_ready_and_locate.py", "test_wait_text_refresh_policy.py",
-                         "test_wait_text_selector.py", "test_import_targets.py",
+                                                     "**等待式断言 `wait_text` 的渲染契约**（三合一后整条归此）、"
+                                                     "**动作后置校验（做了 != 生效了）**、"
+                                                     "**`cases` <-> `scenarios` 三目录新陈代谢**：孤儿 AI 用例 / "
+                                                     "`source_scenario` 可解析 / 场景指纹同步 / 防空转哨兵"
+                                                     "（V8.6.4 第二批 · 组 2 把原 9.1 `test_case_scenario_contract.py` "
+                                                     "与 9.2 `test_ai_case_scenario_sync.py` 两条同源判据**整文件删**、"
+                                                     "迁进 `test_scenario_case_script_hygiene.py` —— 三者同源，只留一处口径）",
+                 class1=["test_ready_and_locate.py",
+                         # V8.6.4：`test_wait_text_refresh_policy.py` + `test_wait_text_selector.py`
+                         #   + 9.1 摘过来的 `test_wait_text_kind.py` -> 合并成这一条（渲染契约三合一）
+                         "test_wait_text_render_contract.py", "test_import_targets.py",
                          "test_generated_pytest_discovery.py", "test_case_imports_cover_helpers.py",
+                         # V8.6.4（第二批 · 组 2）：本条 = 三者合一后的「用例 <-> 场景来源」对账
+                         #   （保名：它已含防空转守卫 + 覆盖告警，是三者里最全的）
                          "test_scenario_case_script_hygiene.py", "test_target_reachability.py",
                          "test_declared_wait_budget.py", "test_action_effect_check.py"],
                  class2=["verify_wait_text.py", "verify_action_effect_check.py"]),
@@ -317,12 +347,17 @@ FEATURES = [
                       "退出码可区分（2 产出侧 / 3 实跑侧）。"
                       "[!] V8.6.3：本特性**只挂物理住在本目录的判据**；"
                       "两档重试的其余判据物理住在 tests/特性2-语义识别与步骤编排/（登记在 2.2），"
-                      "按「登记目录 == 物理目录」不在此重复挂",
+                      "按「登记目录 == 物理目录」不在此重复挂。"
+                      "[!] V8.6.4：原 `test_retry_is_bounded`（被特性2 严格覆盖）、"
+                      "原只查「全文 >= 1 次」的 `test_replay_mode_does_not_retry`（删任一档都不红）已删；"
+                      "回放不重试改由强判据 `test_replay_is_skipped_in_both_retry_paths` 钉"
+                      "「两档各自都在」（产出档分支体 `break` / 实跑档分支体 `raise SystemExit(3)`）",
                  class1=["test_verify_entry_contract.py"],
                  class2=[]),
             dict(no="11.2", name="实跑档重试（判据住特性2）",
                  goal="实跑档（generate + 逐条实跑）失败 -> 带原因整轮重来；录像回放模式不重试；实跑未过 exit 3 —— "
-                      "能力口径保留在本条；其判据（test_ai_retry_loop / test_ai_retry_same_cause）"
+                      "能力口径保留在本条；其判据（test_ai_retry_contract / test_ai_retry_same_cause，"
+                      "前者 V8.6.4 第二批由 test_ai_retry_loop 改名 —— 它守的是「上限 / 回炉 / 接线」契约）"
                       "物理住在 tests/特性2-语义识别与步骤编排/，按「登记目录 == 物理目录」登记在 2.2",
                  class1=[], class2=[], status="判据住特性2"),
         ],

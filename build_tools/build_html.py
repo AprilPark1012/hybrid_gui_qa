@@ -61,11 +61,184 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.6.3"
-VERSION_DATE = "2026-10-16"
+VERSION = "8.6.4"
+VERSION_DATE = "2026-10-17"
 CHANGELOG = [
     dict(
-        version="8.6.3", date="2026-10-16", tag="当前版本",
+        version="8.6.4", date="2026-10-17", tag="当前版本",
+        theme="<b>合并重复判据（两批做完 5 组）</b> —— 同一件事不再由两条判据分守："
+              "删 16 条重复/假绿、把 5 个文件合成 2 个（另 2 个改名）、补 3 条更强的新判据",
+        summary="V8.6.3 审计时登记了 <b>5 组重复判据</b>（同一件事被两条判据分别守着），"
+                "并明确留到本版处理 —— 本版<b>分两批把 5 组全部做完</b>，判据是三条硬口径：<br>"
+                "· <b>留下的那条必须更强</b>（走公开出口、能区分两种坏法），不是「删一条凑数」<br>"
+                "· <b>每条被删的判据都要写清由谁接手</b>（不许出现「保护真空」）<br>"
+                "· <b>全量判据一条都不许红</b>（合并会降总数，属预期；红一条就是回归）<br>"
+                "<b>第一批（组 5 / 组 4 / 组 1）</b>：删 4 条、新增 2 条强判据、"
+                "<b>3 个文件合成 1 个</b>、<b>1 个文件改名</b>（<code>wait_text</code> 渲染契约三合一 / "
+                "三个闸门不合并文件只 1 删 + 1 改名 / 两档重试收口）；<br>"
+                "<b>第二批（组 3 / 组 1 遗留 / 组 2）</b>：删 <b>12 条</b>（含 <b>3 个整文件</b>）、"
+                "并入/新增 10 条、<b>2 个文件改名</b>，并把<b>全仓唯一的防空转哨兵</b>加固成"
+                "「<code>ai_*.json >= 1</code> 且 <code>scenarios/*.yml >= 1</code>」。<br>"
+                "结果（两批合计）：全量判据 <b>1218 passed / 3 skipped / 0 failed</b>"
+                "（基线 1222，净 <b>-4</b> = 第一批 -2 + 第二批 -2）。",
+        changed=[
+            "<b>组 5 · <code>wait_text</code> 渲染契约三合一</b>："
+            "<code>test_wait_text_kind.py</code> + <code>test_wait_text_refresh_policy.py</code> + "
+            "<code>test_wait_text_selector.py</code> -> <b>一个</b> "
+            "<code>test_wait_text_render_contract.py</code>（11 条）。"
+            "为什么合成一条：三者守的是<b>同一件事</b> ——「一条 <code>wait_text</code> 断言渲染成"
+            "生成脚本里的调用行长什么样」，只是各守其中一个字段（kind 在册 / 超时 / "
+            "<code>refresh</code> 三态 / <code>selector</code> 透传）",
+            "<b>组 5 · 渲染入口只留一份真写法</b>：原来的三份 <code>_render</code> 副本里，"
+            "有两份是<b>手工塞 <code>_payload_ref</code></b>（它们的注释里自己写着"
+            "「不带它就等于测了个假形态」）。现在一律走真管线 "
+            "<code>_add_payload_refs(...)</code> -> <code>_render_assert(...)</code>，"
+            "期望值由框架自己抽成 <code>_data('expect_N', ctx)</code>，与 generate 真实链路同口径",
+            "<b>组 5 · 两个负向合并成一条 parametrize</b>：`timeout_ms` 一组（负数 / 0 / 非数字 / 浮点）"
+            "+ <code>refresh</code> 一组（拼错 / 错类型）。合并的唯一依据是它们共同的前提一样 ——"
+            "<b>失败原因必须来自值非法，不能来自「kind 还没实现」</b>，"
+            "所以共同断言「渲染出 <code>pytest.fail</code> 且<b>不含</b>『未知断言类型』」",
+            "<b>组 5 · 登记落点改齐</b>：<code>feature_spec.py</code> 里这条判据整体落 "
+            "<b>9.6（就绪与等待契约）</b>，并从 <b>9.1</b> 摘掉原来那行（它守的是渲染契约，"
+            "不是布局/命名）；9.6 的目标里写明「等待式断言 wait_text 的渲染契约」",
+            "<b>组 4 · 三个闸门<b>不合并文件</b>，只做 1 删 + 1 改名</b>："
+            "它们测的是<b>三个互不调用的函数</b>，且 <code>test_generate_quality_gate.py</code> 带 "
+            "autouse 隔离 fixture —— 合并会改变<b>无关判据</b>的行为（那是把「合并重复判据」"
+            "做成了「重排测试」）。所以分居格局保持不变",
+            "<b>组 4 · 改名（名实相符）</b>：<code>test_case_quality_gate.py</code> -> "
+            "<code>test_case_evidence_gate.py</code> —— 它守的是<b>换页证据</b>那一类"
+            "（弱 url 断言 / 自造片段 / 红线拒绝产物），不是整个「用例质量闸」",
+            "<b>组 1 · 两档重试的重复判据收口</b>：特性11 "
+            "<code>test_retry_is_bounded</code> 删（特性2 的 <code>test_ai_retry_loop</code> "
+            "逐条严格覆盖，且多了<b>脏值回落</b>与<b>负值</b>两个它没有的用例）；"
+            "特性11 <code>test_replay_mode_does_not_retry</code> 删（只查「全文 >= 1 次」，"
+            "<b>删任一档都不会红</b>）-> 换成强判据（见「新增判据」）",
+            "<b>组 1 · 删一条假绿兜底</b>：特性2 <code>test_quality_gate_not_weakened</code> —— "
+            "断言写成 <code>... or \"SystemExit(2)\" in src</code>，而 <code>src</code> 是"
+            "<b>整个 cli.py</b>、<code>SystemExit(2)</code> 全文有 <b>20 处</b> -> 后半句恒真，"
+            "前半句坏掉也不会红。它想守的语义由特性11 "
+            "<code>test_verify_failure_exit_codes_are_distinct</code> 完整接手",
+            "<b>组 1 · 过期文案改齐（R8 文档漂移）</b>：特性11 文件 docstring 里还写着"
+            "「现状（片 1 基线，本判据<b>应当红</b>）」—— 它今天早已全绿，照旧读会让人以为有坑",
+            "<b>[第二批] 组 3 · 跨轮反馈通道两合一</b>："
+            "<code>test_quality_warnings_feed_next_round.py</code> + "
+            "<code>test_retry_leaves_no_stale_notes.py</code> -> 改名并合成 "
+            "<b><code>test_retry_feedback_contract.py</code></b>（13 条）。"
+            "为什么是一条：两者守的是<b>同一条通道</b>（<code>_next_round_feedback</code> -> "
+            "<code>_build_planner_prompt(retry_feedback=...)</code>）的两端 —— "
+            "前端「上一轮缺陷记账<b>不许跨轮残留</b>」（残留 = AI 补好了还被拦，白挨两轮）、"
+            "后端「记的账必须<b>真递给 AI</b>」（不递 = 记账等于白记，AI 连犯三轮）；"
+            "通道断任一端，现象完全一样（AI 反复犯同一个错）",
+            "<b>[第二批] 组 3 · 4 条全部迁入（一条不丢）</b>：行为链（第 1 轮记账 -> 第 2 轮补全 -> "
+            "notes 为空）/ 缩进级源码兜底（<code>clear()</code> 必须在 <code>_finalize_map</code> "
+            "<b>函数体</b>里、缩进 == 4）/ <code>SEMANTIC_MISMATCH_NOTES</code> 有清空点 / "
+            "<code>check_required_field_coverage</code> 报缺失条数 —— 统一加 <code>test_notes_*</code> 前缀；"
+            "模块级状态改由 <b>autouse fixture</b> 清空（范式取自 "
+            "<code>test_production_defects_gate_l1.py:29-36</code>）",
+            "<b>[第二批] 组 1 遗留 · 「同因不重试」下放 + 文件改名</b>："
+            "<code>test_ai_retry_loop.py</code> 里的 <code>test_same_reason_stops_retrying</code> 删 —— "
+            "接手 = 同目录 <b><code>test_ai_retry_same_cause.py</code></b>（更强：<code>exec</code> 真函数体 + "
+            "指纹源码断言，能抓「日志路径时间戳让同因判不出来」那个真实事故；被删那条用的是手写短原因，抓不到）；"
+            "该文件改名 <b><code>test_ai_retry_contract.py</code></b>（它现在守的是「上限 / 回炉 / 接线」三条契约）",
+            "<b>[第二批] 组 2 · 三处「用例 &lt;-&gt; 场景来源」收成一个</b>："
+            "<code>test_case_scenario_contract.py</code> 与 <code>test_ai_case_scenario_sync.py</code> "
+            "<b>整文件删</b>，连同原 9.1 / 9.2 的登记一并迁进 <b>保名的 "
+            "<code>test_scenario_case_script_hygiene.py</code></b>（它已含防空转守卫 + 覆盖告警，是三者里最全的）。"
+            "三者同源：都是「<code>cases/</code> 与 <code>scenarios/</code> 对账」",
+            "<b>[第二批] 组 2 · <code>source_scenario</code> 保持硬要求</b>（已核实不是死字段）："
+            "<code>generator_generate.py:148</code> 真的读它 —— "
+            "<code>_scenario_text_of(str(case.get(\"source_scenario\") or \"\"))</code>"
+            "（注释写明「声明等待时长要用它」），:713 还拿它作 <code>scenario_id</code> 的回落取值，"
+            "<code>kit_check_generate.py:82</code> 也消费它 -> 字段缺失/悬空会让下游<b>悄悄退化成「没有场景原文」</b>，"
+            "表现为「等待时长没按场景声明走」这类看着像业务问题的故障",
+            "<b>[第二批] 组 2 · 防空转哨兵加固（全仓唯一）</b>："
+            "<code>test_scenario_and_case_dirs_are_nonempty</code> 原来只判「非空」—— "
+            "只要 <code>cases/</code> 下还有任何 json（例如只剩手搓用例）就绿，"
+            "而 <code>ai_*.json</code> <b>归零</b>时三条 AI 用例对账（孤儿 / 来源 / 指纹）"
+            "<b>同时变成空转</b>，哨兵却不会响。现在<b>分别</b>要求 "
+            "<code>ai_*.json >= 1</code> <b>且</b> <code>scenarios/*.yml >= 1</code>，"
+            "并在 docstring 里写清它为什么存在（防「循环体恒空的全绿假阳」）"
+            "—— 它同时兜着 <code>test_case_evidence_gate.py</code> 的仓库扫描；"
+            "真值余量极小（<code>cases/</code> 只有 1 条 AI 用例、<code>scenarios/</code> 只有 1 个 yml）",
+        ],
+        added=[
+            "<b>新增判据（组 5）<code>test_wait_text_rendered_kwargs_match_real_signature</code></b>："
+            "<b>解析 <code>generator_generate.py</code> 里 <code>def _assert_wait_text(...)</code> 的真参数名</b>，"
+            "与渲染出的 kwarg 名（<code>timeout_ms=</code> / <code>refresh=</code> / "
+            "<code>desc=</code> / <code>selector=</code>）求差集必须为<b>空集</b>。"
+            "为什么加：渲染层是<b>字符串拼参数名</b>、签名是 <code>def</code>，两边靠人眼保持一致 —— "
+            "名字写错<b>在纯函数判据里完全看不见</b>，实跑才 "
+            "<code>TypeError: got an unexpected keyword argument</code>（代价 = 一整轮端到端 + 一轮 AI 重试）。"
+            "先红后绿真值：真渲染差集 = <code>[]</code>；把 <code>refresh=</code> 改成 "
+            "<code>refresh_typo=</code> -> 差集 = <code>['refresh_typo']</code>（判据自带这条负向自证）",
+            "<b>新增判据（组 1）<code>test_replay_is_skipped_in_both_retry_paths</code></b>："
+            "「录像回放模式：重试无意义」必须<b>出现 >= 2 次</b>，且分别落在<b>两个分支体内</b> ——"
+            "产出档那处的分支体第一条语句是 <code>break</code>（停掉产出重试循环）、"
+            "实跑档那处是 <code>raise SystemExit(3)</code>。识别靠<b>缩进</b>（所在分支的判定头 + "
+            "该分支的下一条语句），<b>不写死行号</b>。"
+            "先红后绿真值：真代码 = 2 处（分支 <code>[('if replay:', 'break'), "
+            "('if replay:', 'raise SystemExit(3)')]</code>）；<b>删掉任一档</b> -> 旧判据（>= 1 次）"
+            "照样绿、新判据红（这就是它比旧判据强的地方）",
+            "<b>新增判据（组 3）<code>test_notes_every_module_level_container_has_unconditional_clear</code></b>"
+            "（<b>遍历式</b>）：对 <code>explorer_explore.py</code> 里 <b>所有</b>模块级 "
+            "<code>*_NOTES</code> 容器断言「必有一处<b>无条件</b> <code>.clear()</code>」，"
+            "名单<b>从源码动态收集</b>（不写死）。"
+            "为什么是遍历式而不是点名：这一形态的事故<b>已经犯了三次</b>"
+            "（<code>_REQUIRED_COVERAGE_NOTES</code> 只在有缺失时清 / <code>_HARDCODED_NOTES</code> "
+            "只在有写死时清 / <code>SEMANTIC_MISMATCH_NOTES</code> 完全没有 clear）—— "
+            "每次都是「体检到哪个就修哪个」，而<b>新加</b>一个跨轮记账容器时没人会想起回来补 clear，"
+            "点名判据对第四个容器<b>天然失明</b>。识别用 <b>AST + 父链</b>（不看缩进、不写死行号）："
+            "<code>if 本轮有缺失: notes.clear()</code> 这种「条件清空」会被判红。"
+            "先红后绿真值：真源码四个容器<b>各有一处无条件 clear</b> -> 绿；"
+            "把 <code>_HARDCODED_NOTES.clear()</code> 挪进 <code>if hard:</code> 分支（缩进从 4 变 8）"
+            "-> <b>当场红</b>（报文：<code>_HARDCODED_NOTES：清空点全被包在分支里（本轮没缺陷那一轮根本不清 "
+            "-> 留旧账）</code>），同时缩进级那条也红 —— 两条各守一个面。"
+            "判据自带<b>两条负向自证</b>（把 clear 包进 <code>if</code> / 整段删掉 clear，各自必须被判红），"
+            "防「遍历了个空集合」的全绿假阳",
+        ],
+        fixed=[
+            "<b>不是修复而是止损：删掉的两条判据都属「绿得没有意义」</b> —— 一条走私有入口 + "
+            "内部常量名（<code>_url_evidence_issues</code> / <code>REDLINE</code> / <code>WARN</code>），"
+            "实现一改名就假红、守的东西却早被公开出口那条覆盖；另一条只要「全文命中 >= 1 次」",
+            "<b>等价双写收敛口径</b>（组 4）：保留的那条 "
+            "<code>test_fabricated_fragment_is_redline_now</code> 走<b>公开出口 "
+            "<code>case_errors()</code></b>，不依赖内部常量名 —— 同一件事只留一条判据时，"
+            "留<b>出口更靠外</b>的那条",
+        ],
+        notes=[
+            "<b>本版唯一的口径（值得留下）</b>：<b>重复判据 = 一处改两处验</b>。"
+            "合并的方向是「留下的那条必须更强」，不是「删到数量好看」—— "
+            "两条判据守同一件事时，留<b>走公开出口</b>的、留<b>能区分两种坏法</b>的；"
+            "被删的每一条都要能指名道姓说出<b>由谁接手</b>",
+            "<b>合并重复判据时不许顺手重排测试</b>：三个闸门文件保持在原目录分居，"
+            "原因写进了文件 docstring（互不调用的三个函数 + autouse fixture 会外溢）—— "
+            "否则「合并」会变成「改变无关判据行为」，归因就没了",
+            "<b>合并的方向是「更强的口径胜出」</b>（第二批的四处实例）："
+            "「同因不重试」留下走 <code>exec</code> 真函数体 + 指纹源码断言的那条；"
+            "「无反馈时 prompt 干净」合并时<b>两条断言都留</b>（<code>\"上一轮\" not in flat</code> 宽口径 "
+            "+ <code>\"上一轮框架识别出的\" not in prompt</code> 直指段首）；"
+            "「用例 &lt;-&gt; 场景对账」留<b>已含防空转守卫</b>的那份；"
+            "两条负向（孤儿 / 悬空）合并成一条 <code>parametrize</code> —— "
+            "合并的依据是「**它们共同的前提一样**」（都对同一个纯函数提同一种要求），"
+            "不是「名字看着像」",
+            "<b>把「只收集不消费」的账也一并收了</b>：<code>source_scenario</code> 曾被视为历史字段，"
+            "核实后发现 <code>generator_generate.py</code> / <code>kit_check_generate.py</code> 三处真在读它 "
+            "—— 所以合并时<b>保持硬要求、不降级</b>。合并判据最容易犯的错是「顺手把不确定的断言放宽」，"
+            "正确姿势是先去代码里把「有没有人读它」查清楚",
+            "全量判据 <b>1218 passed / 3 skipped / 0 failed</b>（基线 1222，净 <b>-4</b> = "
+            "第一批 -2 + 第二批 -2）；3 skipped 仍是<b>仓库当前状态不满足</b>"
+            "（缺探针快照 / element_maps 快照 / 带 <code>data:</code> 段的场景），属环境跳过、非失败",
+            "<b>判据文件数 152 -> 149</b>（<code>test_*.py</code> + <code>verify_*.py</code>）："
+            "第二批删 3 个（特性2 的 <code>test_retry_leaves_no_stale_notes</code>；特性9 的 "
+            "<code>test_case_scenario_contract</code> / <code>test_ai_case_scenario_sync</code>），"
+            "2 个改名不计（<code>test_retry_feedback_contract</code> / <code>test_ai_retry_contract</code>）",
+            "<b>5 组重复判据两批全部做完</b>（第一批 组 5 / 4 / 1，第二批 组 3 / 1 遗留 / 2）—— "
+            "分两批是为了让 diff 可审、回归可归因（一次只改一类事）；"
+            "<b>V8.6.5 不再有本项的遗留</b>",
+        ],
+    ),
+    dict(
+        version="8.6.3", date="2026-10-16", tag="上一版本",
         theme="<b>以代码实现为基准的大扫除</b> —— 删掉 <b>649 行</b>失效物，"
               "并把两处「双实现」收敛成一个",
         summary="V8.6 把手搓链路整条删掉之后，<b>它的残留就是失效物</b>："
