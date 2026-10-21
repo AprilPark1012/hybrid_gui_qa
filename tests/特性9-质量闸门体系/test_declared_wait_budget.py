@@ -8,7 +8,7 @@ AssertionError: 等待超时：30000ms 内页面始终没有出现 '已关闭'
 ```
 
 - **业务事实**：demo `app.py` 需求29 —— 流转到「已签收」后**持续 2 分钟**才自动关闭。
-- **场景声明**：yml 里**两处写明**「提交后 **150 秒**自动关闭」（`description` 与需求区各一处）。
+- **场景声明**：yml 里**两处写明**「提交后 **160 秒**自动关闭」（`description` 与需求区各一处）。
 - **框架默认**：`_WAIT_DEFAULT_MS = 30000`（写死）。
 
 -> **框架的默认值把场景的明确声明盖掉了**。而失败现象是「页面始终没出现『已关闭』」——
@@ -41,16 +41,16 @@ SCENARIO = ROOT / "scenarios" / "orders" / "orders_invoice_full_lifecycle.yml"
 # ---------- ① 抽取 ----------
 
 def test_reads_the_real_scenario_declaration():
-    """**钉住真实场景**：本仓库这条场景声明的是 150 秒 —— 改这里等于改契约。"""
+    """**钉住真实场景**：本仓库这条场景声明的是 160 秒 —— 改这里等于改契约。"""
     text = SCENARIO.read_text(encoding="utf-8")
-    assert declared_wait_ms(text) == 150_000, (
-        "场景里两处写着「提交后 150 秒自动关闭」，必须抽成 150000ms；"
+    assert declared_wait_ms(text) == 160_000, (
+        "场景里两处写着「提交后 160 秒自动关闭」，必须抽成 160000ms；"
         "抽不出来 = 框架又会退回 30s 默认（L27 复发）"
     )
 
 
 @pytest.mark.parametrize("line,expect", [
-    ("提交后 150 秒自动关闭", 150_000),
+    ("提交后 160 秒自动关闭", 160_000),
     ("提交后150秒自动关闭", 150_000),
     ("等它 2 分钟自动流转", 120_000),
     ("wait 30 seconds for auto refresh", 30_000),
@@ -64,7 +64,7 @@ def test_unit_forms(line, expect):
 
 def test_takes_the_maximum_when_several_are_declared():
     """一条里声明多个 -> 取最大（宁可等够不可等短）。"""
-    assert declared_wait_ms("提交后 150 秒自动关闭（履行频率 10 秒一档）") == 150_000
+    assert declared_wait_ms("提交后 160 秒自动关闭（履行频率 10 秒一档）") == 160_000
 
 
 def test_ignores_durations_without_wait_semantics():
@@ -93,8 +93,8 @@ def test_over_safe_bound_is_not_trusted(capsys):
 def test_no_ai_timeout_uses_declared_not_hardcoded_default():
     """核心回归：AI 没给 timeout 时，用的是**场景声明的 150s**，不是写死的 30s。"""
     text = SCENARIO.read_text(encoding="utf-8")
-    assert effective_wait_ms(text, None, 30_000) == 150_000
-    assert effective_wait_ms(text, 0, 30_000) == 150_000          # 非法值同样按"没给"
+    assert effective_wait_ms(text, None, 30_000) == 160_000
+    assert effective_wait_ms(text, 0, 30_000) == 160_000          # 非法值同样按"没给"
 
 
 def test_ai_timeout_is_respected_when_given():
@@ -106,12 +106,12 @@ def test_ai_timeout_is_respected_when_given():
 def test_ai_timeout_smaller_than_declaration_is_raised():
     """AI/手写给的等待**小于**场景声明 -> 抬到声明值。
 
-    理由：声明是**业务事实**（业务就是 150 秒才变），短于它的等待 = **一条注定失败的用例**；
+    理由：声明是**业务事实**（业务就是 160 秒才变），短于它的等待 = **一条注定失败的用例**；
     这不是"覆盖模型偏好"（偏好在 `infer_kind_for_assert` 那条），而是**与事实矛盾**。
     """
     text = SCENARIO.read_text(encoding="utf-8")
-    assert effective_wait_ms(text, 30_000, 30_000) == 150_000
-    assert effective_wait_ms(text, 149_999, 30_000) == 150_000
+    assert effective_wait_ms(text, 30_000, 30_000) == 160_000
+    assert effective_wait_ms(text, 149_999, 30_000) == 160_000
 
 
 def test_falls_back_to_default_when_scenario_declares_nothing():
@@ -126,12 +126,12 @@ def test_shortfall_is_reported_with_both_numbers():
     """AI 给 30s < 场景声明 150s -> 报错必须**两个数字都说**（下一轮才改得对）。"""
     text = SCENARIO.read_text(encoding="utf-8")
     got = wait_shortfall(text, 30_000)
-    assert got and "150000" in got[0] and "30000" in got[0]
+    assert got and "160000" in got[0] and "30000" in got[0]
 
 
 def test_no_shortfall_when_ai_meets_the_declaration():
     text = SCENARIO.read_text(encoding="utf-8")
-    assert wait_shortfall(text, 150_000) == []      # 刚好够 -> 放行
+    assert wait_shortfall(text, 160_000) == []      # 刚好够 -> 放行
     assert wait_shortfall(text, 300_000) == []      # 更大 -> 放行
 
 
@@ -199,7 +199,7 @@ def test_declared_wait_is_told_to_the_ai():
     from framework.features.f02_semantic.explorer_explore import _declared_wait_block
     text = SCENARIO.read_text(encoding="utf-8")
     blk = _declared_wait_block(text)
-    assert "150000" in blk or "150" in blk, "块里必须带上声明的时长数值"
+    assert "160000" in blk or "150" in blk, "块里必须带上声明的时长数值"
     assert _declared_wait_block("点保存然后返回") == "", "场景没声明 -> 不该凭空造一个块"
 
 
@@ -212,7 +212,7 @@ def test_declared_wait_block_is_wired_into_the_prompt():
     assert j < i, "拼接位置不对（应在 return 的那一行里）"
 
 # ---------- ⑤ L27b：等待断言还得能「重新取数」+ 只认可见匹配 ----------
-#    事故续：超时从 30000 调到 150000 后**仍然等不到** ——
+#    事故续：超时从 30000 调到 160000 后**仍然等不到** ——
 #    · `refresh=none`：demo 列表页不会自己刷新（框架注释自己写的「光把超时调大永远等不到」）；
 #    · 无 selector 时只看 `loc.first`：demo 状态筛选 `<option>已关闭</option>` 在 DOM 里排在表格前面，
 #      `.first` 永远命中那个隐藏项 -> 表格里状态真的变了也判"没出现"。
@@ -246,13 +246,13 @@ def _render_wait(a: dict) -> str:
 
 def test_refresh_is_inferred_to_research_when_no_selector():
     """无 selector（列表页等状态）-> 必须**每轮重新取数**（research），否则调大超时也没用。"""
-    line = _fill_and_render({"desc": "有界等待状态流转", "expect": "已关闭", "timeout_ms": 150_000})
+    line = _fill_and_render({"desc": "有界等待状态流转", "expect": "已关闭", "timeout_ms": 160_000})
     assert "refresh='research'" in line, f"没推断出 research -> 列表页永远等不到：{line}"
 
 
 def test_refresh_stays_none_when_selector_given():
     """【反向自证】给了 selector（元素级自更新，如详情页状态）-> 保持 none，不动既有行为。"""
-    line = _fill_and_render({"desc": "有界等待状态流转", "expect": "已关闭", "timeout_ms": 150_000,
+    line = _fill_and_render({"desc": "有界等待状态流转", "expect": "已关闭", "timeout_ms": 160_000,
                              "selector": "#d-order-status"})
     assert "refresh=" not in line, f"带 selector 的等待（元素级自更新）不该加参数：{line}"
 
