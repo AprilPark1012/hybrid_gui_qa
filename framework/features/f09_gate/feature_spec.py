@@ -246,6 +246,8 @@ FEATURES = [
                  class1=[  # V8.6.4：`test_case_quality_gate.py` -> `test_case_evidence_gate.py`
                            #   （名实相符：它只守**换页证据**那一类，不是整个用例质量闸）
                            "test_case_evidence_gate.py", "test_generate_quality_gate.py", "test_gate_protocol_registry.py",
+                         # L36 (V8.7.1)：断言输入回显 = 硬红线（含 first_row 豁免 / 场景显式豁免 / 提示词告知）
+                         "test_assertion_echo_gate.py",
                          "test_demo_freshness_gate.py",
                          # V8.6.4（第二批 · 组 2）：`test_ai_case_scenario_sync.py` **整文件删** ->
                          #   场景指纹同步 + 它的负向自证迁进 9.6 的

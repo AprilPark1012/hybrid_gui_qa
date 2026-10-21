@@ -350,6 +350,41 @@ class CaseQualityError(Exception):
         return sum(len(errs) for _cid, errs in self.entries)
 
 
+def assertion_hard_errors(case: dict, guard: dict | None = None) -> list[str]:
+    """L36：**断言输入回显** = 硬红线（拒绝落盘），不再只是告警。
+
+    为什么必须升级（2026-10-21 L35 真跑）：AI 重规划后断言 `全链路-20261021215943` ——
+    那正是**本用例自己 fill 进去**的订单名（场景 `data:` 模板渲染出来的）。用例要么超时挂，
+    要么在别的数据批次下"侥幸相等"地通过：前者浪费 3 分钟，后者是**假绿**。
+    提示词规则 6 早写了这条，但没有闸门 —— 规矩只进 `case_warnings`，AI 照犯规照样落盘。
+
+    `kind == "first_row"` 豁免：它验的是「新建记录落在第一行」，期望值**本来就该等于**刚填的值
+    （text 断言证明不了位置）。
+
+    场景确需验证「保存后值仍在」时，在 `assert_guard` 里写 `allow_input_echo: true` 显式豁免
+    —— 豁免必须是**人写下来的决定**，不能是模型的自由裁量。
+    """
+    g = guard or {}
+    allow = g.get("allow_input_echo")
+    if allow is True or str(allow).strip().lower() in ("1", "true", "yes", "on"):
+        return []
+    fills = {str(s.get("value")) for s in (case.get("steps") or [])
+             if s.get("op") == "fill" and s.get("value")}
+    bad: list[str] = []
+    for a in (case.get("asserts") or []):
+        exp = a.get("expect")
+        kind = str(a.get("kind") or "text").strip()
+        if kind == "first_row":
+            continue
+        if isinstance(exp, str) and exp and exp in fills:
+            bad.append(
+                f"断言 {exp!r} 就是本用例自己 fill 进去的值（输入回显 = 假绿）："
+                f"改用「操作之后页面出现的其它证据」——记录落在第一行（expect_first_row）、"
+                f"状态文案、跨页证据（expect_url），或换一条**操作前就能确定**的固定文案"
+                f"（本场景确需验证回显时，在 assert_guard 写 allow_input_echo: true 显式豁免）")
+    return bad
+
+
 def case_warnings(case: dict, guard: dict | None = None) -> list[str]:
     """落盘前校验：抓「假绿」风险（断言只是输入回显 / 断言是猜出来的运行时值）。
 
@@ -642,7 +677,7 @@ def elementmap_to_cases_file(
         except Exception as _e:      # 兜底必须留痕：静默 except 会把自己写错也吞掉（2026-09-24 教训）
             print(f"[!] [case_builder] 数据驱动占位符还原失败（{type(_e).__name__}: {_e}）",
                   file=sys.stderr)
-    red = case_errors(case, guard=guard)
+    red = case_errors(case, guard=guard) + assertion_hard_errors(case, guard=guard)
     if red:
         # 红线（假绿）-> **拒绝落盘**：产物永不允许带假绿（与生成侧映射质量闸同一口径）
         raise CaseQualityError([(case["case_id"], red)])

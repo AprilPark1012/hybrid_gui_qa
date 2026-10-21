@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.6.4）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.7.1）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.6.4 · 2026-10-17　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.7.1 · 2026-10-21　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1644,7 +1644,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>质量闸：用例质量 / 生成质量 / demo 新鲜度 / AI 用例与场景同步，且<b>不许误伤</b>。红线实现：<span class="code-inline">case_builder.case_errors()</span>（换页证据没区分力等假绿）、<span class="code-inline">case_warnings()</span>（断言 = 输入回显 / 猜出来的运行时值）、<span class="code-inline">generator._gate_false_green()</span>（生成前拦）。<span class="code-inline">test_no_false_positive_blocks_ai.py</span> 专门守「闸门不许误伤 AI 链路」。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">generate_scripts()</span> -> <span class="code-inline">_gate_false_green()</span>；落盘前 <span class="code-inline">case_errors()</span> / <span class="code-inline">case_warnings()</span>。</p>
       <div class="flow2"><span class="fnode">用例/生成/新鲜度/同步闸</span><span class="farrow">-></span><span class="fnode">case_errors() / case_warnings()</span><span class="farrow">-></span><span class="fnode y">_gate_false_green() 生成前拦</span><span class="farrow">-></span><span class="fnode r">坏就红</span><span class="farrow">-></span><span class="fnode y">宁漏不误伤</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_case_evidence_gate.py（13 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_generate_quality_gate.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_gate_protocol_registry.py（8 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_demo_freshness_gate.py（35 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_daily_skip_marker.py（4 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_acceptance_skip_policy.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_no_false_positive_blocks_ai.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_demo_freshness.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_case_evidence_gate.py（13 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_generate_quality_gate.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_gate_protocol_registry.py（8 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_assertion_echo_gate.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_demo_freshness_gate.py（35 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_daily_skip_marker.py（4 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_acceptance_skip_policy.py（6 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_no_false_positive_blocks_ai.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_demo_freshness.py</span></p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-9.3" data-sub="9.3"><span class="sno">9.3</span>环境与编码适配</h5>
@@ -2069,7 +2069,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.6.4</b>（2026-10-17）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.7.1</b>（2026-10-21）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
       <div class="cl-head"><span class="cl-ver">V8.6.4</span><span class="cl-date">2026-10-17</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>合并重复判据（两批做完 5 组）</b> —— 同一件事不再由两条判据分守：删 16 条重复/假绿、把 5 个文件合成 2 个（另 2 个改名）、补 3 条更强的新判据</span></div>
       <p class="cl-sum">V8.6.3 审计时登记了 <b>5 组重复判据</b>（同一件事被两条判据分别守着），并明确留到本版处理 —— 本版<b>分两批把 5 组全部做完</b>，判据是三条硬口径：<br>· <b>留下的那条必须更强</b>（走公开出口、能区分两种坏法），不是「删一条凑数」<br>· <b>每条被删的判据都要写清由谁接手</b>（不许出现「保护真空」）<br>· <b>全量判据一条都不许红</b>（合并会降总数，属预期；红一条就是回归）<br><b>第一批（组 5 / 组 4 / 组 1）</b>：删 4 条、新增 2 条强判据、<b>3 个文件合成 1 个</b>、<b>1 个文件改名</b>（<code>wait_text</code> 渲染契约三合一 / 三个闸门不合并文件只 1 删 + 1 改名 / 两档重试收口）；<br><b>第二批（组 3 / 组 1 遗留 / 组 2）</b>：删 <b>12 条</b>（含 <b>3 个整文件</b>）、并入/新增 10 条、<b>2 个文件改名</b>，并把<b>全仓唯一的防空转哨兵</b>加固成「<code>ai_*.json >= 1</code> 且 <code>scenarios/*.yml >= 1</code>」。<br>结果（两批合计）：全量判据 <b>1218 passed / 3 skipped / 0 failed</b>（基线 1222，净 <b>-4</b> = 第一批 -2 + 第二批 -2）。</p>
@@ -2956,7 +2956,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.6.4</b>（2026-10-17）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.7.1</b>（2026-10-21）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
