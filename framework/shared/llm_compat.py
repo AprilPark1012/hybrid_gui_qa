@@ -193,7 +193,7 @@ class ChatOpenAICompatible(ChatDeepSeek):
             "type": "function",
             "function": {
                 "name": name,
-                "description": f"Return a JSON object of type {name}",
+                "description": f"Return a JSON object of type {name}",  # l34a-ok function-calling 的函数描述栏，不是步骤字段
                 "parameters": schema,
             },
         }]

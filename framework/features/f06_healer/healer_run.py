@@ -60,7 +60,7 @@ class Healer:
     def try_heal(self, page: Page, step: TestStep, business_assert=None) -> dict:
         """对定位失败的 step 尝试自愈。business_assert 是可选后置校验 callable。"""
         el = step.element
-        if el is None or step.action in ("goto", "expect_text"):
+        if el is None or step.op in ("goto", "expect_text"):
             return {"recovered": False, "reason": "无目标元素或无需定位"}
         # 尝试 Level-A / Level-B，拿到一个"唯一命中"的 locator
         resolved = self._negotiate(page, el)

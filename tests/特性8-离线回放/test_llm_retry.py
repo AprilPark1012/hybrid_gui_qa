@@ -25,10 +25,10 @@ from framework.features.f02_semantic.explorer_explore import AiExploreError, _ai
 ITEMS = [{"semantic_name": "搜索", "role": "button", "name": "搜索", "test_id": "btn-search"}]
 
 
-def _plan_once(action="click", sn="搜索", desc="点搜索"):
+def _plan_once(op="click", sn="搜索", desc="点搜索"):
     return explorer._PlanModel(steps=[
-        explorer._StepModel(order=1, action=action, semantic_name=sn,
-                            value=None, assertion=None, description=desc),
+        explorer._StepModel(order=1, op=op, semantic_name=sn,
+                            value=None, assertion=None, desc=desc),
     ])
 
 
@@ -92,8 +92,8 @@ def test_retry_then_success_returns_elementmap(monkeypatch):
     m = asyncio.run(_ai_explore_async("点搜索", ITEMS, "http://localhost:8000"))
     assert fake.calls == 3, "应当抖动一轮后重试成功（第 3 次调用拿到步骤）"
     assert m.url == "http://localhost:8000"
-    assert m.steps[0].action == "goto"       # _finalize_map 会补首步 goto
-    assert any(s.action == "click" for s in m.steps)
+    assert m.steps[0].op == "goto"       # _finalize_map 会补首步 goto
+    assert any(s.op == "click" for s in m.steps)
 
 
 def test_asyncio_is_imported_at_module_level():

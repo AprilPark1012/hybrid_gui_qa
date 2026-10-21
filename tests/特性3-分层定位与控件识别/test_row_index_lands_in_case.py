@@ -30,7 +30,7 @@ def _map_with_row_index(ri):
         url="http://host/order_detail.html",
         scenario="填行内字段",
         steps=[TestStep(1, "fill", element=ElementRef(semantic_name="物料编码@订单详情页"),
-                        value="M001", row_index=ri, description="填第一行物料编码")],
+                        value="M001", row_index=ri, desc="填第一行物料编码")],
         probe_items=[{"semantic_name": "物料编码@订单详情页"}],
     )
 

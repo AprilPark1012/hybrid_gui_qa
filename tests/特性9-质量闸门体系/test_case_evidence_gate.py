@@ -162,8 +162,8 @@ def test_ai_case_written_nowhere_when_redline(tmp_path):
         url="http://localhost:8000/",
         scenario="回到列表页",
         steps=[
-            _TestStep(order=1, action="goto", value="http://localhost:8000/", description="打开列表页"),
-            _TestStep(order=2, action="expect_url", value="localhost", description="确认已回到列表页"),
+            _TestStep(order=1, op="goto", value="http://localhost:8000/", desc="打开列表页"),
+            _TestStep(order=2, op="expect_url", value="localhost", desc="确认已回到列表页"),
         ],
     )
     with pytest.raises(CaseQualityError) as ei:

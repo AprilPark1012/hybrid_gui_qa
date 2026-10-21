@@ -480,6 +480,16 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
     """
     from framework.features.f02_semantic.explorer_explore import ai_explore
     prefix = f"【{label}】" if label else ""
+    # ---- L35：登录步骤 = 自然语言 -> **同一个规划器**在登录页上产出的普通步骤 ----
+    # [!] 必须放在 ai_explore **之前**：探业务页要先登录，而 `ensure_logged_in` 只负责"执行
+    #   已解析的步骤"（它自己不调 AI，也不该在浏览器里再开一个浏览器）。
+    #   结果同时进两处：① `extra["login"]` -> 落进 case（generate/执行期读它，零 AI）；
+    #   ② `output/login_maps/login_<hash>.json` -> 决策档案（可审计、可回放）。
+    if auth and (auth.get("scenario") or auth.get("steps")):
+        from framework.features.f02_semantic.login_flow_explore import as_case_field
+        _lg = as_case_field(auth, url, llm_cassette=cassette, cassette_strict=cassette_strict)
+        auth = {**auth, "steps": _lg["steps"]}          # ensure_logged_in 用同一份
+        extra = {**(extra or {}), "login": _lg}         # 落进用例（产物即输入）
     # 刻意不在外面探测：ai_explore 内部会探测（且会打开弹窗补表单控件）。
     # 2026-09-11 修复：旧写法先探一次再交给 ai_explore -> 连开两个 Chromium，内存吃紧时
     # 第二次探测失败，叠加 ai_explore 里的静默兜底 -> AI 只能看到基础控件（弹窗字段全丢）。
@@ -490,8 +500,8 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
     print(f"{prefix}[explore] 生成 ElementMap: {len(emap.steps)} 步")
     for st in emap.steps:
         el = st.element
-        print(f"  - {st.order}. {st.action:8s} → {el.semantic_name if el else '(无)'} "
-              f"| {st.value or ''} | assert={st.assertion or ''} | {st.description}")
+        print(f"  - {st.order}. {st.op:8s} → {el.semantic_name if el else '(无)'} "
+              f"| {st.value or ''} | assert={st.assertion or ''} | {st.desc}")
 
     out = config.ELEMENT_MAP_DIR / f"element_map_{_now()}.json"
     n = 2
@@ -632,7 +642,10 @@ def cmd_explore(rest: list[str] = None):
             spec = sc.login_spec() or {}
         except Exception:
             spec = {}
-        if spec.get("steps"):
+        # L35：登录声明现在以 `scenario`（自然语言）为准；老 `steps/by` 已被解析层拒绝。
+        #   [!] 这里若只认 `steps`，迁移后的场景会被判成"没声明登录" -> 探针不登录
+        #   -> 七个页面全被踢到登录页 -> 探到的只有登录控件（实测：每页只剩 7 个控件）。
+        if spec.get("scenario") or spec.get("steps"):
             return spec
         try:
             return sc.auth_spec() or {}

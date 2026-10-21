@@ -6,20 +6,20 @@
 ## 总览
 
 - 大特性 **11** 个 · 子特性 **54** 条
-- 一类用例文件 **124** 个 / 用例函数 **1077** 条
+- 一类用例文件 **126** 个 / 用例函数 **1089** 条
 - 二类验证文件 **25** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
 | 1 | AI 链路与离线回放 | 3 | 3 | 2 |
-| 2 | 语义识别与步骤编排 | 4 | 26 | 5 |
+| 2 | 语义识别与步骤编排 | 4 | 27 | 5 |
 | 3 | 分层定位与控件识别 | 9 | 23 | 6 |
 | 4 | 选错控件兜底 | 4 | 4 | 2 |
 | 5 | 用例脚本数据三层分离 | 5 | 8 | 0 |
 | 6 | 自愈闭环 Healer | 1 | 0 | 0 |
 | 7 | 并发与资源安全 | 4 | 3 | 1 |
 | 8 | 离线回放 | 4 | 7 | 3 |
-| 9 | 质量闸门体系 | 8 | 37 | 6 |
+| 9 | 质量闸门体系 | 8 | 38 | 6 |
 | 10 | CLI 帮助契约 | 10 | 12 | 0 |
 | 11 | 交付即验证 | 2 | 1 | 0 |
 
@@ -44,7 +44,7 @@
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
 | 2.1 | 语义名生成与对齐 | AI 产出的语义名能落到真实控件上；宁可不映射（大声告警）也不许错映射（静默点错） | `test_name_alignment.py`(11) | - |
-| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单；**AI 产出的有界重试口径**也归这里（产出侧被闸门拦下 -> 带原因重生成、上一轮缺陷记账不许留给下一轮；实跑档失败 -> 带原因整轮重来）—— 原登记在特性11，V8.6.3 按「登记目录 == 物理目录」改挂此处 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_prompt_no_demo_literals.py`(2)、`test_ai_no_hardcoded_row_values.py`(5)、`test_semantic_mismatch_blocks.py`(3)、`test_llm_tool_choice_unsupported.py`(4)、`test_ai_can_express_row_checkbox.py`(14)、`test_required_field_coverage.py`(8)、`test_required_fields_hard_checklist.py`(5)、`test_prompt_list_clipping_is_general.py`(15)、`test_prompt_dom_facts_merged.py`(11)、`test_prompt_wait_page_rule_compact.py`(6)、`test_production_defects_gate_l1.py`(3)、`test_ai_incomplete_output_retries.py`(3)、`test_retry_feedback_contract.py`(13)、`test_ai_retry_contract.py`(7)、`test_ai_retry_same_cause.py`(5) | `verify_role_switch_click.py` |
+| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单；**AI 产出的有界重试口径**也归这里（产出侧被闸门拦下 -> 带原因重生成、上一轮缺陷记账不许留给下一轮；实跑档失败 -> 带原因整轮重来）—— 原登记在特性11，V8.6.3 按「登记目录 == 物理目录」改挂此处 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_prompt_no_demo_literals.py`(2)、`test_ai_no_hardcoded_row_values.py`(5)、`test_semantic_mismatch_blocks.py`(3)、`test_llm_tool_choice_unsupported.py`(4)、`test_ai_can_express_row_checkbox.py`(14)、`test_required_field_coverage.py`(8)、`test_required_fields_hard_checklist.py`(5)、`test_prompt_list_clipping_is_general.py`(15)、`test_prompt_dom_facts_merged.py`(11)、`test_prompt_wait_page_rule_compact.py`(6)、`test_production_defects_gate_l1.py`(3)、`test_ai_incomplete_output_retries.py`(3)、`test_retry_feedback_contract.py`(13)、`test_ai_retry_contract.py`(7)、`test_ai_retry_same_cause.py`(5)、`test_no_dual_step_field_names.py`(8) | `verify_role_switch_click.py` |
 | 2.3 | 步骤到定位的合成 | 步骤里的语义名/属性如何合成可执行定位表达式（`verify_scope_locate.py` 物理住在 tests/特性3-分层定位与控件识别/，按「登记目录 == 物理目录」只挂 3.1） | `test_scope_locate_expr.py`(17)、`test_locate_by_title.py`(8) | - |
 | 2.4 | 场景声明契约 | 人写的那部分：pages / pre / auth / data / probe_url —— 声明必须由场景提供，框架不懂具体系统 | `test_login_stepwise_contract.py`(8)、`test_scenario_auth_spec.py`(8)、`test_page_pre_actions.py`(3)、`test_probe_pre_consistency.py`(10)、`test_probe_url_and_occurrence.py`(6)、`test_login_priming_coverage.py`(4) | `verify_login_priming.py`、`test_page_pre_actions_force_fallback.py`、`test_scenario_probe_pre.py`、`verify_page_pre_actions.py` |
 
@@ -140,7 +140,7 @@
 | 9.1 | 布局与命名契约 | tests/ 与生成物的布局、路径拼接（跨平台）、命名空间契约 | `test_test_layout_contract.py`(13)、`test_generated_layout_contract.py`(7)、`test_path_join_contract.py`(2)、`test_click_then_ready_contract.py`(8)、`test_assert_kinds_render.py`(11)、`test_demo_testid_policy.py`(12) | - |
 | 9.2 | 质量闸 | 用例质量 / 生成质量 / demo 新鲜度，**且不许误伤**；**闸门统一契约 + 全量注册表**（B′：实现跟特性走、登记进 core/gates.py）；**验收入口的跳过策略**同归此（跳过必须显式留痕、SKIP != 通过、失败优先于跳过 —— `test_acceptance_skip_policy.py` 物理住本目录） | `test_case_evidence_gate.py`(13)、`test_generate_quality_gate.py`(5)、`test_gate_protocol_registry.py`(8)、`test_demo_freshness_gate.py`(35)、`test_daily_skip_marker.py`(4)、`test_acceptance_skip_policy.py`(6)、`test_no_false_positive_blocks_ai.py`(12) | `verify_demo_freshness.py` |
 | 9.3 | 环境与编码适配 | 跨平台路径/内存探测/UTF-8 与 cp936 —— 源码不许出现 GBK 编不了的字符；**源码不许有未绑定名**（拷代码漏作用域会被 except 兜成静默降级） | `test_env_adaptation.py`(18)、`test_utf8_io.py`(21)、`test_browser_preflight.py`(4)、`test_no_stale_paths.py`(9)、`test_no_undefined_names.py`(3) | `verify_undefined_names.py` |
-| 9.4 | 交付包与文档同步 | 打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README | `test_pack_release.py`(21)、`test_pack_release_requires_generated_dir.py`(1)、`test_readme_structure.py`(16)、`test_docs_sync.py`(16)、`test_build_html_hl.py`(12) | `verify_html_sync.py` |
+| 9.4 | 交付包与文档同步 | 打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README | `test_pack_release.py`(21)、`test_pack_release_requires_generated_dir.py`(1)、`test_readme_structure.py`(16)、`test_docs_sync.py`(16)、`test_build_html_hl.py`(12)、`test_architecture_doc_contract.py`(4) | `verify_html_sync.py` |
 | 9.5 | 保留与产物健康 | 日志/产物保留策略与健康检查 | `test_retention_runs.py`(14)、`test_artifacts_health.py`(9) | `verify_retention_runs.py` |
 | 9.6 | 就绪与等待契约 | 点击后等就绪、等文本刷新策略、选择器生效、**等待式断言 `wait_text` 的渲染契约**（三合一后整条归此）、**动作后置校验（做了 != 生效了）**、**`cases` <-> `scenarios` 三目录新陈代谢**：孤儿 AI 用例 / `source_scenario` 可解析 / 场景指纹同步 / 防空转哨兵（V8.6.4 第二批 · 组 2 把原 9.1 `test_case_scenario_contract.py` 与 9.2 `test_ai_case_scenario_sync.py` 两条同源判据**整文件删**、迁进 `test_scenario_case_script_hygiene.py` —— 三者同源，只留一处口径） | `test_ready_and_locate.py`(12)、`test_wait_text_render_contract.py`(11)、`test_import_targets.py`(4)、`test_generated_pytest_discovery.py`(1)、`test_case_imports_cover_helpers.py`(1)、`test_scenario_case_script_hygiene.py`(9)、`test_target_reachability.py`(5)、`test_declared_wait_budget.py`(24)、`test_action_effect_check.py`(12) | `verify_wait_text.py`、`verify_action_effect_check.py` |
 | 9.7 | 替换安全与闸门解耦 | 用例替换不许破坏结构；闸门自身不许互相耦合 | `test_case_replacement_safety.py`(6)、`test_no_gate_coupling.py`(2) | - |

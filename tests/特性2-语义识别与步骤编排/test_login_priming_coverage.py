@@ -79,19 +79,24 @@ def test_execution_side_installs_login():
     [!] 这条判据**随重构改口径**（2026-10-12 V8.5.1）：执行侧原来靠 harness 读 `_auth.json`
     注入 token —— 那文件由生成期写出却被 .gitignore 忽略、**不进交付包**，收包方 run 时
     登录前置会**静默失效**（报「元素语义未找到」而真因是"整条用例跑在登录页上"）。
-    现在改为：场景 `login:` 声明 -> 生成期展开成用例**前导步骤**（`_login_do`/`_login_wait`）。
+    现在改为（L35）：场景 `login:` 是**自然语言** -> explore 用同一规划器产出普通步骤 ->
+    生成期展开成用例**前导调用**（`_login_flow(steps, wait, url)`，等待条件也在里面）。
     所以"执行侧有没有登录"要盯的是**展开出来的调用**，而不是那个 json。
     """
     assert _count(GEN, _EXEC_CALL) >= 1, (
-        "生成物模板里没有 `_login_do(page, ...)` -> 登录步骤不会真的执行，"
+        "生成物模板里没有 `_login_flow(page, [登录步骤], wait, url)` -> 登录步骤不会真的执行，"
         "用例会整条跑在登录页上（这正是 V8.3 的静默失效形态）")
-    assert "def _login_wait(" in GEN, "缺 `_login_wait` -> 登录成功判定会退化成固定 sleep"
+    # 等待条件不许退化成固定 sleep：必须把 wait 字典交给 `_login_flow` 判 URL/文本
+    _i = GEN.index("def _login_flow(")
+    _seg = GEN[_i:_i + 4200]
+    assert "url_not" in _seg or "wait.get(" in _seg, (
+        "`_login_flow` 里没有『离开登录页』的判定 -> 登录成功判定退化成固定 sleep")
     # [!] 只查**代码行**：GEN 里"已删除 `_auth.json`"这类**注释**不该算残留
     #   （第一版直接 `"_auth.json" not in GEN` -> 被自己的说明注释判红）。
     _gen_code = "\n".join(l.split("#", 1)[0] for l in GEN.splitlines())
     assert '"_auth.json"' not in _gen_code and "'_auth.json'" not in _gen_code, (
         "`_auth.json` 那套必须已删除（它不进交付包 -> 收包方拿不到登录态）")
-    assert "def _login_do(" in GEN, "登录动作执行函数不见了"
+    assert "def _login_flow(" in GEN, "登录动作执行函数不见了（L35 起只有一个入口）"
 
 
 def test_login_module_is_the_single_source():

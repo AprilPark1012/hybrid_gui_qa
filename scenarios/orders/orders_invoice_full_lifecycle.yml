@@ -133,10 +133,12 @@ business_context: |
 # 控件真值见 demo/login.html（#login-user / #login-pwd / #btn-login）—— 公开演示凭据。
 login:
   url: /login.html
-  steps:
-    - {op: fill, by: {id: login-user}, value: super}
-    - {op: fill, by: {id: login-pwd}, value: super@123}
-    - {op: click, by: {id: btn-login}}
+  # L35：登录步骤写**自然语言**，由同一个规划器（ai_explore）在登录页上产出普通步骤
+  # （op/desc/element/value），执行走同一套定位栈 —— 不再手写 by: {id: ...} 选择器。
+  # 账号/密码是 demo 的公开凭据（控件真值见 demo/login.html）。
+  scenario: |
+    在登录页填写账号 super、密码 super@123（两个输入框各填一个），
+    然后点「登录」按钮提交，进入系统首页。
   wait: {url_not: login.html}
 
 assert_guard:

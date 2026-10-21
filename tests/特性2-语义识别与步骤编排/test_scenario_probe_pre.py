@@ -152,8 +152,8 @@ def test_declared_pre_steps_are_dropped_from_ai_output():
     steps = [
         TestStep(1, "goto"),
         TestStep(2, "click", element=ElementRef(semantic_name="切换为订单管理员@合同列表页"),
-                 description="切角色（AI 常只写这一步、漏了点开头像菜单）"),
-        TestStep(3, "click", element=ElementRef(semantic_name="保存@新建订单页"), description="保存"),
+                 desc="切角色（AI 常只写这一步、漏了点开头像菜单）"),
+        TestStep(3, "click", element=ElementRef(semantic_name="保存@新建订单页"), desc="保存"),
     ]
     # 正向：按**基名**匹配（AI 写的是带页名后缀的那个），重复步骤被移除
     assert [s.order for s in _drop_declared_pre_steps(steps, ["超", "切换为订单管理员"])] == [1, 3]

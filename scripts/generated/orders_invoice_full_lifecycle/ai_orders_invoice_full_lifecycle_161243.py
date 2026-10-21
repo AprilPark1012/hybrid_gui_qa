@@ -11,6 +11,7 @@
   pytest scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_161243.py -v
 """
 from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
+                      _login_flow,
                       # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
                       # [!] 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
                       _ds_params, _ds_ids,
@@ -31,7 +32,7 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       # V8.5.1：登录步骤化 —— 生成期会把场景 `login:` 的动作序列展开成前导步骤，
                       #   渲染出的 `_login_do` / `_login_wait` 必须在这里同步 import
                       #   （本轮又踩了一次 "模板渲染了但没 import -> 真跑 NameError"）。
-                      _login_do, _login_wait,
+                      # L35：登录执行入口是 `_login_flow`（已在上面 import）；by 那套执行器已删除
                       # P22 批 4/5：等待式断言（wait_text；批 5 起支持 selector 限定范围）
                       _assert_wait_text)
 # P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）
@@ -83,15 +84,8 @@ def test_ai_orders_invoice_full_lifecycle_161243(page, ctx):
     _CURRENT_LOG["case_id"] = "ai_orders_invoice_full_lifecycle_161243"
     _t = _Tabs(page)          # 多 tab：点了会开新 tab 的控件后 page 会被重新绑定到新 tab
     _goto(page, 'http://localhost:8000/login.html')
-    # ---- 登录（V8.5.1 步骤化：场景声明 -> 框架展开，不交给 AI）----
-    _goto(page, 'http://localhost:8000/login.html')
-    # 登录步骤 1: fill ['id']
-    _login_do(page, 'fill', {'id': 'login-user'}, value='super')
-    # 登录步骤 2: fill ['id']
-    _login_do(page, 'fill', {'id': 'login-pwd'}, value='super@123')
-    # 登录步骤 3: click ['id']
-    _login_do(page, 'click', {'id': 'btn-login'})
-    _login_wait(page, {'url_not': 'login.html'})
+    # ---- 登录（L35：场景自然语言 -> 同一规划器 -> 同一套定位栈；步骤已固化在用例里）----
+    _login_flow(page, [{'op': 'goto', 'desc': '打开 http://localhost:8000/login.html', 'element': None, 'value': 'http://localhost:8000/login.html'}, {'op': 'fill', 'desc': '在登录页账号输入框填写 super', 'element': {'semantic_name': '账号', 'role': 'textbox', 'name': '账号', 'label': None, 'placeholder': '请输入账号', 'test_id': '', 'element_id': None, 'text': '账号', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '账号', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': 'super'}, {'op': 'fill', 'desc': '在登录页密码输入框填写 super@123', 'element': {'semantic_name': '密码', 'role': 'textbox', 'name': '密码', 'label': None, 'placeholder': '请输入密码', 'test_id': '', 'element_id': None, 'text': '密码', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '密码', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': 'super@123'}, {'op': 'click', 'desc': '点击登录按钮提交，进入系统首页', 'element': {'semantic_name': '登_录', 'role': 'button', 'name': '登 录', 'label': None, 'placeholder': '', 'test_id': '', 'element_id': None, 'text': '登 录', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': None}], {'url_not': 'login.html'}, 'http://localhost:8000/login.html')
     # ---- 登录步骤结束 ----
     _log(page, "场景开始", f"case=ai_orders_invoice_full_lifecycle_161243")
 

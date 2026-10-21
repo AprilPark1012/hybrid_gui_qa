@@ -57,7 +57,10 @@ FEATURES = [
                           #   「同因不重试」那条下放给更强的 `test_ai_retry_same_cause.py`
                           "test_production_defects_gate_l1.py", "test_ai_incomplete_output_retries.py",
                           "test_retry_feedback_contract.py", "test_ai_retry_contract.py",
-                          "test_ai_retry_same_cause.py"],
+                          "test_ai_retry_same_cause.py",
+                          # L34-a（2026-10-21）：步骤字段命名只许一套 `op` / `desc` ——
+                          #   源码/产物/映射表三面守，外加负向自证（判据自己的样例不许被误伤）
+                          "test_no_dual_step_field_names.py"],
                  class2=["verify_role_switch_click.py"]),
             dict(no="2.3", name="步骤到定位的合成", goal="步骤里的语义名/属性如何合成可执行定位表达式"
                                                        "（`verify_scope_locate.py` 物理住在 tests/特性3-分层定位与控件识别/，"
@@ -260,7 +263,7 @@ FEATURES = [
                  class2=["verify_undefined_names.py"]),
             dict(no="9.4", name="交付包与文档同步", goal="打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README",
                  class1=["test_pack_release.py", "test_pack_release_requires_generated_dir.py",
-                         "test_readme_structure.py", "test_docs_sync.py", "test_build_html_hl.py"],
+                         "test_readme_structure.py", "test_docs_sync.py", "test_build_html_hl.py", "test_architecture_doc_contract.py"],
                  class2=["verify_html_sync.py"]),
             dict(no="9.5", name="保留与产物健康", goal="日志/产物保留策略与健康检查",
                  class1=["test_retention_runs.py", "test_artifacts_health.py"],

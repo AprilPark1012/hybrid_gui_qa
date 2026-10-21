@@ -58,11 +58,11 @@ class ElementRef:
 class TestStep:
     """一条测试步骤：动作动作 + 断言 + 依赖的元素。由 AI 规划，Playwright 执行。"""
     order: int
-    action: str                  # "goto" / "click" / "fill" / "check" / "expect_text" / ...
+    op: str                      # "goto" / "click" / "fill" / "check" / "expect_text" / ...
     element: ElementRef | None = None  # 动作目标元素
     value: str | None = None     # fill 的输入值
     assertion: str | None = None # expect 断言文本
-    description: str = ""        # 人类可读步骤说明
+    desc: str = ""               # 人类可读步骤说明
     # --- 跨 tab / 行内定位（2026-09-17 新增，均可选）---
     # row_text + cell_field：**行内定位**（在「含 row_text 的那一行」里操作 cell_field 那一列）。
     #   为什么需要：新建记录的编号是服务端动态分配的，AI 无法按语义名引用那一条记录。
@@ -79,36 +79,46 @@ class TestStep:
     #   于是"新增行后逐字段填写"这类需求根本无法表达，实测表现为运行期多匹配歧义
     #   （同一个语义名在页面 3 行里各有一个同名输入框 -> primary 命中 3 个 -> 定位失败）。
     row_index: int | None = None
+    # L35 收尾：`select` 选**第几项**（从 0 起，跳过空占位由执行器负责）。
+    # 为什么必须有（真跑抓到）：规划提示词教 AI「选第一项就用 index=0、不要给 value」，
+    # 但步骤对象没有这个字段 -> 结构化输出装不下 -> AI 退回 `value="0"` ->
+    # 执行器把 "0" 当选项 value 去找 -> `did not find some options` 超时。
+    # 渲染器（`_act(index=…)`）与执行器（`select_option(index=…)`）本来就支持，断的只是这一段。
+    index: int | None = None
 
     def to_dict(self) -> dict:
         return {
             "order": self.order,
-            "action": self.action,
+            "op": self.op,
             "element": self.element.to_dict() if self.element else None,
             "value": self.value,
             "assertion": self.assertion,
-            "description": self.description,
+            "desc": self.desc,
             "row_text": self.row_text,
             "cell_field": self.cell_field,
             "cell_by": self.cell_by,
             "cell_index": self.cell_index,
             "row_index": self.row_index,
+            "index": self.index,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "TestStep":
         el = ElementRef.from_dict(d["element"]) if d.get("element") else None
         return cls(
-            # [!] P25 片 3：`order` / `action` 允许缺省 —— 老产物、手工构造的产物、
+            # [!] P25 片 3：`order` / `op` 允许缺省 —— 老产物、手工构造的产物、
             #   以及只关心「哪个控件」的夹具都可能有 steps 条目而没这两个键。
             #   抛 KeyError 的后果是**整份产物读不动**（缺一个展示字段 vs 整条链断掉，
             #   孰轻孰重很清楚）。order 缺失按 0 处理：它只用于展示与排序，不参与定位。
-            order=int(d.get("order") or 0), action=d.get("action") or "", element=el,
+            # [!] L34-a（2026-10-21）：键名统一 `op` / `desc`，**不再认 `action` / `description`**。
+            #   正是「对缺键不抛错」这一点让老产物静默失效（缺 op -> 空串 -> 页面分组与行定位
+            #   兜底悄悄不生效，测试照样绿）。老产物请跑 build_tools/migrate_element_map_keys.py。
+            order=int(d.get("order") or 0), op=d.get("op") or "", element=el,
             value=d.get("value"), assertion=d.get("assertion"),
-            description=d.get("description", ""),
+            desc=d.get("desc", ""),
             row_text=d.get("row_text"), cell_field=d.get("cell_field"),
             cell_by=d.get("cell_by"), cell_index=d.get("cell_index"),
-            row_index=d.get("row_index"),
+            row_index=d.get("row_index"), index=d.get("index"),
         )
 
 
@@ -196,10 +206,16 @@ def row_scope_violation(step: "dict | TestStep | None", multi_match: "int | None
         return None
     if has_row_locator(step):
         return None
-    elem = step_get(step, "element") or step_get(step, "desc") or ""
+    elem = step_get(step, "element") or ""
     if not isinstance(elem, str):        # dataclass 的 element 可能是 ElementRef
         elem = getattr(elem, "semantic_name", None) or str(elem)
-    return (f"控件 {elem!r} 在页面上**重复出现 {int(multi_match)} 个**（同一容器内每行/每条一个）"
+    # [!] L34-a 复核（原 :199 的 `... or step_get(step, "desc")`）：不是纯笔误，但也确实是错措辞 ——
+    #   原写法把**步骤说明**塞进「控件 X 重复出现 N 个」的 X 里，读起来像那个控件就叫这句话。
+    #   它的真实用途是「没有语义名时，这段文字是喂回 AI 的唯一『哪一步』线索」，**不能删**。
+    #   -> 保留信息，把两种情形**分开措辞**：有语义名说控件，没有就说这一步。
+    who = (f"控件 {elem!r}" if elem else
+           f"这一步「{str(step_get(step, 'desc') or '')[:30]}」")
+    return (f"{who} 在页面上**重复出现 {int(multi_match)} 个**（同一容器内每行/每条一个）"
             f"-> 只给语义名会同时命中多个，运行期必红。请补行定位："
             f"`row_index`（第 N 行，从 1 起；`-1` = 最后一行）或 `row_text` + 列字段；"
             f"**刚新增的空行只能用 `row_index`**。")
@@ -251,7 +267,7 @@ def step_name_of(step) -> str:
 
 def is_row_add_step(step) -> bool:
     """这步是不是「往行区新增/追加了一行」（兜底推断的前提事实）。"""
-    op = str(step_get(step, "op") or step_get(step, "action") or "").strip().lower()
+    op = str(step_get(step, "op") or "").strip().lower()
     if op in _ROW_ADD_OPS:
         return True
     base = step_name_of(step).split("@", 1)[0]
@@ -339,7 +355,7 @@ def apply_scene_start_fallback(steps, first_page_url: str = "", has_scene_pre: b
     if not seq:
         return out
     st = seq[0]
-    op = str(step_get(st, "op") or step_get(st, "action") or "").strip().lower()
+    op = str(step_get(st, "op") or "").strip().lower()
     if op != "goto":
         return out
     if step_get(st, "element"):
@@ -574,8 +590,7 @@ def split_steps_by_page(steps, pages=None, items=None) -> list[dict]:
         """
         _end = len(steps_list)
         for _k in range(idx + 1, len(steps_list)):
-            _op = str(step_get(steps_list[_k], "op")
-                      or step_get(steps_list[_k], "action") or "").strip().lower()
+            _op = str(step_get(steps_list[_k], "op") or "").strip().lower()
             if _op in _PAGE_BOUNDARY_OPS:
                 _end = _k
                 break
@@ -600,7 +615,7 @@ def split_steps_by_page(steps, pages=None, items=None) -> list[dict]:
         return ""
 
     def _op_of(x) -> str:
-        return str(step_get(x, "op") or step_get(x, "action") or "").strip().lower()
+        return str(step_get(x, "op") or "").strip().lower()
 
     def _implied_page_after(start_idx: int, cur_name: str) -> str:
         """AI 用**普通 click** 换页时的页名推断（2026-10-12 实测）。
@@ -629,7 +644,7 @@ def split_steps_by_page(steps, pages=None, items=None) -> list[dict]:
     stack: list[dict] = []          # 关掉标签页后要回到的页（栈顶 = 最近一次离开的页）
     steps_list = list(steps or [])
     for _i, st in enumerate(steps_list):
-        op = str(step_get(st, "op") or step_get(st, "action") or "").strip().lower()
+        op = str(step_get(st, "op") or "").strip().lower()
         url = step_get(st, "url") if op == "goto" else None
         if url is None and op == "goto":
             url = step_get(st, "value")

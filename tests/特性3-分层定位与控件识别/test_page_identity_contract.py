@@ -164,13 +164,13 @@ def test_j4_same_page_visited_twice_merges_into_one_object():
     """
     pages = _declared_pages()
     steps = _as_ts([
-        {"order": 0, "action": "goto", "url": "http://x/orders.html"},
-        {"order": 1, "action": "click", "element": {"semantic_name": "订单名称@订单列表页"}},
-        {"order": 2, "action": "click", "element": {"semantic_name": "编辑"}},
-        {"order": 3, "action": "click",
+        {"order": 0, "op": "goto", "url": "http://x/orders.html"},
+        {"order": 1, "op": "click", "element": {"semantic_name": "订单名称@订单列表页"}},
+        {"order": 2, "op": "click", "element": {"semantic_name": "编辑"}},
+        {"order": 3, "op": "click",
          "element": {"semantic_name": "新增行@订单详情页"}},
-        {"order": 4, "action": "click", "element": {"semantic_name": "返回"}},
-        {"order": 5, "action": "click",
+        {"order": 4, "op": "click", "element": {"semantic_name": "返回"}},
+        {"order": 5, "op": "click",
          "element": {"semantic_name": "搜索@订单列表页"}},
     ])
     groups = split_steps_by_page(steps, pages, items=[])

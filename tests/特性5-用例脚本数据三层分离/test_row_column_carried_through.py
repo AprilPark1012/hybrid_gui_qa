@@ -35,7 +35,7 @@ SRC = Path(case_builder.__file__).read_text(encoding="utf-8")
 
 
 def _step(**kw) -> TestStep:
-    st = TestStep(order=31, action="check", description="勾选该订单行",
+    st = TestStep(order=31, op="check", desc="勾选该订单行",
                   row_text="全链路-{datetime}")
     for k, v in kw.items():
         setattr(st, k, v)

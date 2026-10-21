@@ -128,7 +128,7 @@ def test_teststep_carries_cell_by_through_dict_roundtrip():
     """
     from framework.features.f03_locate.element_map import TestStep
 
-    st = TestStep(order=26, action="check", description="选中该订单行",
+    st = TestStep(order=26, op="check", desc="选中该订单行",
                   row_text="全链路-{datetime}", cell_by="index", cell_index=1)
     d = st.to_dict()
     assert d.get("cell_by") == "index", "TestStep.to_dict 丢了 cell_by -> 落盘时 AI 的表达消失"
@@ -198,7 +198,7 @@ def test_fill_missing_row_column_fills_unique_checkbox():
     """`row_text` 有、列缺失，且表里**只有一个**勾选列 -> 补上（唯一解，不是猜）。"""
     from framework.features.f03_locate.element_map import TestStep
 
-    steps = [TestStep(order=36, action="check", description="勾选该订单行",
+    steps = [TestStep(order=36, op="check", desc="勾选该订单行",
                       row_text="全链路-{datetime}")]
     fields = [{"table": "tbl-orders", "index": 1, "field": "", "header": "", "kind": "checkbox"},
               {"table": "tbl-orders", "index": 2, "field": "orderNo", "header": "订单编号", "kind": ""}]
@@ -213,7 +213,7 @@ def test_fill_missing_row_column_refuses_when_ambiguous():
     """**反向自证**：有**多个**勾选列候选 -> **不许**补（诚实降级，交给重试）。"""
     from framework.features.f03_locate.element_map import TestStep
 
-    steps = [TestStep(order=36, action="check", description="勾选该订单行",
+    steps = [TestStep(order=36, op="check", desc="勾选该订单行",
                       row_text="全链路-{datetime}")]
     fields = [{"index": 1, "field": "", "kind": "checkbox"},
               {"index": 5, "field": "", "kind": "checkbox"}]
@@ -225,8 +225,8 @@ def test_fill_missing_row_column_leaves_normal_steps_alone():
     """普通步骤（没有 row_text / 不是勾选语义）**不许动**。"""
     from framework.features.f03_locate.element_map import TestStep
 
-    steps = [TestStep(order=3, action="click", description="点击搜索", row_text=None),
-             TestStep(order=9, action="click", description="点该行订单名称",
+    steps = [TestStep(order=3, op="click", desc="点击搜索", row_text=None),
+             TestStep(order=9, op="click", desc="点该行订单名称",
                       row_text="全链路-{datetime}", cell_field="orderName")]
     fields = [{"index": 1, "field": "", "kind": "checkbox"}]
     explorer._fill_missing_row_column(steps, fields)

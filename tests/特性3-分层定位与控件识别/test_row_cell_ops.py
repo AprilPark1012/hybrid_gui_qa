@@ -45,7 +45,7 @@ def test_row_index_is_in_the_case_schema():
     """`row_index` 必须能从用例 JSON 一路落到 TestStep（漏一处 = AI 写对也静默消失）。"""
     from framework.features.f03_locate.element_map import TestStep
 
-    st = TestStep(order=1, action="fill", value="M001", row_index=-1)
+    st = TestStep(order=1, op="fill", value="M001", row_index=-1)
     d = st.to_dict()
     assert d.get("row_index") == -1, "to_dict 丢了 row_index"
     assert TestStep.from_dict(d).row_index == -1, "from_dict 丢了 row_index"

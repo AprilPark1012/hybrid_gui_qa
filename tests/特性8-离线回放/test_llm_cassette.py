@@ -32,7 +32,7 @@ SCENARIO = "在搜索框输入 1005 点搜索"
 
 def _plan():
     return explorer._PlanModel(steps=[explorer._StepModel(
-        order=1, action="click", semantic_name="搜索按钮", description="点搜索")])
+        order=1, op="click", semantic_name="搜索按钮", desc="点搜索")])
 
 
 class _Resp:
@@ -247,8 +247,8 @@ def test_record_then_replay_same_steps(tmp_path, monkeypatch):
 
     _no_llm(monkeypatch)                                  # 回放阶段：碰 LLM 就炸
     rep = _run_explore(Cassette(MODE_REPLAY, tmp_path))
-    assert [(s.action, s.element.semantic_name if s.element else None) for s in live.steps] == \
-           [(s.action, s.element.semantic_name if s.element else None) for s in rep.steps]
+    assert [(s.op, s.element.semantic_name if s.element else None) for s in live.steps] == \
+           [(s.op, s.element.semantic_name if s.element else None) for s in rep.steps]
 
 
 def test_record_store_failure_does_not_break_explore(tmp_path, monkeypatch):

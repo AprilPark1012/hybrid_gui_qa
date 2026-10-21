@@ -88,7 +88,7 @@ def test_gate_rejects_steps_with_hardcoded_values():
 
     class _S:
         def __init__(self, order, op, desc, value=None, element=None, url=None):
-            self.order, self.op, self.description = order, op, desc
+            self.order, self.op, self.desc = order, op, desc
             self.value, self.element, self.url = value, element, url
 
     steps = [
@@ -111,7 +111,7 @@ def test_gate_is_clean_on_good_output():
 
     class _S:
         def __init__(self, order, op, desc, value=None, element=None, url=None):
-            self.order, self.op, self.description = order, op, desc
+            self.order, self.op, self.desc = order, op, desc
             self.value, self.element, self.url = value, element, url
 
     steps = [

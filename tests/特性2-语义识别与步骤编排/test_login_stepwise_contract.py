@@ -1,170 +1,191 @@
 # -*- coding: utf-8 -*-
-"""V8.5.1 · P23 登录步骤化 —— **判据先行**（R7-c：先落判据跑红，再实现，最后转绿）。
+"""L35 · 登录链路 AI 化 —— **契约判据**（取代 V8.5.1 的 `by` 选择器口径）。
 
-## 范围（他 2026-10-11 定，比 P23 原案更明确）
+## 改造前后（判据守的就是这条线）
 
-> 删 `auth` 段与整套平行机制，登录变成 `probe_pre` 里的动作序列（填账号 -> 填密码 -> 点登录）
+    BEFORE（三套 schema）:
+        scenarios/*.yml  login.steps[] = {op, by, value}     ← 人写选择器
+        ElementMap.steps[]              = {op, element, value} ← AI 写语义名
+        生成物 harness                   = `_login_do(page, op, by)` ← 第三套执行器
+    AFTER（一套）:
+        scenarios/*.yml  login = {url, scenario: <自然语言>, wait}
+        → 同一个规划器在登录页产出普通 TestStep（op/desc/element/value）
+        → 同一套定位栈（`resolve_locator`）执行
+        → 步骤**固化进用例**（`case["login"]`），执行期零 AI
 
-即**两期共用一份动作序列声明**：
-  · 探测期：`probe_pre` 直接就是那三步（框架不认识"账号/密码"，只认"声明了动作"）；
-  · 执行期：生成期把同一份动作展开成用例的**前导步骤**（goto 登录页 -> fill -> fill -> click -> wait）。
+## 判据清单（一类，秒级、不需 demo）
 
-## 为什么必须做（现状的三个真问题）
-
-1. **隐藏运行期依赖**：`generate` 写 `scripts/generated/_auth.json`，但该文件被 `.gitignore` 忽略
-   -> `pack_release`（`git ls-files --exclude-standard`）**不打进包** -> 收包方 `run` 时登录前置
-   **静默失效**，报「元素语义未找到」而真因是"整条用例跑在登录页上"。
-   -> 从此**包里有什么、跑的就是什么**，不存在"运行期必需的隐藏文件"。
-2. **两条路必然漂移**：探测期走 POST 接口 + token 注入（`login.py`），执行期走 harness 里的
-   `_install_login` 读 `_auth.json` —— 同一件事两套实现（框架自己反复吃过的亏）。
-3. **登录不可见**：登录动作不在用例里，跑挂了看不出"卡在登录"这一步，报错还把方向带向
-   "异步取数 / 弹层未渲染 / 语义名过期"。
-
-## 判据清单（本文件 = 一类，秒级、不需 demo）
-
-  J1  场景声明了登录动作 -> 生成脚本里出现前导登录步骤，顺序 goto->fill->fill->click->wait
-  J2  负向：场景**没有**登录动作 -> **零**前导步骤（向后兼容）
-  J3  负向：登录动作声明不全（缺值 / 定位表达式非法）-> **生成期大声报错**，不许静默跳过
-  J4  出厂闸门：**运行期读到的文件集合 是……子集 打包清单**（防"不入包却运行必需"复发）
-  J5  机制移除守门：全仓无 `_auth.json` 读写、`.gitignore` 无该条
-  J6  报错文案：跑到登录页上 -> 明确报「当前在登录页 —— 登录步骤未执行/失败」
-
-[!] 本文件先落**红态**。实现后逐条转绿；不许为了让判据过而放宽断言。
+  J1  声明了自然语言登录 -> 生成期渲染出 `_login_flow(...)`，且步骤是**普通步骤**（无 by）
+  J2  负向：没声明 login -> 零前导；**声明了但用例里没有登录步骤 -> 大声报错**（提示重跑 explore）
+  J3  负向：login 段三种非法形态（写 steps / 缺 scenario / wait 无可观测条件）-> 加载期即报错
+  J4  出厂闸门：运行期要读的生成物不许被 .gitignore 忽略（不进包却运行必需的旧事故）
+  J5  机制移除守门：`by` 那套（`_BY_KEY` / `locator_of` / `perform_login` / `_login_do`）不许回来
+  J6  卡在登录页时报错要直说（不许把方向带向"异步取数/弹层未渲染"）
+  J7  执行期**零 AI**：`_login_flow` 走 `resolve_locator`，不 import 任何 LLM 入口
 """
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
+
+import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 FRAMEWORK = REPO / "framework"
+SCENARIO = REPO / "scenarios" / "orders" / "orders_invoice_full_lifecycle.yml"
+
+sys.path.insert(0, str(REPO))
 
 
 def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8") if p.exists() else ""
+    return p.read_text(encoding="utf-8", errors="replace")
 
 
-# ==================== J5 机制移除守门（先测这条：它定义"做完"的边界）====================
-
-def test_j5_no_auth_json_anywhere_in_source():
-    """`_auth.json` 的读写必须从框架里彻底消失（隐藏运行期依赖的根源）。
-
-    [!] 判定要**排除假阳性**：`test_scenario_auth_spec.py` 这类**测试文件名**里含 "auth"，
-    但它跟 `_auth.json` 无关 —— 只认真正的**路径/文件名字面量**写法。
-    """
-    offenders = []
-    for p in FRAMEWORK.rglob("*.py"):
-        if "__pycache__" in str(p):
-            continue
-        for i, l in enumerate(_read(p).split("\n"), 1):
-            code = l.split("#", 1)[0]
-            # [!] 精确判定，避免两类误报：
-            #   ① `test_scenario_auth_spec.py`（测试**文件名**）含 `_auth_spec` 子串；
-            #   ② `sc.auth_spec()` 是**方法调用**，与 `_auth.json` 毫无关系。
-            #   => 只认 `_auth.json` 的**字面量**写法。
-            if '"_auth.json"' in code or "'_auth.json'" in code:
-                offenders.append(f"{p.relative_to(REPO)}:{i}  {l.strip()[:110]}")
-    assert not offenders, (
-        "框架里仍有 `_auth.json` 的**代码引用**（这文件不进包 -> 收包方静默失效）：\n"
-        + "\n".join(offenders[:20]))
+def _gen():
+    from framework.features.f02_semantic import generator_generate as G
+    return G
 
 
-def test_j5_gitignore_has_no_auth_json_entry():
-    """`.gitignore` 里不许再有 `_auth.json` 的**忽略规则**（它正是"被忽略却运行必需"的成因）。
-
-    [!] 只查**规则行**、跳过注释（2026-10-12 修正）：本判据原先全文搜字面
-    `"_auth.json"`，于是**注释里提到它**也会被判红 —— 而注释恰恰是必要的
-    （要写明"这套机制已整体废弃、故意不留忽略规则"，否则后人只会看到一条
-    被删掉的规则、不知道是误删还是有意）。判据该盯的是**行为**（有没有真的忽略），
-    不是"文件里有没有这几个字母"。
-    """
-    gi = _read(REPO / ".gitignore")
-    rule_lines = [l for l in gi.split("\n") if l.strip() and not l.lstrip().startswith("#")]
-    offenders = [l for l in rule_lines if "_auth.json" in l]
-    assert not offenders, (
-        ".gitignore 仍忽略 _auth.json（说明它还会被生成，只是不入库）-> 运行期隐藏依赖没清干净：\n"
-        + "\n".join(offenders[:5]))
-
-
-def test_j5_harness_template_has_no_install_login():
-    """生成物 harness 模板里不许再有 `_install_login`（执行期登录要走可见步骤）。"""
-    gen = _read(FRAMEWORK / "features" / "f02_semantic" / "generator_generate.py")
-    offenders = [f"{i}: {l.strip()[:110]}" for i, l in enumerate(gen.split("\n"), 1)
-                 if "_install_login" in l.split("#", 1)[0]]
-    assert not offenders, (
-        "generator 里仍有 `_install_login` 相关代码（那套机制要整体下线）：\n" + "\n".join(offenders[:12]))
+# ---- 一份"已固化登录步骤"的用例（执行期的真实形状）----
+CASE_WITH_LOGIN = {
+    "case_id": "l35_probe",
+    "login": {
+        "login_url": "http://h/login.html",
+        "wait": {"url_not": "login.html"},
+        "steps": [
+            {"op": "goto", "desc": "打开登录页", "value": "http://h/login.html"},
+            {"op": "fill", "desc": "填账号",
+             "element": {"semantic_name": "账号", "role": "textbox", "name": "账号"},
+             "value": "u1"},
+            {"op": "click", "desc": "点登录",
+             "element": {"semantic_name": "登_录", "role": "button", "name": "登录"}},
+        ],
+    },
+}
 
 
-# ==================== J1/J2/J3 生成期登录步骤（先锁"有 / 无 / 报错"三种行为）====================
+# ============================ J1：渲染 ============================
 
-def test_j1_login_steps_are_expanded_into_generated_case():
-    """声明了登录动作 -> 生成期把它展开成**前导步骤**（goto->fill->fill->click->wait）。"""
-    gen = _read(FRAMEWORK / "features" / "f02_semantic" / "generator_generate.py")
-    assert ("expand_login_steps" in gen) or ("login_steps_of" in gen) or \
-           ("登录步骤" in gen and "前导" in gen), (
-        "generator 里没有把登录动作展开成前导步骤的实现（登录仍不在用例里，跑挂了看不出来）")
+def test_j1_login_steps_rendered_as_one_login_flow_call():
+    """声明了登录 -> 渲染成**一次** `_login_flow(steps, wait, url)`，且步骤是普通 op/element。"""
+    G = _gen()
+    lines = G._login_lines_for(CASE_WITH_LOGIN, "http://h")
+    joined = "\n".join(lines)
+    assert "_login_flow(page," in joined, (
+        "生成期没有渲染 `_login_flow(...)` —— 登录不在用例里，跑挂了看不出卡在登录")
+    assert "'op': 'fill'" in joined or '"op": "fill"' in joined, (
+        "渲染出来的登录步骤不是**普通步骤**（op/element/value）—— 那又变成第二套形状了")
+    assert "by" not in joined.replace("bypass", ""), (
+        "登录步骤里还带 `by`（V8.5.1 的选择器口径）—— L35 已删除，必须走语义定位")
+    assert "login.html" in joined, "登录地址没渲染进去"
 
+
+# ============================ J2：有无 / 缺产物 ============================
 
 def test_j2_no_login_declaration_means_no_leading_steps():
-    """负向：没有登录声明的场景，生成结果必须与今天**完全一致**（零前导步骤）。
-
-    [!] 用**行为**验证，不查字面正则 —— 原来那种 `if not \\w*login\\w*:` 的写法只在
-    某种代码形态下成立，实现一变就"看着还在守、其实早不守了"。
-    """
-    import sys
-    from pathlib import Path as _P
-    sys.path.insert(0, str(REPO))
-    from framework.features.f02_semantic import generator_generate as G
-    # ① 完全没有场景信息的用例 -> 零前导步骤
+    """负向：没有登录声明的用例，生成结果与改造前**完全一致**（零前导步骤）。"""
+    G = _gen()
     assert G._login_lines_for({}, "http://localhost:8000") == [], \
-        "无场景信息的用例被插入了登录步骤 -> 会把所有用例都改掉（破坏向后兼容）"
-    # ② 有场景名、但该场景没声明 login: -> 同样零前导步骤
+        "无场景信息的用例被插入了登录步骤 -> 会改掉所有用例（破坏向后兼容）"
     assert G._login_lines_for(
         {"scenario_id": "__not_exist_scenario__"}, "http://localhost:8000") == [], \
         "拿不到场景时也必须是零步骤（不许猜、不许降级）"
-    # ③ 真实场景（已声明 login:）-> 必须有前导步骤（正例，防止"守卫写太死把正例也挡了"）
-    lines = G._login_lines_for(
-        {"scenario_id": "orders_invoice_full_lifecycle"}, "http://localhost:8000")
-    assert lines, "场景声明了 login: 却一步都没展开 -> 登录又不在用例里了"
-    joined = "\n".join(lines)
-    assert "_login_do" in joined and "_login_wait" in joined
-    assert "goto" in joined, "前导步骤缺 goto（要先到登录页）"
 
 
-def test_j3_malformed_login_declaration_fails_loudly():
-    """负向：登录声明不全（缺值/非法定位表达式）必须**生成期大声报错**，不许静默跳过。"""
-    sce = _read(FRAMEWORK / "features" / "f02_semantic" / "scenario_generate.py")
-    assert ("LoginSpecError" in sce) or ("登录" in sce and "raise" in sce), (
-        "scenario 侧没有登录声明的必填校验（缺了静默跳过 = 又会变成'跑在登录页上'的假红）")
+def test_j2b_declared_login_but_case_has_none_fails_loudly():
+    """[!] 关键：场景声明了 login、但用例里没有登录步骤 -> **硬红**（提示重跑 explore）。
+
+    为什么这条必须有：L35 起登录步骤是 explore 的产物。若某天有人只改了场景、没重跑
+    explore，generate 若静默跳过登录，整条用例会跑在登录页上 —— 报错却指向"元素未找到"。
+    """
+    G = _gen()
+    with pytest.raises(RuntimeError) as ei:
+        G._login_lines_for({"case_id": "no_login_field",
+                            "scenario_id": "orders_invoice_full_lifecycle"},
+                           "http://localhost:8000")
+    msg = str(ei.value)
+    assert "登录" in msg and "explore" in msg, f"报错没说清怎么修：{msg}"
 
 
-# ==================== J4 出厂闸门：运行期必需 是……子集 打包清单 ====================
+# ============================ J3：声明非法要当场报 ============================
+
+def _scenario_with_login_block(login_block: str, tmp_path: Path) -> Path:
+    """把真实场景的 login 段换成给定块，写到 tmp 再加载（保持场景其它部分真实）。"""
+    text = _read(SCENARIO)
+    start = text.index("\nlogin:")
+    end = text.index("\nassert_guard:", start)
+    out = text[:start] + "\n" + login_block + "\n" + text[end:]
+    p = tmp_path / "probe.yml"
+    p.write_text(out, encoding="utf-8")
+    return p
+
+
+@pytest.mark.parametrize("block, fragment", [
+    # ① 老口径：还写 steps/by
+    ("login:\n  url: /login.html\n  steps:\n    - {op: fill, by: {id: u}, value: a}\n"
+     "  wait: {url_not: login.html}", "steps"),
+    # ② 缺自然语言
+    ("login:\n  url: /login.html\n  wait: {url_not: login.html}", "scenario"),
+    # ③ wait 没有可观测条件
+    ("login:\n  url: /login.html\n  scenario: 填账号密码然后点登录\n  wait: {}", "可观测"),
+])
+def test_j3_malformed_login_declaration_fails_at_load(block, fragment, tmp_path):
+    """三种非法形态 -> **加载期**报错（不许留到运行期才炸，更不许静默跳过）。"""
+    from framework.features.f02_semantic.scenario_generate import ScenarioError, load_scenario_file
+
+    p = _scenario_with_login_block(block, tmp_path)
+    with pytest.raises(ScenarioError) as ei:
+        load_scenario_file(p)
+    assert fragment in str(ei.value), f"报错没点出问题（期望含 {fragment!r}）：{ei.value}"
+
+
+# ============================ J4：出厂闸门（沿用）============================
 
 def test_j4_runtime_required_files_are_subset_of_package_manifest():
-    """运行期要读的文件必须都在打包清单里（防同类'不入包却运行必需'复发）。
-
-    做法：收集"框架源码里出现的、仓库内相对路径形态的运行期文件名"
-    （如 `scripts/generated/xxx.json`），断言它们在 `pack_release` 的收集规则下**不被忽略**。
-    """
-    import subprocess
-    # 用 git 判定：被 .gitignore 忽略的文件 = 不会进包
+    """运行期要读的生成物必须都在打包清单里（防"不入包却运行必需"复发）。"""
     from framework.shared.text_io import run_capture
     r = run_capture(["git", "ls-files", "--others", "--ignored", "--exclude-standard",
                      "scripts/"], cwd=REPO)
-    # [!] run_capture 返回的是 `CompletedProcess`（第一版我按 dict 取了 `.get("stdout")`
-    #   => AttributeError。返回值形态要现查、不能想当然。）
     ignored = [x for x in (getattr(r, "stdout", "") or "").split("\n") if x.strip()]
     gen = _read(FRAMEWORK / "features" / "f02_semantic" / "generator_generate.py")
-    # 生成期写出的、且**运行期要读**的文件（以 `_xxx.json` 形态出现在 scripts/generated 下）
     written = set(re.findall(r'["\'](_[a-z_]+\.json)["\']', gen))
-    clash = [f for f in written
-             if any(x.endswith(f) for x in ignored)]
-    assert not clash, (
-        "生成期写出、运行期要读的文件被 .gitignore 忽略 -> 不进包 -> 收包方静默失效：\n"
-        + "\n".join(clash))
+    clash = [f for f in written if any(x.endswith(f) for x in ignored)]
+    assert not clash, ("生成期写出、运行期要读的文件被 .gitignore 忽略 -> 不进包 -> "
+                       "收包方静默失效：\n" + "\n".join(clash))
 
 
-# ==================== J6 报错文案：卡在登录页要直说 ====================
+# ============================ J5：机制移除守门 ============================
+
+def test_j5_no_selector_based_login_schema_anywhere():
+    """`by` 那套（第二套 schema + 第三套执行器）不许回来。"""
+    offenders: list[str] = []
+    # ① 框架源码：登录模块不许再有 by 解析 / perform_login
+    login_py = _read(FRAMEWORK / "shared" / "login.py")
+    for tok in ("_BY_KEY", "def locator_of(", "def perform_login("):
+        if tok in login_py:
+            offenders.append(f"framework/shared/login.py 含 {tok}")
+    # ② 生成物 harness：不许再有 _login_do/_login_wait/_LOGIN_BY
+    harness = _read(REPO / "scripts" / "generated" / "_harness.py")
+    for tok in ("_LOGIN_BY", "def _login_do(", "def _login_wait(", "def _login_locator("):
+        if tok in harness:
+            offenders.append(f"scripts/generated/_harness.py 含 {tok}")
+    # ③ 场景文件：login 段不许写 steps/by
+    sc_text = _read(SCENARIO)
+    block = sc_text[sc_text.index("\nlogin:"):sc_text.index("\nassert_guard:")]
+    # [!] 只看**结构**（YAML 键），注释行不算：本段注释里就会出现 "by: {id: ...}"
+    #   这种「反例说明」——文本匹配会把说明文字判成违规（判据自己写错，比没有更糟）。
+    for line in block.splitlines():
+        code = line.split("#", 1)[0]
+        if re.match(r"^\s+steps:\s*$", code) or re.match(r"^\s+by:\s*", code):
+            offenders.append(f"场景 login 段含 {code.strip()[:40]}")
+    assert not offenders, (
+        "登录的第二套 schema / 执行器又出现了（L35 明确要求「不要搞 2 套」）：\n"
+        + "\n".join(f"  - {o}" for o in offenders)
+    )
+
+
+# ============================ J6：报错文案（沿用）============================
 
 def test_j6_error_message_names_login_page_when_stuck():
     """跑到登录页上时，报错必须直指登录（不许把方向带向"异步取数/弹层未渲染"）。"""
@@ -173,8 +194,21 @@ def test_j6_error_message_names_login_page_when_stuck():
         if "__pycache__" in str(p):
             continue
         s = _read(p)
-        if "登录页" in s and ("登录步骤" in s or "未执行" in s or "登录失败" in s):
-            hits.append(str(p.relative_to(REPO)))
-    assert hits, (
-        "全框架没有「当前在登录页 -> 直说登录步骤未执行/失败」的报错文案："
-        "实测真因是登录没生效，报错却指向「元素语义未找到」，排查方向被带偏")
+        if "login_failure_hint" in s and "def login_failure_hint" not in s:
+            hits.append(p.relative_to(REPO).as_posix())
+    assert hits, ("没有任何地方使用 `login_failure_hint()` —— "
+                  "「卡在登录页」的报错文案又会被『元素未找到』盖掉")
+
+
+# ============================ J7：执行期零 AI ============================
+
+def test_j7_runtime_login_executor_uses_same_locator_stack_and_no_ai():
+    """执行期登录：走 `resolve_locator`（同一套定位栈），且**不** import 任何 LLM 入口。"""
+    harness = _read(REPO / "scripts" / "generated" / "_harness.py")
+    i = harness.find("def _login_flow(")
+    assert i > 0, "生成物 harness 里没有 `_login_flow`（登录执行入口）"
+    body = harness[i:i + 4000]
+    assert "resolve_locator" in body, (
+        "登录执行没走 `resolve_locator` —— 那就是又开了一套定位（L35 的核心要求是同一套）")
+    for tok in ("ai_explore", "llm_from_env", "_ai_explore_async", "ChatDeepSeek"):
+        assert tok not in body, f"执行期登录里出现了 {tok} —— 执行期必须零 AI（离线要能跑）"

@@ -58,9 +58,9 @@ def _item(name: str, **extra) -> dict:
 def _emap_file(tmp_path: Path, *, steps: list[str], manifest: list[dict] | None) -> Path:
     """造一份 explore 产物形态的 element_map（steps 只有 AI 用到的名字）。"""
     data: dict = {"url": "http://localhost:8000/", "scenario": "s",
-                  "steps": [{"order": i + 1, "action": "click",
+                  "steps": [{"order": i + 1, "op": "click",
                              "element": {"semantic_name": n, "role": "button", "name": n.split("@")[0]},
-                             "description": n} for i, n in enumerate(steps)]}
+                             "desc": n} for i, n in enumerate(steps)]}
     if manifest is not None:
         data["probe_items"] = manifest
     p = tmp_path / "element_map_test.json"

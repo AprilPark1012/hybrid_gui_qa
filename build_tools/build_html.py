@@ -4239,8 +4239,8 @@ def build() -> str:
  <b>(4) 落盘 + 交付即验证（确定性）</b>
       ├─ ElementMap.<b>to_json()</b> -> output/element_maps/element_map_&lt;ts&gt;.json   （决策档案：steps + probe_items 权威清单）
       ├─ case_builder.<b>elementmap_to_cases_file(emap, case_id, extra, guard)</b>
-      │      step.action ──_OP_MAP──[run] cases.steps[].op（同名直映射）
-      │      step(action=expect_text) ──_ASSERT_ACTIONS──[run] cases.asserts[].desc/expect
+      │      step.op ──_STEP_OPS 白名单──[run] cases.steps[].op（同名直映射，无翻译层）
+      │      step(op=expect_text) ──_ASSERT_ACTIONS──[run] cases.asserts[].desc/expect
       │      step.element.semantic_name ─[run] cases.steps[].element      契约传递
       │      elementmap_warnings() + case_warnings(case, guard)       落盘前质量校验（防假绿）
       │      -> <b>cases/ai_&lt;scenario_id&gt;_&lt;HHMMSS&gt;.json</b>（含 source_scenario/scenario_id 溯源字段）

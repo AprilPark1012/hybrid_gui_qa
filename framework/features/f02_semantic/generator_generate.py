@@ -730,57 +730,59 @@ def _scenario_for_case(case: dict):
 
 
 def _login_steps_of_case(case: dict) -> list[dict]:
-    """取该用例所属场景的登录动作序列（已校验）；没有 -> **返回空**（行为与今天一致）。"""
+    """取用例里**已固化**的登录步骤（L35：explore 用同一套规划器产出后落进 case）。
+
+    为什么不从场景现取（L35 之前是那样）：`generate` 是**确定性渲染段，不许调 AI**；
+    而 L35 起登录步骤是 AI 规划的产物 —— 只能在 explore 时产出、落进用例（产物即输入）。
+
+    [!] 场景声明了 `login:` 但用例里没有登录步骤 -> **硬红**，提示重跑 explore。
+        不许静默跳过登录：那会让整条用例跑在登录页上，报错却指向"元素未找到"。
+    """
+    lg = case.get("login")
+    if isinstance(lg, dict) and lg.get("steps"):
+        return [lg]
     sc = _scenario_for_case(case)
-    if sc is None:
-        return []
+    spec: dict = {}
     try:
-        spec = sc.login_spec() or {}
-    except Exception:
-        return []
-    if not spec.get("steps"):
-        return []
-    return [spec]
+        spec = (sc.login_spec() if sc is not None else {}) or {}
+    except Exception:                                                 # noqa: BLE001
+        spec = {}
+    if spec.get("scenario") or spec.get("steps"):
+        raise RuntimeError(
+            f"用例 {case.get('case_id')} 里没有登录步骤，但场景声明了 `login:` —— "
+            f"L35 起登录步骤由 explore 用同一套语义识别生成并**落进用例**；"
+            f"请先重跑 `python -m framework.cli explore --ai --scenario-file <yml>` 再 generate"
+            f"（不许静默跳过登录：那样整条用例会跑在登录页上）")
+    return []
 
 
 def _render_login_lines(spec: dict, base_url: str) -> list[str]:
-    """把登录动作序列渲染成 pytest 行（goto -> 各动作 -> 等可观测条件）。"""
-    out = ["    # ---- 登录（V8.5.1 步骤化：场景声明 -> 框架展开，不交给 AI）----"]
+    """把**已固化的登录步骤**渲染成用例前导调用（一次 `_login_flow`）。
+
+    L35：不再逐条渲染 `_login_do(page, op, by)` —— 登录步骤现在是普通步骤
+    （op/desc/element/value），执行器只看这套字段，定位由 `resolve_locator` 合成。
+    口令口径保留：`{{env:NAME}}` 在**渲染期**翻成运行期读环境变量（值不落盘）。
+    """
     url = str(spec.get("login_url") or "").strip()
     if not url:
         url = base_url.rstrip("/") + "/login.html"
-    elif not url.startswith("http"):          # [!] 场景里常写相对路径 `/login.html`，
-        url = base_url.rstrip("/") + ("/" + url.lstrip("/"))   #     要拼成绝对地址，否则 _goto 会失败
-    out.append(f"    _goto(page, {url!r})")
-    for i, st in enumerate(spec.get("steps") or [], 1):
-        op = str(st.get("op") or "").strip()
-        if op == "goto":
-            out.append(f"    _goto(page, {str(st.get('url'))!r})")
-            continue
-        by = st.get("by") or {}
+    elif not url.startswith("http"):
+        url = base_url.rstrip("/") + "/" + url.lstrip("/")
+    steps = []
+    for st in (spec.get("steps") or []):
+        st = dict(st or {})
         val = str(st.get("value") or "")
-        # 口令口径：`{{env:NAME}}` -> 运行期读环境变量（值不落盘）；其余原样（demo 公开凭据）
         if val.startswith("{{env:") and val.endswith("}}"):
             env = val[6:-2].strip()
-            val_expr = f"__import__('os').environ.get({env!r}, '')"
-        else:
-            val_expr = repr(val)
-        out.append(f"    # 登录步骤 {i}: {op} {sorted(by)}")
-        if op == "fill":
-            out.append(f"    _login_do(page, 'fill', {by!r}, value={val_expr})")
-        elif op == "click":
-            out.append(f"    _login_do(page, 'click', {by!r})")
-        elif op == "press":
-            out.append(f"    _login_do(page, 'press', {by!r}, value={val_expr})")
-        elif op == "check":
-            out.append(f"    _login_do(page, 'check', {by!r})")
-        elif op == "hover":
-            out.append(f"    _login_do(page, 'hover', {by!r})")
-    wait = spec.get("wait") or {}
-    if wait:
-        out.append(f"    _login_wait(page, {wait!r})")
-    out.append("    # ---- 登录步骤结束 ----")
-    return out
+            # 渲染期把值换成"运行期读环境变量"的表达式占位（不把口令写进产物）
+            st["value"] = f"__ENV__{env}"
+        steps.append(st)
+    wait = dict(spec.get("wait") or {})
+    return [
+        "    # ---- 登录（L35：场景自然语言 -> 同一规划器 -> 同一套定位栈；步骤已固化在用例里）----",
+        f"    _login_flow(page, {steps!r}, {wait!r}, {url!r})",
+        "    # ---- 登录步骤结束 ----",
+    ]
 
 
 def _login_lines_for(case: dict, base_url: str) -> list[str]:
@@ -829,7 +831,7 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
     #   `_Tabs.click_new_tab`，是**模型不选**；而这是可由清单判死的确定性情形。
     _nt = 0
     for _st in (steps or []):
-        _op = str(step_get(_st, "op") or step_get(_st, "action") or "").strip().lower()
+        _op = str(step_get(_st, "op") or "").strip().lower()
         if _op != "click":
             continue
         _nm = step_get(_st, "element") or step_get(_st, "semantic")
@@ -839,8 +841,8 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
         if _it and (_it.get("opens_new_tab") is True):
             _old_op = _op
             try:
-                if hasattr(_st, "action"):
-                    _st.action = "click_new_tab"
+                if hasattr(_st, "op"):
+                    _st.op = "click_new_tab"
                 else:
                     _st["op"] = "click_new_tab"
             except Exception:                                     # noqa: BLE001
@@ -2390,6 +2392,7 @@ _MODULE_HEADER = '''"""hybrid_gui_qa 用例模块：{cid}（场景 {sid}）—�
   pytest scripts/generated/{sid}/{cid}.py -v
 """
 from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
+                      _login_flow,
                       # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
                       # [!] 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
                       _ds_params, _ds_ids,
@@ -2410,7 +2413,7 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       # V8.5.1：登录步骤化 —— 生成期会把场景 `login:` 的动作序列展开成前导步骤，
                       #   渲染出的 `_login_do` / `_login_wait` 必须在这里同步 import
                       #   （本轮又踩了一次 "模板渲染了但没 import -> 真跑 NameError"）。
-                      _login_do, _login_wait,
+                      # L35：登录执行入口是 `_login_flow`（已在上面 import）；by 那套执行器已删除
                       # P22 批 4/5：等待式断言（wait_text；批 5 起支持 selector 限定范围）
                       _assert_wait_text)
 # P16 批 5：运行期「锚点 + 容器内相对路径」下钻（col.header 这类列口径只有运行时才算得出列序）
@@ -3124,67 +3127,81 @@ class _BrowserPool:
 #     不进交付包 -> 收包方静默失效）。
 # 框架层**零业务词**：不认识"账号/密码"，只认"声明了哪个 by 键 + 哪个动作"。
 
-_LOGIN_BY = {
-    "id": "#{}",
-    "name": '[name="{}"]',
-    "placeholder": '[placeholder="{}"]',
-    "test_id": '[data-testid="{}"]',
-    "title": '[title="{}"]',
-    "aria_label": '[aria-label="{}"]',
-}
+def _login_flow(page, steps, wait=None, login_url=""):
+    """执行**已固化**的登录步骤（L35：登录 = 普通步骤，走同一套定位栈）。
 
+    为什么不再有一套 `by` 选择器解析（V8.5.1 那套已删）：登录页和业务页是**同一个系统**，
+    语义定位没有理由只在业务页可用；`by` 写死 id/css 的话，登录页一改版就得回来改场景，
+    而业务页不用 —— 这正是"两套口径"的典型症状。
 
-def _login_locator(page, by):
-    """把声明式 `by` 合成 locator（登录页重构只改场景，框架不动）。"""
-    if not isinstance(by, dict) or not by:
-        raise RuntimeError("登录步骤缺少 by 定位声明（框架不猜控件，必须由场景声明）")
-    for k, v in by.items():
-        if k == "css":
-            return page.locator(str(v))
-        if k == "text":
-            return page.get_by_text(str(v), exact=False)
-        if k == "label":
-            return page.get_by_label(str(v))
-        if k == "role":
-            role, _, nm = str(v).partition(":")
-            return page.get_by_role(role, name=nm) if nm else page.get_by_role(role)
-        tpl = _LOGIN_BY.get(k)
-        if tpl:
-            return page.locator(tpl.format(v))
-    raise RuntimeError(f"登录步骤：不认识的 by 键 {sorted(by)}（可用 {sorted(_LOGIN_BY)} 或 css/text/label/role）")
+    步骤形状 = `TestStep.to_dict()`（op/desc/element/value/...），
+    定位 = `resolve_locator`（与 `_loc` 同一个栈：Tier1 直定位 → Tier2 指纹相似 → 唯一性校验）。
+    未知动作 / 定位失败 **一律抛**（登录失败必须当场看得见，不许带病往下跑）。
+    """
+    from framework.features.f03_locate.element_map import ElementRef
+    from framework.features.f03_locate.locator_bridge_locate import resolve_locator
+    from framework.shared.step_ops import STEP_OPS, unknown_hint
 
-
-def _login_do(page, op, by, value=None):
-    """执行登录动作序列里的**一个**动作。失败**如实抛**，绝不静默跳过。"""
-    loc = _login_locator(page, by)
-    _log(page, "login_step", f"{op} {sorted((by or {}))}")
-    if op == "fill":
-        loc.fill(str(value or ""), timeout=15000)
-    elif op == "click":
-        loc.click(timeout=15000)
-    elif op == "check":
-        loc.check(timeout=15000)
-    elif op == "hover":
-        loc.hover(timeout=15000)
-    elif op == "press":
-        loc.press(str(value or "Enter"), timeout=15000)
-    else:
-        raise RuntimeError(f"登录步骤：op={op!r} 不认识（可用 fill/click/check/hover/press）")
-
-
-def _login_wait(page, wait):
-    """等**可观测**的登录成功条件（框架铁律：不许用固定 sleep 判断登录成功）。"""
-    if not isinstance(wait, dict) or not wait:
-        return
-    if wait.get("url_not"):
-        _pat = str(wait["url_not"])
-        page.wait_for_url(lambda u: _pat not in u, timeout=15000)
-    elif wait.get("url"):
-        page.wait_for_url(str(wait["url"]), timeout=15000)
-    elif wait.get("selector"):
-        page.wait_for_selector(str(wait["selector"]), timeout=15000)
-    elif wait.get("text"):
-        page.wait_for_selector(f"text={wait['text']}", timeout=15000)
+    seq = list(steps or [])
+    has_goto = any((s or {}).get("op") == "goto" for s in seq)
+    if login_url and not has_goto:
+        page.goto(login_url, wait_until="domcontentloaded")
+    for i, st in enumerate(seq, 1):
+        st = st or {}
+        op = str(st.get("op") or "").strip()
+        if op not in STEP_OPS:
+            raise RuntimeError(f"登录第 {i} 步：{unknown_hint(op)}")
+        if op == "goto":
+            page.goto(str(st.get("value") or login_url), wait_until="domcontentloaded")
+            continue
+        el = st.get("element") or {}
+        if not isinstance(el, dict) or not el:
+            raise RuntimeError(f"登录第 {i} 步（{op}）没有目标元素 —— 用例里的登录步骤不完整")
+        _r = resolve_locator(page, ElementRef.from_dict(el))
+        if not _r.get("ok"):
+            raise RuntimeError(f"登录第 {i} 步（{op} {el.get('semantic_name')!r}）定位失败："
+                               f"{_r.get('reason')}")
+        _loc = _r["locator_obj"]
+        _log(page, "login_step", f"{op} {el.get('semantic_name')}")
+        _val = str(st.get("value") or "")
+        if _val.startswith("__ENV__"):        # 渲染期约定的占位：运行期读环境变量（值不落盘）
+            _val = __import__("os").environ.get(_val[7:], "")
+        if op == "fill":
+            _loc.fill(_val, timeout=15000)
+        elif op == "click":
+            _loc.click(timeout=15000)
+        elif op == "check":
+            _loc.check(timeout=15000)
+        elif op == "press_enter":
+            _loc.press("Enter", timeout=15000)
+        elif op == "select":
+            # 与 `_act` 的 select 口径**完全一致**（同一能力不许两个语义）：
+            #   index -> 第 N 个**非空**选项；value -> 按 value 选；都没有 -> 第一项
+            if st.get("value") is not None:
+                _loc.select_option(str(st.get("value")), timeout=15000)
+            else:
+                _opts_ = _loc.locator("option")
+                _real_ = [i for i in range(_opts_.count())
+                          if (_opts_.nth(i).get_attribute("value") or "").strip()]
+                if not _real_:
+                    raise RuntimeError(f"登录第 {i} 步：select 控件没有可用选项")
+                _want_ = 0 if st.get("index") is None else int(st.get("index"))
+                if _want_ >= len(_real_):
+                    raise RuntimeError(
+                        f"登录第 {i} 步：select 第 {_want_} 项不存在（去掉空占位后只有 {len(_real_)} 项）")
+                _loc.select_option(index=_real_[_want_], timeout=15000)
+        else:
+            raise RuntimeError(f"登录第 {i} 步：{op} 不适用于登录页")
+    if isinstance(wait, dict) and wait:
+        if wait.get("url_not"):
+            _pat = str(wait["url_not"])
+            page.wait_for_url(lambda u: _pat not in u, timeout=15000)
+        elif wait.get("url"):
+            page.wait_for_url(str(wait["url"]), timeout=15000)
+        elif wait.get("selector"):
+            page.wait_for_selector(str(wait["selector"]), timeout=15000)
+        elif wait.get("text"):
+            page.wait_for_selector(f"text={wait['text']}", timeout=15000)
     _log(page, "login_ok", f"url={page.url}")
 
 
@@ -3452,6 +3469,22 @@ def _loc(hint, page):
     """
     from framework.features.f03_locate.locator_bridge_locate import resolve_locator
     from framework.features.f03_locate.element_map import TestStep
+    def _stuck_on_login() -> str:
+        """定位失败时先判断"是不是卡在登录页"，是就把这句话带上。
+
+        [!] 这条不是锦上添花（2026-10 实测踩过）：登录失效时整条用例都跑在登录页上，
+        报出来的却是「元素语义未找到」，排查方向被带到"异步取数 / 弹层未渲染 / 语义名过期"，
+        一整天找错地方。`login_failure_hint()` 早就写好了，但**从来没人调用**（死代码）——
+        现在接在这里：只在**确实**还停在登录页时追加，不在别处污染报错。
+        """
+        try:
+            from framework.shared.login import login_failure_hint, on_login_page
+            if on_login_page(page):
+                return "\\n" + login_failure_hint(getattr(page, "url", "") or "")
+        except Exception:                                             # noqa: BLE001
+            return ""
+        return ""
+
     it = _item_for(hint, page)
     if it is None:
         raise RuntimeError(
@@ -3459,20 +3492,22 @@ def _loc(hint, page):
             f"常见原因：(1) 页面还在异步取数/弹层未渲染（慢机器与高并发下常见；检查就绪契约或设 HYBRID_READY_SELECTOR）；"
             f"(2) 弹层没打开（先确认上一步点击是否生效）；(3) 语义名过期（页面改版后要重跑 probe/generate）。"
             f"排查：加 --debug 看逐步截图（log/<run_id>/shots/）。"
+            + _stuck_on_login()
         )
     el = _to_ref(it)
     r = resolve_locator(page, el)
     if r["ok"]:
         if r.get("healed"):
-            _HEALER.record_heal(TestStep(0, "locate", element=el, description=hint), r)
+            _HEALER.record_heal(TestStep(0, "locate", element=el, desc=hint), r)
             _log(page, "heal", f"{hint} 指纹自愈 -> {r['strategy']} conf={r['confidence']}")
         return r["locator_obj"]
     if _SELF_HEAL:
-        h = _HEALER.try_heal(page, TestStep(0, "locate", element=el, description=hint))
+        h = _HEALER.try_heal(page, TestStep(0, "locate", element=el, desc=hint))
         if h.get("recovered"):
             _log(page, "heal", f"{hint} 自愈 -> {h['strategy']} conf={h['confidence']}")
             return h["locator_obj"]
-        raise RuntimeError(f"元素定位失败且自愈未成功: {hint}（{h.get('reason') or '未知'}）")
+        raise RuntimeError(f"元素定位失败且自愈未成功: {hint}（{h.get('reason') or '未知'}）"
+                           + _stuck_on_login())
     raise RuntimeError(f"元素定位失败: {hint}（{r.get('reason')}）")
 
 

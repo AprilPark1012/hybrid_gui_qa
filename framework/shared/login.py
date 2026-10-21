@@ -6,7 +6,11 @@
   · 而 `?demo_role=` 直连**不能切角色** —— `demo/app.py:670-671` 明确 400：
     「切换角色需要真实登录会话（测试角色头不支持切换）」-> 跨角色场景**必须走真登录**。
 
-口径（为什么是"场景声明式"、而不是"框架去填登录表单"）：
+口径（L35 起）：`login:` 段写**自然语言**，登录步骤由**同一个规划器**在登录页上产出
+（`framework/features/f02_semantic/login_flow_explore.py`），与业务步骤同一套 `op/desc/element`；
+执行走**同一套定位栈**（`resolve_locator`）。本模块只保留"登录前置"这个**入口**与旧接口登录兼容分支。
+
+历史口径（V8.5.1 的 `steps/by` 选择器写法，L35 已删除）：
   · 填表单要求框架懂每个系统的表单结构 -> 不通用；
   · 场景声明「登录接口 + 账号 + token 写进哪个 localStorage 键」-> **业务细节归场景，框架保持通用**；
   · 注入方式用 `context.add_init_script` -> 在**每个新文档创建前**执行，页面自己的 auth.js 读到的
@@ -70,8 +74,9 @@ def install_token(ctx, token_key: str, token: str) -> bool:
 def ensure_logged_in(ctx, base_url: str, spec: dict) -> dict:
     """登录前置的**唯一入口**（探针期与执行期共用）。
 
-    [!] V8.5.1（P23 登录步骤化）：优先走**新口径** —— 场景 `login:` 段声明的 `steps` 是
-    「登录页上的表单动作序列」，由 `perform_login` 在真实页面上执行。
+    [!] L35：登录声明写**自然语言**（`login.scenario`），登录步骤由同一个规划器在登录页上
+    产出成普通 TestStep，再由 `login_flow_explore.run_login_steps` 用**同一套定位栈**执行。
+    本函数是这条链的**唯一入口**（探测期 / 生成期 / 执行期都从这里进）。
     为什么必须两期共用一份实现：探针期登录失效时，探到的**只有登录页控件**，
     AI 手上没有业务页控件 => 它只能规划登录步骤（实测连写三次，被产出闸门拦下）。
     表现是"AI 不听话"，真因是**探针没登录**。
@@ -83,8 +88,11 @@ def ensure_logged_in(ctx, base_url: str, spec: dict) -> dict:
     if not spec:
         return out
 
-    # ---- 新口径：表单动作序列（推荐） ----
-    if spec.get("steps"):
+    # ---- 新口径（L35）：自然语言登录 -> AI 规划的普通步骤 -> 同一套定位栈 ----
+    # [!] 委托给 features 层（`login_flow_explore`）而不是自己实现：登录步骤用的定位栈
+    #   （`resolve_locator`）住在 features/f03_locate，shared 不能反向依赖它 —— 所以这里
+    #   只留**同签名的薄壳**（唯一入口不变，调用方零改动），实现在那边。
+    if spec.get("scenario") or spec.get("steps"):
         out["attempted"] = True
         out["mode"] = "ui"
         try:
@@ -95,7 +103,8 @@ def ensure_logged_in(ctx, base_url: str, spec: dict) -> dict:
                 page = None
             if page is None:
                 page = ctx.new_page()
-            r = perform_login(page, base_url, spec)
+            from framework.features.f02_semantic.login_flow_explore import login_on_page
+            r = login_on_page(page, spec, base_url)
             out["ok"] = bool(r.get("ok"))
             out["steps"] = r.get("steps", 0)
             if not out["ok"]:
@@ -133,7 +142,7 @@ def describe(spec: dict) -> str:
             f"（口令来源 {src} · token 键 {sp.get('token_key') or '未声明'}）")
 
 
-# ==================== V8.5.1：登录步骤化（P23）====================
+# ==================== L35：登录链路 AI 化（原 V8.5.1 的 by 选择器口径已删除）====================
 # 为什么另起这条：旧机制走 POST 接口 + token 注入，运行期还要读 `scripts/generated/_auth.json`
 #   —— 那文件由生成期写出、却被 `.gitignore` 忽略 -> **不进交付包** -> 收包方 run 时登录前置
 #   **静默失效**，报「元素语义未找到」而真因是"整条用例跑在登录页上"（排查方向被带偏）。
@@ -143,103 +152,6 @@ def describe(spec: dict) -> str:
 
 class LoginSpecError(RuntimeError):
     """登录声明非法（缺值 / 定位表达式不认识）—— 一律**大声报**，绝不静默跳过。"""
-
-
-_BY_KEY = {
-    "id": "#{}",
-    "name": '[name="{}"]',
-    "placeholder": '[placeholder="{}"]',
-    "test_id": '[data-testid="{}"]',
-    "title": '[title="{}"]',
-    "aria_label": '[aria-label="{}"]',
-}
-
-
-def locator_of(page, by):
-    """把声明式 `by:` 合成 Playwright locator。
-
-    只认"声明了哪个键"，不认业务语义 —— 登录页重构时改**场景**即可，框架不动
-    （铁律：不拿"观测到的具体值"当地基）。
-    """
-    if not isinstance(by, dict) or not by:
-        raise LoginSpecError('登录步骤：`by` 必须是非空对象，例如 {"id": "login-user"}')
-    for k, v in by.items():
-        if k == "css":
-            return page.locator(str(v))
-        if k == "text":
-            return page.get_by_text(str(v), exact=False)
-        if k == "label":
-            return page.get_by_label(str(v))
-        if k == "role":
-            role, _, nm = str(v).partition(":")
-            return page.get_by_role(role, name=nm) if nm else page.get_by_role(role)
-        tpl = _BY_KEY.get(k)
-        if tpl:
-            return page.locator(tpl.format(v))
-    raise LoginSpecError(f"登录步骤：不认识的 `by` 键 {sorted(by)}（可用 {sorted(_BY_KEY)} 或 css/text/label/role）")
-
-
-def perform_login(page, base_url, spec, timeout=15000):
-    """在**登录页上**执行表单动作序列：goto -> 逐个动作 -> 等可观测成功条件。
-
-    spec（场景声明，框架不解释其含义）：
-        login_url : 登录页地址；缺省 = base_url 的 /login.html
-        steps     : [{op: goto|fill|click|check|press, by?: {...}, value?: str, url?: str}, ...]
-        wait      : 成功条件，可观测、**不许 sleep**；支持
-                      {"url_not": "login"} / {"url": "..."} / {"selector": "#x"} / {"text": "..."}
-
-    返回 {"ok": bool, "steps": 执行步数, "reason": 失败原因}；**失败如实抛**，不静默降级。
-    """
-    if not isinstance(spec, dict) or not spec:
-        return {"ok": False, "steps": 0, "reason": "未声明登录"}
-    steps = spec.get("steps") or []
-    if not isinstance(steps, list) or not steps:
-        raise LoginSpecError("登录声明缺少 `steps`（登录步骤化后，登录就是动作序列；空 = 没声明）")
-
-    login_url = str(spec.get("login_url") or "").strip()
-    if not login_url:
-        login_url = (base_url or "").rstrip("/") + "/login.html"
-    elif not login_url.startswith("http"):
-        # [!] 场景里常写相对路径 `/login.html` —— 必须拼成绝对地址，
-        #   否则 Playwright 的 goto 会拿它当**相对当前页**的路径（实测会跑错页）。
-        login_url = (base_url or "").rstrip("/") + "/" + login_url.lstrip("/")
-
-    page.goto(login_url, wait_until="domcontentloaded")
-    done = 0
-    for i, st in enumerate(steps, 1):
-        if not isinstance(st, dict):
-            raise LoginSpecError(f"登录步骤 {i} 不是对象：{st!r}")
-        op = str(st.get("op") or "").strip()
-        if op == "goto":
-            page.goto(str(st.get("url") or login_url), wait_until="domcontentloaded")
-        elif op in ("fill", "click", "check", "press", "hover"):
-            loc = locator_of(page, st.get("by"))
-            if op == "fill":
-                loc.fill(str(st.get("value") or ""), timeout=timeout)
-            elif op == "press":
-                loc.press(str(st.get("value") or "Enter"), timeout=timeout)
-            elif op == "check":
-                loc.check(timeout=timeout)
-            elif op == "hover":
-                loc.hover(timeout=timeout)
-            else:
-                loc.click(timeout=timeout)
-        else:
-            raise LoginSpecError(f"登录步骤 {i} 的 op 不认识：{op!r}（可用 goto/fill/click/check/press/hover）")
-        done = i
-
-    wait = spec.get("wait") or {}
-    if wait:
-        if wait.get("url_not"):
-            pat = str(wait["url_not"])
-            page.wait_for_url(lambda u: pat not in u, timeout=timeout)
-        elif wait.get("url"):
-            page.wait_for_url(str(wait["url"]), timeout=timeout)
-        elif wait.get("selector"):
-            page.wait_for_selector(str(wait["selector"]), timeout=timeout)
-        elif wait.get("text"):
-            page.wait_for_selector(f"text={wait['text']}", timeout=timeout)
-    return {"ok": True, "steps": done, "url": page.url}
 
 
 def on_login_page(page, base_url="", spec=None):
@@ -254,15 +166,18 @@ def on_login_page(page, base_url="", spec=None):
     u = u.lower()
     if "login" in u:
         return True
+    # 还能在页面上解析到登录步骤的目标控件 -> 说明还在登录页（L35：步骤是普通 TestStep）
+    from framework.features.f03_locate.element_map import ElementRef
+    from framework.features.f03_locate.locator_bridge_locate import resolve_locator
     for s in ((spec or {}).get("steps") or []):
-        by = (s or {}).get("by") or {}
-        sel = _BY_KEY.get("id", "#{}").format(by.get("id")) if by.get("id") else None
-        if sel:
-            try:
-                if page.locator(sel).count() > 0:
-                    return True
-            except Exception:
-                pass
+        el = (s or {}).get("element") if isinstance(s, dict) else None
+        if not isinstance(el, dict) or not el.get("semantic_name"):
+            continue
+        try:
+            if resolve_locator(page, ElementRef.from_dict(el)).get("ok"):
+                return True
+        except Exception:
+            continue
     return False
 
 

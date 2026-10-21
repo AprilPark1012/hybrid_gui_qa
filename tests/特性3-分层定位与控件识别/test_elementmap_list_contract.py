@@ -43,7 +43,7 @@ def _minimal_map(**kw) -> ElementMap:
     return ElementMap(
         url="http://host/order_detail.html",
         scenario="打开详情页并点编辑",
-        steps=[TestStep(1, "click", element=ElementRef(semantic_name="编辑"), description="进入编辑态")],
+        steps=[TestStep(1, "click", element=ElementRef(semantic_name="编辑"), desc="进入编辑态")],
         probe_items=[{"semantic_name": "编辑", "role": "button", "text": "编辑"}],
         **kw,
     )
@@ -97,10 +97,10 @@ def test_steps_are_partitioned_by_page():
         url="http://host/",
         scenario="两页场景",
         steps=[
-            TestStep(1, "goto", value="http://host/a.html", description="打开 A"),
-            TestStep(2, "click", element=ElementRef(semantic_name="A按钮"), description="点 A 的按钮"),
-            TestStep(3, "goto", value="http://host/b.html", description="打开 B"),
-            TestStep(4, "click", element=ElementRef(semantic_name="B按钮"), description="点 B 的按钮"),
+            TestStep(1, "goto", value="http://host/a.html", desc="打开 A"),
+            TestStep(2, "click", element=ElementRef(semantic_name="A按钮"), desc="点 A 的按钮"),
+            TestStep(3, "goto", value="http://host/b.html", desc="打开 B"),
+            TestStep(4, "click", element=ElementRef(semantic_name="B按钮"), desc="点 B 的按钮"),
         ],
         probe_items=[{"semantic_name": "A按钮"}, {"semantic_name": "B按钮"}],
     )

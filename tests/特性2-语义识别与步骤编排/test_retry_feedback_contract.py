@@ -281,7 +281,7 @@ class _El:
 
 class _St:
     def __init__(self, order, op="fill", desc="", semantic=None, value=None, url=None):
-        self.order, self.op, self.description = order, op, desc
+        self.order, self.op, self.desc = order, op, desc
         self.value, self.url = value, url
         self.element = _El(semantic) if semantic else None
         self.assertion = None

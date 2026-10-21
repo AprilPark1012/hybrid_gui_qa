@@ -344,7 +344,7 @@
   ],
   "scenario_id": "orders_invoice_full_lifecycle",
   "source_scenario": "scenarios/orders/orders_invoice_full_lifecycle.yml",
-  "scenario_fingerprint": "d5331d63887615ff",
+  "scenario_fingerprint": "33a7a7ad8271309c",
   "pages": [
     {
       "name": "登录页",
@@ -404,5 +404,88 @@
     "切换为订单管理员"
   ],
   "probe_pre_host": "合同列表页",
-  "llm_source": "live+record:3516231809f6eebd"
+  "llm_source": "live+record:3516231809f6eebd",
+  "login": {
+    "login_url": "http://localhost:8000/login.html",
+    "wait": {
+      "url_not": "login.html"
+    },
+    "steps": [
+      {
+        "op": "goto",
+        "desc": "打开 http://localhost:8000/login.html",
+        "element": null,
+        "value": "http://localhost:8000/login.html"
+      },
+      {
+        "op": "fill",
+        "desc": "在登录页账号输入框填写 super",
+        "element": {
+          "semantic_name": "账号",
+          "role": "textbox",
+          "name": "账号",
+          "label": null,
+          "placeholder": "请输入账号",
+          "test_id": "",
+          "element_id": null,
+          "text": "账号",
+          "page_hint": null,
+          "container_heading": "演示系统登录",
+          "nearby_text": "演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or",
+          "help_text": "账号",
+          "notes": "",
+          "anchor": null,
+          "path": null,
+          "isValid": true
+        },
+        "value": "super"
+      },
+      {
+        "op": "fill",
+        "desc": "在登录页密码输入框填写 super@123",
+        "element": {
+          "semantic_name": "密码",
+          "role": "textbox",
+          "name": "密码",
+          "label": null,
+          "placeholder": "请输入密码",
+          "test_id": "",
+          "element_id": null,
+          "text": "密码",
+          "page_hint": null,
+          "container_heading": "演示系统登录",
+          "nearby_text": "演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or",
+          "help_text": "密码",
+          "notes": "",
+          "anchor": null,
+          "path": null,
+          "isValid": true
+        },
+        "value": "super@123"
+      },
+      {
+        "op": "click",
+        "desc": "点击登录按钮提交，进入系统首页",
+        "element": {
+          "semantic_name": "登_录",
+          "role": "button",
+          "name": "登 录",
+          "label": null,
+          "placeholder": "",
+          "test_id": "",
+          "element_id": null,
+          "text": "登 录",
+          "page_hint": null,
+          "container_heading": "演示系统登录",
+          "nearby_text": "演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or",
+          "help_text": "",
+          "notes": "",
+          "anchor": null,
+          "path": null,
+          "isValid": true
+        },
+        "value": null
+      }
+    ]
+  }
 }

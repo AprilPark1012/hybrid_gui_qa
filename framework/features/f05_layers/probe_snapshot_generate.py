@@ -53,7 +53,7 @@ def _norm(it: dict) -> dict:
 
 def _entry_element(entry) -> dict | None:
     """从「步骤条目」或「控件条目」里取出**控件字典**（步骤条目嵌在 element 里）。"""
-    if hasattr(entry, "element") or hasattr(entry, "action"):        # TestStep
+    if hasattr(entry, "element") or hasattr(entry, "op"):            # TestStep（L34-a：字段名 op）
         el = getattr(entry, "element", None)
         if el is None:
             return None

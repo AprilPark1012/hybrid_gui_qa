@@ -5,13 +5,16 @@
 explore 产出的 ElementMap 只落 `output/element_maps/*.json`，而 generate 只认
 `cases/*.json` -> **AI 用例到不了 generate**，链路断在这里。本模块补上这座桥。
 
-映射规则
---------
-    ElementMap.steps[].action   ──同名直映射──[run]  cases.steps[].op
+映射规则（L34-a：两侧字段名已统一，**没有翻译层**）
+------------------------------------------------
+    ElementMap.steps[].op       ──同名直映射──[run]  cases.steps[].op
     expect_text 步骤            ──[run]  asserts[]（断言不是"操作步骤"，不该进 steps）
     step.element.semantic_name  ──[run]  cases.steps[].element
     step.value                  ──[run]  value
-    step.description            ──[run]  desc
+    step.desc                   ──[run]  desc
+
+    白名单：只有 `_STEP_OPS`（操作）与 `_ASSERT_ACTIONS`（断言）里的动作会落地。
+    其它动作**出声告警**后跳过 —— 旧行为是静默少一步，用例"看起来跑过了"（假绿风险）。
 
 约定（Q2 决策）
 --------------
@@ -29,18 +32,16 @@ from urllib.parse import urlsplit
 from framework.shared.config import CASES_DIR
 from framework.features.f03_locate.element_map import ElementMap
 
-# action → cases 的 op（同名直映射；不在表内的动作不产出步骤，不静默造假）
-_OP_MAP = {
-    "goto": "goto",
-    "click": "click",
-    "fill": "fill",
-    "select": "select",
-    "check": "check",
-    "press_enter": "press_enter",
+# 步骤动作白名单（**集合，不是映射表**）。
+# L34-a（2026-10-21）：这里原来是一张「`action` -> `op`」的表 —— 两侧键名不同、
+#   值却**逐字相同**（恒等映射）：它当着「翻译层」的样子，真职能只是「哪些动作算操作步」。
+#   键名统一成 `op` 之后翻译层没有存在理由，只剩白名单 -> 写成 frozenset。
+#   加动作时只改这一处；判据 tests/特性2-…/test_no_dual_step_field_names.py 禁止映射表复活。
+_STEP_OPS = frozenset({
+    "goto", "click", "fill", "select", "check", "press_enter",
     # 跨 tab 流程（2026-09-17）：点击**会开新 tab** 的控件并切过去 / 点「返回」关闭当前 tab 回上一个
-    "click_new_tab": "click_new_tab",
-    "close_tab": "close_tab",
-}
+    "click_new_tab", "close_tab",
+})
 
 # 断言动作（转为 asserts[]，不是步骤）
 #   expect_text → 文本断言（原有）
@@ -77,61 +78,67 @@ def elementmap_to_case(m: ElementMap, case_id: str | None = None,
 
     - expect_text / expect_url 步骤转成 asserts[]（并**丢弃**它身上的 element —— 断言步本不该带元素）；
       位置保留：`after_step` = 该断言之前的操作步数 -> 断言在流程中间原地执行（跨页的「换页证据」靠它）
-    - 未知 action 跳过（宁可少一步，也不造假步骤）
+    - 未知动作**出声告警**后跳过（L34-a：不许静默少一步 —— 那正是假绿的来源）
     """
     cid = case_id or make_case_id(m.scenario)
     steps: list[dict] = []
     asserts: list[dict] = []
 
     for st in m.steps:
-        action = (st.action or "").strip()
+        op = (st.op or "").strip()
 
-        if action in _ASSERT_ACTIONS:
+        if op in _ASSERT_ACTIONS:
             pos = len(steps) or None      # 紧跟前面已渲染的操作步之后（0 → 落用例末尾，保持老行为）
-            if action == "expect_url":
+            if op == "expect_url":
                 # 跨页换页证据：URL 片段断言（value 或 assertion 都接受，取有值的那个）
                 exp = st.value or st.assertion
                 if exp:
                     asserts.append({
                         "kind": "url",
-                        "desc": st.description or f"断言 URL 含 {exp}（证明已换页）",
+                        "desc": st.desc or f"断言 URL 含 {exp}（证明已换页）",
                         "expect": exp,
                         "after_step": pos,
                     })
-            elif action == "expect_first_row":
+            elif op == "expect_first_row":
                 # 行内定位的兄弟能力：验「表格第一行的某一列」（新建后列表第一条就是它）
                 exp = st.value or st.assertion
                 if exp:
                     asserts.append({
                         "kind": "first_row",
                         "row_field": st.cell_field or "",
-                        "desc": st.description or f"断言第一行 {st.cell_field} 含 {exp}",
+                        "desc": st.desc or f"断言第一行 {st.cell_field} 含 {exp}",
                         "expect": exp,
                         "after_step": pos,
                     })
             elif st.assertion:
                 asserts.append({
-                    "desc": st.description or f"断言出现 {st.assertion}",
+                    "desc": st.desc or f"断言出现 {st.assertion}",
                     "expect": st.assertion,
                     "after_step": pos,
                 })
             continue
 
-        if action == "goto":
+        if op == "goto":
             steps.append({
                 "op": "goto",
-                "desc": st.description or "打开页面",
+                "desc": st.desc or "打开页面",
                 "url": st.value or m.url,
             })
             continue
 
-        op = _OP_MAP.get(action)
-        if op is None:
+        if op not in _STEP_OPS:
+            # [!] L34-a：**未知动作必须出声**。旧写法「查表拿不到就 continue」——
+            #   静默少一步，用例"看起来跑过了"，实际那一步根本没执行（假绿）。
+            #   口径：宁可在导入期吵一次，也不许悄悄丢步骤。同一个问题还会进 `warns`
+            #   （elementmap_warnings），随重试闭环喂回 AI。
+            print(f"[case_builder] [!] 未知步骤动作 {op!r}（第 {st.order} 步）-> 已跳过、不产出步骤；"
+                  f"合法动作 = 操作 {sorted(_STEP_OPS)} / 断言 {sorted(_ASSERT_ACTIONS)}",
+                  file=sys.stderr)
             continue
 
         item: dict = {"op": op}
         semantic = st.element.semantic_name if st.element is not None else ""
-        item["desc"] = st.description or (f"{op} {semantic}".strip() if semantic else op)
+        item["desc"] = st.desc or (f"{op} {semantic}".strip() if semantic else op)
         if semantic:
             item["element"] = semantic
         if st.value is not None:
@@ -158,6 +165,9 @@ def elementmap_to_case(m: ElementMap, case_id: str | None = None,
         #   证据：全用例 0 步带该键，而生成脚本里却有 `_act_row(..., -1, ...)`。
         if getattr(st, "row_index", None) is not None:
             item["row_index"] = int(st.row_index)
+        if getattr(st, "index", None) is not None:
+            # select 的「第几项」：与 value 互斥；落盘后由生成器渲染成 `_act(index=…)`
+            item["index"] = int(st.index)
         steps.append(item)
 
     case = {
@@ -481,10 +491,17 @@ def elementmap_warnings(m: ElementMap) -> list[str]:
     """
     warns: list[str] = []
     for st in m.steps:
-        if (st.action or "").strip() in _ASSERT_ACTIONS and st.element is not None:
+        _op = (st.op or "").strip()
+        if _op in _ASSERT_ACTIONS and st.element is not None:
             warns.append(
-                f"第 {st.order} 步 {st.action} 带了元素 {st.element.semantic_name!r} "
+                f"第 {st.order} 步 {st.op} 带了元素 {st.element.semantic_name!r} "
                 f"→ 断言步不应绑定元素（转换时已丢弃），建议在 prompt 层面纠正"
+            )
+        # L34-a：未知动作**出声**（转换处已打 stderr；这里进 warns -> 随重试闭环喂回 AI）。
+        elif _op and _op not in _STEP_OPS and _op not in _ASSERT_ACTIONS:
+            warns.append(
+                f"第 {st.order} 步的动作 {_op!r} 不在白名单里（已跳过、没落成步骤）"
+                f"-> 这一步等于没执行（假绿风险），请改用合法动作"
             )
     return warns
 

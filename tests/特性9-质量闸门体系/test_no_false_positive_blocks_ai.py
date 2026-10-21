@@ -28,9 +28,9 @@ from framework.features.f02_semantic.explorer_explore import (   # noqa: E402
 class _St:
     """最小 TestStep 替身（只带闸门读的字段）。"""
 
-    def __init__(self, order, value=None, url=None, element=None, description=""):
-        self.order, self.value, self.url, self.element, self.description = \
-            order, value, url, element, description
+    def __init__(self, order, value=None, url=None, element=None, desc=""):
+        self.order, self.value, self.url, self.element, self.desc = \
+            order, value, url, element, desc
 
 
 class _El:
@@ -76,13 +76,13 @@ _SCENARIO = (
 def test_value_declared_in_scenario_is_allowed():
     """场景里逐字给出的 URL -> 放行（闸门自己的规矩：字面编号只允许场景逐字给出）。"""
     st = _St(5, url="http://localhost:8000/order_new.html?contract_no=HT-1001",
-             description="等价直达新建订单页并带入合同 HT-1001")
+             desc="等价直达新建订单页并带入合同 HT-1001")
     assert reject_hardcoded_row_values([st], scenario_text=_SCENARIO) == []
 
 
 def test_value_NOT_in_scenario_still_flagged():
     """【反向自证】场景里没有的编号（AI 从页面观测来的）必须仍被判写死。"""
-    st = _St(9, value="HT-2002", description="选中第二条合同")
+    st = _St(9, value="HT-2002", desc="选中第二条合同")
     bad = reject_hardcoded_row_values([st], scenario_text=_SCENARIO)
     assert bad, "场景里没给出的编号被放过了"
     assert "HT-2002" in bad[0]
@@ -135,7 +135,7 @@ def test_intent_only_description_not_flagged_as_misselection():
         SEMANTIC_MISMATCH_NOTES, _apply_semantic_calibration,
     )
     st = _St(46, element=_El("订单名称@订单列表页[订单系统]"),
-             description="切角色后重新搜索，避免页面刷新丢条件")
+             desc="切角色后重新搜索，避免页面刷新丢条件")
     _apply_semantic_calibration([st], _ITEMS_ORDERS)
     assert SEMANTIC_MISMATCH_NOTES == [], (
         f"意图句描述被判误选（误伤会让主推命令不可用）：{SEMANTIC_MISMATCH_NOTES}"
@@ -147,7 +147,7 @@ def test_data_like_control_name_still_flagged_by_calibration():
     from framework.features.f02_semantic.explorer_explore import (
         SEMANTIC_MISMATCH_NOTES, _apply_semantic_calibration,
     )
-    st = _St(1, element=_El("HT-1001@合同列表页"), description="展开角色切换菜单")
+    st = _St(1, element=_El("HT-1001@合同列表页"), desc="展开角色切换菜单")
     items = [{"semantic_name": "HT-1001@合同列表页", "name": "HT-1001", "text": "HT-1001"}]
     _apply_semantic_calibration([st], items)
     assert SEMANTIC_MISMATCH_NOTES, "拿业务数据当控件名的真误选被放过了"
@@ -157,6 +157,6 @@ def test_intent_step_still_gets_warning_note():
     """精准化只取消"硬拦"，**警告仍要打**（人工核对的路没断）。"""
     from framework.features.f02_semantic.explorer_explore import _apply_semantic_calibration
     st = _St(46, element=_El("订单名称@订单列表页[订单系统]"),
-             description="切角色后重新搜索，避免页面刷新丢条件")
+             desc="切角色后重新搜索，避免页面刷新丢条件")
     _apply_semantic_calibration([st], _ITEMS_ORDERS)
     assert "语义校准警告" in (st.element.notes or ""), "意图句步骤连警告都没了"

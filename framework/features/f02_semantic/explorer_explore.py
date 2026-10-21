@@ -35,11 +35,14 @@ from framework.shared.textutil import collapse_ws  # 事故(2)：accessible name
 # 只让 AI 产出语义引用 + 描述，绝不产 selector / locator。
 class _StepModel(BaseModel):
     order: int = Field(default=1, description="步骤序号")
-    action: str = Field(default="click", description=(
+    op: str = Field(default="click", description=(
         "click/fill/select/check/goto/expect_text/expect_url/press_enter/"
         "click_new_tab/close_tab/expect_first_row"))
     semantic_name: str = Field(default="", description="probe 清单里的 semantic_name，禁止自造")
     value: str | None = Field(default=None, description="fill 填入的值")
+    index: int | None = Field(default=None, description=(
+        "select 专用：选**第几项**（从 0 起，0 = 第一项；空占位由执行器跳过）。"
+        "场景说「选第一项/第一个」时用它，**不要**把序号写进 value"))
     assertion: str | None = Field(default=None, description="expect_text 断言")
     # --- 跨 tab / 行内定位（2026-09-17）---
     # row_text + cell_field：行内定位（在含 row_text 的那一行里操作 cell_field 列的控件）。
@@ -56,7 +59,7 @@ class _StepModel(BaseModel):
     row_index: int | None = Field(default=None, description=(
         "行内定位（**按行下标**，从 1 起；-1 = 最后一行）：行锚 `row_text` 表达不了「**刚刚新增的空行**」"
         "（新行没有内容可当锚）时用它 —— 例如详情页点「新增行」后要填这一行的字段"))
-    description: str = Field(default="", description="一句话说明")
+    desc: str = Field(default="", description="一句话说明")
 
 
 class _PlanModel(BaseModel):
@@ -259,7 +262,7 @@ def _plan_to_steps(plan, items: list[dict]) -> list[TestStep]:
             print(f"      [explore] [!] 第 {s.order or i + 1} 步元素名自动对齐：{how}")
         _warn_region_variants(sn, it, items)
         if sn and it is None:
-            unmatched.append(f"第 {s.order or i + 1} 步 {s.action} 的 semantic_name={sn!r}")
+            unmatched.append(f"第 {s.order or i + 1} 步 {s.op} 的 semantic_name={sn!r}")
         el = None
         if it:
             el = ElementRef(
@@ -300,8 +303,9 @@ def _plan_to_steps(plan, items: list[dict]) -> list[TestStep]:
                 print(f"      [explore] [i] 第 {s.order or i + 1} 步引用了行内列控件"
                       f"「{it.get('semantic_name')}」-> 自动补 cell_by=index, cell_index={_rci}")
         steps.append(TestStep(
-            order=s.order or i + 1, action=s.action, element=el,
-            value=s.value, assertion=s.assertion, description=s.description,
+            order=s.order or i + 1, op=s.op, element=el,
+            value=s.value, assertion=s.assertion, desc=s.desc,
+            index=getattr(s, "index", None),
             row_text=getattr(s, "row_text", None), cell_field=getattr(s, "cell_field", None),
             # V8.4.3：列指定方式也要落盘 —— 否则 AI 写了 cell_by/cell_index 也在这一步被丢掉
             cell_by=cb, cell_index=ci,
@@ -736,7 +740,8 @@ def _save_to_cassette(cassette, prompt: str, model: str, structured, raw_text,
 
 def _replay_from_cassette(cassette, prompt: str, items: list[dict], first_url: str,
                           scenario: str, pages: list[dict] | None = None,
-                          struct_key_value: str | list[str] = "", strict_only: bool = False) -> ElementMap:
+                          struct_key_value: str | list[str] = "", strict_only: bool = False,
+                          allow_login_steps: bool = False) -> ElementMap:
     """离线回放：从录像里取回答，走**与 live 完全相同**的解析链路（绝不联网）。
 
     录到的回答可能有两条（结构化 / 文本）：按序尝试，第一个能解析出步骤的胜出
@@ -793,7 +798,8 @@ def _replay_from_cassette(cassette, prompt: str, items: list[dict], first_url: s
             continue
         if steps:
             steps = _apply_semantic_calibration(steps, items)
-            return _finalize_map(first_url, scenario, steps, pages=pages, manifest=items)
+            return _finalize_map(first_url, scenario, steps, pages=pages, manifest=items,
+                                 allow_login_steps=allow_login_steps)
     detail = "；".join(dict.fromkeys(errs)) or "没有任何一条回答能解析出步骤"
     raise AiExploreError(
         f"录像命中但解析不出步骤（{detail}）—— 录的那份与当前框架 / 控件清单可能不兼容。\n"
@@ -828,7 +834,7 @@ async def _ai_explore_async(
     page_bg: str = "", guard: str = "",
     pages: list[dict] | None = None, collisions: list[dict] | None = None,
     row_fields: list[dict] | None = None, llm_cassette=None, cassette_strict: bool = False,
-    auth: dict | None = None, retry_feedback: str = "",
+    auth: dict | None = None, retry_feedback: str = "", allow_login_steps: bool = False,
 ) -> ElementMap:
     """【异步阶段】只做 LLM 语义识别：读场景 + 控件清单 + DOM 上下文 → 步骤。
 
@@ -856,7 +862,7 @@ async def _ai_explore_async(
             struct_key_value=[struct_key(scenario, page_items, pages, _PLANNER_SYSTEM),
                               struct_key_prev(scenario, page_items, pages, _PLANNER_SYSTEM),
                               struct_key_legacy(scenario, page_items, pages, _PLANNER_SYSTEM)],
-            strict_only=cassette_strict)
+            strict_only=cassette_strict, allow_login_steps=allow_login_steps)
 
     obj = llm_from_env()   # ChatDeepSeek(deepseek) / ChatOpenAI 等
     model_name = _llm_model_name(obj)      # 录像元信息（不参与键，见 llm_cassette.cassette_key）
@@ -950,7 +956,7 @@ async def _ai_explore_async(
                                       key_struct=struct_key(scenario, page_items, pages,
                                                             _PLANNER_SYSTEM))
                 steps = _apply_semantic_calibration(steps, page_items)
-                return _finalize_map(first_url, scenario, steps, pages=pages, manifest=page_items)
+                return _finalize_map(first_url, scenario, steps, pages=pages, manifest=page_items, allow_login_steps=allow_login_steps)
 
             if attempt < n_attempts:
                 await asyncio.sleep(1.5 * attempt)      # 退避：抖动/限流通常等一下就好
@@ -1043,14 +1049,14 @@ _LOGIN_FIELD_HINTS = ("账号", "密码", "用户名", "登录名", "password", 
 
 
 def _step_view(s) -> tuple[str, str, str]:
-    """把一步统一成 `(action, semantic_name, value)` —— 兼容 dict（AI 原始产出）与 TestStep。"""
+    """把一步统一成 `(op, semantic_name, value)` —— 兼容 dict（AI 原始产出）与 TestStep。"""
     if isinstance(s, dict):
         el = s.get("element")
         sn = s.get("semantic_name") or (el.get("semantic_name") if isinstance(el, dict) else "") or ""
-        return (str(s.get("op") or s.get("action") or ""), str(sn), str(s.get("value") or ""))
+        return (str(s.get("op") or ""), str(sn), str(s.get("value") or ""))
     el = getattr(s, "element", None)
     sn = getattr(el, "semantic_name", None) or getattr(s, "semantic_name", None) or ""
-    return (str(getattr(s, "action", "") or ""), str(sn), str(getattr(s, "value", "") or ""))
+    return (str(getattr(s, "op", "") or ""), str(sn), str(getattr(s, "value", "") or ""))
 
 
 def _looks_like_login_step(s) -> str:
@@ -1211,7 +1217,7 @@ def reject_hardcoded_row_values(steps: list, scenario_text: str | None = None) -
         if sn and looks_like_hardcoded_row_value(sn) and not _ids_all_declared_in_scenario(sn, hay):
             hits.append(f"element={sn!r}")
         if hits:
-            bad.append(f"第 {getattr(st, 'order', '?')} 步({getattr(st, 'description', '')[:28]}): "
+            bad.append(f"第 {getattr(st, 'order', '?')} 步({getattr(st, 'desc', '')[:28]}): "
                        + "、".join(hits))
     return bad
 
@@ -1311,7 +1317,7 @@ def check_required_field_coverage(steps: list, required: list[dict],
     # AI 步骤的「可读文本」：语义名 + 描述（控件名通常出现在描述里，如「客户与销售员各选第一个」）
     blob = " ".join(
         f"{getattr(getattr(st, 'element', None), 'semantic_name', '') or ''} "
-        f"{getattr(st, 'description', '') or ''} "
+        f"{getattr(st, 'desc', '') or ''} "
         f"{getattr(st, 'value', '') or ''}"
         for st in steps
     )
@@ -1331,7 +1337,7 @@ def _fill_missing_row_column(steps: list, row_fields: list | None) -> list[str]:
     实测三轮都栽在这里，`cell_by` 一次都没出现过。
 
     口径（**只补唯一解，绝不猜**）：
-      · 仅当该步骤的列**完全缺失**、且实锤是「勾选/选择」语义（action=check，或 desc 含勾选/选中/选择）；
+      · 仅当该步骤的列**完全缺失**、且实锤是「勾选/选择」语义（op=check，或 desc 含勾选/选中/选择）；
       · 且探针列清单里该表**恰好只有一个** kind=checkbox 的列 -> 唯一解 -> 补 `cell_by=index`;
       · 多于一个候选 / 没有候选 -> **不补**，原样返回由质量闸报出来让 AI 重生成（诚实降级）。
     """
@@ -1366,8 +1372,8 @@ def _fill_missing_row_column(steps: list, row_fields: list | None) -> list[str]:
             continue
         if _cf and _cf in _valid_fields:
             continue
-        act = str(getattr(st, "action", "") or "").lower()
-        desc = str(getattr(st, "description", "") or "")
+        act = str(getattr(st, "op", "") or "").lower()
+        desc = str(getattr(st, "desc", "") or "")
         if act != "check" and not any(k in desc for k in ("勾选", "选中", "选择")):
             continue
         st.cell_by = "index"
@@ -1379,7 +1385,8 @@ def _fill_missing_row_column(steps: list, row_fields: list | None) -> list[str]:
 
 def _finalize_map(url: str, scenario: str, steps: list[TestStep],
                   pages: list[dict] | None = None,
-                  manifest: list[dict] | None = None) -> ElementMap:
+                  manifest: list[dict] | None = None,
+                  allow_login_steps: bool = False) -> ElementMap:
     """补 goto + 构造 ElementMap。
 
     跨页（P3）：首步 goto 指向**第一页**的 URL（描述带页名）；ElementMap.url 记第一页，
@@ -1394,7 +1401,8 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
     # V8.4 单点收口：**所有**产出路径都经过这里（实测有 3 处调用），所以登录闸门放这一处即可。
     # 无条件执行的理由：AI 自己编的登录步骤**必然失败**（它拿不到真实凭据，只会编一个 ——
     # 实测写了 123456 而真值是 super@123）。真需要登录的场景应该用场景级 `auth:` 声明。
-    _reject_login_steps(steps)
+    if not allow_login_steps:          # L35：登录页规划时，登录步骤**就是**正确答案
+        _reject_login_steps(steps)
     # 2026-10-10 A 方案：场景声明的**身份前置**由框架在探测期与执行期各跑一遍（同一引擎），
     #   AI 产出里若重复写它 -> 移除（不出声的改动是不允许的，函数内部有话）。
     steps = _drop_declared_pre_steps(steps, globals().get("_CURRENT_PROBE_PRE") or [])
@@ -1432,9 +1440,9 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
         _HARDCODED_NOTES.extend(hard)
     first = pages[0] if pages else None
     first_url = first["url"] if first else url
-    if steps and steps[0].action != "goto":
+    if steps and steps[0].op != "goto":
         label = f"【{first['name']}】{first_url}" if first else first_url
-        steps.insert(0, TestStep(0, "goto", value=first_url, description=f"打开 {label}"))
+        steps.insert(0, TestStep(0, "goto", value=first_url, desc=f"打开 {label}"))
     # 2026-10-10（方案 1+2）**清单不变量**：重复控件收敛必须在这里再兜一次。
     #   为什么：探测是**多轮 + 跨页拼接**的（基础/弹层/编辑态/各页），`_merge_items` 里的收敛只覆盖
     #   它自己那一次合并 —— 实测漏网：同一个控件的两条残渣（`物料编码_2`/`_3`，签名与主条目**完全
@@ -1499,7 +1507,7 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
             _verdict = "有行定位" if (has_row_locator(_st) or not _mm2 or _mm2 <= 1) else "违规"
             print(f"  [explore] [info] 命中 {_e2!r}（名字是清单键={str(_e2) in _mm_of}、"
                   f"multi_match_of_name={_mm2}）-> 判为【{_verdict}】"
-                  f"｜action={step_get(_st, 'action')!r}"
+                  f"｜op={step_get(_st, 'op')!r}"
                   f" row_index={step_get(_st, 'row_index')!r}"
                   f" row_text={step_get(_st, 'row_text')!r}"
                   f" cell_field={step_get(_st, 'cell_field')!r}"
@@ -2185,9 +2193,9 @@ def _apply_dom_facts(items: list[dict], dom_ctx: list[dict] | None) -> list[dict
 #   AI 读到那儿早被冲掉了 -> 实测它不写 cell_by；而同一个规则放进短 prompt 它就照做。
 _OUTPUT_CONTRACT = (
     "请把场景规划成【JSON 步骤】，格式（字段名严格按此，不要发明新字段名）:\n"
-    '{"steps": [{"order":1,"action":"fill","semantic_name":"<清单里的semantic_name>",'
-    '"value":"填的值","assertion":"断言文本","description":"一句话说明"}]}\n'
-    "  · 上面是最**小**形态，只有 order/action/semantic_name/value/assertion/description 六个键。\n"
+    '{"steps": [{"order":1,"op":"fill","semantic_name":"<清单里的semantic_name>",'
+    '"value":"填的值","assertion":"断言文本","desc":"一句话说明"}]}\n'
+    "  · 上面是最**小**形态，只有 order/op/semantic_name/value/assertion/desc 六个键。\n"
     "  · **要操作「表格里某一行」时，必须再补行内定位字段**（缺了它这条步骤无法定位）：\n"
     "      行锚 `row_text` = 那一行里唯一的文本（通常是你刚填的名称/编号）；\n"
     "      列指定 **三选一**（**只要写了 row_text 就必须给其中一个**）：\n"
@@ -2198,17 +2206,17 @@ _OUTPUT_CONTRACT = (
     "  · 表里要操作「**某一行**」（尤其刚创建、探测时还不存在的那一行）时，"
     "控件清单里有一个以 `_当前行` 结尾的**行内控件**（如 `选择订单_当前行`）："
     "**引用它 + 用 `row_text` 指明是哪一行**即可；\n"
-    '      {"order":36,"action":"check","semantic_name":"选择订单_当前行",'
-    '"row_text":"全链路-20260101","description":"勾选该订单行"}\n'
+    '      {"order":36,"op":"check","semantic_name":"选择订单_当前行",'
+    '"row_text":"全链路-20260101","desc":"勾选该订单行"}\n'
     "      不要用探测时就存在的那些行的名字（如 `选择订单_SO_2301`）—— 新行探测时还没有名字。\n"
-    '      完整例子（勾选刚建的那一行）：{"order":36,"action":"check","row_text":"全链路-20260101",'
-    '"cell_by":"index","cell_index":1,"description":"勾选该订单行"}\n'
+    '      完整例子（勾选刚建的那一行）：{"order":36,"op":"check","row_text":"全链路-20260101",'
+    '"cell_by":"index","cell_index":1,"desc":"勾选该订单行"}\n'
     "  · **要操作的行是「刚刚新增的空行」（没有内容可当行锚）时，改用行下标定位**：\n"
     '      `"row_index":-1` = 最后一行（新增行通常在最后，**最常用**）；`"row_index":2` = 第 2 行。\n'
     "      为什么必须用下标：行锚要靠**那一行里已有的文本**，而刚新增的行是**空的** —— "
     "只给语义名会同时命中多行（实测：详情页 3 行 -> 同名输入框 3 个）-> 框架**明确拒绝**"
     "（宁可不做，也绝不填错行）。\n"
-    '      例子（新增行后填这一行的物料编码）：{"order":17,"action":"fill",'
+    '      例子（新增行后填这一行的物料编码）：{"order":17,"op":"fill",'
     '"semantic_name":"物料编码@订单详情页","row_index":-1,"value":"M001"}\n'
     "  · `row_index` 与 `row_text` **二选一**（不要同时写）；两个都不给时按普通控件定位。\n"
     "  · **清单里标了 `multi_match` 的控件 = 它在页面上重复出现（每行/每条一个，值是重复个数）**：\n"
@@ -2665,20 +2673,20 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                   + f"自然语言测试场景: 「{scenario}」\n\n"
                   + "跨页规则（**必须遵守**）：\n"
                   + "  · 每个控件都有 `page` 字段，标出它属于哪一页 —— **只能操作当前所在页面的控件**；\n"
-                  + "  · 换页用 action=goto + value=<页面清单里的该页 URL>，"
+                  + "  · 换页用 op=goto + value=<页面清单里的该页 URL>，"
                     "或点击当前页上能跳过去的目标（如结果行里可点的编号/详情链接）；\n"
                   + "  · [!] **新 tab（多窗口）**：目标控件若标了 `opens_new_tab: true`（点它会**开新 tab**）"
-                    "-> 必须用 action=click_new_tab（用 goto/click 会留在原页，后续步骤全乱）；"
-                    "在新 tab 里点「返回/关闭」类按钮要**关掉当前 tab 回到上一个** -> 用 action=close_tab"
+                    "-> 必须用 op=click_new_tab（用 goto/click 会留在原页，后续步骤全乱）；"
+                    "在新 tab 里点「返回/关闭」类按钮要**关掉当前 tab 回到上一个** -> 用 op=close_tab"
                     "（不要用 goto 回退，那样 tab 没关、也没验到「关 tab 返回」这个行为）；"
                     "**切 tab / 关 tab 之后都要有到达证据**（expect_url 用目标页独有片段，或 expect_text 用该页独有文案）；\n"
                   + "  · **换页必须有断言**（证明\"确实到了那一页\"）："
-                    "action=expect_url + value=**逐字从上面页面清单里复制**该页 URL 里真实存在的片段"
+                    "op=expect_url + value=**逐字从上面页面清单里复制**该页 URL 里真实存在的片段"
                     "（如详情页写 contract_detail —— 只出现在目标页 URL 里的片段；"
                     "[!] **禁止**用 localhost / localhost:8000 / 127.0.0.1 这类**每个页面都含**的片段"
                     "当换页证据：点击前后都能通过 = 没验到换页，框架会直接拦下这种用例），"
                     "**禁止自造片段**（写 index.html / list 这类清单里没有的字符串就会直接失败）；"
-                    "或 action=expect_text + assertion=目标页的特征文本（更稳，推荐与 expect_url 一起用；**目标页没有独有 URL 片段时改用它**，如列表页就是根路径 /）；\n")
+                    "或 op=expect_text + assertion=目标页的特征文本（更稳，推荐与 expect_url 一起用；**目标页没有独有 URL 片段时改用它**，如列表页就是根路径 /）；\n")
         if collisions:
             prompt += ("跨页同名控件（同名的已自动加 @页名 后缀，清单里的名字即最终名，原样引用即可）：\n"
                        + "\n".join(f"  - {c['semantic_name']} → "
@@ -2773,12 +2781,12 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
     #   -> 整段删除。删前全仓检索过 `dom_ctx`：没有第二个消费方（唯一用途就是这个段）。
     prompt += (
         f"规则:\n"
-        f"1. action 只允许: goto / click / fill / check / select / expect_text / expect_url / press_enter / "
+        f"1. op 只允许: goto / click / fill / check / select / expect_text / expect_url / press_enter / "
         f"click_new_tab / close_tab / expect_first_row\n"
         f"1b. **新 tab（多窗口）**：清单里 `opens_new_tab: true` 的控件，点击会**打开新 tab** -> "
-        f"必须用 action=click_new_tab（框架会等新 tab 出现并切过去）；**不要**用 click（点了还留在原页，"
+        f"必须用 op=click_new_tab（框架会等新 tab 出现并切过去）；**不要**用 click（点了还留在原页，"
         f"后续步骤会在错误的页面上执行）；\n"
-        f"   在新 tab 里点「返回/关闭」类按钮，要**关掉当前 tab 回到上一个** -> 用 action=close_tab"
+        f"   在新 tab 里点「返回/关闭」类按钮，要**关掉当前 tab 回到上一个** -> 用 op=close_tab"
         f"（它只用于「从新开的 tab 返回」，不要拿 goto 代替 —— 那样 tab 没关，也没验到关 tab 这个行为）；\n"
         f"   每完成一次切/关 tab，都要紧跟一条**到达证据**：expect_url（目标 tab 独有的 URL 片段）"
         f"或 expect_text（该页独有文案）；\n"
@@ -2817,7 +2825,7 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         f"   判据：要操作的是弹窗/弹层里的字段 -> 选 container_heading 等于该弹窗标题的那个名字；\n"
         f"3. fill 需给 value；断言类步骤用 expect_text + assertion\n"
         f"3a. **弹层/弹窗里逐行的「选择」按钮已经有了语义名**（形如 `选择@HT-1001`、"
-        f"`选择@北京华信科技有限公司`、`选择@bu_a`）-> 要「选某一行」就用**该语义名 + action=click**，"
+        f"`选择@北京华信科技有限公司`、`选择@bu_a`）-> 要「选某一行」就用**该语义名 + op=click**，"
         f"**不要**用行内定位去点它（**这条只针对弹层/弹窗里的「选择」按钮** —— 那种按钮本身就有语义名；"
         f"行内定位点的是那一列里的链接/文本，不是「选择」按钮）；"
         f"弹层/弹窗的**打开按钮**同样有名字（如 `选择合同`、`选择业务单元`——「...」按钮的名字取自它的 title），"
@@ -2827,17 +2835,17 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
         f"   `row_text` = 该行里唯一的锚文本（例如你刚填的订单名称，必须与前面 fill 的 value **逐字相同**，"
         f"有动态占位符时写成同一串）；`cell_field` = 该行的列字段，**只能**取上面【行内列清单】里的 field"
         f"（如 orderName / contractNo），**禁止自造**；\n"
-        f"   例：「点这一行的合同编号（会开新 tab）」-> action=click_new_tab, row_text=<刚填的名称>, "
-        f"cell_field=contractNo；「点这一行的编号（当前页跳转）」-> action=click, row_text=…, cell_field=…\n"
+        f"   例：「点这一行的合同编号（会开新 tab）」-> op=click_new_tab, row_text=<刚填的名称>, "
+        f"cell_field=contractNo；「点这一行的编号（当前页跳转）」-> op=click, row_text=…, cell_field=…\n"
         f"3b-2. **列没有 data-field 时**（最典型 = 表格最左的**勾选列** `<input type=checkbox>`，"
         f"探针的【行内列清单】里当然找不到它，这不是缺陷）-> **不要留空、也不要拿这一行里的其它"
         f"元素（如合同编号链接 `HT-1001`）顶替**，改用 `cell_by` 指定列：\n"
         f"   · `cell_by=index` + `cell_index=<第几列，**从 1 起**>`（勾选列通常是**第 1 列**）\n"
         f"   · 或 `cell_by=header` + `cell_field=<表头文案>`（列有表头文案时）\n"
         f"   · 有 data-field 的列仍用 `cell_field=<field>`（等价于 cell_by 缺省/field）\n"
-        f"   例：勾选刚建的那一行 -> action=check, row_text=<刚填的名称>, cell_by=index, cell_index=1，"
+        f"   例：勾选刚建的那一行 -> op=check, row_text=<刚填的名称>, cell_by=index, cell_index=1，"
         f"**不要**给 semantic_name（行内定位步骤一律不给语义名）；\n"
-        f"3c. 新建成功后要验「**列表第一条就是刚建的那条**」-> 用 action=expect_first_row + "
+        f"3c. 新建成功后要验「**列表第一条就是刚建的那条**」-> 用 op=expect_first_row + "
         f"cell_field=<列> + value=<你刚填的同一个值>。这是**唯一**允许「期望值 = 输入值」的场合"
         f"（它验的是「新记录确实落在第一行」，text 断言证明不了位置）；\n"
         f"3d. **埋点现实（P16 · 2026-09-22 现场口径）**：真实系统里 **只有顶层容器**（表格/弹层/工具栏/区块）"
@@ -2949,7 +2957,7 @@ def _parse_steps_text(text: str, items: list[dict]) -> list[TestStep]:
             print(f"      [explore] [!] 元素名自动对齐：{how}")
         _warn_region_variants(sn, it, items)
         if sn and it is None:
-            unmatched.append(f"{s.get('action', 'click')} 的 semantic_name={sn!r}")
+            unmatched.append(f"{s.get('op', 'click')} 的 semantic_name={sn!r}")
         el = None
         if it:
             el = ElementRef(
@@ -2962,11 +2970,11 @@ def _parse_steps_text(text: str, items: list[dict]) -> list[TestStep]:
             )
         steps.append(TestStep(
             order=int(s.get("order", len(steps) + 1)),
-            action=s.get("action", "click"),
+            op=s.get("op", "click"),
             element=el,
             value=s.get("value"),
             assertion=s.get("assertion"),
-            description=s.get("description", ""),
+            desc=s.get("desc", ""),
             # 行内定位：这些字段没有对应控件（semantic_name 为空是正常的），原样透传
             # [!] P25 片 2：**文本兜底路径同样要带全**（原来只写 row_text/cell_field，
             #   而 cell_by/cell_index/row_index 全丢 —— 结构化输出路径能表达的，文本路径表达不了，
@@ -2983,7 +2991,7 @@ def _parse_steps_text(text: str, items: list[dict]) -> list[TestStep]:
     return steps
 
 
-# 方向(1)语义校准：AI 的 description 是否和它选中的元素语义一致
+# 方向(1)语义校准：AI 的 desc（步骤说明）是否和它选中的元素语义一致
 SEMANTIC_MIN_SIM = 0.3   # 低于此重叠度 -> 判"AI 可能选错控件", 降 conf + 打警告
 # V8.4.1 (Windows 实测): **硬拦档位**. 0.00 不是"可能选错", 是"一定选错" --
 #   实测事故: AI 给「点右上角头像展开角色菜单」选了控件 `超@合同列表页`(`超` 是登录用户名),
@@ -3046,9 +3054,9 @@ def _element_semantics_blob(it: dict) -> str:
 
 
 def _apply_semantic_calibration(steps: list[TestStep], items: list[dict]) -> list[TestStep]:
-    """方向(1)：AI 挑完元素后，用其 description(自然语言) 与元素自身语义比对。
+    """方向(1)：AI 挑完元素后，用其 desc(自然语言步骤说明) 与元素自身语义比对。
 
-    注意：AI 的 description 是"动作句"（如 输入/点击），元素语义是"控件名词"
+    注意：AI 的 desc 是"动作句"（如 输入/点击），元素语义是"控件名词"
     （如 placeholder/搜索），两者语法层不同。所以先提取 desc 的【核心控件词】，
     再与元素语义比对相似度 —— 这样"在搜索框输入'合同1'"才匹配得上"搜索框"。
     不匹配(<SEMANTIC_MIN_SIM) → 打警告，但不硬拦（靠 Tier1/Tier2 兜底）。
@@ -3057,12 +3065,12 @@ def _apply_semantic_calibration(steps: list[TestStep], items: list[dict]) -> lis
     #     误选记账带到本轮（实测必填项/写死两处已各犯一次，这里是第三处）。
     SEMANTIC_MISMATCH_NOTES.clear()
     for st in steps:
-        if st.element is None or not st.description:
+        if st.element is None or not st.desc:
             continue
         it = next((x for x in items if x.get("semantic_name") == st.element.semantic_name), None)
         if it is None:
             continue
-        sim = _semantic_sim(st.description, _element_semantics_blob(it))
+        sim = _semantic_sim(st.desc, _element_semantics_blob(it))
         if sim < SEMANTIC_HARD_SIM:
             # 2026-10-13 精准化（AprilPark1012选方案 A）。重叠度 0.00 只说明「描述与控件语义
             #   毫无共同字符」，**不足以断定选错** —— 它有两种成因，必须分开：
@@ -3079,7 +3087,7 @@ def _apply_semantic_calibration(steps: list[TestStep], items: list[dict]) -> lis
             _nm = (it.get("name") or "").strip()
             if _nm and looks_like_hardcoded_row_value(_nm):
                 SEMANTIC_MISMATCH_NOTES.append(
-                    f"第 {st.order} 步「{st.description[:30]}」选的控件「{st.element.semantic_name}」"
+                    f"第 {st.order} 步「{st.desc[:30]}」选的控件「{st.element.semantic_name}」"
                     f"与描述重叠度 {sim:.2f}(控件名本身是业务数据, 一定是选错了)"
                 )
             else:
@@ -3087,9 +3095,9 @@ def _apply_semantic_calibration(steps: list[TestStep], items: list[dict]) -> lis
                       f"但控件名形态正常（描述可能是意图句）-> 不判误选，仅警告")
         if sim < SEMANTIC_MIN_SIM:
             st.element.notes = (
-                f"[语义校准警告] AI 描述《{st.description}》与所选控件语义重叠度仅 {sim:.2f}"
+                f"[语义校准警告] AI 描述《{st.desc}》与所选控件语义重叠度仅 {sim:.2f}"
                 f"(<{SEMANTIC_MIN_SIM})，疑似选错控件，请人工核对"
             )
-            print(f"      [语义校准[!]] step{st.order} 「{st.description}」 "
+            print(f"      [语义校准[!]] step{st.order} 「{st.desc}」 "
                   f"vs 控件语义 重叠度 {sim:.2f} → 疑似选错")
     return steps

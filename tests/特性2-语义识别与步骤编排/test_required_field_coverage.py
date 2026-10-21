@@ -26,7 +26,7 @@ from framework.features.f02_semantic.explorer_explore import (   # noqa: E402
 
 class _St:
     def __init__(self, order, desc="", semantic=None, value=None):
-        self.order, self.description, self.value = order, desc, value
+        self.order, self.desc, self.value = order, desc, value
         self.element = type("E", (), {"semantic_name": semantic})() if semantic else None
 
 

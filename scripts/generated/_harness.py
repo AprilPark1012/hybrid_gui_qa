@@ -710,67 +710,81 @@ class _BrowserPool:
 #     不进交付包 -> 收包方静默失效）。
 # 框架层**零业务词**：不认识"账号/密码"，只认"声明了哪个 by 键 + 哪个动作"。
 
-_LOGIN_BY = {
-    "id": "#{}",
-    "name": '[name="{}"]',
-    "placeholder": '[placeholder="{}"]',
-    "test_id": '[data-testid="{}"]',
-    "title": '[title="{}"]',
-    "aria_label": '[aria-label="{}"]',
-}
+def _login_flow(page, steps, wait=None, login_url=""):
+    """执行**已固化**的登录步骤（L35：登录 = 普通步骤，走同一套定位栈）。
 
+    为什么不再有一套 `by` 选择器解析（V8.5.1 那套已删）：登录页和业务页是**同一个系统**，
+    语义定位没有理由只在业务页可用；`by` 写死 id/css 的话，登录页一改版就得回来改场景，
+    而业务页不用 —— 这正是"两套口径"的典型症状。
 
-def _login_locator(page, by):
-    """把声明式 `by` 合成 locator（登录页重构只改场景，框架不动）。"""
-    if not isinstance(by, dict) or not by:
-        raise RuntimeError("登录步骤缺少 by 定位声明（框架不猜控件，必须由场景声明）")
-    for k, v in by.items():
-        if k == "css":
-            return page.locator(str(v))
-        if k == "text":
-            return page.get_by_text(str(v), exact=False)
-        if k == "label":
-            return page.get_by_label(str(v))
-        if k == "role":
-            role, _, nm = str(v).partition(":")
-            return page.get_by_role(role, name=nm) if nm else page.get_by_role(role)
-        tpl = _LOGIN_BY.get(k)
-        if tpl:
-            return page.locator(tpl.format(v))
-    raise RuntimeError(f"登录步骤：不认识的 by 键 {sorted(by)}（可用 {sorted(_LOGIN_BY)} 或 css/text/label/role）")
+    步骤形状 = `TestStep.to_dict()`（op/desc/element/value/...），
+    定位 = `resolve_locator`（与 `_loc` 同一个栈：Tier1 直定位 → Tier2 指纹相似 → 唯一性校验）。
+    未知动作 / 定位失败 **一律抛**（登录失败必须当场看得见，不许带病往下跑）。
+    """
+    from framework.features.f03_locate.element_map import ElementRef
+    from framework.features.f03_locate.locator_bridge_locate import resolve_locator
+    from framework.shared.step_ops import STEP_OPS, unknown_hint
 
-
-def _login_do(page, op, by, value=None):
-    """执行登录动作序列里的**一个**动作。失败**如实抛**，绝不静默跳过。"""
-    loc = _login_locator(page, by)
-    _log(page, "login_step", f"{op} {sorted((by or {}))}")
-    if op == "fill":
-        loc.fill(str(value or ""), timeout=15000)
-    elif op == "click":
-        loc.click(timeout=15000)
-    elif op == "check":
-        loc.check(timeout=15000)
-    elif op == "hover":
-        loc.hover(timeout=15000)
-    elif op == "press":
-        loc.press(str(value or "Enter"), timeout=15000)
-    else:
-        raise RuntimeError(f"登录步骤：op={op!r} 不认识（可用 fill/click/check/hover/press）")
-
-
-def _login_wait(page, wait):
-    """等**可观测**的登录成功条件（框架铁律：不许用固定 sleep 判断登录成功）。"""
-    if not isinstance(wait, dict) or not wait:
-        return
-    if wait.get("url_not"):
-        _pat = str(wait["url_not"])
-        page.wait_for_url(lambda u: _pat not in u, timeout=15000)
-    elif wait.get("url"):
-        page.wait_for_url(str(wait["url"]), timeout=15000)
-    elif wait.get("selector"):
-        page.wait_for_selector(str(wait["selector"]), timeout=15000)
-    elif wait.get("text"):
-        page.wait_for_selector(f"text={wait['text']}", timeout=15000)
+    seq = list(steps or [])
+    has_goto = any((s or {}).get("op") == "goto" for s in seq)
+    if login_url and not has_goto:
+        page.goto(login_url, wait_until="domcontentloaded")
+    for i, st in enumerate(seq, 1):
+        st = st or {}
+        op = str(st.get("op") or "").strip()
+        if op not in STEP_OPS:
+            raise RuntimeError(f"登录第 {i} 步：{unknown_hint(op)}")
+        if op == "goto":
+            page.goto(str(st.get("value") or login_url), wait_until="domcontentloaded")
+            continue
+        el = st.get("element") or {}
+        if not isinstance(el, dict) or not el:
+            raise RuntimeError(f"登录第 {i} 步（{op}）没有目标元素 —— 用例里的登录步骤不完整")
+        _r = resolve_locator(page, ElementRef.from_dict(el))
+        if not _r.get("ok"):
+            raise RuntimeError(f"登录第 {i} 步（{op} {el.get('semantic_name')!r}）定位失败："
+                               f"{_r.get('reason')}")
+        _loc = _r["locator_obj"]
+        _log(page, "login_step", f"{op} {el.get('semantic_name')}")
+        _val = str(st.get("value") or "")
+        if _val.startswith("__ENV__"):        # 渲染期约定的占位：运行期读环境变量（值不落盘）
+            _val = __import__("os").environ.get(_val[7:], "")
+        if op == "fill":
+            _loc.fill(_val, timeout=15000)
+        elif op == "click":
+            _loc.click(timeout=15000)
+        elif op == "check":
+            _loc.check(timeout=15000)
+        elif op == "press_enter":
+            _loc.press("Enter", timeout=15000)
+        elif op == "select":
+            # 与 `_act` 的 select 口径**完全一致**（同一能力不许两个语义）：
+            #   index -> 第 N 个**非空**选项；value -> 按 value 选；都没有 -> 第一项
+            if st.get("value") is not None:
+                _loc.select_option(str(st.get("value")), timeout=15000)
+            else:
+                _opts_ = _loc.locator("option")
+                _real_ = [i for i in range(_opts_.count())
+                          if (_opts_.nth(i).get_attribute("value") or "").strip()]
+                if not _real_:
+                    raise RuntimeError(f"登录第 {i} 步：select 控件没有可用选项")
+                _want_ = 0 if st.get("index") is None else int(st.get("index"))
+                if _want_ >= len(_real_):
+                    raise RuntimeError(
+                        f"登录第 {i} 步：select 第 {_want_} 项不存在（去掉空占位后只有 {len(_real_)} 项）")
+                _loc.select_option(index=_real_[_want_], timeout=15000)
+        else:
+            raise RuntimeError(f"登录第 {i} 步：{op} 不适用于登录页")
+    if isinstance(wait, dict) and wait:
+        if wait.get("url_not"):
+            _pat = str(wait["url_not"])
+            page.wait_for_url(lambda u: _pat not in u, timeout=15000)
+        elif wait.get("url"):
+            page.wait_for_url(str(wait["url"]), timeout=15000)
+        elif wait.get("selector"):
+            page.wait_for_selector(str(wait["selector"]), timeout=15000)
+        elif wait.get("text"):
+            page.wait_for_selector(f"text={wait['text']}", timeout=15000)
     _log(page, "login_ok", f"url={page.url}")
 
 
@@ -1038,6 +1052,22 @@ def _loc(hint, page):
     """
     from framework.features.f03_locate.locator_bridge_locate import resolve_locator
     from framework.features.f03_locate.element_map import TestStep
+    def _stuck_on_login() -> str:
+        """定位失败时先判断"是不是卡在登录页"，是就把这句话带上。
+
+        [!] 这条不是锦上添花（2026-10 实测踩过）：登录失效时整条用例都跑在登录页上，
+        报出来的却是「元素语义未找到」，排查方向被带到"异步取数 / 弹层未渲染 / 语义名过期"，
+        一整天找错地方。`login_failure_hint()` 早就写好了，但**从来没人调用**（死代码）——
+        现在接在这里：只在**确实**还停在登录页时追加，不在别处污染报错。
+        """
+        try:
+            from framework.shared.login import login_failure_hint, on_login_page
+            if on_login_page(page):
+                return "\n" + login_failure_hint(getattr(page, "url", "") or "")
+        except Exception:                                             # noqa: BLE001
+            return ""
+        return ""
+
     it = _item_for(hint, page)
     if it is None:
         raise RuntimeError(
@@ -1045,20 +1075,22 @@ def _loc(hint, page):
             f"常见原因：(1) 页面还在异步取数/弹层未渲染（慢机器与高并发下常见；检查就绪契约或设 HYBRID_READY_SELECTOR）；"
             f"(2) 弹层没打开（先确认上一步点击是否生效）；(3) 语义名过期（页面改版后要重跑 probe/generate）。"
             f"排查：加 --debug 看逐步截图（log/<run_id>/shots/）。"
+            + _stuck_on_login()
         )
     el = _to_ref(it)
     r = resolve_locator(page, el)
     if r["ok"]:
         if r.get("healed"):
-            _HEALER.record_heal(TestStep(0, "locate", element=el, description=hint), r)
+            _HEALER.record_heal(TestStep(0, "locate", element=el, desc=hint), r)
             _log(page, "heal", f"{hint} 指纹自愈 -> {r['strategy']} conf={r['confidence']}")
         return r["locator_obj"]
     if _SELF_HEAL:
-        h = _HEALER.try_heal(page, TestStep(0, "locate", element=el, description=hint))
+        h = _HEALER.try_heal(page, TestStep(0, "locate", element=el, desc=hint))
         if h.get("recovered"):
             _log(page, "heal", f"{hint} 自愈 -> {h['strategy']} conf={h['confidence']}")
             return h["locator_obj"]
-        raise RuntimeError(f"元素定位失败且自愈未成功: {hint}（{h.get('reason') or '未知'}）")
+        raise RuntimeError(f"元素定位失败且自愈未成功: {hint}（{h.get('reason') or '未知'}）"
+                           + _stuck_on_login())
     raise RuntimeError(f"元素定位失败: {hint}（{r.get('reason')}）")
 
 

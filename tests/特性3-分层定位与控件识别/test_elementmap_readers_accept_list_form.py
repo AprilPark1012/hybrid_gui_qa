@@ -28,7 +28,7 @@ NAME = "物料编码@订单详情页"
 #: 新形态：list，一页一个对象
 DATA_LIST = [{
     "page": "订单详情页", "url": "http://host/order_detail.html", "scenario": "填新增行",
-    "steps": [{"order": 1, "action": "fill", "row_index": -1,
+    "steps": [{"order": 1, "op": "fill", "row_index": -1,
                "element": {"semantic_name": NAME, "role": "textbox", "name": NAME}}],
     "probe_items": [{"semantic_name": NAME, "role": "textbox", "multi_match": 3,
                      "isValid": True}],

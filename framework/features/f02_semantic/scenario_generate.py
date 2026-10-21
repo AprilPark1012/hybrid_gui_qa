@@ -103,16 +103,11 @@ class Scenario:
     probe_pre_host: str = ""
 
     def login_spec(self) -> dict:
-        """登录动作序列声明（**已校验**：有 steps、每步 op 合法、fill 带 value + by）。
+        """登录声明（**已校验**）：`{login_url, scenario, wait}`。
 
-        空 = 该场景不声明登录（行为与今天完全一致，向后兼容）。
-        """
-        return dict(self.login or {})
-
-    def login_spec(self) -> dict:
-        """登录动作序列声明（**已校验**：有 steps、每步 op 合法、fill 带 value + by）。
-
-        空 = 该场景不声明登录（行为与今天完全一致，向后兼容）。
+        `scenario` 是自然语言登录意图，由 `login_flow_explore.plan_login` 用**同一个规划器**
+        在登录页上解析成普通步骤（op/desc/element/value）—— 登录不再是独立 schema。
+        空 = 该场景不声明登录（行为与今天完全一致）。
         """
         return dict(self.login or {})
 
@@ -266,88 +261,44 @@ def load_scenario_file(path) -> Scenario:
                                       pre=pre_list, probe_url=_probe_url))
         if len(pages) == 1:
             warns.append("pages 只给了一个页面 —— 等价于单页场景（跨页至少 2 页）")
-    # ---- P22 批 5：登录前置（可选段）----
-    # ---- V8.5.1：`login:` 段（结构化登录动作序列）----
+    # ---- L35：`login:` 段 = **自然语言登录意图**（url / scenario / wait）----
+    # 为什么改成自然语言：登录步骤原来写 `{op, by, value}`（by 是 hand-written 选择器），
+    #   等于给登录开了**第三条 schema** —— 业务页走语义识别，登录页走选择器。
+    #   现在登录步骤由同一个规划器在登录页上产出普通 TestStep（见
+    #   `login_flow_explore.plan_login`），执行走同一套定位栈。
     raw_login = raw.get("login")
     login: dict = {}
     if raw_login is not None:
         if not isinstance(raw_login, dict):
             raise ScenarioError(
-                f"{p}: login 应为映射（url / steps / wait），实际是 {type(raw_login).__name__}")
-        steps = raw_login.get("steps")
-        if not isinstance(steps, list) or not steps:
+                f"{p}: login 应为映射（url / scenario / wait），实际是 {type(raw_login).__name__}")
+        _legacy = sorted(set(raw_login) & {"steps"})
+        if _legacy:
             raise ScenarioError(
-                f"{p}: login 缺少 steps —— 登录步骤化后登录就是**动作序列**"
-                "（如 [{op: fill, by: {id: login-user}, value: \"账号\"}, ...]）；"
+                f"{p}: login 段不再接受 `steps`（L35 起登录步骤由 AI 用同一套语义识别生成，"
+                "不再手写选择器）。改成自然语言：\n"
+                "  login:\n    url: /login.html\n"
+                "    scenario: 在登录页填写账号与密码，然后点「登录」按钮\n"
+                "    wait: {url_not: login.html}")
+        _unknown = sorted(set(raw_login) - {"url", "login_url", "scenario", "wait"})
+        if _unknown:
+            raise ScenarioError(
+                f"{p}: login 段有未知键 {_unknown}（只认 url / scenario / wait）—— "
+                "写错的键会被静默忽略，所以这里硬红")
+        _lsc = str(raw_login.get("scenario") or "").strip()
+        if not _lsc:
+            raise ScenarioError(
+                f"{p}: login 缺少 `scenario`（自然语言描述怎么登录）—— "
                 "空声明等于没登录，必须显式写清楚，不许静默跳过")
-        _OPS = {"goto", "fill", "click", "check", "press", "hover"}
-        for _i, _st in enumerate(steps, 1):
-            if not isinstance(_st, dict):
-                raise ScenarioError(f"{p}: login.steps[{_i}] 应为映射，实际是 {type(_st).__name__}")
-            _op = str(_st.get("op") or "").strip()
-            if _op not in _OPS:
-                raise ScenarioError(
-                    f"{p}: login.steps[{_i}] 的 op={_op!r} 不认识（可用 {sorted(_OPS)}）")
-            if _op == "goto":
-                if not str(_st.get("url") or "").strip():
-                    raise ScenarioError(f"{p}: login.steps[{_i}] goto 缺少 url")
-                continue
-            if not (_st.get("by") or {}):
-                raise ScenarioError(
-                    f"{p}: login.steps[{_i}]（{_op}）缺少 by 定位声明 —— "
-                    "框架层零业务词，必须由场景声明用哪个键定位（如 {id: btn-login}）")
-            if _op == "fill" and not str(_st.get("value") or ""):
-                raise ScenarioError(
-                    f"{p}: login.steps[{_i}] fill 缺少 value —— "
-                    "真实系统请用 {{env:变量名}} 形态，值不落盘")
         _w = raw_login.get("wait") or {}
-        if _w and not any(k in _w for k in ("url", "url_not", "selector", "text")):
+        if not isinstance(_w, dict):
+            raise ScenarioError(f"{p}: login.wait 应为映射（url / url_not / selector / text）")
+        if not any(k in _w for k in ("url", "url_not", "selector", "text")):
             raise ScenarioError(
                 f"{p}: login.wait 必须给出**可观测**成功条件"
                 "（url / url_not / selector / text 之一）—— 框架铁律：不许固定 sleep 判断登录成功")
         login = {"login_url": str(raw_login.get("url") or "").strip(),
-                 "steps": steps, "wait": dict(_w)}
-    # ---- 以下是既有 auth 段（V8.5.1 收尾时整体删除）----
-    # ---- V8.5.1：`login:` 段（结构化登录动作序列）----
-    raw_login = raw.get("login")
-    login: dict = {}
-    if raw_login is not None:
-        if not isinstance(raw_login, dict):
-            raise ScenarioError(
-                f"{p}: login 应为映射（url / steps / wait），实际是 {type(raw_login).__name__}")
-        steps = raw_login.get("steps")
-        if not isinstance(steps, list) or not steps:
-            raise ScenarioError(
-                f"{p}: login 缺少 steps —— 登录步骤化后登录就是**动作序列**"
-                "（如 [{op: fill, by: {id: login-user}, value: \"账号\"}, ...]）；"
-                "空声明等于没登录，必须显式写清楚，不许静默跳过")
-        _OPS = {"goto", "fill", "click", "check", "press", "hover"}
-        for _i, _st in enumerate(steps, 1):
-            if not isinstance(_st, dict):
-                raise ScenarioError(f"{p}: login.steps[{_i}] 应为映射，实际是 {type(_st).__name__}")
-            _op = str(_st.get("op") or "").strip()
-            if _op not in _OPS:
-                raise ScenarioError(
-                    f"{p}: login.steps[{_i}] 的 op={_op!r} 不认识（可用 {sorted(_OPS)}）")
-            if _op == "goto":
-                if not str(_st.get("url") or "").strip():
-                    raise ScenarioError(f"{p}: login.steps[{_i}] goto 缺少 url")
-                continue
-            if not (_st.get("by") or {}):
-                raise ScenarioError(
-                    f"{p}: login.steps[{_i}]（{_op}）缺少 by 定位声明 —— "
-                    "框架层零业务词，必须由场景声明用哪个键定位（如 {id: btn-login}）")
-            if _op == "fill" and not str(_st.get("value") or ""):
-                raise ScenarioError(
-                    f"{p}: login.steps[{_i}] fill 缺少 value —— "
-                    "真实系统请用 {{env:变量名}} 形态，值不落盘")
-        _w = raw_login.get("wait") or {}
-        if _w and not any(k in _w for k in ("url", "url_not", "selector", "text")):
-            raise ScenarioError(
-                f"{p}: login.wait 必须给出**可观测**成功条件"
-                "（url / url_not / selector / text 之一）—— 框架铁律：不许固定 sleep 判断登录成功")
-        login = {"login_url": str(raw_login.get("url") or "").strip(),
-                 "steps": steps, "wait": dict(_w)}
+                 "scenario": _lsc, "wait": dict(_w)}
     # ---- 以下是既有 auth 段（V8.5.1 收尾时整体删除）----
     raw_auth = raw.get("auth")
     auth: dict = {}
