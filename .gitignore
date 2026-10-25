@@ -58,3 +58,6 @@ demo/.data/
 
 # V8.4.3+：运行时定位快照（generate 产物，按次生成；含当次探测到的语义名）
 scripts/generated/_probe_snapshot.json
+
+# ============ CodeGraph 本地索引（含 SQLite 索引库，绝不入库）============
+.codegraph/

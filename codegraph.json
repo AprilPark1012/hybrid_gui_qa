@@ -1,0 +1,3 @@
+{
+  "deprioritize": ["build_tools/", "scripts/", "demo/"]
+}
