@@ -752,7 +752,16 @@ def cmd_explore(rest: list[str] = None):
                         to_cases=to_cases, pages=job.get("pages"),
                         cassette=cassette, cassette_strict=cassette_strict, auth=job.get("auth"),
                         retry_feedback=feedback, probe_pre=job.get("probe_pre"))
-                except AiExploreError as e:
+                except (AiExploreError, CassetteError) as e:
+                    # V8.7.2（2026-10-25）：把 CassetteError 也接住 —— 回放允许重试之后，
+                    #   **第二轮**的 lookup 可能缺录像。它原本只在 cassette 构造阶段被捕获
+                    #   （本函数开头），从重试路径抛出就是**未捕获 traceback**（CassetteError
+                    #   与 AiExploreError 是兄弟类，不是父子）。缺录像要优雅报缺，不许崩。
+                    if isinstance(e, CassetteError) and replay:
+                        print(f"[explore] [NG] 【{job['label'] or '内联'}】回放缺这一轮的录像：{e}")
+                        print("[explore]    录像包不完整 —— 该场景需要「失败→修复」多轮录像才能离线复演；"
+                              "请到有外网的机器用 --llm-record 重录一份完整包（含重试轮）。")
+                        raise SystemExit(2) from None
                     print(f"[explore] [NG] 【{job['label'] or '内联'}】{e}")
                     raise SystemExit(2) from None
                 cur_warns = list(warns or [])      # C4：接住本轮的质量警告（原来这里是 `_`）
@@ -760,9 +769,21 @@ def cmd_explore(rest: list[str] = None):
                     break                       # 合格 -> 收工
                 print(f"[explore] [!] 第 {attempt + 1} 次产出**校验不合格**")
                 if replay:
-                    # 回放的是同一份录像，转 N 圈还是同一个坏产出 -> 不浪费轮次
-                    print("[explore] [!] 录像回放模式：重试无意义（回放的是同一份录像）-> 直接汇报")
-                    break
+                    # V8.7.2（2026-10-25）：回放**不再**一刀切放弃重试。
+                    #
+                    #   原实现直接 break，理由是「回放的是同一份录像，转 N 圈还是同一个坏产出」。
+                    #   这个前提只在「下一轮 prompt 与这一轮逐字相同」时成立。而重试会把本轮
+                    #   失败原因写进 feedback（见下方 `_next_round_feedback`）-> **prompt 必然是
+                    #   新的**；录像包若录了那一轮（正是「失败→修复」这个闭环），就该继续推进。
+                    #
+                    #   实测后果：录制期必然先失败一轮、第 2 轮才修好 -> 旧代码让这份录像包
+                    #   **永远回放不通**，而「失败→修复」恰恰是最需要在无外网机器上复演的一段
+                    #   （客户机器出问题，你没法联网调试）。
+                    #
+                    #   仍然有界：次数受 retry_limit 约束（_should_retry_again）；录像缺失时
+                    #   走上面的 CassetteError 分支优雅报缺，绝不会静默降级。
+                    print("[explore] [!] 回放模式：带本轮失败原因去录像目录找**下一轮**的录像"
+                          "（找得到就继续，找不到会明确报缺）")
                 if not _should_retry_again(prev=prev_reason, new=qerr,
                                            attempt=attempt, limit=retry_limit):
                     if prev_reason and prev_reason.strip() == qerr.strip():
@@ -793,8 +814,12 @@ def cmd_explore(rest: list[str] = None):
         if ok is not False:
             break                       # 全通过（或环境问题没跑成，不判死刑）
         if replay:
-            print("[explore] [!] 录像回放模式：重试无意义（回放的是同一份录像）-> 直接汇报")
-            raise SystemExit(3)
+            # V8.7.2（2026-10-25）：同上一处 —— 允许「带实跑失败原因」推进到下一轮。
+            #   第 2 轮的 prompt 含失败信息（轮询次数等动态值），与录制时逐字不同
+            #   -> 严格键不中，但结构键只看「场景+控件骨架」不看业务值，会去命中那一轮；
+            #   同键多份时 lookup 已经按「最新录制」取（见 test_cassette_picks_latest_on_struct_tie）。
+            print("[explore] [!] 回放模式：带实跑失败原因去录像目录找**下一轮**的录像"
+                  "（找得到就继续，找不到会明确报缺）")
         if not _should_retry_again(prev=l1_feedback, new=reasons,
                                    attempt=l1_attempt, limit=retry_limit):
             print("[explore] [NG] 有 AI 用例【实测未通过】-> 不可当可用用例"
@@ -916,9 +941,11 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
         _res = AiOutputGate().check()
         _prod: list[str] = list(_res.entries)
         # [!] 2026-10-13：**按 `blocked` 判断**（level==BLOCK 且有 entries），
-        #   不按「entries 非空」—— 行定位缺失已降为 WARN 级（回放模式下重试无意义，
-        #   硬拦 = 死路，会把 all --ai 挡在 explore 里 EXIT=3）；拿 entries 当拦截依据
+        #   不按「entries 非空」—— 行定位缺失已降为 WARN 级（硬拦 = 死路，
+        #   会把 all --ai 挡在 explore 里 EXIT=3）；拿 entries 当拦截依据
         #   会把 WARN 一起拦下，降级就白做了。
+        #   [!] V8.7.2：原此处理由里的「回放模式」从句已过时（回放现在也能推进到重试轮），
+        #   已删；「硬拦 = 死路」这条主理由不变。
         if _res.blocked:
             print("  [NG] 校验不合格：AI 产出有**结构性缺陷** -> 不试跑，直接带原因重生成")
             for line in _prod:

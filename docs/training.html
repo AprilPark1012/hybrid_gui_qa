@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.7.1）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.7.2）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.7.1 · 2026-10-21　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.7.2 · 2026-10-25　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1290,12 +1290,12 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
 <!-- ========== 6. 框架特性设计实现说明（按特性/子特性 · 以代码为基准） ========== -->
 <section>
-  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 54 子特性）</h2>
+  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 55 子特性）</h2>
   <p class="sec-sub">第 5 章 5.2 讲「一条主线上有什么」；本章按 <b>特性 -&gt; 子特性</b> 横向拆开：每个子特性给「<b>关键实现逻辑</b> + <b>函数调用关系</b> + <b>证据（判据文件）</b>」，并配一张<b>图例</b>。编号 / 名称 / 目标 / 判据归属<b>直接读单一来源</b> <span class="code-inline">framework/features/f09_gate/feature_spec.py</span> 渲染（它同时被 <span class="code-inline">build_tools/build_feature_map.py</span> 渲染成 <span class="code-inline">docs/feature_map.md</span>）；实现逻辑以 <span class="code-inline">framework/</span> 下的<b>真实代码为准</b>。</p>
-  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 54 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
+  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 55 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
   <div class="card"><h4 style="margin-bottom:8px">图例 0 · 端到端函数调用地图（cli 是总入口，三条链共用同一条确定性下游）</h4><svg viewBox="0 0 920 252" width="100%" height="auto" role="img" style="background:#0d1117;border-radius:10px;padding:4px;display:block"><defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#64748b"/></marker></defs><rect x="40" y="14" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="40" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">python -m framework.cli  ->  main()</text><rect x="40" y="76" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="102" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_explore()  ->  explorer.ai_explore()</text><rect x="40" y="138" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="164" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_generate()  ->  generator.generate_scripts()</text><rect x="40" y="200" width="560" height="42" rx="9" fill="#0f2a20" stroke="#22c55e" stroke-width="1.2"/><text x="320" y="226" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_run()  ->  pytest  ->  生成物 _harness._act / _loc / _assert_*</text><line x1="320" y1="56" x2="320" y2="74" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="118" x2="320" y2="136" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="180" x2="320" y2="198" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><rect x="648" y="86" width="252" height="94" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="110" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">probe 层（只描述、不定位）</text><text x="774" y="132" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">scan_page / probe_page</text><text x="774" y="150" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">expandable / editable / modal</text><text x="774" y="168" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">anchor + path（容器下钻）</text><line x1="648" y1="110" x2="602" y2="104" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><line x1="648" y1="158" x2="602" y2="162" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><rect x="648" y="198" width="252" height="46" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="218" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">locator_bridge.resolve_locator()</text><text x="774" y="235" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">Tier1 精确 -> Tier2 指纹（唯一性校验）</text><line x1="648" y1="221" x2="602" y2="221" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/></svg></div>
   <div class="card">
-    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 54 子特性）</h4>
+    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 55 子特性）</h4>
     <table class="tbl"><tr><th style="width:46px">No</th><th style="width:230px">特性</th><th style="width:110px">key</th><th style="width:64px">子特性</th><th>目标</th></tr>
     <tr><td>1</td><td><b>AI 链路与离线回放</b></td><td><span class="code-inline">mixed_chain</span></td><td>3</td><td>只剩真 AI 链路（all --ai）与离线回放两种运行形态：都能跑通，且有一条统一验收入口</td></tr>
     <tr><td>2</td><td><b>语义识别与步骤编排</b></td><td><span class="code-inline">semantic</span></td><td>4</td><td>把「人的自然语言」变成「可执行的步骤序列」—— 面向生成，对人友好也对机器友好</td></tr>
@@ -1304,10 +1304,10 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <tr><td>5</td><td><b>用例脚本数据三层分离</b></td><td><span class="code-inline">layers</span></td><td>5</td><td>用例（意图）/ 脚本（可执行）/ 数据（多变）三层各司其职，数据变了不用改用例</td></tr>
     <tr><td>6</td><td><b>自愈闭环 Healer</b></td><td><span class="code-inline">healer</span></td><td>1</td><td>定位失败时能自动修复并留痕（当前无判据，属规划中）</td></tr>
     <tr><td>7</td><td><b>并发与资源安全</b></td><td><span class="code-inline">concurrency</span></td><td>4</td><td>并行跑验证不许把内存打爆；资源闸门不许支配一类自测</td></tr>
-    <tr><td>8</td><td><b>离线回放</b></td><td><span class="code-inline">replay</span></td><td>4</td><td>没有外网的机器也能跑 AI 链路 —— 靠 LLM 录像</td></tr>
+    <tr><td>8</td><td><b>离线回放</b></td><td><span class="code-inline">replay</span></td><td>5</td><td>没有外网的机器也能跑 AI 链路 —— 靠 LLM 录像</td></tr>
     <tr><td>9</td><td><b>质量闸门体系</b></td><td><span class="code-inline">gate</span></td><td>8</td><td>框架自己守自己：布局/命名/环境/交付/就绪/安全六类契约，坏了就红</td></tr>
     <tr><td>10</td><td><b>CLI 帮助契约</b></td><td><span class="code-inline">cli</span></td><td>10</td><td>命令行对新手友好：帮助自动覆盖、参数错必报错、退出码能区分好坏</td></tr>
-    <tr><td>11</td><td><b>交付即验证</b></td><td><span class="code-inline">verify</span></td><td>2</td><td>两档验证：① 产出物被闸门拦下 -&gt; 带具体原因让 AI 重生成；② 生成脚本后真跑一次 -&gt; 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、录像回放模式不重试、退出码可区分（2 产出侧 / 3 实跑侧）</td></tr>
+    <tr><td>11</td><td><b>交付即验证</b></td><td><span class="code-inline">verify</span></td><td>2</td><td>两档验证：① 产出物被闸门拦下 -&gt; 带具体原因让 AI 重生成；② 生成脚本后真跑一次 -&gt; 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、回放同样可带失败原因推进重试轮（缺录像 exit 2 报缺）、退出码可区分（2 产出侧 / 3 实跑侧）</td></tr>
     </table>
   </div>
   <section class="feat">
@@ -1624,6 +1624,11 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <div class="flow2"><span class="fnode">LLM 抖动</span><span class="farrow">-></span><span class="fnode">_get_llm_text()</span><span class="farrow">-></span><span class="fnode y">退避重试（HYBRID_LLM_ATTEMPTS 默认 3 次）</span><span class="farrow">-></span><span class="fnode g">成功 -> 继续</span><span class="farrow">-></span><span class="fnode r">耗尽 -> 如实失败</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性8-离线回放/test_llm_retry.py（3 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性8-离线回放/verify_offline_chain_deps.py</span></p>
     </div>
+    <div class="subfeat">
+      <h5 class="subfeat-title" id="sub-8.5" data-sub="8.5"><span class="sno">8.5</span>回放的重试轮推进</h5>
+      <p class="codesrc"><b>目标：</b>回放遇到「产出校验不合格 / 实跑失败」不许直接放弃：下一轮 prompt 因带失败原因而不同，录像录了那一轮就继续推进；缺那一轮则 fail loud 报缺（exit 2 + 明话），绝不静默降级、也绝不抛未捕获 traceback</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性8-离线回放/test_replay_allows_retry_rounds.py（3 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+    </div>
   </section>
   <section class="feat">
     <h4 class="feat-title" id="feat-9" data-feat="9"><span class="fno">特性 9</span>质量闸门体系 <span class="fkey">gate</span></h4>
@@ -1768,15 +1773,15 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
   <section class="feat">
     <h4 class="feat-title" id="feat-11" data-feat="11"><span class="fno">特性 11</span>交付即验证 <span class="fkey">verify</span></h4>
-    <p class="feat-goal"><b>目标：</b>两档验证：① 产出物被闸门拦下 -&gt; 带具体原因让 AI 重生成；② 生成脚本后真跑一次 -&gt; 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、录像回放模式不重试、退出码可区分（2 产出侧 / 3 实跑侧）　<b>目录：</b><span class="code-inline">tests/特性11-交付即验证/</span></p>
+    <p class="feat-goal"><b>目标：</b>两档验证：① 产出物被闸门拦下 -&gt; 带具体原因让 AI 重生成；② 生成脚本后真跑一次 -&gt; 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、回放同样可带失败原因推进重试轮（缺录像 exit 2 报缺）、退出码可区分（2 产出侧 / 3 实跑侧）　<b>目录：</b><span class="code-inline">tests/特性11-交付即验证/</span></p>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-11.1" data-sub="11.1"><span class="sno">11.1</span>验证入口契约（两档重试口径）</h5>
-      <p class="codesrc"><b>目标：</b>`cli verify` 独立入口的契约（能单独重跑，不必再走一遍 explore）；两档重试的能力口径：① 产出物被质量闸拦下（写死行数据 / 严重误选 / 必填未编排 / 行定位缺失）-&gt; 带原因重生成；② 生成脚本后真跑一次 -&gt; 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、录像回放模式不重试、退出码可区分（2 产出侧 / 3 实跑侧）。[!] V8.6.3：本特性**只挂物理住在本目录的判据**；两档重试的其余判据物理住在 tests/特性2-语义识别与步骤编排/（登记在 2.2），按「登记目录 == 物理目录」不在此重复挂。[!] V8.6.4：原 `test_retry_is_bounded`（被特性2 严格覆盖）、原只查「全文 &gt;= 1 次」的 `test_replay_mode_does_not_retry`（删任一档都不红）已删；回放不重试改由强判据 `test_replay_is_skipped_in_both_retry_paths` 钉「两档各自都在」（产出档分支体 `break` / 实跑档分支体 `raise SystemExit(3)`）</p>
+      <p class="codesrc"><b>目标：</b>`cli verify` 独立入口的契约（能单独重跑，不必再走一遍 explore）；两档重试的能力口径：① 产出物被质量闸拦下（写死行数据 / 严重误选 / 必填未编排 / 行定位缺失）-&gt; 带原因重生成；② 生成脚本后真跑一次 -&gt; 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、回放同样可带失败原因推进重试轮、退出码可区分（2 产出侧 / 3 实跑侧）。[!] V8.6.3：本特性**只挂物理住在本目录的判据**；两档重试的其余判据物理住在 tests/特性2-语义识别与步骤编排/（登记在 2.2），按「登记目录 == 物理目录」不在此重复挂。[!] V8.6.4：原 `test_retry_is_bounded`（被特性2 严格覆盖）、原只查「全文 &gt;= 1 次」的 `test_replay_mode_does_not_retry`（删任一档都不红）已删。[!] V8.7.2（契约变更）：回放**不再**一刀切跳过重试 —— 重试会把失败原因写进 prompt，下一轮 prompt 就不是「同一份录像」；录像若录了那一轮就该推进（否则「失败→修复」永远不可离线复演）。强判据由此改名并改契约：`test_replay_advances_to_next_round_in_both_retry_paths` 钉「两档各自都允许推进」+「分支体不许是 break / exit 3」+「缺录像必须 exit 2 报缺」；「白转」防线改由 `_should_retry_again` 有界约束 + 缺录像 fail loud 覆盖</p>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性11-交付即验证/test_verify_entry_contract.py（5 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-11.2" data-sub="11.2"><span class="sno">11.2</span>实跑档重试（判据住特性2） <span class="code-inline">[判据住特性2]</span></h5>
-      <p class="codesrc"><b>目标：</b>实跑档（generate + 逐条实跑）失败 -&gt; 带原因整轮重来；录像回放模式不重试；实跑未过 exit 3 —— 能力口径保留在本条；其判据（test_ai_retry_contract / test_ai_retry_same_cause，前者 V8.6.4 第二批由 test_ai_retry_loop 改名 —— 它守的是「上限 / 回炉 / 接线」契约）物理住在 tests/特性2-语义识别与步骤编排/，按「登记目录 == 物理目录」登记在 2.2</p>
+      <p class="codesrc"><b>目标：</b>实跑档（generate + 逐条实跑）失败 -&gt; 带原因整轮重来；回放同样带失败原因推进（缺录像 exit 2 报缺）；实跑未过 exit 3 —— 能力口径保留在本条；其判据（test_ai_retry_contract / test_ai_retry_same_cause，前者 V8.6.4 第二批由 test_ai_retry_loop 改名 —— 它守的是「上限 / 回炉 / 接线」契约）物理住在 tests/特性2-语义识别与步骤编排/，按「登记目录 == 物理目录」登记在 2.2</p>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b>无<br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
@@ -2069,9 +2074,13 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.7.1</b>（2026-10-21）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.7.2</b>（2026-10-25）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.6.4</span><span class="cl-date">2026-10-17</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>合并重复判据（两批做完 5 组）</b> —— 同一件事不再由两条判据分守：删 16 条重复/假绿、把 5 个文件合成 2 个（另 2 个改名）、补 3 条更强的新判据</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.7.2</span><span class="cl-date">2026-10-25</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>离线回放不再掐断「失败→修复」闭环</b> —— 契约变更：回放允许带失败原因推进重试轮，缺录像 fail loud</span></div>
+      <p class="cl-sum">真机实测挖出来的缺口：录制期必然先失败一轮、第 2 轮才修好（<code>orders_invoice_full_lifecycle</code>：第 1 轮 AI 想不到「两步保存」-> 整单没提交 -> 订单状态不流转 -> 实跑 FAILED；第 2 轮带失败原因重生成 -> PASSED）。<br><b>[根因]</b> 旧实现遇到 replay 一刀切放弃（产出档 <code>break</code> / 实跑档 <code>raise SystemExit(3)</code>），依据是「回放的是同一份录像，转 N 圈还是同一个坏产出」—— <b>这个前提不成立</b>：重试会把本轮失败原因写进 prompt，下一轮 prompt 必然不同；录像若录了那一轮就该推进，否则「失败→修复」永远不可离线复演（而客户机器出问题恰恰没法联网调试）。<br><b>[修复]</b> ① 两档都放行回放重试（仍受 <code>_should_retry_again</code> 有界约束）；② <code>CassetteError</code> 一并接住 —— 放行重试后第二轮缺录像会抛<b>未捕获 traceback</b>（<code>CassetteError</code> 与 <code>AiExploreError</code> 是<b>兄弟类不是父子</b>，原本只在 cassette 构造阶段被捕获），现在 exit 2 并明确报「回放缺这一轮的录像 / 录像包不完整」。<br><b>[契约变更]</b> 特性11 判据 <code>test_replay_is_skipped_in_both_retry_paths</code> -> <code>test_replay_advances_to_next_round_in_both_retry_paths</code>：钉「两档各自都允许推进」+ 「分支体不许是 break / exit 3」+「缺录像必须 exit 2」。原判据要防的「白转 N 圈」改由<b>有界重试 + 缺录像 fail loud</b> 覆盖，没有放松。<br><b>[假绿修复]</b> 特性2 <code>test_replay_mode_skips_retry</code> 判据过松（只在重试判定点附近找 <code>is_replay</code>/<code>回放</code> 字样，改成放行后它照样绿）-> 改名 <code>test_replay_mode_has_explicit_branch_near_retry_gate</code> 并加「旧口径必须消失」硬断言。<br><b>[新增判据]</b> 特性 8.5「回放的重试轮推进」（3 条行为测试：实跑失败后重试 / L0 不合格后重试 / 缺录像优雅报缺）。先红后绿真值：把 <code>cli.py</code> 回退后 3 条全红（打出 <code>SystemExit(3)</code> + 旧文案）。<br><b>[文档闭环]</b> <code>feature_spec</code> 特性 11 三处旧口径（「录像回放模式不重试」）同步更新；<code>feature_map.md</code> / <code>training.html</code> 重算（11 特性 / 55 子特性）。<br><b>[顺带]</b> 关闭过期注释口径（<code>cli.py</code> 里「回放模式下重试无意义」的降级理由从句已删，「硬拦=死路」主理由不变）。</p>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.6.4</span><span class="cl-date">2026-10-17</span><span class="cl-tag">上一版本</span><span class="cl-theme"><b>合并重复判据（两批做完 5 组）</b> —— 同一件事不再由两条判据分守：删 16 条重复/假绿、把 5 个文件合成 2 个（另 2 个改名）、补 3 条更强的新判据</span></div>
       <p class="cl-sum">V8.6.3 审计时登记了 <b>5 组重复判据</b>（同一件事被两条判据分别守着），并明确留到本版处理 —— 本版<b>分两批把 5 组全部做完</b>，判据是三条硬口径：<br>· <b>留下的那条必须更强</b>（走公开出口、能区分两种坏法），不是「删一条凑数」<br>· <b>每条被删的判据都要写清由谁接手</b>（不许出现「保护真空」）<br>· <b>全量判据一条都不许红</b>（合并会降总数，属预期；红一条就是回归）<br><b>第一批（组 5 / 组 4 / 组 1）</b>：删 4 条、新增 2 条强判据、<b>3 个文件合成 1 个</b>、<b>1 个文件改名</b>（<code>wait_text</code> 渲染契约三合一 / 三个闸门不合并文件只 1 删 + 1 改名 / 两档重试收口）；<br><b>第二批（组 3 / 组 1 遗留 / 组 2）</b>：删 <b>12 条</b>（含 <b>3 个整文件</b>）、并入/新增 10 条、<b>2 个文件改名</b>，并把<b>全仓唯一的防空转哨兵</b>加固成「<code>ai_*.json >= 1</code> 且 <code>scenarios/*.yml >= 1</code>」。<br>结果（两批合计）：全量判据 <b>1218 passed / 3 skipped / 0 failed</b>（基线 1222，净 <b>-4</b> = 第一批 -2 + 第二批 -2）。</p>
       <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">[go] 新增</span><ul>
         <li><b>新增判据（组 5）<code>test_wait_text_rendered_kwargs_match_real_signature</code></b>：<b>解析 <code>generator_generate.py</code> 里 <code>def _assert_wait_text(...)</code> 的真参数名</b>，与渲染出的 kwarg 名（<code>timeout_ms=</code> / <code>refresh=</code> / <code>desc=</code> / <code>selector=</code>）求差集必须为<b>空集</b>。为什么加：渲染层是<b>字符串拼参数名</b>、签名是 <code>def</code>，两边靠人眼保持一致 —— 名字写错<b>在纯函数判据里完全看不见</b>，实跑才 <code>TypeError: got an unexpected keyword argument</code>（代价 = 一整轮端到端 + 一轮 AI 重试）。先红后绿真值：真渲染差集 = <code>[]</code>；把 <code>refresh=</code> 改成 <code>refresh_typo=</code> -> 差集 = <code>['refresh_typo']</code>（判据自带这条负向自证）</li>
@@ -2956,7 +2965,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.7.1</b>（2026-10-21）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.7.2</b>（2026-10-25）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
@@ -2996,7 +3005,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       </ul>
     </li>
     <li class="toc-chap has-sub">
-      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 54 子特性）</a>
+      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 55 子特性）</a>
       <ul class="toc-l2">
         <li class="toc-feat">
           <a href="#feat-1">特性 1AI 链路与离线回放 mixed_chain</a>
@@ -3078,6 +3087,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
             <li><a href="#sub-8.2">8.2录像体检</a></li>
             <li><a href="#sub-8.3">8.3录制与回放契约</a></li>
             <li><a href="#sub-8.4">8.4LLM 抖动重试</a></li>
+            <li><a href="#sub-8.5">8.5回放的重试轮推进</a></li>
           </ul>
         </li>
         <li class="toc-feat">

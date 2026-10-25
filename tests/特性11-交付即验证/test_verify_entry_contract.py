@@ -64,14 +64,19 @@ def test_all_accepts_scenario_flags_when_ai():
 # 同一个 `_ai_retry_limit` 的口径只有一份，判据也只留一份（在特性2，与实现同特性）。
 
 
-# [!] V8.6.4（合并重复判据 · 第一批）：原 `test_replay_mode_does_not_retry` 只要求
-# 「`录像回放模式：重试无意义` 在 cli.py 里**出现 >= 1 次**」—— 而两档是**各自独立**跳过回放的
-# （产出档 `break` 出产出重试循环 / 实跑档 `raise SystemExit(3)`），所以**删掉任一档的那处都不会红**：
-# 剩下那一处照样让"至少 1 次"成立。等价的弱兜底判据由此换成下面这条**强判据**。
-# "回放不重试"的**行为面**（重试判定点附近能看到回放分支）仍由特性2 的
-# `test_replay_mode_skips_retry` 守着；这条补的是**两档各自都在**这件事。
-
-_REPLAY_NEEDLE = "录像回放模式：重试无意义"
+# [!] V8.7.2（2026-10-25）：契约**变更** —— 原判据 `test_replay_is_skipped_in_both_retry_paths`
+# 要求两档各自「因回放而停下」（产出档 `break` / 实跑档 `raise SystemExit(3)`），
+# 依据是「回放的是同一份录像，转 N 圈还是同一个坏产出」。**这个前提不成立**：
+#   重试会把本轮失败原因写进 feedback（见 `_next_round_feedback`）-> **下一轮 prompt 必然是新的**；
+#   录像包若录了那一轮（「失败→修复」闭环，本项目 orders_invoice_full_lifecycle 实测就是这样：
+#   第 1 轮缺「两步保存」-> 实跑 FAILED；第 2 轮带失败原因重生成 -> PASSED），就该继续推进。
+#   旧口径让这份录像包**永远回放不通** —— 而「失败→修复」恰恰最需要在无外网机器上复演。
+#
+# [!] 原判据要防的「白转 N 圈」**并未放松**，改由这条新判据的两个条件覆盖：
+#   (a) 仍受 `_should_retry_again` 有界约束（非同因、次数用尽即停）；
+#   (b) 缺录像 -> `CassetteError` -> **exit 2 明确报缺**，根本不进第二圈。
+# 旧口径的字符串 `重试无意义` 必须**彻底消失**（残留 = 行为没真改）。
+_REPLAY_NEEDLE = "回放模式：带"
 
 
 def _replay_branches(src: str, needle: str) -> list[tuple[str, str]]:
@@ -111,36 +116,50 @@ def _replay_branches(src: str, needle: str) -> list[tuple[str, str]]:
     return out
 
 
-def test_replay_is_skipped_in_both_retry_paths():
-    """回放不重试：**两档各自**都要显式跳过 —— 出现 >= 2 次，且分别落在两个分支体内。
+def test_replay_advances_to_next_round_in_both_retry_paths():
+    """回放**允许**推进到下一轮（两档各自），且缺录像必须 fail loud —— 不再一刀切跳过。
 
-    为什么要有这条（V8.6.4）：旧判据只要"全文 >= 1 次"，删掉任一档都不会红 ——
-    而两档的重试是**两条独立代码路径**（产出档：产出物被闸门拦下 -> 重生成；
-    实跑档：脚本实跑失败 -> 整轮重来），各自的"回放则停"必须各自存在。
+    契约（V8.7.2 变更，理由见本文件上方长注释）：录制期必然先失败一轮、第 2 轮才修好；
+    重试会把失败原因写进 prompt -> 下一轮 prompt 与录制那轮**不同**，录像若录了那一轮就该推进。
 
-    两档的可区分特征（本判据据此钉"分落两档"）：
-      · **产出档**（产出重试循环内）-> 该分支体第一条语句是 `break`（停掉产出重试循环）；
-      · **实跑档**（L1 实跑失败后）-> 该分支体第一条语句是 `raise SystemExit(3)`（实跑未过 -> 退出码 3）。
-    行号不写死（会偏移）：靠"该行所在分支体做了什么"识别，不看第几行。
+    判据四条（缺一不可）：
+      (1) 旧口径 `重试无意义` **彻底消失** —— 残留即行为没真改；
+      (2) 两档**各自**都有回放分支说明（>= 2 处），且分支头是 `if replay:`；
+      (3) 那些分支体**不许**是 `break` / `raise SystemExit(3)` —— 回放不再因失败而停下；
+      (4) 「白转」防线换了位置：缺录像必须由 `except (AiExploreError, CassetteError)` 接住并退 2，
+          外加仍受 `_should_retry_again` 的有界约束（不是无条件重试）。
+    行号不写死（会偏移）：靠缩进解析分支头与分支体首条语句。
     """
     src = (REPO / "framework" / "features" / "f10_cli" / "cli.py").read_text(encoding="utf-8", errors="replace")
+
+    assert "重试无意义" not in src, (
+        "旧口径「重试无意义」仍留在 cli.py 里 —— 回放遇到失败后仍会一刀切停下，"
+        "「失败→修复」闭环不可离线复演")
+
     n = src.count(_REPLAY_NEEDLE)
     assert n >= 2, (
-        f"「{_REPLAY_NEEDLE}」只出现 {n} 次 —— 产出档与实跑档必须**各自**显式跳过回放模式"
-        f"（只堵一档时，另一档会白转 N 圈：回放的是同一份录像，转多少圈都是同一个坏产出）")
+        f"「{_REPLAY_NEEDLE}」只出现 {n} 次 —— 产出档（L0 校验不合格）与实跑档（L1 实跑失败）"
+        f"必须**各自**说明「带失败原因去找下一轮的录像」，只写一档时删掉另一档也不会红")
+
     branches = _replay_branches(src, _REPLAY_NEEDLE)
     assert len(branches) == n, (
         f"命中行数（{n}）与解析出的分支数（{len(branches)}）不一致 -> 解析写法要跟着代码改")
     for head, nxt in branches:
         assert "replay" in head, (
             f"「{_REPLAY_NEEDLE}」出现在 `{head}` 里 —— 它必须在**回放模式的分支**内"
-            f"（写成无条件打印 = 回放模式真的会重试）")
-    assert any(nxt.startswith("break") for _, nxt in branches), (
-        f"产出档（产出物校验不合格 -> 重生成的重试循环）没有因回放而**停下**："
-        f"命中分支 = {branches}")
-    assert any(nxt.startswith("raise SystemExit(3)") for _, nxt in branches), (
-        f"实跑档（L1 实跑失败 -> 整轮重来）没有因回放而跳过重试并如实退 3："
-        f"命中分支 = {branches}")
+            f"（写成无条件打印 = 非回放模式也被这段文案误导）")
+        assert not nxt.startswith("break"), (
+            f"回放分支体是 `break`（因回放而停下重试循环）：{head} -> {nxt}")
+        assert not nxt.startswith("raise SystemExit(3)"), (
+            f"回放分支体是 `raise SystemExit(3)`（因回放而整体退出）：{head} -> {nxt}")
+
+    assert "_should_retry_again(" in src, (
+        "没在 _should_retry_again 闸门内推进 —— 回放会变成**无条件重试**（原判据要防的「白转 N 圈」）")
+    assert "except (AiExploreError, CassetteError)" in src, (
+        "没把 CassetteError 一并接住 —— 回放允许重试后，第二轮缺录像会抛**未捕获 traceback**"
+        "（CassetteError 与 AiExploreError 是兄弟类，不是父子）")
+    assert "回放缺这一轮的录像" in src, (
+        "缺录像时没有明确报出「缺的是哪一轮」—— 只说「没有这一份」等于让人猜")
 
 
 def test_verify_failure_exit_codes_are_distinct():

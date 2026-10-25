@@ -61,11 +61,40 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.7.1"
-VERSION_DATE = "2026-10-21"
+VERSION = "8.7.2"
+VERSION_DATE = "2026-10-25"
 CHANGELOG = [
     dict(
-        version="8.6.4", date="2026-10-17", tag="当前版本",
+        version="8.7.2", date="2026-10-25", tag="当前版本",
+        theme="<b>离线回放不再掐断「失败→修复」闭环</b> —— 契约变更：回放允许带失败原因推进重试轮，缺录像 fail loud",
+        summary="真机实测挖出来的缺口：录制期必然先失败一轮、第 2 轮才修好（<code>orders_invoice_full_lifecycle</code>："
+                "第 1 轮 AI 想不到「两步保存」-> 整单没提交 -> 订单状态不流转 -> 实跑 FAILED；"
+                "第 2 轮带失败原因重生成 -> PASSED）。<br>"
+                "<b>[根因]</b> 旧实现遇到 replay 一刀切放弃（产出档 <code>break</code> / 实跑档 "
+                "<code>raise SystemExit(3)</code>），依据是「回放的是同一份录像，转 N 圈还是同一个坏产出」"
+                "—— <b>这个前提不成立</b>：重试会把本轮失败原因写进 prompt，下一轮 prompt 必然不同；"
+                "录像若录了那一轮就该推进，否则「失败→修复」永远不可离线复演（而客户机器出问题恰恰没法联网调试）。<br>"
+                "<b>[修复]</b> ① 两档都放行回放重试（仍受 <code>_should_retry_again</code> 有界约束）；"
+                "② <code>CassetteError</code> 一并接住 —— 放行重试后第二轮缺录像会抛<b>未捕获 traceback</b>"
+                "（<code>CassetteError</code> 与 <code>AiExploreError</code> 是<b>兄弟类不是父子</b>，"
+                "原本只在 cassette 构造阶段被捕获），现在 exit 2 并明确报「回放缺这一轮的录像 / 录像包不完整」。<br>"
+                "<b>[契约变更]</b> 特性11 判据 <code>test_replay_is_skipped_in_both_retry_paths</code> -> "
+                "<code>test_replay_advances_to_next_round_in_both_retry_paths</code>：钉「两档各自都允许推进」+ "
+                "「分支体不许是 break / exit 3」+「缺录像必须 exit 2」。原判据要防的「白转 N 圈」改由"
+                "<b>有界重试 + 缺录像 fail loud</b> 覆盖，没有放松。<br>"
+                "<b>[假绿修复]</b> 特性2 <code>test_replay_mode_skips_retry</code> 判据过松（只在重试判定点附近找 "
+                "<code>is_replay</code>/<code>回放</code> 字样，改成放行后它照样绿）-> 改名 "
+                "<code>test_replay_mode_has_explicit_branch_near_retry_gate</code> 并加「旧口径必须消失」硬断言。<br>"
+                "<b>[新增判据]</b> 特性 8.5「回放的重试轮推进」（3 条行为测试：实跑失败后重试 / L0 不合格后重试 / "
+                "缺录像优雅报缺）。先红后绿真值：把 <code>cli.py</code> 回退后 3 条全红"
+                "（打出 <code>SystemExit(3)</code> + 旧文案）。<br>"
+                "<b>[文档闭环]</b> <code>feature_spec</code> 特性 11 三处旧口径（「录像回放模式不重试」）同步更新；"
+                "<code>feature_map.md</code> / <code>training.html</code> 重算（11 特性 / 55 子特性）。<br>"
+                "<b>[顺带]</b> 关闭过期注释口径（<code>cli.py</code> 里「回放模式下重试无意义」的降级理由从句已删，"
+                "「硬拦=死路」主理由不变）。",
+    ),
+    dict(
+        version="8.6.4", date="2026-10-17", tag="上一版本",
         theme="<b>合并重复判据（两批做完 5 组）</b> —— 同一件事不再由两条判据分守："
               "删 16 条重复/假绿、把 5 个文件合成 2 个（另 2 个改名）、补 3 条更强的新判据",
         summary="V8.6.3 审计时登记了 <b>5 组重复判据</b>（同一件事被两条判据分别守着），"

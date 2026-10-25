@@ -220,6 +220,16 @@ FEATURES = [
                  class2=["verify_e2e_scenario3_cassette.py", "verify_e2e_scenario3_replay.py"]),
             dict(no="8.4", name="LLM 抖动重试", goal="LLM 偶发失败要退避重试，不许把抖动当失败",
                  class1=["test_llm_retry.py"], class2=["verify_offline_chain_deps.py"]),
+            # V8.7.2（2026-10-25）：回放不再在「校验失败/实跑失败」处一刀切放弃。
+            #   录制期必然先失败一轮、第 2 轮才修好（orders_invoice_full_lifecycle 实测），
+            #   而重试会把失败原因写进 prompt -> 下一轮 prompt 与录制那轮**不同**；
+            #   录像包若录了那一轮（正是「失败→修复」闭环），就该继续推进。
+            #   缺录像必须优雅报缺（CassetteError 与 AiExploreError 是兄弟类，原本只会 traceback）。
+            dict(no="8.5", name="回放的重试轮推进",
+                 goal="回放遇到「产出校验不合格 / 实跑失败」不许直接放弃：下一轮 prompt 因带失败原因而不同，"
+                      "录像录了那一轮就继续推进；缺那一轮则 fail loud 报缺（exit 2 + 明话），"
+                      "绝不静默降级、也绝不抛未捕获 traceback",
+                 class1=["test_replay_allows_retry_rounds.py"], class2=[]),
         ],
     ),
 
@@ -341,26 +351,31 @@ FEATURES = [
     dict(
         no=11, key="verify", name="交付即验证",
         goal="两档验证：① 产出物被闸门拦下 -> 带具体原因让 AI 重生成；② 生成脚本后真跑一次 -> 失败带原因整轮重来。"
-             "两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、录像回放模式不重试、退出码可区分（2 产出侧 / 3 实跑侧）",
+             "两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、回放同样可带失败原因推进重试轮（缺录像 exit 2 报缺）、"
+             "退出码可区分（2 产出侧 / 3 实跑侧）",
         dir="特性11-交付即验证",
         subs=[
             dict(no="11.1", name="验证入口契约（两档重试口径）",
                  goal="`cli verify` 独立入口的契约（能单独重跑，不必再走一遍 explore）；"
                       "两档重试的能力口径：① 产出物被质量闸拦下（写死行数据 / 严重误选 / 必填未编排 / 行定位缺失）"
                       "-> 带原因重生成；② 生成脚本后真跑一次 -> 失败带原因整轮重来。"
-                      "两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、录像回放模式不重试、"
+                      "两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、回放同样可带失败原因推进重试轮、"
                       "退出码可区分（2 产出侧 / 3 实跑侧）。"
                       "[!] V8.6.3：本特性**只挂物理住在本目录的判据**；"
                       "两档重试的其余判据物理住在 tests/特性2-语义识别与步骤编排/（登记在 2.2），"
                       "按「登记目录 == 物理目录」不在此重复挂。"
                       "[!] V8.6.4：原 `test_retry_is_bounded`（被特性2 严格覆盖）、"
-                      "原只查「全文 >= 1 次」的 `test_replay_mode_does_not_retry`（删任一档都不红）已删；"
-                      "回放不重试改由强判据 `test_replay_is_skipped_in_both_retry_paths` 钉"
-                      "「两档各自都在」（产出档分支体 `break` / 实跑档分支体 `raise SystemExit(3)`）",
+                      "原只查「全文 >= 1 次」的 `test_replay_mode_does_not_retry`（删任一档都不红）已删。"
+                      "[!] V8.7.2（契约变更）：回放**不再**一刀切跳过重试 —— 重试会把失败原因写进 prompt，"
+                      "下一轮 prompt 就不是「同一份录像」；录像若录了那一轮就该推进（否则「失败→修复」"
+                      "永远不可离线复演）。强判据由此改名并改契约："
+                      "`test_replay_advances_to_next_round_in_both_retry_paths` 钉「两档各自都允许推进」"
+                      "+「分支体不许是 break / exit 3」+「缺录像必须 exit 2 报缺」；"
+                      "「白转」防线改由 `_should_retry_again` 有界约束 + 缺录像 fail loud 覆盖",
                  class1=["test_verify_entry_contract.py"],
                  class2=[]),
             dict(no="11.2", name="实跑档重试（判据住特性2）",
-                 goal="实跑档（generate + 逐条实跑）失败 -> 带原因整轮重来；录像回放模式不重试；实跑未过 exit 3 —— "
+                 goal="实跑档（generate + 逐条实跑）失败 -> 带原因整轮重来；回放同样带失败原因推进（缺录像 exit 2 报缺）；实跑未过 exit 3 —— "
                       "能力口径保留在本条；其判据（test_ai_retry_contract / test_ai_retry_same_cause，"
                       "前者 V8.6.4 第二批由 test_ai_retry_loop 改名 —— 它守的是「上限 / 回炉 / 接线」契约）"
                       "物理住在 tests/特性2-语义识别与步骤编排/，按「登记目录 == 物理目录」登记在 2.2",
