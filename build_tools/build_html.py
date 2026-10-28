@@ -61,11 +61,381 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.7.2"
-VERSION_DATE = "2026-10-25"
+VERSION = "8.7.12"
+VERSION_DATE = "2026-10-28"
 CHANGELOG = [
     dict(
-        version="8.7.2", date="2026-10-25", tag="当前版本",
+        version="8.7.12", date="2026-10-28", tag="当前版本",
+        theme="<b>诊断不许瞎猜</b> —— <code>got none</code> 先读 effort 再说话，别再把人往错方向带",
+        summary="用户在 Windows 上跑 V8.7.11 的 <code>explore --ai</code>，日志里出现"
+                "<code>Expected tool_calls in response but got none</code>，而框架的诊断一口咬定："
+                "「这多半不是<b>模型不稳定</b>，而是 <code>reasoning_effort</code> 太低」。<br>"
+                "<b>[三层全错]</b> ①用户的 <code>LLM_REASONING_EFFORT</code> <b>本来就是 high</b>；"
+                "②出错的是<b>登录页</b>——<code>DOM 事实：7 条记录，并入清单 3 条</code>，"
+                "这是<b>极小 prompt</b>，跟「大 prompt 才失效」完全反着；"
+                "③<b>就是模型偶发不稳定</b>——同一 prompt 第 2 次重试就过了。<br>"
+                "<b>[实际代价]</b> 这条错误诊断把排查带偏了整整一轮：先后去查"
+                "大 prompt 规模 → 查询端点差异 → 查 <code>max_tokens</code> → 换模型，"
+                "全是白跑，真正该做的是<b>让重试兜住</b>。<br>"
+                "<b>[修法]</b> 诊断改为<b>先读 <code>LLM_REASONING_EFFORT</code> 再分流</b>："
+                "档位确实偏低（未设/low/minimal）才给「调 high」的结论；"
+                "档位已高则明确说「<b>不是档位太低</b>，是模型偶发不调工具」，"
+                "并给出正确处置「<code>HYBRID_LLM_ATTEMPTS</code> 默认 3 可加到 5，别去改 effort」。<br>"
+                "<b>[一条通用教训]</b> <b>诊断信息本身也是一种交付物</b>——它错了比没有更糟，"
+                "因为它会把人引向错误的方向，且看起来「很有把握」。硬编码的因果断言必须"
+                "以「能读到的现场证据」为前提，读不到就说不确定。",
+        bullets=[
+            "<code>got none</code> 诊断：<b>先读 <code>LLM_REASONING_EFFORT</code></b>，按档位分两套话术",
+            "effort 已高时明确告知「<b>不是档位太低</b>，是模型偶发不调工具」，处置=靠重试（<code>HYBRID_LLM_ATTEMPTS</code>）",
+            "删掉误导措辞「这多半不是模型不稳定」（实证恰好相反）",
+            "新增判据 <code>test_got_none_diagnosis_honesty.py</code>（4 条，含反向验证）",
+        ]),
+    dict(
+        version="8.7.11", date="2026-10-28", tag="",
+        theme="<b>R8 修订：文档三同步 → 四方同步</b> —— 基准收窄到 framework/ + demo/，新增判据守示例值",
+        summary="用户要求：「我想和你确认下项目交付原则…是要保证框架代码和 readme、training.html 同步的，"
+                "你把它按照我刚才的要求改一下，要保证以框架代码为基准，保证 4 方同步"
+                "（框架代码，readme，training.html，cli --help）」<br>"
+                "<b>[3 方 → 4 方]</b> 原 R8 只列 <code>README / training.html / 代码</code>，"
+                "补上 <code>cli --help</code>。<br>"
+                "<b>[基准收窄（用户提议，已采纳）]</b> 用户问：「build_tools 是不是也可能和 framework/ 不一致？"
+                "是否可以直接以 framework/ demo/ 代码为基准？」—— <b>合理，但要拆三类看</b>："
+                "① <b>它自己就是基准</b>：<code>build_html.py</code> 的 <code>VERSION</code>"
+                "（版本号单一来源）+ <code>CHANGELOG</code>（冻结历史）；"
+                "② <b>它是投影</b>：<code>build_html.py</code> 的<b>模板正文</b>（讲框架怎么做事、"
+                "开关默认值）&rarr; <b>必须跟 framework/ 走</b>，今天培训页讲旧话的根因就在这；"
+                "③ <b>它是工具</b>：<code>check_cassettes.py</code> 等，与框架行为无关，不在同步范围。<br>"
+                "<b>[一个反直觉的发现]</b> <code>cli --help</code> 其实是<b>最不容易漂的投影</b>"
+                "—— 源头就是 <code>cmd_*</code> 的 docstring，改代码即改 help；"
+                "<b>真正的漂移高发区是 README 和 build_html 模板</b>（人工维护的第二份文字）"
+                "—— 今天查出的 3 处过时 <b>100% 都在这里</b>。<br>"
+                "<b>[六条操作规则]</b> 示例不写死具体值 · 数字必须机器数 · 全文扫"
+                "（参数表对了 &ne; 正文对了）· 冻结区靠偏移定位 · 同一件事不维护第二份 · 改完重渲再跑。<br>"
+                "<b>[提交时机拆出]</b> 用户「A、同意拆」&rarr; 独立成 <b>R12</b>"
+                "（R8 讲内容对不对，R12 讲什么时候动 git）。<br>"
+                "<b>[新增判据]</b> 用户「B、可以加一条判据」&rarr; "
+                "<code>test_no_hardcoded_case_id.py</code>：示例写死的 case id 必须真实存在且不带时间戳，"
+                "<b>宁漏不误伤</b>（中文说明/单字母/占位符放过）+ <b>正向自证</b>"
+                "（必须有 <code>&lt;case_id&gt;</code> 式说明，防「删光示例糊弄判据」）。"
+                "反向验证：把 <code>contracts_search_by_no</code> 塞回去 &rarr; 立刻变红。",
+        bullets=[
+            "R8：<b>三同步 → 四方同步</b>（+ <code>cli --help</code>），基准收窄为 <code>framework/</code> + <code>demo/</code>",
+            "<code>build_tools/</code> 按三类归位：基准部分（VERSION/CHANGELOG）/ 投影部分（模板正文）/ 工具部分",
+            "提交时机从 R8 拆出，独立成 <b>R12</b>",
+            "新增判据 <code>test_no_hardcoded_case_id.py</code>（含正向自证 + 反向验证）",
+            "<b>R10 补充</b>：场景变了，交付件不只是 <code>cases/</code> + <code>scripts/</code>，"
+            "<b>还有录像 <code>output/llm_cassettes/</code> 也要刷新</b>（用户 2026-10-28 口径）—— "
+            "漏刷录像等于用例建立在<b>过期语义</b>上",
+            "清理 12 处「场景2 手搓链路」过时引用（该能力已 V8.6 删除）：E2E <b>三个场景 → 两个</b>、删掉指向"
+            "已不存在文件 <code>verify_e2e_scenario2_handwritten.py</code> 的引用、图例「三条链」&rarr;「两条路」；"
+            "历史记录按 R9 原样保留并加「当时」标注",
+        ]),
+    dict(
+        version="8.7.10", date="2026-10-28", tag="",
+        theme="<b>三处文档与代码对齐</b> —— help 删掉不存在的示例 · README/培训页跟上真值",
+        summary="用户要求：「你同步刷新好 readme，培训文档 training.html，还有把 cli --help "
+                "也打开检查核对下，把失效的命令删掉，这 3 个东西都要保证和代码实现同步一致。」<br>"
+                "<b>[help · 最实的一处]</b> 示例命令 <code>run --debug --case "
+                "contracts_search_by_no</code> —— 那个 case <b>在仓库里根本不存在</b>"
+                "（cases/ 下只有 orders_invoice_full_lifecycle）。而且真实 case id "
+                "<b>带时间戳</b>，每次生成都变，<b>写死任何一个具体 id 都注定过时</b> "
+                "&rarr; 改成 <code>--case &lt;case_id&gt;</code> 占位符 + 说明取值来源"
+                "（老原则：不拿「观测到的具体值」当地基）。<br>"
+                "<b>[help · 另外三处]</b> 补 <code>all --ai --no-run</code> 示例；"
+                "把 <code>explore --ai</code> 三种用法移到独立段落并标「<b>不是主线</b>」"
+                "（守 2026-10-11 统一入口口径）；<code>all</code>/<code>explore</code> "
+                "子命令描述首行重写（描述取 docstring 第一行）。<br>"
+                "<b>[机器核对]</b> 9 个子命令的参数 <b>零差异</b>：help 列的每个参数代码都认、"
+                "代码认的每个参数 help 都列了。<br>"
+                "<b>[README]</b> 过时条数 <code>1218 passed</code> &rarr; <code>1336 passed</code>"
+                "（两处）；13 条 cli 命令逐条机器验证全部有效。<br>"
+                "<b>[培训页 · 说旧话]</b> <code>HYBRID_RESET_URL</code> 默认值还写着 "
+                "<code>localhost:8000/api/reset?purge=1</code>，<b>但 V8.7.7 起默认已是 off</b>"
+                "（用户定：生产环境没有 reset 开关，框架不能依赖这个业务假设）"
+                "—— 文档没跟上等于把那个修复又讲回去了；可调项数 <code>45 项</code> "
+                "&rarr; <b>51 项</b>（机器数的）；补 <code>--no-run</code> 两处"
+                "（4.1 开发期循环 + 第 8 章命令清单）。正文 21 条命令逐条验证全部有效。<br>"
+                "<b>[我自己的两个错，都被当场抓住]</b> "
+                "① 培训页模板里写 <code>{base}/api/reset</code> —— 那段在 f-string 里会被当 "
+                "<b>Python 变量求值</b>，Pyright 当场报 \"base\" is not defined，改 "
+                "<code>{{base}}</code> 转义（不抓到就是渲染时直接崩，不是样式问题）；"
+                "② V8.7.9 埋的 <code>--case</code> + <code>--no-run</code> "
+                "<b>静默不生效</b>（cases 只传给 cmd_run）&rarr; 改 exit 2 + 补判据。",
+        bullets=[
+            "<code>cli --help</code>：删掉指向不存在 case 的示例，9 个子命令参数零差异",
+            "README：判据条数 1218 &rarr; 1336（两处），13 条命令逐条验证",
+            "培训页：reset 默认值改 <code>off</code> · 45 项 &rarr; 51 项 · 补 <code>--no-run</code> 两处",
+            "<code>--case</code> + <code>--no-run</code> 同给改为 <b>exit 2</b>（原为静默忽略）",
+        ]),
+    dict(
+        version="8.7.9", date="2026-10-28", tag="",
+        theme="<b>开发期要的是效率，不是报告</b> —— 新增 <code>all --ai --no-run</code>",
+        summary="用户定调：「现在要解决的是开发期效率低的问题，还没有进入交付期可以不跑 run」。<br>"
+                "在此之前，开发期调 AI 产出只能用 <code>all --ai</code> —— "
+                "<b>每次都把交付期的 run 也跑一遍</b>（本轮那条已 verify 过的用例被重跑一次，"
+                "实测 ~200s），而 run 的产出（<code>report.html</code>）开发期根本没人看。<br>"
+                "<b>[一个被判据当场拦下的错误建议]</b> 助手一开始建议「开发期改用 "
+                "<code>explore --ai</code>」，被 "
+                "<code>test_j2_no_explore_ai_as_runnable_command</code> <b>直接判红</b> —— "
+                "那条判据钉的是用户 2026-10-11 定的口径：「两条链路统一成 "
+                "<code>python -m framework.cli all</code>，真 AI 链路用 <code>--ai</code> 区分，"
+                "<b>不另开命令</b>」。所以能力开在 <code>all</code> 上"
+                "（与已有的 <code>--no-verify</code> / <code>--no-cases</code> 同族），"
+                "<b>入口仍然只有一个</b>。<br>"
+                "<b>[--no-run 留下了什么]</b> 用例已生成、脚本已生成"
+                "（verify 内部会 generate 一次）、<b>已实跑验证过</b>"
+                "（<code>explore --ai</code> 默认带 verify："
+                "<code>do_verify = \"--no-verify\" not in rest</code>）。<br>"
+                "<b>[--no-run 省掉什么]</b> run 阶段的正式执行（并发 + report.html + traces）。<br>"
+                "<b>[必须说清代价]</b> 跑完会<b>明确打印</b>「本次没有 report.html，"
+                "实测记录在 output/verify/」—— 否则用户会去某个目录里找半天。"
+                "交付期去掉 <code>--no-run</code> 即可。",
+        bullets=[
+            "开发期：<code>all --ai --no-run</code> —— 省掉整个 run 阶段（~200s/次）",
+            "交付期：<code>all --ai</code> —— 不变",
+            "<b>不新增第二个入口</b>：能力开在 <code>all</code> 上，遵守「统一入口」口径",
+            "跑完明确告知「本次没有 report.html」+ 实测记录在哪",
+        ]),
+    dict(
+        version="8.7.8", date="2026-10-27", tag="",
+        theme="<b>「verify 都跑过了，run 为什么还要再跑一遍？」</b> —— "
+              "verify 串行改并发 + 新增 <code>--skip-verified</code>",
+        summary="用户提问：「verify 跑通过以后，还需要 run 一遍吗？确认下这个逻辑是否合理？」<br>"
+                "<b>[查证结论]</b> <code>all --ai</code> = <code>explore(--verify)</code> → "
+                "<code>generate</code> → <code>run</code>。<code>explore --verify</code> 跑的是 "
+                "<code>done</code>（<b>本轮新产出的用例</b>，逻辑正确，不是我以为的「全部历史用例」）；"
+                "run 跑 <code>scripts/generated</code> 全量 —— 多场景时它要跑<b>其他场景</b>的用例"
+                "（正当工作），但<b>本轮那条已经被 verify 真跑过</b>，run 又跑一遍 = 纯重复。"
+                "单场景时这一遍就是整个 run 的时间（实测 ~200s）。<br>"
+                "<b>[顺带发现的真问题]</b> verify 是<b>逐条串行</b>跑的"
+                "（<code>for label, name in entries:</code> 一条一个 pytest 子进程串行等）。"
+                "单条全链路用例 200~400s，<b>10 个场景 = 30 分钟以上纯等待</b> —— "
+                "而 run 阶段同一批用例 <code>-n 16</code> 只要几分钟。<br>"
+                "<b>[A · verify 串行改并发]</b> 按 <code>safe_workers()</code>"
+                "（<b>与 run 同一套内存预检</b>，不另造一份）裁定并发。"
+                "并发粒度仍是<b>每条一个独立 pytest 进程</b>，不用 <code>pytest -n</code>："
+                "日志独立、超时独立、失败归因独立 —— 而 <code>-n</code> 把多条揉进一个进程后，"
+                "AI 重试最需要的「哪条、哪一步炸了」就拆不开。打印加锁；"
+                "预检不可用或只有 1 条时干净退回串行。<br>"
+                "<b>[B · 新增 all --skip-verified]</b> run 用 <code>--deselect</code> 精确跳过"
+                "本轮 verify 已实测通过的用例。<b>默认关闭</b> —— 跳过的那条不会出现在 "
+                "<code>report.html</code> 里，报告不再自证，所以只在明确要「快」时开，"
+                "证据仍留在 <code>output/verify/</code> 的校验日志。<br>"
+                "<b>[两个必须守住的口径]</b><br>"
+                "① <b>全部跳过时 pytest 返回 5（no tests ran），那不算失败</b> —— "
+                "与「<code>--case</code> 名字写错」严格区分，否则开关一开就判红；"
+                "<code>summary.json</code> 也记 0，否则归档策略会把这次当失败 run。<br>"
+                "② <b>「本轮已验证」只存进程内，绝不落盘</b> —— 落盘的话下次跑会读到上一次的记录，"
+                "把新用例当「已验证」跳过 = <b>假绿</b>。进程内生命周期天然只覆盖本轮；"
+                "单独跑 <code>run --skip-verified</code> 读到空集，会明确提示「无效果」而不是静默什么都不做。<br>"
+                "<b>[顺手加固的假绿漏洞]</b> verify 里「<code>index.json</code> 取不到脚本」原来是 "
+                "<code>continue</code>（跳过、不算失败）—— 那等于把「没验过」当「验过了」。"
+                "现改为<b>判失败</b>。",
+        bullets=[
+            "多场景时 verify 不再串行累加（10 条从 30 分钟降到几分钟级）",
+            "<code>all --ai --verify --skip-verified</code> 可省掉本次 run 对已验用例的重复执行",
+            "跳过的用例不进 <code>report.html</code>（报告不再自证），要完整报告就别加开关",
+            "<b>默认行为完全不变</b>：不加 <code>--skip-verified</code> 就是老样子",
+            "取不到脚本从「跳过」改为「判失败」（堵一个假绿口子）",
+        ]),
+    dict(
+        version="8.7.7", date="2026-10-27", tag="",
+        theme="<b>61 步跑 3 分钟，没人知道时间花在哪</b> —— 加每步耗时；"
+              "顺带发现框架假设了「被测应用能清库」",
+        summary="用户跑通后追问：「60+ 步骤就要这么久，200+ 步不是更久？有哪些地方能提效？」<br>"
+                "<b>[第一步 · 让耗时可见]</b> 在 <code>_log</code>（<b>唯一的步骤日志入口</b>）量出"
+                "「距上一步的间隔」+ 步骤序号 + 累计耗时，单步 ≥5s 打 <code>[SLOW]</code>。"
+                "选这个入口是因为它一处覆盖 <code>_act</code> / <code>_act_row</code> / "
+                "<code>_assert_*</code> / <code>_goto</code> 全部路径 —— 分散埋点必然漏。<br>"
+                "<b>[实测结果 · 结论和直觉相反]</b> 86 步用例总耗时 205.9s，其中：<br>"
+                "· <b>150.5s（73%）是「等订单状态按时间流转到已关闭」</b>——场景声明的有界等待，"
+                "是<b>业务等待</b>，不是框架慢；<br>"
+                "· 其余 85 步合计 <b>55s（平均 0.65s/步）</b>，最慢的正常步骤 1.5s。<br>"
+                "<b>所以框架本身一点都不慢</b>，慢的是被测系统的状态流转。<br>"
+                "<b>[顺带修掉一个会误导人的计时 bug]</b> 断言走的是 <code>[CHECK]</code>（原只 "
+                "<code>print</code> 不更新计时器），于是那 150.5 秒被算到了<b>下一条</b>日志头上 ——"
+                "日志上显示「点开角色菜单 (+150.5s) [SLOW]」，看着像点击慢，实际点击只花 0.4s。"
+                "<b>连我自己都据此误判了一次</b>。新增 <code>_log_check()</code>，断言也计入 step 序号与耗时，"
+                "两处 <code>[CHECK]</code> 打印点统一走它。<br>"
+                "<b>[第二个问题 · 框架不该假设被测应用能清库]</b> 用户指出：真实生产环境没有 reset 开关，"
+                "而且有些测试数据本来就该保留。原默认值写死 <code>http://localhost:8000/api/reset?purge=1</code>"
+                "（<b>demo 的端点</b>），换到真实系统会每条用例前白打一次不存在的地址（网络是黑洞时每次等满 5s）。"
+                "现改为：<b>默认 <code>off</code></b>（完全不碰被测数据）；<code>auto</code> 从 "
+                "<code>TARGET_URL</code>/<code>HYBRID_BASE_URL</code> 推导；也接受具体 URL。"
+                "并修正一处缓存错误：原先 <code>HYBRID_RESET_URL</code> 在模块加载时被缓存进 "
+                "<code>_RESET_RAW</code>，之后改环境变量不生效（实测设了 <code>off</code> 仍返回 demo 地址）——"
+                "现改为<b>每次调用现读</b>。<br>"
+                "<b>[判据]</b> 新增 18 条（<code>test_step_timing_and_reset_default.py</code>）："
+                "每步必须量耗时 / 必须用 <code>monotonic()</code> / 慢步骤必须标记 / "
+                "<b>断言必须计入耗时</b>（钉死那次误判）/ reset 默认必须 off / 各种 off 写法都认 / "
+                "<code>auto</code> 推导须处理末尾斜杠 / <b>不许模块级缓存</b> / "
+                "复位失败只告警不中断。<br>"
+                "<b>[实测背书]</b> 本机 86 步用例真跑：<code>1 passed in 205.92s</code>，"
+                "埋点输出 <code>[TEST] [step 63] ... (+150.5s / 累计 163.9s) [SLOW]</code>，"
+                "定位到那 150.5s 正是等状态流转。",
+        bullets=[
+            "<b>结论</b>：框架本身不慢（0.65s/步），慢的是被测系统的业务等待",
+            "现在每步都有耗时，跑完直接看哪几步 <code>[SLOW]</code>",
+            "<b>行为变更</b>：<code>HYBRID_RESET_URL</code> 默认从「demo 端点」改成 <code>off</code>；"
+            "跑 demo 的用户需在 <code>.env</code> 里显式写 <code>HYBRID_RESET_URL=auto</code>",
+            "接真实系统时不用任何配置 —— 默认就不碰你的数据",
+        ]),
+    dict(
+        version="8.7.6", date="2026-10-27", tag="",
+        theme="<b>跑得好好的，看起来像卡死</b> —— 父进程全程静默 + 子进程超时默认「无限等」",
+        summary="用户在 Windows 上跑 <code>all --ai</code>，日志停在"
+                "「<code>[explore] --verify：先 generate 一次，再逐条试跑 1 条新用例…</code>」"
+                "之后<b>一行输出都没有</b>，报「好像卡住了」。<b>实际任务正常跑完了</b>"
+                "（<code>1 passed / 202.74s</code>，locator 命中 34/34）—— 纯粹是看不到进度导致的误判。<br>"
+                "<b>[根因 1 · 父进程全程静默]</b> <code>--verify</code> 里的 <code>generate</code> 和试跑"
+                "都走 <code>run_capture(...)</code>（<b>同步阻塞 + 捕获全部输出</b>），子进程跑完才返回，"
+                "期间父进程不打印任何东西。而一条真实全链路用例有 <b>62 步</b>、含「等订单状态按时间流转」"
+                "这类有界等待（最长约 <b>160s</b>），整体 3~10 分钟 —— 用户只看到「打完这行彻底没声了」。<br>"
+                "<b>[根因 2 · 超时默认 None = 永久等]</b> <code>run_capture</code> 的 <code>timeout</code> "
+                "默认 <code>None</code>：一旦 demo 没响应 / 等待条件永不满足，父进程就是<b>真卡死</b>，"
+                "只能 Ctrl+C，且看不出停在哪一步。<br>"
+                "<b>[修复]</b> ① 每次阻塞前交代「在做什么 / 会等多久 / 想看进度去哪看」"
+                "（<code>[1/2] generate</code> / <code>[2/2] 正在试跑</code>，全部 <code>flush=True</code> —— "
+                "不带 flush 在 PowerShell 管道里会被缓冲，等于没打）；"
+                "② 试跑加 <code>timeout=verify_timeout_s()</code>（<b>默认 900 秒</b>，"
+                "<code>HYBRID_VERIFY_TIMEOUT</code> 可调，已登记进 <code>cli config</code>）；"
+                "③ 超时后明确报「这是真卡住不是刷屏」，并给出<b>手工复跑命令</b>定位到具体哪一步。<br>"
+                "<b>[连带修掉一个真 bug · V8.7.3 起就有]</b> <code>HYBRID_LLM_TIMEOUT=1e400</code> 被 "
+                "<code>float()</code> 解析成 <code>inf</code>，而 <code>inf &gt; 0</code> 成立 -> "
+                "被当成合法超时传下去，<b>等于又禁用了一次超时</b>。"
+                "<code>llm_timeout_s()</code> 与新的 <code>verify_timeout_s()</code> 都加 "
+                "<code>math.isfinite()</code> 拦掉 <code>inf</code>/<code>nan</code>，一律回落默认。<br>"
+                "<b>[判据]</b> 新增 9 条（<code>test_verify_observability.py</code>）："
+                "试跑必须带 timeout / 必须捕获 <code>TimeoutExpired</code> 并给排查命令 / "
+                "阻塞前后都要有进度交代且 <code>flush=True</code> / "
+                "<b>inf 与 nan 必须回落</b>（含 <code>llm_timeout_s</code> 的回归判据）/ "
+                "可调项必须登记进 <code>cli config</code>。<br>"
+                "<b>[反向验证]</b> 回退「试跑不带超时 + 去掉进度 + 放开 inf」-> <b>2 条变红</b>，恢复后 9 条全绿。<br>"
+                "<b>[实测背书]</b> 同一次运行：explore 生成 62 步 ElementMap -> 验证 PASSED -> "
+                "generate 命中 34/34 -> <code>1 passed in 202.74s</code> / 退出码 0。"
+                "即 <code>LLM_REASONING_EFFORT=high</code> + <code>HYBRID_LLM_TIMEOUT=400</code> 组合确认可用。",
+        bullets=[
+            "<b>结论</b>：之前那次「卡住」不是故障，是任务正常跑完但全程无输出",
+            "现在试跑阶段会明确说「在做什么、要等多久、进度去哪看」",
+            "真卡死时（demo 没响应 / 状态不流转）会 <b>900 秒后明确报错</b>，不再无限等",
+            "<code>HYBRID_VERIFY_TIMEOUT</code> 可在 <code>.env</code> 里调（默认 900）",
+        ]),
+    dict(
+        version="8.7.5", date="2026-10-27", tag="",
+        theme="<b>体检说「可以用」，真跑却跑不动</b> —— 小 schema 通过 ≠ 真实规模能跑；"
+              "外加把「实现出处」当成了「端点归属」",
+        summary="用户真机反馈两问：① <code>llm-doctor</code> 打印 <code>provider deepseek</code>，"
+                "可是端点明明是智谱 GLM；② 工作电脑上跑 <code>all --ai</code> 发完第 2 次就「卡住不走」。<br>"
+                "<b>[根因 1 · 实现出处被当成了厂商]</b> 框架为接任意 OpenAI 兼容端点而复用了 "
+                "<code>ChatDeepSeek</code>，它带着实现类里<b>写死</b>的 <code>provider='deepseek'</code>。"
+                "体检直接 <code>getattr(obj, \"provider\")</code> 打印，于是配 GLM 也显示 deepseek —— "
+                "用户据此以为配置错了。<b>修复</b>：厂商按<b>实际端点</b>认（复用 V8.7.3 的 "
+                "<code>llm_vendor_of()</code>），实现类单独标注，并报出配置来源（<code>LLM_*</code> / "
+                "<code>DEEPSEEK_*</code>）—— 「哪个厂商」「哪个客户端类」「配置来自哪组变量」是三件事。<br>"
+                "<b>[根因 2 · 体检给假保证]</b> 原本只发 2 次请求，且用的是<b>极小 schema</b>"
+                "（<code>ok: bool</code>），只证明「tools 通」。真实 explore 的 prompt 是 <b>11 万字符</b>级别："
+                "实测同一模型 <code>low</code> 档 83 秒返回<b>零 tool_calls</b>、<code>high</code> 档要 "
+                "<b>175.9 秒</b> —— 而默认超时 180 秒只差 <b>4 秒</b>。<b>修复</b>：新增第 3 项"
+                "「<b>大 prompt 实探</b>」，走框架自己的 <code>_build_planner_prompt()</code>"
+                "（真链路同源，优先用真实 <code>element_map</code>，无则合成兜底），并让它的失败"
+                "<b>阻断</b>「可以用」结论 —— 结论改成「小请求能用，但真实规模跑不动」。<br>"
+                "<b>[连带修复 · 报错点破真因]</b> 结构化路径报 <code>Expected tool_calls in response "
+                "but got none</code> 时，当场打印「这多半是 <code>reasoning_effort</code> 太低」+ "
+                "「改 high 并把 <code>HYBRID_LLM_TIMEOUT</code> 提到 400+」—— 否则用户会以为是模型不稳定"
+                "去换模型，其实是一个配置项。<br>"
+                "<b>[可发现性]</b> <code>.env.example</code> 补登记 4 项（<code>HYBRID_LLM_TIMEOUT</code> / "
+                "<code>HYBRID_AI_RETRY</code> / <code>HYBRID_LLM_ATTEMPTS</code> / "
+                "<code>HYBRID_PROMPT_LIST_CHARS</code>）—— 这几项此前<b>只活在源码里</b>，"
+                "用户看不到也就无从调；并注明「116490 字符 > 90000 预算」是<b>正常现象</b>"
+                "（必给层不占预算）。<br>"
+                "<b>[判据]</b> 新增 13 条（<code>test_llm_doctor_vendor_and_bigprobe.py</code>）："
+                "厂商按端点认 / 实现类单独标注 / 实探必须取真配置超时 / <b>实探失败不许下「可以用」</b> / "
+                "缺 tool_calls 必须点破 effort / <code>.env.example</code> 必须登记。<br>"
+                "<b>[反向验证]</b> 把三处改动退回旧写法 -> <b>6 条变红</b>，恢复后 13 条全绿。<br>"
+                "<b>[实测证据]</b> 同一端点同一模型三档对照：<code>low</code>+180s = 83.0s 零 tool_calls；"
+                "<code>high</code>+180s = <b>180.2s 超时</b>；<code>high</code>+<b>400s</b> = "
+                "<b>175.9s / 39 步成功</b>。",
+        bullets=[
+            "<b>用户必做</b>：<code>.env</code> 里 <code>LLM_REASONING_EFFORT=high</code> + "
+            "<code>HYBRID_LLM_TIMEOUT=400</code>，两项<b>必须一起改</b>"
+            "（只改档位 -> 超时；只改超时 -> 结构化路径失效）",
+            "`llm-doctor` 现在会自己判「这台机器、这个配置在真实规模下能不能跑」，"
+            "不用等真跑失败才知道",
+            "<code>provider</code> 行改为「厂商（客户端实现类）」双标，并新增「配置来源」行",
+        ]),
+    dict(
+        version="8.7.4", date="2026-10-26", tag="",
+        theme="<b>重试日志分不清「哪一档」也数不出「总共几次」</b> —— 两条日志长得一样，看日志以为计数没递增",
+        summary="用户真机反馈（GLM 跑 <code>all --ai</code>）：日志里重试第一次和第二次打印的是<b>同一条语句</b>"
+                "「带着原因让 AI 重生成（2/3次）」，以为计数坏了。<br>"
+                "<b>[根因 · 不是计数错，是两条日志长得一样]</b> 重试有两档，各自有<b>独立计数器</b>："
+                "L0（产出物档，框架校验不合格）用 <code>attempt</code>、L1（实跑档，用例实跑失败）用 "
+                "<code>l1_attempt</code>。<b>各自从 0 起、各自 +1，都打印「2/3」</b> —— "
+                "数字本身没算错（都是「本档第 2 次」），但<b>两条日志没有档位标识</b>："
+                "分不清是哪一档在重试，也数不出整轮到底重试了几次。这是<b>可观测性缺陷</b>，不是算术 bug。<br>"
+                "<b>[修复]</b> 每条重试日志必须给三样东西：①<b>档位标签</b>"
+                "（<code>[L0 产出物档]</code> / <code>[L1 实跑档]</code>）；②<b>该档第 k/N</b>"
+                "（这一档还剩几次机会）；③<b>累计第 M 次重试</b>（新增 <code>retry_seq</code> <b>跨档累加</b>，"
+                "直接数出整轮重试次数）。四处打印统一：L0 校验不合格提示、L0 重生成提示、"
+                "L1 重生成提示、L1 未通过提示。<br>"
+                "<b>[判据]</b> 新增 4 条（<code>test_ai_retry_contract.py</code>），其中一条用 <b>AST</b> 查 "
+                "<code>retry_seq</code> 必须是<b>跨档共享</b>变量（定义早于首次自增、自增 ≥2 处）—— "
+                "有人把它改成各档局部变量，这个 bug 就原样复活。<b>反向验证过</b>：把 <code>cli.py</code> "
+                "退回改动前，4 条判据<b>全红</b>。<br>"
+                "<b>[顺带]</b> 这次自己踩了项目自己的闸门：docstring 里写了 <code>U+26A0</code> "
+                "（警告符号），<code>test_utf8_io</code> 当场报「GBK 编不了 → 中文 Windows 上 print 会"
+                "<b>崩掉整个入口</b>」，已改 ASCII。闸门有效，记一笔。",
+    ),
+    dict(
+        version="8.7.3", date="2026-10-26", tag="上一版本",
+        theme="<b>换 OpenAI 兼容端点（GLM）才暴露的两个硬伤</b> —— 一个「必然失败」（null 兼容）、一个「永久卡死」（timeout=None）",
+        summary="真机实测（V8.7.2 + GLM-5.3 跑 <code>all --ai</code>）：日志停在"
+                "「<code>第 1/3 次结构化输出失败 -> 16 validation errors for _PlanModel</code>」"
+                "之后再无输出，看着就是卡死。同一场景用 DeepSeek 能通 —— 差别只在端点。<br>"
+                "<b>[根因1 · 必然失败]</b> GLM 的 function calling 给「没填的字段」发 <b>null</b>，"
+                "而 DeepSeek 是<b>省略该键</b>；Pydantic 的 <code>default=</code> 只认后者 —— "
+                "显式 null 一律按类型校验 -> <code>Input should be a valid string "
+                "[input_value=None]</code>。16 个步骤全缺 <code>semantic_name</code> => 每轮必挂。"
+                "不是模型答得差，是<b>框架没兼容它的 null 习惯</b>。<br>"
+                "<b>[修复1]</b> <code>_StepModel</code> 加 <code>field_validator('*', mode='before')</code>："
+                "显式 null 等价于键缺失。口径是<b>放宽 null ≠ 放松校验</b> —— "
+                "只有「有非 None default」的字段才兜；<code>X | None</code> 保持 None；"
+                "真实值与错类型（数字塞 str / 字符串塞 int / 列表塞 str）照样严格报错，"
+                "由 3 条参数化判据锁住。<br>"
+                "<b>[根因2 · 永久卡死]</b> browser_use 的 <code>ChatDeepSeek</code> 字段默认 "
+                "<code>timeout=None</code>，构造时不传 => 显式赋 None => "
+                "<code>AsyncOpenAI(timeout=None)</code> => <b>httpx 里 None = 禁用超时</b>"
+                "（不是「用默认值」！）。端点不回包就永久等。对照：不传时 SDK 默认 "
+                "<code>Timeout(connect=5.0, read=600, write=600)</code>。"
+                "叠加放大：SDK 自身 <code>max_retries=2</code> × 框架 <code>HYBRID_LLM_ATTEMPTS=3</code> "
+                "= 最坏 9 次请求、每次都可以无限等。<br>"
+                "<b>[修复2]</b> 两条腿（<code>LLM_*</code> 与出厂 <code>DEEPSEEK_*</code>）都补 "
+                "<code>timeout=llm_timeout_s()</code> + <code>client_params={'max_retries': 0}</code>"
+                "（重试唯一权威收敛到框架的 attempts）。新开关 <b><code>HYBRID_LLM_TIMEOUT</code></b>"
+                "（默认 180 秒，已登记 <code>cli config</code>）；非法/非正值一律回落 180 —— "
+                "尤其不许静默用 0/负数，那等于取消超时，正是本次事故形态。<br>"
+                "<b>[可观测性]</b> 重试轮（<code>attempt &gt; 1</code>）发请求前打印"
+                "「第 k/n 次请求已发出，等待端点响应（超时 Ns）—— 长时间无新输出 = 端点没回包」。"
+                "事故里最难受的是日志停住不动、分不清在算还是死了；<b>静默等待最坏</b>。<br>"
+                "<b>[判据]</b> 新增 <code>tests/特性2-.../test_llm_null_and_timeout.py</code>"
+                "（15 条，登记在 2.2）。其中超时那条<b>走真入口 <code>llm_from_env()</code> 并断言到 "
+                "<code>_client()</code> 底层 httpx 客户端</b> —— 只看 <code>client.timeout</code> 不够，"
+                "历史上踩过「手工 new 对象 ≠ 真链路拿到的对象」的假修。<br>"
+                "<b>[遗留 · 刻意不做]</b> 本次实测控件清单从 3 条涨到 <b>293</b> 条（DOM 事实 364 条），"
+                "prompt 预算 <code>HYBRID_PROMPT_LIST_CHARS</code> 默认 9 万字符。本版只修两条硬伤，"
+                "<b>提示词瘦身属独立议题</b>，不混进同一版本。"
+                "<br><b>[新增 · 可观测性]</b> <code>explore --ai</code>（含 <code>all --ai</code>）在真链路"
+                "拿到 LLM 对象后打印一行"
+                "<code>[explore] [LLM] 实际使用：glm-5.3 @ open.bigmodel.cn/api/paas/v4 → 智谱 GLM"
+                "｜配置来源 LLM_*｜超时 180s</code>。起因：跑 <code>all --ai</code> 时看不出到底花谁的钱 —— "
+                "<b>光看 .env 变量名判断不了</b>（<code>DEEPSEEK_*</code> 里填 GLM 端点是合法用法，"
+                "看名字会误判成 DeepSeek）。实现要点：<b>从已构造的 obj 读属性</b>而不是重读环境变量 —— "
+                "命令行 <code>--llm-model</code> / <code>--llm-base-url</code> 的覆盖只体现在 obj 上，"
+                "读环境变量会把「配置」当「实际」报。厂商映射只用于打印、不参与逻辑判断；"
+                "认不出的端点<b>直说「未识别的端点」</b>，不硬套名字；<b>绝不打印 key</b>。",
+    ),
+    dict(
+        version="8.7.2", date="2026-10-25", tag="上一版本",
         theme="<b>离线回放不再掐断「失败→修复」闭环</b> —— 契约变更：回放允许带失败原因推进重试轮，缺录像 fail loud",
         summary="真机实测挖出来的缺口：录制期必然先失败一轮、第 2 轮才修好（<code>orders_invoice_full_lifecycle</code>："
                 "第 1 轮 AI 想不到「两步保存」-> 整单没提交 -> 订单状态不流转 -> 实跑 FAILED；"
@@ -2133,7 +2503,12 @@ ARTICLE_HANDCRAFT = """<!-- ========== 4. 写场景，让 AI 出用例 =========
     <tr>
       <td><b>推荐节奏</b></td>
       <td>写场景 → 跑通 → 看 AI 产出的用例 → 不满意就<b>改场景重跑</b>
-          （别去手改用例；用例是产物，改它下次重跑就没了）</td>
+          （别去手改用例；用例是产物，改它下次重跑就没了）<br>
+          <b>[效率] 开发期请加 <span class="code-inline">--no-run</span></b>：
+          <span class="code-inline">all --ai --no-run --scenario-file …</span> ——
+          跑到 verify（<b>已实跑验证过</b>）就停，<b>不跑 run</b>，省掉一半时间（~200s/次）。
+          代价：本次<b>没有</b> <span class="code-inline">report.html</span>（实测记录在
+          <span class="code-inline">output/verify/</span>）；<b>交付期去掉 --no-run</b> 即可。</td>
     </tr>
   </table>
   <p style="color:var(--muted);font-size:.9rem;margin-top:8px">
@@ -2227,8 +2602,12 @@ assert_guard:
   <ol style="line-height:1.85">
     <li><b>数据在服务端</b>：列表页与详情页读的是<b>同一条真实记录</b> -> 预置数据的字段跨页一致，可以断言；
         查不到的编号会如实报「未找到」，<b>不会编数据</b>。</li>
-    <li><b>每条用例开始前框架会复位数据</b> -> 列表页固定 20 条预置；
-        <b>别写「上一条用例新建的数据留给下一条用」这种跨用例依赖</b>（复位后就不存在了）。</li>
+    <li><b>复位是可选能力，<span style="color:#b45309">默认不开</span></b>：<span class="code-inline">HYBRID_RESET_URL</span>
+        <b>V8.7.7 起默认 <span class="code-inline">off</span> = 什么都不做</b>；想让每条用例从
+        「列表页固定 20 条预置」开始（<b>只在本机跑 demo 时有意义</b>），显式设
+        <span class="code-inline">auto</span> 或给具体 URL。<br>
+        <b>无论开不开，都别写「上一条用例新建的数据留给下一条用」这种跨用例依赖</b> ——
+        生产环境通常<b>没有</b> reset 接口、测试数据还会累积，依赖它必翻车。</li>
     <li><b>客户字段是「弹层列表里选一行」</b>：弹层里多个「选择」按钮文字完全相同 -> 语义名形如
         <span class="code-inline">选择@北京华信科技有限公司</span>；列表页客户筛选是<b>右模糊（前缀）匹配</b>（非前缀不命中）。</li>
   </ol>
@@ -2374,7 +2753,9 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     </tr>
     <tr>
       <td><b>(3) 不许跨用例依赖</b></td>
-      <td>每条用例开始前框架<b>复位数据</b> ->「上一条建的记录」不存在。需要前置数据就<b>在自己的 steps 里造</b>。</td>
+      <td>「上一条建的记录」<b>不能假定它还在</b>：框架<b>默认不复位</b>
+          （<span class="code-inline">HYBRID_RESET_URL=off</span>），开了复位也只是本机 demo 的便利。
+          需要前置数据就<b>在自己的 steps 里造</b>。</td>
     </tr>
     <tr>
       <td><b>(4) 定位不唯一要如实报错</b></td>
@@ -2719,7 +3100,7 @@ def _svg_callmap() -> str:
     s = 'fill="#9fb0c4" font-size="10.5" font-family="sans-serif"'
     ar = 'stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"'
     dash = 'stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"'
-    o = ['<h4 style="margin-bottom:8px">图例 0 · 端到端函数调用地图（cli 是总入口，三条链共用同一条确定性下游）</h4>']
+    o = ['<h4 style="margin-bottom:8px">图例 0 · 端到端函数调用地图（cli 是总入口，两条路——真 AI 链路 / 离线回放——共用同一条确定性下游）</h4>']
     o.append('<svg viewBox="0 0 920 252" width="100%" height="auto" role="img" '
              'style="background:#0d1117;border-radius:10px;padding:4px;display:block">')
     o.append('<defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">'
@@ -4583,6 +4964,7 @@ def build() -> str:
 <span class="prompt">$</span> python -m demo.app            <span class="cmt"># 起被测合同管理页 (8000)</span>
 
 <span class="prompt">$</span> python -m framework.cli all --ai --scenario "…" <span class="cmt"># (1) 写场景 -> AI 出用例（内部含探测）</span>
+<span class="prompt">$</span> python -m framework.cli all --ai --no-run --scenario-file … <span class="cmt"># (1)' 开发期用：跑到 verify 就停，不跑 run（省一半时间；但没 report.html）</span>
 <span class="prompt">$</span> python -m framework.cli generate       <span class="cmt"># (2) 读 cases/ 用例 -> 生成 scripts/generated/(脚本) + datasets/(数据抽离)</span>
 <span class="prompt">$</span> python -m framework.cli run --workers 2 <span class="cmt"># (3) 并发执行 + 资源预检(内存不够自动降级)</span>
 
@@ -4637,7 +5019,7 @@ def build() -> str:
   <p style="margin:6px 0 10px;color:var(--muted);font-size:.9rem">
     绝大多数场景<b>一个都不用改</b>。下表按「最可能用到的排前面」列<b>常用项</b>（默认值取自代码）；
     <b>命令行参数优先于环境变量</b>（如 <span class="code-inline">--workers</span> / <span class="code-inline">--debug</span> / <span class="code-inline">--isolated-target</span>）。<br>
-    <b>要看全清单（45 项）请用唯一权威入口</b> <span class="code-inline">python -m framework.cli config</span>
+    <b>要看全清单（51 项）请用唯一权威入口</b> <span class="code-inline">python -m framework.cli config</span>
     —— 一屏列出<b>全部可调项 + 当前值 + 来源（CLI/环境变量/默认）+ 对应 CLI 参数</b>，
     不在这里维护第二份（避免两处漂移）。
   </p>
@@ -4645,9 +5027,15 @@ def build() -> str:
     <tr><th style="width:36%">环境变量</th><th style="width:16%">默认</th><th>作用（什么时候用它）</th></tr>
     <tr><td><span class="code-inline">HYBRID_BASE_URL</span></td><td>未设（默认 <span class="code-inline">http://localhost:8000</span>）</td>
         <td><b>换目标</b>：同一套用例跑本机 / 慢代理 / 预发环境（生成脚本的 <span class="code-inline">goto</span> 统一走 <span class="code-inline">_goto()</span> 替换 scheme + host）</td></tr>
-    <tr><td><span class="code-inline">HYBRID_RESET_URL</span></td><td><span class="code-inline">http://localhost:8000/api/reset?purge=1</span></td>
-        <td><b>用例间数据复位</b>（每条用例前 POST 一次）；<span class="code-inline">off</span> / <span class="code-inline">0</span> / 空 = 不复位。<br>
-            <span style="color:var(--muted)">带 <span class="code-inline">?purge=1</span> = 完全复原成预置（清之前会先自动备份）；去掉它只把数据复位成预置条数</span></td></tr>
+    <tr><td><span class="code-inline">HYBRID_RESET_URL</span></td><td><span class="code-inline">off</span>（<b>V8.7.7 起默认不碰数据</b>）</td>
+        <td><b>用例间数据复位</b>：<span class="code-inline">off</span> = <b>默认，什么都不做</b>；
+            <span class="code-inline">auto</span> = 从 <span class="code-inline">HYBRID_BASE_URL</span> 推导出
+            <span class="code-inline">{{base}}/api/reset?purge=1</span>（只在本机跑 demo 时用）；
+            给具体 URL = 原样 POST。<br>
+            <span style="color:var(--muted)">
+            <b>[!] 默认改成 off 的原因</b>：真实生产环境不会有 reset 开关，测试数据有时还要保留 ——
+            框架不能依赖「有个 reset 接口」这个业务假设。原来默认写死
+            <span class="code-inline">localhost:8000</span> 更是生产隐患（换个目标就 404 或打到别人的服务）</span></td></tr>
     <tr><td><span class="code-inline">HYBRID_CASE_TIMEOUT</span></td><td><span class="code-inline">600</span></td>
         <td><b>用例级看门狗</b>（秒）：超时把调用栈写进 <span class="code-inline">log/&lt;run_id&gt;/watchdog.txt</span> 并退出；<span class="code-inline">0</span> / <span class="code-inline">off</span> = 关</td></tr>
     <tr><td><span class="code-inline">HYBRID_LOCATE_TIMEOUT</span></td><td><span class="code-inline">5000</span></td>

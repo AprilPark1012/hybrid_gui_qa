@@ -60,7 +60,45 @@ FEATURES = [
                           "test_ai_retry_same_cause.py",
                           # L34-a（2026-10-21）：步骤字段命名只许一套 `op` / `desc` ——
                           #   源码/产物/映射表三面守，外加负向自证（判据自己的样例不许被误伤）
-                          "test_no_dual_step_field_names.py"],
+                          "test_no_dual_step_field_names.py",
+                          # V8.7.3（2026-10-26 · GLM 实测事故）：换 OpenAI 兼容端点才暴露的两件事 ——
+                          #   ① GLM 给「没填的字段」发 `null`，DeepSeek 是**省略该键**；Pydantic 的
+                          #      `default=` 只认后者 -> GLM 走结构化输出时 16 个步骤全部
+                          #      `semantic_name=null` -> 每轮必挂（不是"答得差"，是没兼容它的习惯）；
+                          #   ② LLM 客户端 `timeout=None` 在 httpx 里是**禁用超时**（不是用默认值）
+                          #      -> 第 2 次重试遇到端点不回包就永久挂住，日志停在「第 1/3 次失败」。
+                          #   判据同时钉住「放宽 null 但错类型仍须报错」与「走真入口验到底层客户端」。
+                          "test_llm_null_and_timeout.py",
+                          # V8.7.5（2026-10-27 · 用户实测两问）：① `llm-doctor` 打印
+                          #   `provider deepseek` 而端点明明是 GLM（`ChatOpenAICompatible` 继承
+                          #   `ChatDeepSeek`，带着实现类写死的 provider 字段）-> 体检必须报
+                          #   「端点归属的厂商」+ 单独标注实现类，否则用户以为配错；
+                          #   ② 体检只发两次**极小 schema** 请求就下「可以用」结论 -> 假保证：
+                          #   真实 prompt 是 11 万字符级别，`high` 档实测 175.9s / 39 步，
+                          #   而默认 180s 超时只差 4 秒。于是新增**大 prompt 实探**（走框架自己的
+                          #   `_build_planner_prompt`）并让它的失败**阻断**「可以用」结论。
+                          #   判据同时钉住「缺 tool_calls 时必须点破 effort 太低」与
+                          #   「.env.example 必须登记这几项」（可调项可发现）。
+                          "test_llm_doctor_vendor_and_bigprobe.py",
+                          # V8.7.7（2026-10-27 · 用户追问「200+ 步不是更久？怎么提效」）：
+                          #   ① 61 步用例 verify 试跑 397.3s、run 只用 201.4s（同脚本同断言），
+                          #     而 run 是 -n 16（16 套浏览器）反而快一倍 -> 说明 verify 那段在**等**，
+                          #     但日志**没有每步耗时**，只能猜（我还误判成「脏数据」，被用户当场否掉：
+                          #     他每次跑前删了 demo/.data，且 explore 探测只点击不提交）。
+                          #     -> 在 `_log`（唯一步骤日志入口）量每步耗时 + step 计数 + [SLOW] 标记；
+                          #     判据钉住「必须挂在唯一入口、不许分散埋点」。
+                          #   ② reset 默认值原本写死 demo 的 localhost:8000/api/reset?purge=1 ——
+                          #     真实系统没有该端点（白等 5s），且**框架不该假设被测应用能清库**
+                          #     （生产环境没这开关，有些测试数据本该保留）。-> 默认改 off，
+                          #     新增 auto 从 TARGET_URL 推导；判据钉住「默认 off + 每次现读不缓存」。
+                          "test_step_timing_and_reset_default.py",
+                          # V8.7.12（2026-10-28 用户实测纠正）：`got none` 的诊断原先**硬编码**断言
+                          #   「这多半不是模型不稳定，而是 reasoning_effort 太低」。实证相反：
+                          #   用户 effort=high + 登录页只有 3 条清单（极小 prompt）也报同一错误，重试即过
+                          #   => 根因是「模型偶发不调工具」，与 prompt 大小、effort 档位都无关。
+                          #   判据钉住：必须读 LLM_REASONING_EFFORT 再分流，且 effort 已高时
+                          #   不许再给「档位太低/改 high」的误导结论（只查非注释代码，注释里的反面教材合法）。
+                          "test_got_none_diagnosis_honesty.py"],
                  class2=["verify_role_switch_click.py"]),
             dict(no="2.3", name="步骤到定位的合成", goal="步骤里的语义名/属性如何合成可执行定位表达式"
                                                        "（`verify_scope_locate.py` 物理住在 tests/特性3-分层定位与控件识别/，"
@@ -325,7 +363,21 @@ FEATURES = [
                  class1=["test_ai_first_docs.py", "test_tunables_exposed_as_flags.py"], class2=[]),
             dict(no="10.6", name="文档真值契约", goal="文档说的必须和代码做的是同一回事：引用的路径存在、" \
                                                       "主线命令统一 all --ai、配置表不虚报条数、关键数字对齐代码真值",
-                 class1=["test_docs_truth_contract.py"], class2=[]),
+                 class1=["test_docs_truth_contract.py",
+                         # V8.7.9（2026-10-28 · 用户「开发期效率低，还没进交付期可以不跑 run」）：
+                         #   新增 `all --ai --no-run`（开发期到 verify 为止）。
+                         #   [!] 助手第一版建议「开发期改用 explore --ai」被
+                         #   test_j2_no_explore_ai_as_runnable_command 当场判红 ——
+                         #   用户 2026-10-11 定过「两条链路统一成 all，不另开命令」。
+                         #   所以能力开在 all 上，入口仍只有一个；判据额外钉住 README 引导行
+                         #   也必须是 all --ai --no-run、不许出现可照敲的 explore --ai。
+                         "test_all_no_run_switch.py",
+                         # V8.7.11（2026-10-28 · 用户「B、可以加一条判据」）：
+                         #   cli --help 里 `--case contracts_search_by_no` 那个 case **仓库里不存在**，
+                         #   且真实 case id 带时间戳、每次生成都变 所以 写死任何具体 id 都注定过时。
+                         #   判据 = 示例值必须真实存在且不带时间戳（宁漏不误伤：中文说明/单字母/占位符放过）
+                         #   + 正向自证（必须有 <case_id> 式说明，防「删光示例糊弄判据」）。
+                         "test_no_hardcoded_case_id.py"], class2=[]),
             dict(no="10.7", name="文档结构真值契约", goal="培训页/README 画的目录结构必须与磁盘一致：" \
                                                           "登记的特性夹都要真实存在、磁盘上的特性夹都要登记、" \
                                                           "不许声称有 f01 或每特性 api.py",
@@ -372,7 +424,20 @@ FEATURES = [
                       "`test_replay_advances_to_next_round_in_both_retry_paths` 钉「两档各自都允许推进」"
                       "+「分支体不许是 break / exit 3」+「缺录像必须 exit 2 报缺」；"
                       "「白转」防线改由 `_should_retry_again` 有界约束 + 缺录像 fail loud 覆盖",
-                 class1=["test_verify_entry_contract.py"],
+                 class1=["test_verify_entry_contract.py",
+                         "test_verify_observability.py",
+                          # V8.7.8（2026-10-27 · 用户问「verify 跑通过以后，还需要 run 一遍吗？
+                          #   确认下这个逻辑是否合理」）：查证后确认 `explore --verify` 跑的是
+                          #   `done`（本轮新产出，逻辑正确），但 run 又会把本轮那条重跑一遍；
+                          #   单场景时这一遍就是整个 run 的时间（实测 ~200s）。同时发现 verify 是
+                          #   **逐条串行**（一条一个 pytest 串行等），多场景下 10 条 = 30 分钟纯等待。
+                          #   -> A: verify 串行改并发（每条仍独立进程，日志/超时/归因各自独立，
+                          #      并发数复用 run 的 safe_workers 不另造一份）；
+                          #      B: 新增 `all --skip-verified`（默认关）用 --deselect 跳过本轮已验的；
+                          #      全部跳过时 pytest 退出码 5 **不算失败**（否则开关一开就判红）。
+                          #   判据同时钉住「取不到脚本必须算失败」——原实现 continue 等于把
+                          #   「没验过」当「验过了」；以及「_VERIFIED_OK 绝不落盘」（落盘下次会假绿）。
+                          "test_verify_concurrent_and_skip.py"],
                  class2=[]),
             dict(no="11.2", name="实跑档重试（判据住特性2）",
                  goal="实跑档（generate + 逐条实跑）失败 -> 带原因整轮重来；回放同样带失败原因推进（缺录像 exit 2 报缺）；实跑未过 exit 3 —— "

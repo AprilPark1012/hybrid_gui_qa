@@ -1,7 +1,7 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.7.2**（2026-10-25）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
-> · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/)（最新：[`RELEASE_NOTES_V8.7.2.md`](releases/RELEASE_NOTES_V8.7.2.md)） · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
+> 当前版本 **V8.7.12**（2026-10-28）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
+> · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/)（最新：[`RELEASE_NOTES_V8.7.12.md`](releases/RELEASE_NOTES_V8.7.12.md)） · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
 
 **一句话**：把 **LLM 语义编排（AI 智能探索）** 和 **Playwright（浏览器采集证据 + 确定性执行）** 组合成一套混合测试框架 ——
 AI 负责理解意图、规划步骤、挑元素；Playwright 负责精确定位、唯一性校验、可复现回归。
@@ -81,6 +81,7 @@ python -m demo.app         # http://localhost:8000：合同/订单列表页 + �
 ```bash
 # 主链路（唯一）：explore --ai → generate → run 一条龙
 python -m framework.cli all --ai --scenario-file scenarios/orders/orders_invoice_full_lifecycle.yml
+python -m framework.cli all --ai --no-run --scenario-file <场景>   # 开发期用：到 verify 为止不跑 run（交付期才去掉 --no-run）
 python -m framework.cli run --debug           # 调试开关：有屏幕弹浏览器；没屏幕录视频 + 逐步截图
 python -m framework.cli run --case <case_id>          # 只跑指定用例（--case 可重复；case_id = cases/ 里的文件名）
 python -m framework.cli prune --dry-run       # 归档保留（log/ 与 output/verify/ 按 30 个 ∪ 7 天清理）
@@ -104,7 +105,7 @@ python tests/_runner/run_acceptance.py                # ③ 四项验收一条�
 ```
 
 > **判据住哪**（2026-10-12 更正）：判据按**特性**分目录，在 `tests/特性1-…/` ... `tests/特性11-…/` 下
-> （`test_*.py` 一类 + `verify_*.py` 二类混放同一特性目录；条数以 `pytest tests/ -q` 实跑为准，实测 1218 passed / 3 skipped）。
+> （`test_*.py` 一类 + `verify_*.py` 二类混放同一特性目录；条数以 `pytest tests/ -q` 实跑为准，实测 1336 passed / 3 skipped）。
 > `tests/_helpers/` 只是**共享辅助**（artifacts / demo_freshness / repo_files / testid_policy），
 > **不含任何 `test_*.py`** —— 直接跑它会 `no tests collected`。
 
@@ -125,7 +126,7 @@ HYBRID_CASE_TIMEOUT=600 HYBRID_STRICT_LOCATE=1 \
 | 命令 | 期望 | 耗时 |
 |---|---|---|
 | 上面那条端到端 | `1 passed` | ~220s |
-| `pytest tests/ -q` | `1218 passed / 3 skipped`，0 failed | ~50s |
+| `pytest tests/ -q` | `1336 passed / 3 skipped`，0 failed | ~54s |
 | `run_verifications.py` | 绝大部分通过；**唯一遗留 `verify_slow_target`**（慢环境缺陷，见 BACKLOG L22） | ~14 min |
 | `run_acceptance.py` | 四项闸门全过 | — |
 

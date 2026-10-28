@@ -3043,17 +3043,43 @@ def _assert_first_row(page, field, expected, desc="", timeout_ms=None, refresh="
 # 而且失败原因会指向错误的地方（用例互相污染比用例失败更难查）。
 # 口径：HYBRID_RESET_URL 可覆盖默认值；设为 off/0/none/空 则完全不复位（被测应用没有复位接口时）。
 # 复位失败**大声告警但不中断**：那是「用例可能互相污染」的信号，绝不该被静默吞掉。
-# 2026-09-28：demo 的 /api/reset 默认**保留用户手工数据**（免得跑判据把演示数据清了），
-# 用例间要做干净隔离 -> 默认 URL 带 ?purge=1（可用 HYBRID_RESET_URL 覆盖）
-_RESET_URL = os.environ.get("HYBRID_RESET_URL", "http://localhost:8000/api/reset?purge=1")
+# [!] V8.7.7 默认值变更（行为变更，务必看 .env.example）：以前默认写死
+#   `http://localhost:8000/api/reset?purge=1` —— 那是 **demo 的**端点。两个问题：
+#   ① 真实系统没有 /api/reset -> 每条用例前白打一次不存在的地址，网络是黑洞时每次等满 5s；
+#   ② 更根本：**框架不该假设被测应用支持清库**。生产环境没有 reset 开关，
+#      而且有些测试数据本来就该保留（用户 2026-10-27 明确指出这条）。
+#
+#   取值：
+#     · off / "" / 0 / none / no / false（**默认**）-> 完全不碰被测数据
+#     · auto -> 从被测地址推导 `{base}/api/reset?purge=1`（demo / 本地环境写这个）
+#     · 具体 URL -> 原样使用（要改 purge 参数或换路径时）
 _RESET_OFF = ("", "off", "0", "none", "no", "false")
+
+
+def _resolve_reset_url() -> str:
+    """解析 HYBRID_RESET_URL -> 最终 URL；返回空串表示**不做任何复位**。
+
+    [!] 每次调用**现读**环境变量，不做模块级缓存：缓存过一次之后，
+       再改 .env / os.environ 就不生效了（实测：设了 off 仍返回 demo 地址）——
+       可调项必须真的随时可调。
+    """
+    raw = (os.environ.get("HYBRID_RESET_URL", "off") or "").strip()
+    if raw.lower() in _RESET_OFF:
+        return ""
+    if raw.lower() == "auto":
+        # 旧名 TARGET_URL 优先（与 cli 的 HYBRID_BASE_URL 口径一致）
+        base = (os.environ.get("TARGET_URL")
+                or os.environ.get("HYBRID_BASE_URL")
+                or "http://localhost:8000").strip().rstrip("/")
+        return base + "/api/reset?purge=1"
+    return raw
 
 
 @pytest.fixture(autouse=True)
 def _reset_target_data():
-    """每条用例开始前把被测应用的数据复位（默认 POST http://localhost:8000/api/reset）。"""
-    url = (_RESET_URL or "").strip()
-    if url.lower() in _RESET_OFF:
+    """每条用例开始前把被测应用的数据复位 —— **默认关闭**（见上面 HYBRID_RESET_URL 的说明）。"""
+    url = _resolve_reset_url()
+    if not url:
         yield None
         return
     import urllib.request
@@ -3065,7 +3091,7 @@ def _reset_target_data():
                   + (f"（分区 {_PARTITION}）" if _PARTITION else ""), flush=True)
     except Exception as e:
         print(f"[setup] [!] 数据复位失败（{target}）：{type(e).__name__}: {e}"
-              f" —— 用例之间可能互相污染（要关掉这条提示：HYBRID_RESET_URL=off）", flush=True)
+              f" —— 用例之间可能互相污染（要关掉：HYBRID_RESET_URL=off）", flush=True)
     yield None
 
 
@@ -3337,11 +3363,64 @@ def ctx(request):
 # ---- 操作辅助（生成用例脚本引用）----
 _CURRENT_LOG: dict = {}
 
+_LOG_T0 = [None]
+_LOG_LAST = [None]
+_LOG_N = [0]
+
 def _log(page, step, detail=""):
+    \"\"\"记录一步，**顺便量出这一步花了多少秒**（V8.7.7）。
+
+    [!] 为什么量在 _log 里：它是**唯一的步骤日志入口**（同一能力收敛成唯一入口）——
+       改这一处就覆盖 _act / _act_row / _assert_* / _goto 所有路径；分散埋点必然漏。
+    [!] 量的是「距上一条日志的间隔」，它正好等于「上一步动作 + 它的断言/定位等待」的耗时。
+       这正是要找的东西：用户实测 61 步用例，verify 试跑 397.3s 但正式跑只用 201.4s，
+       16 个 worker 反而比 1 个进程快一倍 —— 说明有一段在**等超时**而不是在干活。
+       没有每步耗时，只能猜；有了它，「397 秒花在哪几步」就是算术题。
+    \"\"\"
+    import time as _t
+    now = _t.monotonic()
+    if _LOG_T0[0] is None:
+        _LOG_T0[0] = now
+        first = False
+    else:
+        first = True
+    gap = (now - _LOG_LAST[0]) if first else 0.0
+    total = now - _LOG_T0[0]
+    _LOG_LAST[0] = now
+    _LOG_N[0] += 1
+    # 慢步骤突出显示：本项目定位/断言的默认超时是 15s，单步超过 5s 就值得看一眼
+    mark = "  [SLOW]" if gap >= 5.0 else ""
     cid = _CURRENT_LOG.get("case_id", "run")
-    line = f"[TEST] {step}: {detail}"
+    line = f"[TEST] [step {_LOG_N[0]}] {step}: {detail}  (+{gap:.1f}s / 累计 {total:.1f}s){mark}"
     print(line, flush=True)
     _append_log(cid, line)
+    return gap
+
+
+def _log_check(desc, detail=""):
+    """断言成功日志 —— **同时记录这一步（含等待）花了多少秒**（V8.7.7）。
+
+    [!] 为什么断言要单独走一个函数：断言可能等很久（实测「等订单状态按时间流转到已关闭」
+       等了 150.5s，占整条用例 73%）。如果断言只 print 不更新计时器，这 150 秒会被
+       算到下一个 _log 头上 —— 日志上看着像是「点开角色菜单死等 150 秒」，完全指错方向
+       （2026-10-27 我自己就当场误读了一次）。
+    [!] 所以断言也计入 step 序号与耗时，口径与 _log 完全一致。
+    \"\"\"
+    import time as _t
+    now = _t.monotonic()
+    if _LOG_T0[0] is None:
+        _LOG_T0[0] = now
+    gap = (now - _LOG_LAST[0]) if _LOG_LAST[0] is not None else 0.0
+    total = now - _LOG_T0[0]
+    _LOG_LAST[0] = now
+    _LOG_N[0] += 1
+    mark = "  [SLOW]" if gap >= 5.0 else ""
+    line = (f"[CHECK] [step {_LOG_N[0]}] v 断言: {desc}"
+            + (f"（{detail}）" if detail else "")
+            + f"  (+{gap:.1f}s / 累计 {total:.1f}s){mark}")
+    print(line, flush=True)
+    _append_log(_CURRENT_LOG.get("case_id", "run"), line)
+    return gap
 
 def _append_log(case_id, line):
     try:
@@ -3906,9 +3985,7 @@ def _assert_text(page, text, desc=""):
     loc.first.wait_for(timeout=5000)
     from playwright.sync_api import expect
     expect(loc.first).to_be_visible()
-    line = f"[CHECK] v 断言: {desc or text}"
-    print(line, flush=True)
-    _append_log(_CURRENT_LOG.get("case_id", "run"), line)
+    _log_check(desc or text)
     _shot(page, f"assert_{text}")                  # 调试模式：断言通过后也存一张
 
 
@@ -3995,9 +4072,7 @@ def _assert_wait_text(page, text, timeout_ms=30000, refresh="none", desc="", sel
 
 
 def _ok(page, desc, tag, detail=""):
-    line = f"[CHECK] v 断言: {desc}" + (f"（{detail}）" if detail else "")
-    print(line, flush=True)
-    _append_log(_CURRENT_LOG.get("case_id", "run"), line)
+    _log_check(desc, detail)
     _shot(page, f"assert_{tag}")
 
 

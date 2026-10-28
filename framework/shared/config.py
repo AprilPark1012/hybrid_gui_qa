@@ -1,5 +1,6 @@
 """配置：目标 URL、LLM provider、输出目录。"""
 from __future__ import annotations
+import math
 import os
 from pathlib import Path
 
@@ -93,6 +94,137 @@ GENERATED_DIR = SCRIPTS_DIR / "generated"     # ★P20 生成脚本目录（<sce
 # ---- LLM 编排阶段需要 LLM（借 browser-use 的 LLM 客户端，非其 Agent）----
 # 负责"智能理解"：读懂自然语言测试意图、规划步骤、挑元素、写 plan。
 # 这是 AI 之力的成本来源（每步一次模型推理）。
+
+
+def llm_timeout_s() -> float:
+    """LLM 单次请求超时（秒）。默认 180，`HYBRID_LLM_TIMEOUT` 可调。
+
+    [!] 为什么必须**显式**给一个数（V8.7.3，2026-10-26 实测）：
+        browser_use 的 `ChatDeepSeek` 字段默认是 `timeout: ... | None = None`，
+        而我们构造时不传 -> 它被**显式赋成 None** -> `AsyncOpenAI(timeout=None)`
+        -> httpx 里 **None = 禁用超时**（不是"用默认值"！）。
+        实测（GLM-5.3 + 结构化输出重试）：第 1 次输出不合格后发第 2 次，端点不回包，
+        客户端**永久挂住** —— 日志停在「第 1/3 次结构化输出失败」那行，用户只能 Ctrl+C，
+        且拿不到任何错误信息。对照：不传 timeout 时 SDK 默认是
+        `Timeout(connect=5.0, read=600, write=600, pool=600)`。
+
+    取值口径：GLM/DeepSeek 出一次「十几步的结构化 JSON」实测 20~60 秒；给 180 秒
+    留足余量，又不至于让人干等十分钟。非法/非正值一律回落默认（不静默变成 0=禁用）。
+    """
+    raw = str(os.environ.get("HYBRID_LLM_TIMEOUT") or "").strip()
+    if not raw:
+        return 180.0
+    try:
+        val = float(raw)
+    except ValueError:
+        return 180.0
+    # [!] 必须挡 inf / nan：`float("1e400")` == inf，而 `inf > 0` 成立 ->
+    #   会被当成合法超时传给 httpx，效果等于**又禁用了一次超时**（同一个坑换了个门进来）。
+    if not math.isfinite(val) or val <= 0:
+        return 180.0
+    return val
+
+
+def verify_timeout_s() -> float:
+    """`--verify` 试跑**单条**用例的超时（秒）。默认 900，`HYBRID_VERIFY_TIMEOUT` 可调。
+
+    为什么必须有：试跑走 `run_capture(... timeout=None)`，即**子进程卡住父进程就永久等**。
+    真实全链路用例（实测 62 步）里有「等订单状态按时间流转」这类有界等待（最长约 160s），
+    正常总耗时 3~6 分钟；但 demo 没响应 / 等待条件永不满足时，没有超时就是**真的卡死**，
+    用户只能 Ctrl+C，还看不出卡在哪（2026-10-27 用户实测报「卡住了」）。
+
+    900 秒 = 实测 360 秒的 2.5 倍余量。非法/非正值一律回落默认（不静默变成 0=禁用）。
+    """
+    raw = str(os.environ.get("HYBRID_VERIFY_TIMEOUT") or "").strip()
+    if not raw:
+        return 900.0
+    try:
+        val = float(raw)
+    except ValueError:
+        return 900.0
+    # [!] 同 llm_timeout_s：挡 inf / nan（`float("1e400") == inf` 会让超时失效）
+    if not math.isfinite(val) or val <= 0:
+        return 900.0
+    return val
+
+
+#: 端点 -> 厂商的人话映射。**只用于打印给人看**，不参与任何逻辑判断
+#: （判断该不该用某端点，只看它是否 OpenAI 兼容，不靠这张表）。
+_LLM_VENDOR_HINTS = (
+    ("bigmodel.cn", "智谱 GLM"),
+    ("deepseek.com", "DeepSeek"),
+    ("moonshot.cn", "月之暗面 Kimi"),
+    ("dashscope.aliyuncs.com", "阿里通义"),
+    ("volces.com", "字节豆包"),
+    ("siliconflow", "硅基流动"),
+    ("localhost", "本地端点（vLLM/Ollama 等）"),
+    ("127.0.0.1", "本地端点（vLLM/Ollama 等）"),
+)
+
+
+def llm_vendor_of(base_url: object) -> str:
+    """把端点认成厂商名（认不出就说认不出，**不瞎猜**）。"""
+    low = str(base_url or "").lower()
+    for frag, name in _LLM_VENDOR_HINTS:
+        if frag in low:
+            return name
+    return "未识别的端点"
+
+
+def llm_source_env() -> str:
+    """当前是由**哪一组环境变量**提供的 LLM。顺序必须与 llm_from_env() 一致。"""
+    for var, label in (
+        ("LLM_API_KEY", "LLM_*"),
+        ("BROWSER_USE_API_KEY", "BROWSER_USE_API_KEY"),
+        ("OPENAI_API_KEY", "OPENAI_API_KEY"),
+        ("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
+        ("GOOGLE_API_KEY", "GOOGLE_API_KEY"),
+        ("DEEPSEEK_API_KEY", "DEEPSEEK_*"),
+    ):
+        if os.environ.get(var):
+            return label
+    return "未配置"
+
+
+def describe_llm(obj=None) -> str:
+    """一行说清**实际生效**的 LLM：模型 / 端点 / 厂商 / 配置来源 / 超时。**绝不打印 key**。
+
+    [!] 刻意从**已经构造好的 obj** 读属性，而不是重读环境变量（V8.7.4，2026-10-26）：
+        重读环境变量得到的是「配置里写的」，而 obj 承载的是「真链路实际在用的」——
+        命令行的 `--llm-model` / `--llm-base-url` 覆盖只体现在 obj 上。
+        历史教训：拿"配置值"当"实际值"报，会得出错的结论。
+
+    [!] 为什么要它：用户问「跑 all --ai 到底用的是 GLM 还是 DEEPSEEK」——
+        这件事**必须从真链路打印**，不能靠人去看 .env 猜（两组变量名都能接 GLM，
+        `DEEPSEEK_*` 里填 GLM 端点是合法用法，光看变量名会误判）。
+    """
+    model = "?"
+    for attr in ("model_name", "model"):
+        v = getattr(obj, attr, None)
+        if isinstance(v, str) and v.strip():
+            model = v.strip()
+            break
+
+    base = getattr(obj, "base_url", None)
+    base_s = str(base) if base else "(端点默认)"
+    host = base_s
+    try:
+        from urllib.parse import urlsplit
+        sp = urlsplit(base_s if "//" in base_s else "//" + base_s.lstrip("/"))
+        host = sp.netloc or base_s
+        if sp.path and sp.path not in ("/", ""):
+            host = f"{host}{sp.path}"
+    except Exception:
+        pass
+
+    timeout = getattr(obj, "timeout", None)
+    to_s = f"{timeout:g}s" if isinstance(timeout, (int, float)) else (
+        str(timeout) if timeout else f"{llm_timeout_s():g}s")
+
+    return (f"{model} @ {host} → {llm_vendor_of(base_s)}"
+            f"｜配置来源 {llm_source_env()}｜超时 {to_s}")
+
+
 def llm_from_env():
     """按 .env 里配了哪个 key，构造对应的 LLM 客户端实例
     （来自 browser_use.llm 包；**不使用** browser-use 的 Agent）。
@@ -135,6 +267,11 @@ def llm_from_env():
             # 空字符串按「没设」处理（.env 里 `LLM_REASONING_EFFORT=` 是常见写法，
             # 不能让它变成发一个空字段出去）。
             reasoning_effort=os.environ.get("LLM_REASONING_EFFORT") or None,
+            timeout=llm_timeout_s(),          # [!] 见 llm_timeout_s()：不给就是永不超时
+            # [!] SDK 层不再自己重试：框架的重试（HYBRID_LLM_ATTEMPTS，默认 3）已经是
+            #     唯一权威。SDK 默认 max_retries=2 会与它相乘 -> 最坏 3×3=9 次请求，
+            #     每次都可以等满一个 timeout（180s）= 27 分钟才报错，看着就是"卡死"。
+            client_params={"max_retries": 0},
         )
     # 1) Browser Use 自家优化模型
     if os.environ.get("BROWSER_USE_API_KEY"):
@@ -160,6 +297,8 @@ def llm_from_env():
             model=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"),
             temperature=0.0,
             reasoning_effort=os.environ.get("LLM_REASONING_EFFORT") or None,
+            timeout=llm_timeout_s(),          # [!] 同上：不给就是永不超时（httpx 语义）
+            client_params={"max_retries": 0},  # [!] 同上：重试唯一权威是框架的 attempts
         )
     raise RuntimeError(
         "未检测到 LLM 环境变量。请在 .env 配置 LLM_API_KEY（通用 OpenAI 兼容：GLM / Kimi / "

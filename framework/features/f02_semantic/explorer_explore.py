@@ -20,7 +20,7 @@ import asyncio          # 2026-09-13 修：_ai_explore_async 里 `await asyncio.
 import json
 import re               # 2026-09-18：_field_identity 归一化字段名（去「*」/去结尾「（全模糊）」）
 import time             # 2026-09-14：弹层/弹窗探测改成「有界轮询等新控件出现」，需要单调时钟
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from framework.features.f03_locate.element_map import (ElementMap, TestStep, ElementRef,
                                               row_scope_violation, step_get,
                                               item_multi_match_map, multi_match_of_name,
@@ -60,6 +60,30 @@ class _StepModel(BaseModel):
         "行内定位（**按行下标**，从 1 起；-1 = 最后一行）：行锚 `row_text` 表达不了「**刚刚新增的空行**」"
         "（新行没有内容可当锚）时用它 —— 例如详情页点「新增行」后要填这一行的字段"))
     desc: str = Field(default="", description="一句话说明")
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _null_means_missing(cls, v, info):
+        """把「显式 null」等价成「键缺失」，让 `default=` 生效（V8.7.3，2026-10-26）。
+
+        [!] 为什么需要它：两种模型对「没填的字段」表达方式不同，而 Pydantic 只认后者 ——
+            · **DeepSeek**：**省略该键**   -> 走 `default=`，一切正常；
+            · **GLM-5.3**：显式发 `null` -> `default=` **不生效**，直接按类型校验失败：
+              `Input should be a valid string [input_value=None, input_type=NoneType]`。
+            实测（GLM 走 explore --ai 结构化输出）：16 个步骤**全部** `semantic_name=null`
+            -> 整轮 `ModelProviderError: 16 validation errors for _PlanModel` -> 必然重试
+            -> 每轮都挂。也就是说这不是"GLM 答得差"，是**框架没兼容它的 null 习惯**：
+            换一家 OpenAI 兼容端点就复现，与场景/提示词无关。
+
+        [!] 只放宽 None，不放松校验：字段**有非 None 的 default** 才用 default 顶上；
+            `X | None` 这类 default=None 的字段保持 None（本来就接受）；
+            任何**真实值/错类型**（例如把数字塞进 str）照样严格报错。
+        """
+        if v is None:
+            f = cls.model_fields.get(info.field_name)
+            if f is not None and f.default is not None and f.default_factory is None:
+                return f.default
+        return v
 
 
 class _PlanModel(BaseModel):
@@ -841,7 +865,7 @@ async def _ai_explore_async(
     （页面探测已在 _collect_page_context 里同步完成；这里绝不能碰 Playwright Sync API。）
     """
     import os
-    from framework.shared.config import llm_from_env
+    from framework.shared.config import llm_from_env, describe_llm
 
     prompt = _build_planner_prompt(scenario, page_items, url, dom_ctx, page_bg=page_bg, guard=guard,
                                    pages=pages, collisions=collisions, row_fields=row_fields,
@@ -866,6 +890,12 @@ async def _ai_explore_async(
 
     obj = llm_from_env()   # ChatDeepSeek(deepseek) / ChatOpenAI 等
     model_name = _llm_model_name(obj)      # 录像元信息（不参与键，见 llm_cassette.cassette_key）
+    # [!] V8.7.4（2026-10-26，用户要求）：把**实际在用**的模型打出来。
+    #   起因：跑 all --ai 时不知道到底在花谁的钱 —— 光看 .env 的变量名判断不了
+    #   （`DEEPSEEK_*` 里填 GLM 端点是**合法用法**，光看名字会误判成 DeepSeek）。
+    #   刻意从 obj 读（不是重读环境变量）：命令行 --llm-model / --llm-base-url
+    #   的覆盖只体现在 obj 上，读环境变量会把"配置"当"实际"报。
+    print(f"      [explore] [LLM] 实际使用：{describe_llm(obj)}", flush=True)
 
     # ★ 连接池由**我们自己**持有并关闭（2026-09-13 批量 --scenario-dir 实测的坑）：
     #   browser-use 的 `ChatDeepSeek._client()` 每次 ainvoke 都 new 一个 AsyncOpenAI，
@@ -912,6 +942,16 @@ async def _ai_explore_async(
                         SystemMessage(content=_PLANNER_SYSTEM),
                         UserMessage(content=prompt),
                     ]
+                    # [!] V8.7.3（2026-10-26）：重试轮先报一句「请求已发出、在等谁、多久算超时」。
+                    #   起因是实测事故：GLM 第 1 轮输出不合格 -> 进入第 2 轮 -> 端点不回包
+                    #   -> 客户端当时**没有超时**（见 config.llm_timeout_s 的注释）-> 日志
+                    #   停在「第 1/3 次结构化输出失败」不动，看着就是"卡死"，用户只能 Ctrl+C。
+                    #   口径：**静默等待最坏**——宁可多一行进度，也不要让人猜。
+                    if attempt > 1:
+                        _to = os.environ.get("HYBRID_LLM_TIMEOUT") or "180"
+                        print(f"      [explore] [i] 第 {attempt}/{n_attempts} 次请求已发出，"
+                              f"等待端点响应（超时 {_to}s）—— 长时间无新输出 = 端点没回包，"
+                              f"到点会自动报超时而不是一直挂着", flush=True)
                     r = await obj.ainvoke(msgs, output_format=_PlanModel)
                     raw_plan = r.completion           # 录制用：真拿到的结构化回答
                     steps = _plan_to_steps(r.completion, page_items)
@@ -933,6 +973,33 @@ async def _ai_explore_async(
                     else:
                         _note_err(errs, f"结构化输出路径 {_msg}")
                         print(f"      [explore] 第 {attempt}/{n_attempts} 次结构化输出失败 -> {errs[-1]}")
+                        # [!] V8.7.12（2026-10-28 用户实测纠正）：这段原来**硬编码**断言
+                        #   「这多半不是模型不稳定，而是 reasoning_effort 太低」——错了。
+                        #   实证：用户 `LLM_REASONING_EFFORT=high` + **登录页只有 3 条清单**（极小 prompt）
+                        #        也报同一个 `got none`，且第 2 次重试就成功。
+                        #   => 根因是**模型偶发不调工具**，与 prompt 大小、与 effort 档位都无关。
+                        #   而原提示把人往「调 effort / 查大 prompt」方向带偏了整整一轮（查端点/查 max_tokens 全白跑）。
+                        #   => 现在必须**先读当前 effort 再决定说什么**，不许无脑甩那个结论。
+                        _low = _msg.lower()
+                        if "tool_calls" in _low and ("none" in _low or "got no" in _low):
+                            _eff = (os.environ.get("LLM_REASONING_EFFORT") or "").strip().lower()
+                            if _eff in ("", "low", "minimal"):
+                                # effort 确实偏低 —— 这才是原结论适用的场景
+                                print("      [explore] [i] 端点**给了内容但没有 tool_calls** —— "
+                                      f"当前 reasoning_effort={_eff or '(未设)'}，档位偏低是**主要嫌疑**：")
+                                print("      [explore]     实测 GLM-5.3 在 low 档 + 大 prompt 下**完全不返回 tool_calls**，"
+                                      "结构化路径失效（V8.7.5 本地复现：83s / 11.6 万字符）。")
+                                print("      [explore]     修法：LLM_REASONING_EFFORT=high，"
+                                      "并把 HYBRID_LLM_TIMEOUT 提到 400+（high 档实测 312s，默认 180s 必超时）。")
+                            else:
+                                # effort 已经够高 —— 别再说是档位问题，那是误导
+                                print(f"      [explore] [i] 端点**给了内容但没有 tool_calls** —— 当前 "
+                                      f"reasoning_effort={_eff}，**所以不是档位太低**，"
+                                      "而是模型**偶发不调工具**：")
+                                print("      [explore]     实证（V8.7.12）：high 档下，登录页只有 3 条清单的**极小 prompt** "
+                                      "也会偶发这条错误，同一 prompt 重试即过。")
+                                print("      [explore]     处置：让**重试**兜住它（HYBRID_LLM_ATTEMPTS 默认 3，可加到 5）；"
+                                      "连续多次仍失败再查提示词/端点，**别去改 reasoning_effort**。")
 
             # 路径2：纯文本 + 宽松解析（兼容无 output_format 的 provider；必须用 async 版，
             # 不能再走 asyncio.run 的 _get_llm_text —— 在事件循环里调它会直接 RuntimeError）

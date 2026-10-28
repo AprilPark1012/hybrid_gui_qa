@@ -6,13 +6,13 @@
 ## 总览
 
 - 大特性 **11** 个 · 子特性 **55** 条
-- 一类用例文件 **128** 个 / 用例函数 **1098** 条
+- 一类用例文件 **136** 个 / 用例函数 **1178** 条
 - 二类验证文件 **25** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
 | 1 | AI 链路与离线回放 | 3 | 3 | 2 |
-| 2 | 语义识别与步骤编排 | 4 | 27 | 5 |
+| 2 | 语义识别与步骤编排 | 4 | 31 | 5 |
 | 3 | 分层定位与控件识别 | 9 | 23 | 6 |
 | 4 | 选错控件兜底 | 4 | 4 | 2 |
 | 5 | 用例脚本数据三层分离 | 5 | 8 | 0 |
@@ -20,8 +20,8 @@
 | 7 | 并发与资源安全 | 4 | 3 | 1 |
 | 8 | 离线回放 | 5 | 8 | 3 |
 | 9 | 质量闸门体系 | 8 | 39 | 6 |
-| 10 | CLI 帮助契约 | 10 | 12 | 0 |
-| 11 | 交付即验证 | 2 | 1 | 0 |
+| 10 | CLI 帮助契约 | 10 | 14 | 0 |
+| 11 | 交付即验证 | 2 | 3 | 0 |
 
 ## 特性 1 · AI 链路与离线回放
 
@@ -44,7 +44,7 @@
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
 | 2.1 | 语义名生成与对齐 | AI 产出的语义名能落到真实控件上；宁可不映射（大声告警）也不许错映射（静默点错） | `test_name_alignment.py`(11) | - |
-| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单；**AI 产出的有界重试口径**也归这里（产出侧被闸门拦下 -> 带原因重生成、上一轮缺陷记账不许留给下一轮；实跑档失败 -> 带原因整轮重来）—— 原登记在特性11，V8.6.3 按「登记目录 == 物理目录」改挂此处 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_prompt_no_demo_literals.py`(2)、`test_ai_no_hardcoded_row_values.py`(5)、`test_semantic_mismatch_blocks.py`(3)、`test_llm_tool_choice_unsupported.py`(4)、`test_ai_can_express_row_checkbox.py`(14)、`test_required_field_coverage.py`(8)、`test_required_fields_hard_checklist.py`(5)、`test_prompt_list_clipping_is_general.py`(15)、`test_prompt_dom_facts_merged.py`(11)、`test_prompt_wait_page_rule_compact.py`(6)、`test_production_defects_gate_l1.py`(3)、`test_ai_incomplete_output_retries.py`(3)、`test_retry_feedback_contract.py`(13)、`test_ai_retry_contract.py`(7)、`test_ai_retry_same_cause.py`(5)、`test_no_dual_step_field_names.py`(8) | `verify_role_switch_click.py` |
+| 2.2 | 自然语言步骤编排 | 场景 yml 的自然语言 → 步骤序列；步骤能直接声明定位方式（by+value）而不依赖探测清单；**AI 产出的有界重试口径**也归这里（产出侧被闸门拦下 -> 带原因重生成、上一轮缺陷记账不许留给下一轮；实跑档失败 -> 带原因整轮重来）—— 原登记在特性11，V8.6.3 按「登记目录 == 物理目录」改挂此处 | `test_step_direct_locator.py`(15)、`test_ai_scenario_preconditions.py`(10)、`test_prompt_no_demo_literals.py`(2)、`test_ai_no_hardcoded_row_values.py`(5)、`test_semantic_mismatch_blocks.py`(3)、`test_llm_tool_choice_unsupported.py`(4)、`test_ai_can_express_row_checkbox.py`(14)、`test_required_field_coverage.py`(8)、`test_required_fields_hard_checklist.py`(5)、`test_prompt_list_clipping_is_general.py`(15)、`test_prompt_dom_facts_merged.py`(11)、`test_prompt_wait_page_rule_compact.py`(6)、`test_production_defects_gate_l1.py`(3)、`test_ai_incomplete_output_retries.py`(3)、`test_retry_feedback_contract.py`(13)、`test_ai_retry_contract.py`(11)、`test_ai_retry_same_cause.py`(5)、`test_no_dual_step_field_names.py`(8)、`test_llm_null_and_timeout.py`(15)、`test_llm_doctor_vendor_and_bigprobe.py`(11)、`test_step_timing_and_reset_default.py`(12)、`test_got_none_diagnosis_honesty.py`(4) | `verify_role_switch_click.py` |
 | 2.3 | 步骤到定位的合成 | 步骤里的语义名/属性如何合成可执行定位表达式（`verify_scope_locate.py` 物理住在 tests/特性3-分层定位与控件识别/，按「登记目录 == 物理目录」只挂 3.1） | `test_scope_locate_expr.py`(17)、`test_locate_by_title.py`(8) | - |
 | 2.4 | 场景声明契约 | 人写的那部分：pages / pre / auth / data / probe_url —— 声明必须由场景提供，框架不懂具体系统 | `test_login_stepwise_contract.py`(8)、`test_scenario_auth_spec.py`(8)、`test_page_pre_actions.py`(3)、`test_probe_pre_consistency.py`(10)、`test_probe_url_and_occurrence.py`(6)、`test_login_priming_coverage.py`(4) | `verify_login_priming.py`、`test_page_pre_actions_force_fallback.py`、`test_scenario_probe_pre.py`、`verify_page_pre_actions.py` |
 
@@ -160,7 +160,7 @@
 | 10.3 | 帮助自动覆盖 | 新增子命令/参数必须自动出现在 --help 总览里 | `test_cli_help_coverage.py`(11) | - |
 | 10.4 | setup 与分发采纳 | `setup --check` 退出码能区分环境好坏 | `test_cli_setup.py`(10) | - |
 | 10.5 | 推荐路径口径 | 文档/提示/培训页的主推路径 = 真 AI 链路（V8.6 起是唯一链路）；不许把手搓链路写成可用入口（历史版本记录不改） | `test_ai_first_docs.py`(6)、`test_tunables_exposed_as_flags.py`(6) | - |
-| 10.6 | 文档真值契约 | 文档说的必须和代码做的是同一回事：引用的路径存在、主线命令统一 all --ai、配置表不虚报条数、关键数字对齐代码真值 | `test_docs_truth_contract.py`(7) | - |
+| 10.6 | 文档真值契约 | 文档说的必须和代码做的是同一回事：引用的路径存在、主线命令统一 all --ai、配置表不虚报条数、关键数字对齐代码真值 | `test_docs_truth_contract.py`(7)、`test_all_no_run_switch.py`(7)、`test_no_hardcoded_case_id.py`(2) | - |
 | 10.7 | 文档结构真值契约 | 培训页/README 画的目录结构必须与磁盘一致：登记的特性夹都要真实存在、磁盘上的特性夹都要登记、不许声称有 f01 或每特性 api.py | `test_docs_structure_truth.py`(4) | - |
 | 10.8 | 通用 LLM 入口 | 一个开关接所有 OpenAI 兼容服务（GLM / Kimi / 通义 / 豆包 / 本地 vLLM）—— 必须走 function calling、优先级最高、可被 cli config 发现、密钥不外泄 | `test_llm_provider_switch.py`(8) | - |
 | 10.9 | LLM 体检 + 思考档位 | 换模型前先体检：`cli llm-doctor` 真发 2 次请求，报「连通 / function calling 通不通 / 端点在用哪档思考」，并区分「不可用」与「能用但打折（thinking 模式拒 tool_choice）」。配套 `LLM_REASONING_EFFORT` 旋钮压思考强度；旋钮必须真进请求体（断言产出而非调用）、不污染默认、可发现 | `test_llm_doctor.py`(13)、`test_reasoning_effort_advice_consistency.py`(2) | - |
@@ -174,6 +174,6 @@
 
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
-| 11.1 | 验证入口契约（两档重试口径） | `cli verify` 独立入口的契约（能单独重跑，不必再走一遍 explore）；两档重试的能力口径：① 产出物被质量闸拦下（写死行数据 / 严重误选 / 必填未编排 / 行定位缺失）-> 带原因重生成；② 生成脚本后真跑一次 -> 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、回放同样可带失败原因推进重试轮、退出码可区分（2 产出侧 / 3 实跑侧）。[!] V8.6.3：本特性**只挂物理住在本目录的判据**；两档重试的其余判据物理住在 tests/特性2-语义识别与步骤编排/（登记在 2.2），按「登记目录 == 物理目录」不在此重复挂。[!] V8.6.4：原 `test_retry_is_bounded`（被特性2 严格覆盖）、原只查「全文 >= 1 次」的 `test_replay_mode_does_not_retry`（删任一档都不红）已删。[!] V8.7.2（契约变更）：回放**不再**一刀切跳过重试 —— 重试会把失败原因写进 prompt，下一轮 prompt 就不是「同一份录像」；录像若录了那一轮就该推进（否则「失败→修复」永远不可离线复演）。强判据由此改名并改契约：`test_replay_advances_to_next_round_in_both_retry_paths` 钉「两档各自都允许推进」+「分支体不许是 break / exit 3」+「缺录像必须 exit 2 报缺」；「白转」防线改由 `_should_retry_again` 有界约束 + 缺录像 fail loud 覆盖 | `test_verify_entry_contract.py`(5) | - |
+| 11.1 | 验证入口契约（两档重试口径） | `cli verify` 独立入口的契约（能单独重跑，不必再走一遍 explore）；两档重试的能力口径：① 产出物被质量闸拦下（写死行数据 / 严重误选 / 必填未编排 / 行定位缺失）-> 带原因重生成；② 生成脚本后真跑一次 -> 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、回放同样可带失败原因推进重试轮、退出码可区分（2 产出侧 / 3 实跑侧）。[!] V8.6.3：本特性**只挂物理住在本目录的判据**；两档重试的其余判据物理住在 tests/特性2-语义识别与步骤编排/（登记在 2.2），按「登记目录 == 物理目录」不在此重复挂。[!] V8.6.4：原 `test_retry_is_bounded`（被特性2 严格覆盖）、原只查「全文 >= 1 次」的 `test_replay_mode_does_not_retry`（删任一档都不红）已删。[!] V8.7.2（契约变更）：回放**不再**一刀切跳过重试 —— 重试会把失败原因写进 prompt，下一轮 prompt 就不是「同一份录像」；录像若录了那一轮就该推进（否则「失败→修复」永远不可离线复演）。强判据由此改名并改契约：`test_replay_advances_to_next_round_in_both_retry_paths` 钉「两档各自都允许推进」+「分支体不许是 break / exit 3」+「缺录像必须 exit 2 报缺」；「白转」防线改由 `_should_retry_again` 有界约束 + 缺录像 fail loud 覆盖 | `test_verify_entry_contract.py`(5)、`test_verify_observability.py`(10)、`test_verify_concurrent_and_skip.py`(15) | - |
 | 11.2 `[判据住特性2]` | 实跑档重试（判据住特性2） | 实跑档（generate + 逐条实跑）失败 -> 带原因整轮重来；回放同样带失败原因推进（缺录像 exit 2 报缺）；实跑未过 exit 3 —— 能力口径保留在本条；其判据（test_ai_retry_contract / test_ai_retry_same_cause，前者 V8.6.4 第二批由 test_ai_retry_loop 改名 —— 它守的是「上限 / 回炉 / 接线」契约）物理住在 tests/特性2-语义识别与步骤编排/，按「登记目录 == 物理目录」登记在 2.2 | - | - |
 

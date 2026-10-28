@@ -174,3 +174,101 @@ def test_replay_mode_has_explicit_branch_near_retry_gate():
 # 它想守的语义（假绿红线必须真 exit 2、重试不许以弱化闸门为代价）已由
 # `tests/特性11-交付即验证/test_verify_entry_contract.py::test_verify_failure_exit_codes_are_distinct`
 # **完整**覆盖（那里钉的是两档退出码真的存在且可区分：`raise SystemExit(2)` + `raise SystemExit(3)`）。
+
+
+# ---------- 重试日志必须能区分「哪一档」和「总共第几次」（V8.7.4，2026-10-26 实测事故）----------
+# 事故：L0（产出物档）和 L1（实跑档）各有独立计数器，各自从 0 起、各自 +1 后**都打印 "2/3"**
+#   -> 用户日志里看到「重试第一次和重试第二次是同一句话」，误以为计数没递增。
+#   数字没算错，错在两条日志长得一样：分不清哪档在重试、也数不出总共重试了几次。
+
+_CLI_SRC = (REPO / "framework" / "features" / "f10_cli" / "cli.py").read_text(
+    encoding="utf-8", errors="replace")
+
+
+def test_retry_logs_carry_level_tags():
+    """两条重试日志必须各带档位标签 —— 没有标签就分不清是 L0 还是 L1。"""
+    assert "[L0 产出物档]" in _CLI_SRC, "L0 重试日志缺档位标签"
+    assert "[L1 实跑档]" in _CLI_SRC, "L1 重试日志缺档位标签"
+
+
+def test_retry_logs_are_not_identical_text():
+    """两条重试日志的**文本必须不同** —— 这是本事故的最小复现形态。
+
+    原来两条都只写「（第 k/N 次）」，k/N 还各自从 0 起算 -> 打出来一模一样。
+    """
+    import re
+
+    m0 = re.search(r'\[L0 产出物档\][^"]*', _CLI_SRC)
+    m1 = re.search(r'\[L1 实跑档\][^"]*', _CLI_SRC)
+    assert m0 and m1, "两条档位日志没找到"
+    assert m0.group().strip() != m1.group().strip(), "L0 与 L1 的日志文本仍然相同"
+
+
+def test_retry_logs_show_level_count_and_cumulative_total():
+    """每条重试日志都要同时给「该档第 k/N」和「累计第 M 次」——
+    前者说明这一档还剩几次机会，后者让人一眼数出整轮到底重试了几次。
+
+    [!] 不能只匹配 `[L0 产出物档][^"]*` 那种单行正则：源码里这条日志是**两行 f-string 拼接**的，
+       `[^"]*` 到第一个引号就停，取不到第二行的 `{retry_seq}`（写完第一版就这么假红过）。
+       所以直接数全仓出现次数：L0 和 L1 各必须有一处。
+    """
+    needle = "累计第 {retry_seq} 次重试"
+    n = _CLI_SRC.count(needle)
+    assert n >= 2, f"「累计第 M 次重试」只出现 {n} 处，应 ≥2（L0 与 L1 各一处）"
+
+    # 两档各自的「该档第 k/N」也必须都在
+    assert "{attempt + 1}/{retry_limit + 1} 次" in _CLI_SRC, "L0 缺「该档第 k/N 次」"
+    assert "{l1_attempt + 1}/{retry_limit + 1} 轮" in _CLI_SRC, "L1 缺「该档第 k/N 轮」"
+
+
+def test_retry_seq_is_shared_across_levels():
+    """`retry_seq` 必须是**跨档共享**的一个变量：定义在 `while True:` 之前，且两档都 += 1。
+
+    若哪天有人把它改成各档自己的局部变量，这个 bug 就会原样复活。
+    """
+    import ast
+
+    tree = ast.parse(_CLI_SRC)
+    # 找到包含 retry_seq 的那个函数
+    target_fn = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            names = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+            if "retry_seq" in names and "l1_attempt" in names:
+                target_fn = node
+                break
+    assert target_fn is not None, "没找到同时用 retry_seq 和 l1_attempt 的函数"
+
+    # ① 函数体内必须有 `retry_seq = 0` 赋值
+    has_init = False
+    for node in ast.walk(target_fn):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) \
+                and node.value.value == 0:
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id == "retry_seq":
+                    has_init = True
+    assert has_init, "retry_seq 没有在函数内初始化为 0"
+
+    # ② 必须有 `retry_seq += 1` 至少两处（L0 一处、L1 一处）
+    inc = 0
+    for node in ast.walk(target_fn):
+        if isinstance(node, ast.AugAssign) and isinstance(node.op, ast.Add) \
+                and isinstance(node.target, ast.Name) and node.target.id == "retry_seq":
+            inc += 1
+    assert inc >= 2, f"retry_seq 自增只有 {inc} 处，应 ≥2（L0 与 L1 各一处）"
+
+    # ③ 初始化行号必须早于第一次 += （否则计数会从错的地方开始）
+    init_line = min(
+        n.lineno for n in ast.walk(target_fn)
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Constant)
+        and n.value.value == 0
+        and any(isinstance(t, ast.Name) and t.id == "retry_seq" for t in n.targets)
+    )
+    first_inc_line = min(
+        n.lineno for n in ast.walk(target_fn)
+        if isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name)
+        and n.target.id == "retry_seq"
+    )
+    assert init_line < first_inc_line, (
+        f"retry_seq 初始化（行 {init_line}）必须早于首次自增（行 {first_inc_line}）"
+    )

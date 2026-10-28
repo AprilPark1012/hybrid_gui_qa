@@ -5,16 +5,20 @@
     python -m framework.cli generate         # 2) 读 cases/*.json → 生成 scripts/（按操作类型翻译 + 抽离数据）
     python -m framework.cli run --workers 2  # 3) pytest 并发执行用例 + 日志整合 + 报告
                                              #    跑前资源预检：内存不够会自动降并发，--force-workers 可强制
-    python -m framework.cli all --ai --scenario-file scenarios/x.yml   # 全链路（唯一入口，必须带 --ai）
+    python -m framework.cli all --ai --scenario-file scenarios/x.yml   # 【主线·唯一入口】全链路（必须带 --ai）
+    python -m framework.cli all --ai --no-run --scenario-file scenarios/x.yml   # 【开发期】到 verify 为止，不跑 run
+                                             #    用例/脚本/实测验证都已完成，只是没有 report.html（省一半时间）
+    python -m framework.cli prune --keep 20   # 归档保留：快照各留最近 N 个（--dry-run 预演，不删）
+    python -m framework.cli run --debug        # 调试开关（别名 --headed）：有屏幕→弹浏览器；没屏幕→录视频+逐步截图
+    python -m framework.cli run --debug --case <case_id>                # 只跑一条用例（case_id = cases/ 里的文件名）
+    python -m framework.cli run --debug --slowmo 500                    # 动作放慢 500ms，肉眼跟步
+
+单做 AI 语义识别（不是主线，跑全流程请用上面的 all --ai）:
     python -m framework.cli explore --ai --scenario "…"        # 内联自然语言（原样保留）
     python -m framework.cli explore --ai --scenario-file scenarios/x.yml   # 单场景文件
     python -m framework.cli explore --ai --scenario-dir scenarios/ --tag smoke  # 目录批量
                                              # AI 语义识别 → ElementMap + cases/ai_*.json
                                              # 默认做 --verify 试跑校验（实测不过 → exit 3；--no-verify 跳过）
-    python -m framework.cli prune --keep 20   # 归档保留：快照各留最近 N 个（--dry-run 预演，不删）
-    python -m framework.cli run --debug        # 调试开关（别名 --headed）：有屏幕→弹浏览器；没屏幕→录视频+逐步截图
-    python -m framework.cli run --debug --case contracts_search_by_no   # 只跑一条用例
-    python -m framework.cli run --debug --slowmo 500                    # 动作放慢 500ms，肉眼跟步
 
 目录职责：
     cases/       AI 产出的自然语言用例（<场景id>/ai_*.json；由 explore --ai 落盘）
@@ -23,7 +27,9 @@
 """
 from __future__ import annotations
 import json
+import subprocess
 import sys
+import time
 from typing import NoReturn
 
 from framework.shared import config
@@ -534,7 +540,7 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
 
 
 def cmd_explore(rest: list[str] = None):
-    """【AI 语义识别】自然语言场景（内联 或 scenario 文件）+ probe 清单 + DOM 上下文
+    """【AI 语义识别】**不是主线** —— 只做识别+产出用例；跑全流程请用 all --ai。
     → ElementMap（默认同步落 cases/ai_*.json）。
 
     需 .env 配 DeepSeek key（config.llm_from_env 走 ChatDeepSeek）。
@@ -730,6 +736,13 @@ def cmd_explore(rest: list[str] = None):
     # [!] 只「回炉」不「拦截」：警告照旧不判不合格、不 exit、不影响落 cases（行为不变）。
     warn_carry: dict[int, list[str]] = {}
     round_warns: list[str] = []
+    # [!] V8.7.4（2026-10-26，用户实测反馈）：**跨档累计重试计数**。
+    #   原来 L0（产出物档）和 L1（实跑档）各有一个独立计数器（attempt / l1_attempt），
+    #   各自从 0 起、各自 +1 后**都打印 "2/3"** —— 用户在日志里看到「重试第一次和
+    #   第二次打印的是同一条语句」，以为是计数没递增的 bug（实际是两档各重试了一次）。
+    #   数字本身没错，错在**两条日志长得一样**：分不清是哪一档在重试，也数不出总共重试了几次。
+    #   修法：每条重试日志都必须带 ①档位标签 ②该档第 k/N ③跨档累计第 M 次。
+    retry_seq = 0
     while True:
         done = []           # 每轮重新收集（重跑时旧产物不该混进来）
         for idx, job in enumerate(jobs, 1):
@@ -767,7 +780,7 @@ def cmd_explore(rest: list[str] = None):
                 cur_warns = list(warns or [])      # C4：接住本轮的质量警告（原来这里是 `_`）
                 if qerr is None:
                     break                       # 合格 -> 收工
-                print(f"[explore] [!] 第 {attempt + 1} 次产出**校验不合格**")
+                print(f"[explore] [!] [L0 产出物档] 第 {attempt + 1}/{retry_limit + 1} 次产出**校验不合格**")
                 if replay:
                     # V8.7.2（2026-10-25）：回放**不再**一刀切放弃重试。
                     #
@@ -794,8 +807,9 @@ def cmd_explore(rest: list[str] = None):
                 # C4：重试反馈 = 硬原因 + 上一轮的质量警告（上一轮警告仍然有效，不许被硬原因挤掉）
                 feedback = _next_round_feedback(qerr, _warns_in + cur_warns)
                 attempt += 1
-                print(f"[explore] -> 带着失败原因让 AI 重新生成"
-                      f"（第 {attempt + 1}/{retry_limit + 1} 次尝试）")
+                retry_seq += 1
+                print(f"[explore] -> [L0 产出物档] 带失败原因让 AI 重新生成"
+                      f"（L0 第 {attempt + 1}/{retry_limit + 1} 次 · 累计第 {retry_seq} 次重试）")
             if qerr is not None:
                 print(f"\n[explore] [NG] 重试用尽仍不合格（已尝试 {attempt + 1} 次 · "
                       f"上限 HYBRID_AI_RETRY={retry_limit}）→ 拒绝产出任何产物")
@@ -822,7 +836,8 @@ def cmd_explore(rest: list[str] = None):
                   "（找得到就继续，找不到会明确报缺）")
         if not _should_retry_again(prev=l1_feedback, new=reasons,
                                    attempt=l1_attempt, limit=retry_limit):
-            print("[explore] [NG] 有 AI 用例【实测未通过】-> 不可当可用用例"
+            print(f"[explore] [NG] [L1 实跑档] 有 AI 用例【实测未通过】-> 不可当可用用例"
+                  f"（L1 第 {l1_attempt + 1}/{retry_limit + 1} 轮 · 累计第 {retry_seq} 次重试）"
                   "（请修正场景/断言后重来；坏用例仍在 cases/ 里，确认后可删）")
             if reasons:
                 print("[explore]    实跑给出的具体失败原因：")
@@ -833,8 +848,9 @@ def cmd_explore(rest: list[str] = None):
         # C4：闸门 WARN 级条目也回炉（**覆盖**上一轮的 —— 轮级警告只对下一轮有效，
         #   留着会让旧警告在后续每轮反复出现，把注意力引到已经改掉的问题上）。
         round_warns = _ai_gate_warn_entries()
-        print(f"[explore] -> 带着**实跑失败原因**让 AI 重新生成"
-              f"（第 {l1_attempt + 1}/{retry_limit + 1} 轮）")
+        retry_seq += 1
+        print(f"[explore] -> [L1 实跑档] 带**实跑失败原因**让 AI 重新生成"
+              f"（L1 第 {l1_attempt + 1}/{retry_limit + 1} 轮 · 累计第 {retry_seq} 次重试）")
 
     if done and not do_verify:
         print("          [info] 按 --no-verify 跳过试跑校验（这些用例未经实测验证）")
@@ -914,6 +930,13 @@ def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
     return ok
 
 
+# ==== 本轮 verify 实测通过的用例（V8.7.8）====
+# 只在本进程内有效：`all --skip-verified` 时由 explore 的 verify 填充，run 读它跳过。
+# [!] 故意**不落盘**：写文件的话下次跑会读到上一次的旧记录 -> 把新用例当"已验证"跳过 = **假绿**。
+#     进程内的生命周期天然只覆盖"本轮"，跨进程（用户单独跑 run）读到空集 -> 不跳过，安全。
+_VERIFIED_OK: set[str] = set()
+
+
 def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None, str]:
     """新用例试跑校验：generate 一次 + 逐条 pytest 单跑（explore 的「交付即验证」闸门）。
 
@@ -970,11 +993,19 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
         print(f"  [!] 产出缺陷清单读取失败（不影响校验）：{type(_e).__name__}: {_e}")
 
     gen_dir = SCRIPTS_DIR / "generated"
-    print(f"[explore] --verify：先 generate 一次，再逐条试跑 {len(entries)} 条新用例…")
+    print(f"[explore] --verify：先 generate 一次，再逐条试跑 {len(entries)} 条新用例…", flush=True)
+    # [!] V8.7.6 可观测性：下面两个 run_capture **同步阻塞且捕获全部输出**，
+    #   子进程跑完才返回 —— 父进程在这期间一行都不打印。而试跑一条真实用例要跑几十步，
+    #   其中常有「等订单状态流转」这类有界等待（最长约 160s），整体 3~10 分钟。
+    #   用户看到的就是「打完这行彻底没声了」，报「卡住了」（2026-10-27 实测）。
+    #   所以每次阻塞前必须交代「在做什么 / 要等多久 / 想看进度去哪看」。
+    _vt = time.monotonic()
+    print("  [1/2] 正在 generate 生成脚本（确定性转换，不调 AI）…", flush=True)
     # [!] 必须用 run_capture（显式 UTF-8 解码）：以前是裸 `subprocess.run(..., text=True)`，
     # 父进程按系统默认编码（中文 Windows = cp936/gbk）解码子进程的 UTF-8 中文输出 ->
     # `UnicodeDecodeError: 'gbk' codec can't decode byte 0xbb in position 13`（2026-09-13 AprilPark1012实测）。
     gen = run_capture([sys.executable, "-m", "framework.cli", "generate"], cwd=str(config.BASE))
+    print(f"  [1/2] generate 结束（耗时 {time.monotonic() - _vt:.1f}s）", flush=True)
     if gen.returncode != 0:
         tail = ((gen.stdout or "") + (gen.stderr or ""))[-2000:]
         # V8.4：**必须区分两类 generate 失败** —— 以前一律 `return None, ""`（当「未执行」），
@@ -1010,33 +1041,122 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
     vdir = config.OUTPUT_DIR / "verify"
     vdir.mkdir(parents=True, exist_ok=True)
     all_ok = True
-    for label, name in entries:
-        # P20：一个用例一个脚本 -> 用 index.json（case_id → script_path）拿 node id
+
+    # [!] V8.7.8：逐条**串行 -> 并发**（AprilPark1012 2026-10-27 定）。
+    #   原实现 `for label, name in entries:` 一条一个 pytest 子进程、串行等；
+    #   单条全链路用例 200~400s（含「等订单状态流转」这类 ~150s 的有界等待），
+    #   10 个场景 = 30 分钟以上纯等待 —— 而 run 阶段同一批用例 `-n 16` 只要几分钟。
+    #   现在按 `safe_workers()`（**与 run 同一套内存预检**，不另造一份）裁定并发。
+    #   [!] 并发粒度选「每条一个独立 pytest 进程」而不用 `pytest -n N`：
+    #     · 日志独立（每条一个 output/verify/<case>_<ts>.log，不混在一起）
+    #     · 超时独立（一条卡住只判它失败，不拖累其他）
+    #     · 失败归因独立（AI 重试要的是「哪条、哪一步炸了」，-n 的输出交错后很难拆）
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    _out_lock = threading.Lock()
+
+    def _p(msg: str) -> None:
+        """并发下安全打印（否则多行输出会互相插进对方中间）。"""
+        with _out_lock:
+            print(msg, flush=True)
+
+    def _run_one(label: str, name: str) -> tuple[str, str, bool | None, str]:
+        """跑一条用例 -> (label, name, ok|None, reason)。ok=None 表示没跑成（环境/取不到脚本）。"""
         try:
             _idx = json.loads((gen_dir / "index.json").read_text(encoding="utf-8"))
             _script = config.BASE / _idx[name]["script_path"]
         except Exception as _e:
-            print(f"      [!] 取不到 {name} 的脚本路径（index.json 里没有？）：{_e}")
-            continue
+            _p(f"      [!] 取不到 {name} 的脚本路径（index.json 里没有？）：{_e}")
+            return label, name, None, ""
         node = f"{_script}::test_{name}"
-        r = run_capture([sys.executable, "-m", "pytest", node, "-v", "-s"],
-                        cwd=str(config.BASE))
+        tag = f"【{label}】" if label else ""
+        _p(f"  [2/2] 正在试跑 {tag}{name}（pytest 子进程，输出先被捕获、结束才显示）…")
+        _p("        提示：这类全链路用例常含「等订单状态流转」的有界等待（最长约 160s），"
+           "单条 3~10 分钟属正常；想看实时进度去 log/ 下最新的 run 目录，"
+           "逐条校验日志落在 output/verify/")
+        _rt = time.monotonic()
+        _vto = config.verify_timeout_s()
+        # [!] 必须给 timeout：run_capture 默认 timeout=None = 子进程卡住父进程永久等。
+        try:
+            r = run_capture([sys.executable, "-m", "pytest", node, "-v", "-s"],
+                            cwd=str(config.BASE), timeout=_vto)
+        except subprocess.TimeoutExpired:
+            msg = (f"        [!] 试跑 {tag}{name} 超过 {_vto:.0f}s 仍未结束 -> 判失败"
+                   f"（这是真卡住，不是刷屏）")
+            _p(msg)
+            _p("            可能原因：demo 服务没响应 / 订单状态一直没流转到已关闭 / "
+               "某一步的元素永远等不到")
+            _p("            处置：① 调大 HYBRID_VERIFY_TIMEOUT；"
+               "② 或先手工跑一次该 pytest 看停在哪一步：")
+            _p(f"                 python -m pytest {node} -v -s")
+            return label, name, False, (f"用例 {name} 试跑超时（>{_vto:.0f}s），"
+                                        f"多半卡在某个永远等不到的条件上")
+        _p(f"        试跑结束 {tag}{name}（耗时 {time.monotonic() - _rt:.1f}s）")
         text = (r.stdout or "") + (r.stderr or "")
         log = vdir / f"{name}_{_now()}.log"
-        log.write_text(text, encoding="utf-8")
-        tag = f"【{label}】" if label else ""
+        try:
+            log.write_text(text, encoding="utf-8")
+        except Exception as _e:
+            _p(f"      [!] 校验日志写入失败：{type(_e).__name__}: {_e}")
         if r.returncode == 0:
-            print(f"  [OK] {tag}校验通过：该用例实测 PASSED（校验日志 {log}）")
-        else:
-            all_ok = False
-            print(f"  [NG] {tag}校验失败：该用例实测 FAILED（断言是猜的？页面结构变了？）校验日志 {log}")
-            reasons.append(f"用例 {name} 实跑 FAILED（校验日志 {log}）：")
-            for line in text.splitlines():
-                s = line.strip()
-                if s.startswith("E ") or "TimeoutError" in s or "not found" in s:
-                    print(f"     {s[:160]}")
-                    if len(reasons) < 40:                 # 有界：别把整份日志塞进提示词
-                        reasons.append("  " + s[:200])
+            _p(f"  [OK] {tag}校验通过：该用例实测 PASSED（校验日志 {log}）")
+            return label, name, True, ""
+        _p(f"  [NG] {tag}校验失败：该用例实测 FAILED（断言是猜的？页面结构变了？）校验日志 {log}")
+        reason = [f"用例 {name} 实跑 FAILED（校验日志 {log}）："]
+        for line in text.splitlines():
+            s = line.strip()
+            if s.startswith("E ") or "TimeoutError" in s or "not found" in s:
+                _p(f"     {s[:160]}")
+                if len(reason) < 40:                 # 有界：别把整份日志塞进提示词
+                    reason.append("  " + s[:200])
+        return label, name, False, "\n".join(reason)
+
+    todo = list(entries)
+    nw = 1
+    if len(todo) > 1:
+        try:
+            from framework.features.f07_concurrency.limits import safe_workers
+            _n, _why = safe_workers(None)
+            nw = max(1, min(_n, len(todo)))
+        except Exception as _e:
+            _p(f"  [!] 并发预检不可用（{type(_e).__name__}: {_e}）-> 退回串行")
+            nw = 1
+        if nw > 1:
+            _p(f"  [2/2] 并发试跑 {len(todo)} 条（{nw} 路并行，按内存预检裁定；"
+               f"每条仍是独立 pytest 进程，日志/超时/归因各自独立）")
+
+    if nw <= 1:
+        for label, name in todo:
+            _, _, ok, reason = _run_one(label, name)
+            if ok is False:
+                all_ok = False
+                reasons.append(reason)
+            elif ok is None:
+                # 没跑成（取不到脚本）也算失败：不能把「没验过」当「验过了」
+                all_ok = False
+            else:
+                _VERIFIED_OK.add(name)
+    else:
+        with ThreadPoolExecutor(max_workers=nw) as _ex:
+            _futs = {_ex.submit(_run_one, lb, nm): (lb, nm) for lb, nm in todo}
+            for _f in as_completed(_futs):
+                try:
+                    _, _, ok, reason = _f.result()
+                except Exception as _e:
+                    lb, nm = _futs[_f]
+                    _p(f"  [NG] 试跑 {nm} 时框架自身异常：{type(_e).__name__}: {_e}")
+                    all_ok = False
+                    reasons.append(f"用例 {nm} 试跑时框架异常：{type(_e).__name__}: {_e}")
+                    continue
+                if ok is False:
+                    all_ok = False
+                    if reason:
+                        reasons.append(reason)
+                elif ok is None:
+                    all_ok = False
+                else:
+                    _VERIFIED_OK.add(_futs[_f][1])
     return all_ok, "\n".join(reasons)
 
 
@@ -1115,7 +1235,7 @@ def cmd_prune(rest: list[str] = None):
 
 def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool = False,
             cases: list[str] | None = None, slowmo: int | None = None,
-            isolated_target: bool = False):
+            isolated_target: bool = False, skip_verified: bool = False):
     """用 pytest 执行 scripts/generated/ 下的用例脚本 + 日志整合 + HTML 报告。
 
     debug=True（`--debug`，别名 `--headed`）＝ **调试开关**（默认关，只在调试时用）。
@@ -1215,6 +1335,48 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
         expr = " or ".join(f"test_{c}" for c in cases)
         cmd += ["-k", expr]
         print(f"[run] 只跑指定用例（{len(cases)} 条）：{', '.join(cases)}")
+
+    # ---- --skip-verified：本轮 verify 已实测通过的用例不再重复跑（V8.7.8）----
+    # 为什么要有它：`all --ai --verify` 时 verify 已经把本轮新用例真跑了一遍
+    # （同一份脚本、同一套断言、同一个 conftest），紧接着 run 又跑一遍 = 纯重复，
+    # 单场景时这一遍就是整个 run 的时间（~200s）。
+    # [!] 代价必须说清楚：跳过的那条**不会出现在 report.html 里**，报告不再自证。
+    #     所以默认关闭，只在用户明确要「快」时开；证据仍在 output/verify/ 的校验日志里。
+    _deselected: list[str] = []
+    if skip_verified:
+        if not _VERIFIED_OK:
+            print("[run] [!] --skip-verified 无效果：本进程内没有 verify 记录"
+                  "（该开关只在 `all --ai --verify --skip-verified` 这一条命令里起作用；"
+                  "单独跑 run 时没有\"本轮已验证\"的概念）")
+        else:
+            try:
+                _idx2 = json.loads((tests / "index.json").read_text(encoding="utf-8"))
+            except Exception as _e:
+                print(f"[run] [!] --skip-verified 读 index.json 失败"
+                      f"（{type(_e).__name__}: {_e}）→ 不跳过，照常全跑")
+                _idx2 = {}
+            for _cid in sorted(_VERIFIED_OK):
+                if cases and _cid not in cases:
+                    continue                      # --case 已限定范围，不必再 deselect
+                try:
+                    # [!] 必须用 index.json 里的**相对路径**（与 pytest collection 产出的
+                    #   node id 同形）。用 `config.BASE / script_path` 拼绝对路径时，
+                    #   `--deselect` **静默不生效** —— 实测：打印说「1 条不再重复跑」、
+                    #   命令行也确实带了 --deselect，但用例照跑满 204s（2026-10-27）。
+                    #   这是「看着生效、实际没生效」型 bug，判据必须钉死路径形态。
+                    _rel = _idx2[_cid]["script_path"]
+                except Exception:
+                    continue                      # 脚本已不存在 -> 无从 deselect，交给 pytest 报
+                _deselected.append(f"{_rel}::test_{_cid}")
+            for _node in _deselected:
+                cmd += ["--deselect", _node]
+            if _deselected:
+                from pathlib import Path as _P
+                print(f"[run] --skip-verified：本轮 verify 已实测通过的 {len(_deselected)} 条不再重复跑")
+                for _node in _deselected:
+                    print(f"          · {_P(_node).name}")
+                print("[run]    这些用例的实测证据在 output/verify/ 的校验日志里；"
+                      "**report.html 里不会有它们**（要完整报告就别加 --skip-verified）")
     mode = "调试模式：单浏览器、不用 xdist" if debug else f"无头 ×{n} worker"
     if slowmo:
         mode += f"，slow_mo={slowmo}ms"
@@ -1236,18 +1398,28 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
             print(f"        … 其余截图在 {run_dir / 'shots'}（按 01/02/03… 就是执行顺序）")
         if traces:
             print(f"        trace 交互回放：playwright show-trace {traces[0]}")
+    # [!] V8.7.8：--skip-verified 把用例全 deselect 掉时，pytest 返回 5（no tests ran）。
+    #   那**不是失败**（用例已在 verify 阶段真跑过并 PASSED），必须与「--case 名字写错」
+    #   区分开，否则用户一开开关就被判红。
+    _skip_all = bool(skip_verified and _deselected and r.returncode == 5)
     if r.returncode == 5:
-        print("[run] [info] 退出码 5 = 没有匹配到任何用例（--case 的名字对不上？已生成的用例见 "
-              "scripts/generated/ 下各场景目录里的 def test_* ）")
+        if _skip_all:
+            print("[run] [info] 退出码 5 是 --skip-verified 造成的：本轮用例都已在 verify 阶段"
+                  "实测通过、没有剩余用例要跑 —— **这不是失败**")
+            print("[run]        实测证据 = output/verify/ 下的校验日志；"
+                  "要 report.html 自证请去掉 --skip-verified 重跑")
+        else:
+            print("[run] [info] 退出码 5 = 没有匹配到任何用例（--case 的名字对不上？已生成的用例见 "
+                  "scripts/generated/ 下各场景目录里的 def test_* ）")
     # 退出码必须**如实传递**（2026-09-13 修）：以前 cmd_run 跑完就返回 -> cli 永远 exit 0，
     # 用例失败(1)/没匹配到用例(5)/collect error(2) 全被吞掉 -> CI 与脚本调用方一律误判成功。
     # ---- 收尾（**必须在退出码判断之前**）：summary.json + 归档保留 ----
     # 为什么要在 raise 之前：失败 run 也要留下 summary.json —— 归档策略据此判「能否证明成功」
     # （失败/无 summary 一律只瘦身不整删），而且"最近一次全红"要靠它才保得住。
-    _write_run_summary(run_dir, run_id, r.returncode)
+    _write_run_summary(run_dir, run_id, 0 if _skip_all else r.returncode)
     auto_prune_runs(quiet_if_none=True)
 
-    if r.returncode != 0:
+    if r.returncode != 0 and not _skip_all:
         print(f"[run] [NG] 以 pytest 退出码 {r.returncode} 结束（1=有用例失败 / 5=没匹配到用例 / "
               f"其它=执行环境问题）→ cli 同样返回该退出码，别把它当成功")
         raise SystemExit(r.returncode)
@@ -1256,8 +1428,9 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
 def cmd_all(workers: int | None = None, debug: bool = False, force_workers: bool = False,
             cases: list[str] | None = None, slowmo: int | None = None,
             isolated_target: bool = False, allow_unmapped: bool = False,
-            ai: bool = False, rest: list[str] | None = None):
-    """all → generate → run 一条龙（真 AI 链路）。
+            ai: bool = False, rest: list[str] | None = None,
+            skip_verified: bool = False, no_run: bool = False):
+    """all → explore → generate → run 一条龙（真 AI 链路，**唯一主线入口**）。--no-run 停在 verify（开发期用）。
 
     [!] V8.6（2026-10-13 AprilPark1012定）：**手搓链路已整体删除**，现在只剩真 AI 链路一条。
     所以 `--ai` 不再是「区分两条链路」的开关，而是**唯一入口的必需参数**（不带就显式报错）。
@@ -1284,8 +1457,29 @@ def cmd_all(workers: int | None = None, debug: bool = False, force_workers: bool
         print("[all]     正确用法：python -m framework.cli all --ai --scenario-file <场景文件>")
         raise SystemExit(2)
     cmd_generate(allow_unmapped=allow_unmapped)
+    if no_run:
+        # V8.7.9：开发期开关（AprilPark1012 2026-10-28「现在要解决的是开发期效率低的问题，
+        #   还没有进入交付期可以不跑 run」）。
+        #   [!] 为什么不教用户去敲 `explore --ai`：2026-10-11 定过「两条链路统一成
+        #   `all`，不另开命令」，判据 `test_j2_no_explore_ai_as_runnable_command` 钉着这条。
+        #   所以能力开在 `all` 上，入口仍然只有一个。
+        #   [!] V8.7.10：`--case` 只作用于 run（本函数里 cases 只传给 cmd_run），
+        #   所以与 --no-run 同给时它**完全不生效**。按项目口径「无效参数绝不静默忽略」
+        #   ——明确报错，别让用户以为"只重跑了那一条"（实测会以为是单条、实际探索全场景）。
+        if cases:
+            print("[all] [NG] --case 与 --no-run 一起用没有意义：")
+            print("[all]      --case 只限定 **run 阶段跑哪几条**，而 --no-run 已经把 run 整个跳过了")
+            print("[all]      -> 本次 --case 会完全不生效（explore 仍按场景文件走全流程）")
+            print("[all]      开发期想只重跑某一条已生成的用例，直接用：")
+            print("[all]          python -m framework.cli run --case <case_id>")
+            raise SystemExit(2)
+        print("[all] --no-run：跳过 run 阶段 —— 用例/脚本/实测验证都已完成，"
+              "**本次没有 report.html**（交付期请去掉 --no-run）")
+        print("[all]   实测记录见 output/verify/ 下的校验日志（每条用例一个）")
+        print("[all]   想只重跑某一条已生成用例：python -m framework.cli run --case <case_id>")
+        return
     cmd_run(workers, debug, force_workers, cases=cases, slowmo=slowmo,
-            isolated_target=isolated_target)
+            isolated_target=isolated_target, skip_verified=skip_verified)
 
 
 # ============================ CLI 参数契约 ============================
@@ -1321,6 +1515,10 @@ FLAG_SPECS: dict[str, str | None] = {
     "--timeout": "value", "--base-url": "value", "--strict-locate": None,
     # V8.6.1：LLM 通用入口 + 体检 —— 换模型不改代码（这三个都能命令行临时覆盖）
     "--llm-base-url": "value", "--llm-model": "value", "--reasoning-effort": "value",
+    # V8.7.8：`all` 专用 —— 本轮 verify 已实测通过的用例，run 不再重复跑
+    "--skip-verified": None,
+    # V8.7.9：`all` 专用 —— 开发期到 verify 为止，不跑 run（省掉整个全链路执行）
+    "--no-run": None,
     }
 # 对 run/all 生效的通用参数（main 统一解析）
 _COMMON_FLAGS = {"--workers", "--debug", "--headed", "--force-workers", "--isolated-target",
@@ -1339,6 +1537,7 @@ CMD_FLAGS: dict[str, set[str]] = {
                                  "--base-url", "--strict-locate",
                                  # ↓ 真 AI 链路（透传给 explore）
                                  "--ai", "--no-cases", "--verify", "--no-verify",
+                                 "--skip-verified", "--no-run",
                                  "--scenario", "--scenario-file", "--scenario-dir", "--tag",
                                  "--limit", "--llm-cassette", "--llm-record", "--llm-cassette-strict",
                                  "--ai-retry"},
@@ -1389,6 +1588,13 @@ TUNABLE_CATALOG: list[tuple[str, str, str]] = [
      "别拿 `low` 当省钱解：实测在 8.9 万 token 的大 prompt 上会让模型**完全不返回 tool_calls**"
      "（`finish_reason=stop`），结构化输出路径直接失效。本框架实测**推荐 `high`**"),
     ("HYBRID_AI_RETRY", "2", "AI 产出校验不合格时的重试次数（0=关闭 · 上界 5）"),
+    ("HYBRID_LLM_TIMEOUT", "180",
+     "LLM **单次请求**超时（秒）。别设 0 或负数 —— httpx 语义里那等于**取消超时**，"
+     "端点不回包就永久挂住（2026-10-26 GLM 实测事故）。非法值/非正值一律回落 180"),
+    ("HYBRID_VERIFY_TIMEOUT", "900",
+     "`--verify` 试跑**单条**用例的超时（秒）。不给超时的话子进程卡住父进程就永久等 —— "
+     "实测 62 步全链路用例含「等订单状态流转」约 360s，给 900 留 2.5 倍余量；"
+     "demo 没响应/状态不流转时靠它把「卡死」变成「明确报错」。非法值/非正值一律回落 900"),
     ("HYBRID_WAIT_DEFAULT_MS", "30000",
      "等待类断言的**有界默认**时长（毫秒）；场景声明了业务时长时以声明为准（见 declared_wait）"),
     ("HYBRID_PROMPT_LIST_CHARS", "90000",
@@ -1540,7 +1746,15 @@ def cmd_llm_doctor(rest: list[str] = None) -> int:
     model = getattr(obj, "model", None) or getattr(obj, "model_name", None) or "(未知)"
     base = getattr(obj, "base_url", None) or "(由 provider 决定)"
     effort = getattr(obj, "reasoning_effort", None) or "(未设 -> 服务端默认)"
-    print(f"[llm-doctor] provider  {prov}")
+    # [!] V8.7.5：`provider` 属性来自**实现类**，不是端点归属 ——
+    #   框架为接任意 OpenAI 兼容端点而复用了 `ChatDeepSeek`，它带着写死的 provider='deepseek'，
+    #   于是配 GLM 也显示 deepseek（用户 2026-10-27 实测反馈「感觉不太对」）。
+    #   现在改成：① 厂商按**实际端点**认 ② 实现类单独标注（排查时两件事都需要）。
+    _vendor = _cfg.llm_vendor_of(base)
+    _impl = type(obj).__name__
+    _src = _cfg.llm_source_env()
+    print(f"[llm-doctor] provider  {_vendor}（客户端实现类: {_impl}）")
+    print(f"[llm-doctor] 配置来源  {_src}")
     print(f"[llm-doctor] 端点      {base}")
     print(f"[llm-doctor] 模型      {model}")
     print(f"[llm-doctor] 思考档位  {effort}")
@@ -1584,6 +1798,63 @@ def cmd_llm_doctor(rest: list[str] = None) -> int:
                              "" if got is not None else "请求通了，但返回里解析不出字段")
         except Exception as e:
             out["struct"] = ("ng", time.monotonic() - t1, f"{type(e).__name__}: {str(e)[:200]}")
+
+        # ---- 第 3 次：**大 prompt 实探**（V8.7.5）----
+        # [!] 为什么必须有这一项：前两项用极小 schema，只证明「tools 通」。
+        #   真实 explore 的 prompt 是 11 万字符级别，同一个模型/档位在小 prompt 上正常、
+        #   在大 prompt 上**完全不返回 tool_calls**（2026-10-27 实测：GLM-5.3 + low 档 + 11.6 万字符
+        #   -> 83s 后 Expected tool_calls in response but got none）。只跑前两项会给假保证。
+        t2 = time.monotonic()
+        big_prompt = ""
+        big_desc = ""
+        to_s = _cfg.llm_timeout_s()
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            from browser_use.llm.messages import SystemMessage
+            from framework.features.f02_semantic import explorer_explore as _E
+
+            items: list[dict] = []
+            pages: list[dict] = []
+            maps_dir = _Path("output") / "element_maps"
+            maps = sorted(maps_dir.glob("*.json"), reverse=True) if maps_dir.exists() else []
+            if maps:
+                try:
+                    data = _json.loads(maps[0].read_text(encoding="utf-8"))
+                    for pg in data:
+                        nm = pg.get("page") or ""
+                        if nm:
+                            pages.append({"name": nm, "url": pg.get("url") or ""})
+                        for it in (pg.get("probe_items") or []):
+                            if isinstance(it, dict) and it.get("semantic_name"):
+                                items.append(it)
+                    big_desc = f"真实 element_map（{maps[0].name}）"
+                except Exception:
+                    items, pages = [], []
+            if not items:
+                for i in range(500):
+                    items.append({"semantic_name": f"控件{i:03d}_按钮", "role": "button",
+                                  "nearby_text": "合成控件，用于把 prompt 撑到真实规模 " * 5})
+                pages = [{"name": "合成页", "url": "http://localhost:8000/"}]
+                big_desc = "合成清单（本机无 element_map）"
+
+            big_prompt = _E._build_planner_prompt(
+                scenario="探测用：勾选第一行 → 填写表单 → 保存 → 搜索确认",
+                items=items, url=(pages[0]["url"] if pages else ""), pages=pages)
+            r = await asyncio.wait_for(
+                obj.ainvoke([SystemMessage(content=_E._PLANNER_SYSTEM),
+                             UserMessage(content=big_prompt)],
+                            output_format=_E._PlanModel),
+                timeout=to_s)
+            steps = getattr(r.completion, "steps", []) or []
+            out["big"] = ("ok", time.monotonic() - t2,
+                          f"{len(big_prompt)}字符 → {len(steps)}步", big_desc)
+        except asyncio.TimeoutError:
+            out["big"] = ("timeout", time.monotonic() - t2,
+                          f"{len(big_prompt)}字符", f"超过 {to_s:.0f}s（HYBRID_LLM_TIMEOUT）")
+        except Exception as e:
+            out["big"] = ("ng", time.monotonic() - t2,
+                          f"{len(big_prompt)}字符", f"{type(e).__name__}: {str(e)[:200]}")
         return out
 
     try:
@@ -1637,19 +1908,41 @@ def cmd_llm_doctor(rest: list[str] = None) -> int:
                 print(f"[llm-doctor] {hint.strip()}")
             return 2
 
+    # ---- 第 3 项：大 prompt 实探（V8.7.5）----
+    st3, dt3, desc3, extra3 = res.get("big", ("skip", 0.0, "", ""))
+    big_ok = True
+    if st3 != "skip":
+        if st3 == "ok":
+            print(f"[llm-doctor] [OK] 大 prompt 实探  {dt3:.1f}s · {desc3}"
+                  f"（来源 {extra3}）-> **真实规模下可用**")
+        elif st3 == "timeout":
+            big_ok = False
+            print(f"[llm-doctor] [NG] 大 prompt 实探**超时**  {dt3:.1f}s · {desc3} · {extra3}")
+            print("[llm-doctor]      -> 处置：把 HYBRID_LLM_TIMEOUT 提到 400+"
+                  "（GLM high 档实测 312s）。**只加超时不够**，档位太低会更慢/干脆不返回。")
+        else:
+            big_ok = False
+            print(f"[llm-doctor] [NG] 大 prompt 实探失败  {dt3:.1f}s · {desc3} · {extra3}")
+            if "tool_calls" in str(extra3).lower():
+                print("[llm-doctor]      -> 这正是 **reasoning_effort 太低** 的典型形态："
+                      "小 prompt 能出 tool_calls、大 prompt 直接不给。改 high 即解决。")
+
     print()
-    if degraded:
+    if not big_ok:
+        print("[llm-doctor] 结论：**小请求能用，但真实规模跑不动** —— 别拿上面的「function calling 正常」"
+              "当可以上生产（那两项用的是极小 schema）。")
+        print("[llm-doctor]      按上面第 3 项的处置来："
+              "`LLM_REASONING_EFFORT=high` + `HYBRID_LLM_TIMEOUT=400` 后再跑一次本命令。")
+    elif degraded:
         print("[llm-doctor] 结论：**能用，但 function calling 不可用** -> 真链路走文本兜底"
               "（产出约束变弱，不报错）。建议换一个不强制思考的模型。")
     elif fell_back:
         print("[llm-doctor] 结论：**可以用**。注意该端点需走框架的 `auto` 降级才通"
               "（结果一致，每次进程首个结构化调用多一次请求）。")
     else:
-        print("[llm-doctor] 结论：**可以用**（连通 + function calling 都正常）。")
+        print("[llm-doctor] 结论：**可以用**（连通 + function calling + 真实规模实探都正常）。")
     print("[llm-doctor] 提醒：换模型后要**重录录像**（录像键不含模型名，会命中旧模型的录像；"
           "框架回放时会告警）—— 加 `--llm-record` 重录。")
-    print("[llm-doctor] 提醒：本体检用的是极小 schema，只证明「tools 通」；产出质量要跑 "
-          "`explore --ai` 才知道。")
     return 0
 
 
@@ -1862,7 +2155,9 @@ def main():
     elif cmd == "all":
         rc = cmd_all(workers, headed, force_workers, cases=cases, slowmo=slowmo,
                      isolated_target=isolated, allow_unmapped=allow_unmapped,
-                     ai=("--ai" in rest), rest=rest)
+                     ai=("--ai" in rest), rest=rest,
+                     skip_verified=("--skip-verified" in rest),
+                     no_run=("--no-run" in rest))
     elif cmd == "verify":
         rc = cmd_verify(rest)
     elif cmd == "setup":
