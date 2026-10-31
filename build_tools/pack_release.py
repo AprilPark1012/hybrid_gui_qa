@@ -189,6 +189,29 @@ def collect_files(exclude_test_artifacts: bool = False) -> list[Path]:
         out.extend(p for p in CASSETTE_SRC.rglob("*")
                    if p.is_file() and "__pycache__" not in p.parts)
 
+    # [!] 2026-10-31（用户口径）：`scripts/generated/_probe_snapshot.json` **必须进包**。
+    #   它是 `generate` 阶段的**定位来源候选之一**（见 `_pick_loc_map_source`：在 element_map 与
+    #   probe_snapshot 两类候选里挑覆盖得住本轮语义名的那份），**不是可丢的中间件** ——
+    #   收包人想重跑 `generate` 就得靠它。
+    #   而它被 `.gitignore` 忽略（"generate 产物、按次生成"），走 `git ls-files --exclude-standard`
+    #   会被**静默漏掉**：包看着完整（自检也不报），但重跑 generate 才暴露缺件。
+    #   与上面 elementMap / 录像同一修法：显式补回，不指望 git 状态。
+    _snap = REPO / "scripts" / "generated" / "_probe_snapshot.json"
+    if _snap.is_file():
+        out.append(_snap)
+
+    # [!] 2026-10-31（用户口径）：`output/login_maps/` **必须进包** —— 离线回放的另一半。
+    #   它存的是登录步骤的决策档案（`login_flow_explore.py:19` 原话："可审计、可回放"）：
+    #   命中就**零 AI 复用**（`:179`「复用登录步骤缓存 N 步，零 AI」）；
+    #   缺失则只能走 **AI 规划登录** —— 而离线回放环境里 AI 不可用/不回放登录规划，
+    #   于是整条链路在**第一步登录**就挂。所以它和录像同等重要，不是"运行时垃圾"。
+    #   注意 `output/` 整目录在 `.gitignore:24` 里，走 git 一律拿不到，必须显式补回
+    #   （与 elementMap / 录像 / _probe_snapshot 同一手法）。
+    #   按 `hash(login_url, scenario)` 命名 -> 同场景只留一份、不同场景各一份，全进。
+    _lmap = REPO / "output" / "login_maps"
+    if _lmap.is_dir():
+        out.extend(p for p in _lmap.rglob("*.json") if p.is_file())
+
     return sorted(set(out))
 
 
@@ -296,7 +319,7 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
         #   （旧的「两件套 / 独立录像包」已废弃）。
         #   `log/` 与其它 output 子目录（traces / verify / archived_* / *_shots）仍不许进包。
         #   log 尤其不许：实测 `log/*/traces/*.zip` 记着登录过程（含明文凭据）。
-        _output_ok = ("output/element_maps/", "output/llm_cassettes/")
+        _output_ok = ("output/element_maps/", "output/llm_cassettes/", "output/login_maps/")
         bad = [k for k in rel
                if k.startswith("log/") or k.startswith(".venv/")
                or (k.startswith("output/") and not k.startswith(_output_ok))

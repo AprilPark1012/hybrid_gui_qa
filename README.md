@@ -1,7 +1,7 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.7.30**（2026-10-31）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
-> · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/)（最新：[`RELEASE_NOTES_V8.7.30.md`](releases/RELEASE_NOTES_V8.7.30.md)） · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
+> 当前版本 **V8.8.0**（2026-11-01）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
+> · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/)（最新：[`RELEASE_NOTES_V8.8.0.md`](releases/RELEASE_NOTES_V8.8.0.md)） · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
 
 **一句话**：把 **LLM 语义编排（AI 智能探索）** 和 **Playwright（浏览器采集证据 + 确定性执行）** 组合成一套混合测试框架 ——
 AI 负责理解意图、规划步骤、挑元素；Playwright 负责精确定位、唯一性校验、可复现回归。
@@ -89,12 +89,19 @@ python -m framework.cli --help                # 总览 = 子命令 + 每个子�
                                               # 参数写错一律报错 + exit 2，绝不静默忽略；<子命令> --help 看详细用法
 ```
 
-> **V8.6 口径（2026-10-13 AprilPark1012定）**：**手搓链路（probe 驱动的确定性链路）已整体删除**，
-> 框架现在**只有真 AI 链路一条**。`all` 必须带 `--ai`（不带会**显式报错 exit 2**，不再隐式降级）。
-> 单独用 `explore` / `generate` / `run` 仍可（调参、只跑某一段），但那是**分段**用法，主线一律 `all --ai`。
+> **V8.6 口径（AprilPark1012 定）**：**手搓链路（probe 驱动的确定性链路）已整体删除**，
+> 框架只有真 AI 链路一条。`all` 必须带 `--ai`（不带会**显式报错 exit 2**，不隐式降级）。
+> 主线 `all --ai`；**开发期跑 `explore --ai` 就够** —— 它内部自带 verify 试跑，只少一段 `run`。
+> （删手搓链路的理由：同一能力两条路 = 一处改两处验，收敛成一条，判定与验证只有一份真值。）
+
+> **真 AI 链路验证的三条硬条件**（缺一条就不算验证）：
+> 1. **清场**：`cases/ scripts/ log/ output/ demo/.data/` **五个全删 + 重启 demo**。
+>    `output/` 也必须清 —— 留着 `llm_cassettes` 框架会**自动回放**，留着 `login_maps` 会跳过「从零 AI 规划登录」这条路径。
+> 2. **带 `--llm-record`**：强制实时调用 + 录制，不复用任何已有录像。
+> 3. **判真假只看日志第一行**：`LLM 模式：实时调用 + 录制` = 真；`离线回放（非实时 AI）` = 假。
+>    **不要看命令里写的 `--ai`** —— 它只表示「用 AI」，不保证「真调」。
 >
-> 为什么删：手搓链路的**输入靠人手写用例**，与「让 AI 出题」的主线思路重复，且两条链的维护成本
-> 是双份（同一能力两条路 = 一处改两处验）。收敛成一条，判定与验证都只有一份真值。
+> **开发期不许为省 token 用旧录像**：那会漏掉 AI 提示词层面的问题，而提示词的问题往往从提示词直接改，比在框架层写兜底效率更高。
 
 **两类验证**（改完东西跑这两条）：
 
@@ -104,10 +111,9 @@ python tests/_runner/run_verifications.py             # ② 端到端特性验�
 python tests/_runner/run_acceptance.py                # ③ 四项验收一条命令（闸门 → 新鲜度 → 自测 → E2E → 特性）
 ```
 
-> **判据住哪**（2026-10-12 更正）：判据按**特性**分目录，在 `tests/特性1-…/` ... `tests/特性11-…/` 下
-> （`test_*.py` 一类 + `verify_*.py` 二类混放同一特性目录；条数以 `pytest tests/ -q` 实跑为准，实测 1336 passed / 3 skipped）。
-> `tests/_helpers/` 只是**共享辅助**（artifacts / demo_freshness / repo_files / testid_policy），
-> **不含任何 `test_*.py`** —— 直接跑它会 `no tests collected`。
+> **判据住哪**：按**特性**分目录（`tests/特性1-…/` ... `tests/特性11-…/`，`test_*.py` 一类 +
+> `verify_*.py` 二类混放；条数以 `pytest tests/ -q` 实跑为准，实测 **1507 passed / 3 skipped**）。
+> `tests/_helpers/` 只是**共享辅助**，**不含任何 `test_*.py`** —— 直接跑它会 `no tests collected`。
 
 ⚠️ **跑那条 AI 端到端用例（`ai_orders_invoice_full_lifecycle_<时间戳>`）建议显式带 `HYBRID_CASE_TIMEOUT`**：
 
@@ -126,17 +132,13 @@ HYBRID_CASE_TIMEOUT=600 HYBRID_STRICT_LOCATE=1 \
 | 命令 | 期望 | 耗时 |
 |---|---|---|
 | 上面那条端到端 | `1 passed` | ~220s |
-| `pytest tests/ -q` | `1336 passed / 3 skipped`，0 failed | ~54s |
+| `pytest tests/ -q` | `1507 passed / 3 skipped`，0 failed | ~54s |
 | `run_verifications.py` | 绝大部分通过；**唯一遗留 `verify_slow_target`**（慢环境缺陷，见 BACKLOG L22） | ~14 min |
 | `run_acceptance.py` | 四项闸门全过 | — |
 
-**手工走一遍（比看日志直观，5 步）**：
-
-1. 浏览器开 `http://localhost:8000/orders.html?demo_role=order_admin`
-2. 「+ 新建订单」→ 填 4 个行必填项（物料/产品/数量/行类型）→ 行保存 → 表单保存 → 提交
-3. **等 150 秒**（订单自动关闭并落库 —— 真实状态流转，不是卡住）
-4. 切角色到**发票管理员** → 订单列表勾选刚建那单 → 「去开票」→ 填客户/销售员/行类型/数量 → 行保存 → 提交发票
-5. 去发票列表按订单名称搜 —— **能搜到那张发票** = 整条链路通 ✅
+**手工走一遍（比看日志直观）**：开 `/orders.html?demo_role=order_admin` → 新建订单（物料/产品/数量/行类型）
+→ **等 150 秒**（订单自动关闭落库，是真实状态流转，不是卡住）→ 切发票管理员 → 勾选该单「去开票」填完提交
+→ 发票列表按订单名称能搜到那张发票 = 整条链路通 ✅
 
 ### 3. 配 LLM key（**只有 AI 链路需要**）
 
@@ -200,12 +202,11 @@ output/ log/  运行期证据：`output/element_maps/`（**elementMap 是交付�
 
 ## 常见坑
 
-新同学最容易踩的 10 条（完整清单见培训页第 7 章）：
+新同学最容易踩的 11 条（完整清单见培训页第 7 章）：
 
 1. **漏装浏览器** —— `pip install` 不装浏览器；跑 `python -m framework.cli setup`。
 2. **改了 demo 不重启** ⇒ 验证跑在旧页面上（用例白跑）；二类入口会自己过新鲜度闸门。
-3. **被测页面没声明就绪契约** ⇒ 慢页面上动作/断言早于渲染 ⇒ 假红。页面 `body` 置
-   `data-hybrid-ready="1"`（**团队接自己系统时第一条要做的**，见培训页第 9 章）。
+3. **被测页面没声明就绪契约** ⇒ 慢页面上动作/断言早于渲染 ⇒ 假红。页面 `body` 置 `data-hybrid-ready="1"`（**接自己系统时第一条要做的**）。
 4. **AI 用例的断言不许依赖运行时计数**（如「共 N 条」）⇒ 落盘前会被质量闸拦下。
 5. **未映射元素 = 显式失败**：`element` 必须是语义探测（`explore --ai` 落盘的 elementMap）里有的语义名；映射不到会 `pytest.fail`，
    绝不静默跳过（少验一步还报绿 = 假绿）。
@@ -214,8 +215,8 @@ output/ log/  运行期证据：`output/element_maps/`（**elementMap 是交付�
 8. **跨进程/落盘文本一律显式 UTF-8**（中文 Windows 默认 gbk，出过交付事故）。
 9. **改过框架的生成/探测代码后，必须先删产物再重跑**：`rm -f scripts/generated/*/*.py && python -m framework.cli generate`。
    原因：`generate` 的变化检测**认用例文件、不认框架代码升级** —— 不删会**静默跑旧产物**，白跑还看不出原因。
-10. **demo 预置数据口径**：订单 **300 条（15 页 × 20）**、合同 200 条。跑测试会造脏数据，建议先复置：
-    `curl -X POST 'http://localhost:8000/api/reset?purge=1'`（demo 自带隔离入口，**会先自动备份**）。
+10. **demo 预置数据**：订单 300 条（15 页 × 20）、合同 200 条。跑测试会造脏数据，建议先 `curl -X POST 'http://localhost:8000/api/reset?purge=1'`（**会先自动备份**）。
+11. **交付包必须带「最后一次端到端跑通」的四样产物**：`cases/*`、`scripts/*`（含 `_probe_snapshot.json`）、`output/llm_cassettes/*`、**`output/login_maps/*`** + `output/element_maps/`（最新 1 份）。后两者是**离线回放的两条腿**：缺录像 = 没 AI 可调；缺登录缓存 = 只能走 AI 规划登录。**它们都在 `.gitignore` 里，只靠 `git ls-files` 打包会静默漏掉**（见 `collect_files` 末尾的显式补回）。
 
 **报错 → 怎么办**：
 
@@ -224,7 +225,6 @@ output/ log/  运行期证据：`output/element_maps/`（**elementMap 是交付�
 | `Executable doesn't exist at …ms-playwright…` | 没装浏览器 | `python -m framework.cli setup` |
 | `先起被测应用：python -m demo.app` | 目标连不上 | 起 demo（或改 `HYBRID_BASE_URL` 指别的目标） |
 | `仍未映射 [...]` | 语义名对不上 | 查 `output/element_maps/` 里的语义名清单（由 `explore --ai` 落盘） |
-| 元素「等了 5000ms 仍是 0 个」 | 页面慢 / 选择器漂移 | 查就绪契约；必要时调 `HYBRID_LOCATE_TIMEOUT` |
 | 用例卡死不返回 | 目标无响应 | 看 `log/<run_id>/watchdog.txt`（看门狗写了调用栈） |
 
 ## 文档与资源

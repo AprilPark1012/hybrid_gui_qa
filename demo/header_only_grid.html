@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>纯表头表格 · 零 data-* 属性</title>
+<!--
+  用途（V8.8.0 P0-B 判据用页）：模拟**最朴素的页面** —— 行内单元格上**一个 data-* 属性都没有**，
+  唯一能用的线索是 thead 里的表头文案 + 列的位置顺序。
+
+  为什么要这个页面
+  ----------------
+  框架现在的 probe_row_fields 只输出 field（data-field 的值）。如果一个系统的表格
+  根本没有 data-* 属性，这个清单就是**空的** -> AI 拿不到任何列 -> 行内断言写不出来。
+
+  但框架早就备好了两条降级路径（anchor_locate.py）：
+      cell_field（data-field） > col_header（表头文本） > col_index（列序）
+  只是**从没被接上** —— 因为探测层拿不到 field 就直接不输出这一列。
+
+  这个页面要能验出
+  ----------------
+  1. field 为空时**仍然输出这一列**（不能因为没 data-field 就整列丢掉）
+  2. header 给出正确表头文案（供应商名称 / 合同编号 / ...）
+  3. index 给出真实列号（1 起），让下游可以用 col_index 兜底
+  4. 下游（AI 提示词）要**知道**这些列只能靠表头/列序定位，不许写成 cell_field
+-->
+<style>
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  .hint { color: #666; font-size: 13px; margin-bottom: 16px; }
+  table { border-collapse: collapse; width: 100%; max-width: 1000px; }
+  th, td { border: 1px solid #d0d7de; padding: 8px 10px; font-size: 13px; text-align: left; }
+  thead th { background: #f6f8fa; font-weight: 600; }
+  tbody tr:nth-child(even) { background: #fbfcfd; }
+</style>
+</head>
+<body>
+
+<h2>员工花名册（老系统）</h2>
+<p class="hint">
+  最朴素的表格：<strong>没有任何 data-* 属性</strong>，只有表头文案和列顺序。
+  框架必须靠 header / index 兜底，不能整列丢掉。
+</p>
+
+<table id="tbl-staff" aria-label="员工花名册">
+  <thead>
+    <tr>
+      <th>工号</th>
+      <th>姓名</th>
+      <th>部门</th>
+      <th>入职日期</th>
+      <th>在职状态</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>E10001</td>
+      <td>张伟</td>
+      <td>采购部</td>
+      <td>2021-07-01</td>
+      <td>在职</td>
+    </tr>
+    <tr>
+      <td>E10002</td>
+      <td>李静</td>
+      <td>财务部</td>
+      <td>2022-03-15</td>
+      <td>在职</td>
+    </tr>
+    <tr>
+      <td>E10003</td>
+      <td>王强</td>
+      <td>仓储部</td>
+      <td>2019-11-20</td>
+      <td>离职</td>
+    </tr>
+  </tbody>
+</table>
+
+</body>
+</html>

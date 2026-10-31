@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>属性改名 + div 网格 · 证明不写死属性名</title>
+<!--
+  用途（V8.8.0 P0-A 的**核心判据页**）：这是「没有写死属性名」的唯一硬证据。
+
+  为什么必须是这一页
+  ------------------
+  如果只做「多认几个属性名」的白名单（data-field / data-colid / data-colkey ...），
+  那么换一家前端框架、属性名又变了，框架照样瞎 —— 那不叫通用，那叫**枚举**。
+
+  这一页故意同时换掉三样东西：
+    1. 属性名：data-rid / data-colx（既不是 data-rowid / data-colid，也不是 data-field）
+    2. 容器：**div 网格**（不是 table，没有 tr/td）
+    3. 表头：不用 thead/th，用 div.head 排出来
+
+  能探对，才说明框架是**按结构推断**的：
+    · 行标识 = 该属性值**每行都不同**（row_1 / row_2 / row_3）
+    · 列标识 = 该属性值**同位置跨行相同**（col_57 在第 1 列每行都是 col_57）
+    · 表头   = 与列位置对齐的表头行文案
+
+  探不对就说明：又在靠属性名认亲。那就是没修好。
+-->
+<style>
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  .hint { color: #666; font-size: 13px; margin-bottom: 16px; }
+  .grid { width: 100%; max-width: 1000px; border: 1px solid #d0d7de; border-radius: 6px; overflow: hidden; }
+  .grid .head, .grid .row { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr 0.9fr; }
+  .grid .head { background: #f6f8fa; font-weight: 600; }
+  .grid .head > div, .grid .row > div {
+    padding: 8px 10px; font-size: 13px; border-bottom: 1px solid #e6ebf0; border-right: 1px solid #e6ebf0;
+  }
+  .grid .row:last-child > div { border-bottom: none; }
+  .grid .row:nth-child(even) { background: #fbfcfd; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 12px;
+           background: #e8f0fe; color: #1a56db; }
+  .badge.off { background: #eef0f3; color: #57606a; }
+</style>
+</head>
+<body>
+
+<h2>应收款明细（第三方框架渲染）</h2>
+<p class="hint">
+  属性名是 <code>data-rid</code> / <code>data-colx</code>，容器是 <strong>div 网格</strong>，表头是 <code>div.head</code>。
+  三样都和 demo 其他页面不一样 —— 能探对才算通用。
+</p>
+
+<div class="grid" id="ar-grid" data-testid="ar-grid">
+
+  <!-- 表头行：没有 data-rid，也没有 data-colx —— 靠位置对齐 -->
+  <div class="head">
+    <div>客户名称</div>
+    <div>单据编号</div>
+    <div>应收金额</div>
+    <div>到期日</div>
+    <div>状态</div>
+  </div>
+
+  <div class="row" data-rid="row_1">
+    <div data-colx="col_57">杭州云启网络科技</div>
+    <div data-colx="col_58">AR-2026-0101</div>
+    <div data-colx="col_59">52000.00</div>
+    <div data-colx="col_60">2026-06-30</div>
+    <div data-colx="col_61"><span class="badge">待收</span></div>
+  </div>
+
+  <div class="row" data-rid="row_2">
+    <div data-colx="col_57">苏州精工机械</div>
+    <div data-colx="col_58">AR-2026-0102</div>
+    <div data-colx="col_59">18600.00</div>
+    <div data-colx="col_60">2026-07-15</div>
+    <div data-colx="col_61"><span class="badge off">已收</span></div>
+  </div>
+
+  <div class="row" data-rid="row_3">
+    <div data-colx="col_57">武汉长江建材</div>
+    <div data-colx="col_58">AR-2026-0103</div>
+    <div data-colx="col_59">93400.00</div>
+    <div data-colx="col_60">2026-08-01</div>
+    <div data-colx="col_61"><span class="badge">待收</span></div>
+  </div>
+
+</div>
+
+</body>
+</html>

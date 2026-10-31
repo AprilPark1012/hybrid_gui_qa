@@ -73,16 +73,23 @@ def container_from_ancestors(ancestors: list[dict] | None) -> dict | None:
 def path_for_table_row(row_text: str | None = None, cell_field: str | None = None, *,
                        row_index: int | None = None, col_header: str | None = None,
                        col_index: int | None = None, target_role: str | None = None,
-                       target_text: str | None = None) -> list[dict]:
+                       target_text: str | None = None, row_id: str | None = None) -> list[dict]:
     """构造行内元素的下钻路径。
 
-    行锚优先级：`row_text`（**整表内唯一的最短单元格文本**，最稳；由 `pick_row_anchor` 选出，
-    见 L18 修法 A）> `row_index`（**显式**行序；调用方明确给出才用）。
-    **两者都没有 -> 不生成行步**（不许偷偷按第一行猜）。
+    行锚优先级（V8.8.0 起）：`row_id` > `row_text` > `row_index`
+      · `row_id`    —— 前端框架生成的行唯一标识（`row_1`），**值稳定、与行序无关**，
+                       行被新增/删除/排序都不会指错行 -> 最稳；
+      · `row_text`  —— **整表内唯一的最短单元格文本**（由 `pick_row_anchor` 选出，见 L18 修法 A）；
+      · `row_index` —— **显式**行序；调用方明确给出才用，行序一变就废。
+    **三者都没有 -> 不生成行步**（不许偷偷按第一行猜）。
+
     列优先级：`cell_field`（`td[data-field]`）> `col_header`（表头文本）> `col_index`（显式列序，1-based）。
     """
     steps: list[dict] = []
-    if row_text not in (None, ""):
+    # V8.8.0 P0-C：行锚优先级改成 row_id > row_text > row_index
+    if row_id not in (None, ""):
+        steps.append({"axis": "row", "by": "id", "value": row_id})
+    elif row_text not in (None, ""):
         steps.append({"axis": "row", "by": "text", "value": row_text})
     elif row_index is not None:
         steps.append({"axis": "row", "by": "nth", "value": int(row_index)})

@@ -79,6 +79,13 @@ class TestStep:
     #   于是"新增行后逐字段填写"这类需求根本无法表达，实测表现为运行期多匹配歧义
     #   （同一个语义名在页面 3 行里各有一个同名输入框 -> primary 命中 3 个 -> 定位失败）。
     row_index: int | None = None
+    # V8.8.0 P0-C：**按行唯一标识定位**（`tr[data-rowid="row_1"]` 这类）。
+    # 为什么需要：`row_index` 行序一变（新增/删除/排序）就定位错，`row_text` 行内文本
+    #   重复时歧义。真实生产系统的行标识是前端框架生成的行唯一值（`row_1`/`row_2`…），
+    #   **值稳定、与行序无关** -> 最稳的一档。
+    # 优先级（`anchor_locate`）：`row_id` > `row_text` > `row_index`。
+    # [!] 属性名不写死：执行层用「任意 data-* 属性值等于它」匹配（见 scope_locate）。
+    row_id: str | None = None
     # L35 收尾：`select` 选**第几项**（从 0 起，跳过空占位由执行器负责）。
     # 为什么必须有（真跑抓到）：规划提示词教 AI「选第一项就用 index=0、不要给 value」，
     # 但步骤对象没有这个字段 -> 结构化输出装不下 -> AI 退回 `value="0"` ->
@@ -99,6 +106,7 @@ class TestStep:
             "cell_by": self.cell_by,
             "cell_index": self.cell_index,
             "row_index": self.row_index,
+            "row_id": self.row_id,
             "index": self.index,
         }
 
@@ -118,7 +126,7 @@ class TestStep:
             desc=d.get("desc", ""),
             row_text=d.get("row_text"), cell_field=d.get("cell_field"),
             cell_by=d.get("cell_by"), cell_index=d.get("cell_index"),
-            row_index=d.get("row_index"), index=d.get("index"),
+            row_index=d.get("row_index"), row_id=d.get("row_id"), index=d.get("index"),
         )
 
 

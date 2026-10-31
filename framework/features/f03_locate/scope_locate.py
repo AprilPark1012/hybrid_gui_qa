@@ -98,10 +98,33 @@ def step_expr(prev: str, step: dict, *, col_index: int | None = None) -> str | N
             return f'{prev}.locator("tbody tr").filter(has_text="{val}")'
         if by == "nth" and isinstance(val, (int, float)):
             return f'{prev}.locator("tbody tr").nth({int(val) - 1})'
+        if by == "id" and val not in (None, ""):
+            # V8.8.0 P0-C：按**行唯一标识**定位（`tr[data-rowid="row_1"]` 这类）。
+            #   [!] 属性名不写死 —— 用 XPath 按「任意 data-* 属性的值」匹配，
+            #       与前端框架叫 data-rowid / data-rid / data-key 无关。
+            #   用 `*` 而非 `tr`：div 网格的行容器（`<div data-rid="row_1">`）也走这条路。
+            #   XPath 字符串没有转义语法 —— 含引号的值直接放弃（返回 None 退下一档），
+            #   绝不拼出语法错误的表达式（运行期 SyntaxError = 静默炸）。
+            if "'" in str(val) or '"' in str(val) or "\n" in str(val):
+                return None
+            _xp = ".//*[@*[starts-with(name(), 'data-')][.='" + str(val) + "']]"
+            return f'{prev}.locator("xpath={_xp}")'
         return None
     if axis == "col":
         if by == "field" and val not in (None, ""):
-            return f"{prev}.locator(\"td[data-field='{val}']\")"
+            # V8.8.0 P0-B：**属性名不写死**。
+            #   原来拼 `td[data-field='X']` —— 而生产系统的列标识常是前端框架生成的
+            #   `data-colid="col_57"`（值稳定），第三方框架可能是 data-colx。
+            #   写死这一个属性名，等于「探测层能拿到列、执行层却找不到那一格」。
+            #   改用 XPath「任意 data-* 属性的值等于它」，与属性名叫什么无关：
+            #     .//*[@*[starts-with(name(), 'data-')][.='col_57']]
+            #   用 `*` 而非 `td`：div 网格（`<div data-colx="col_57">`）也走这条路。
+            #   [!] XPath 字符串没有转义语法，含引号的值直接放弃（返回 None 让调用方退下一档），
+            #      绝不拼一个语法错误的表达式（那是运行期 SyntaxError = 静默炸）。
+            if "'" in str(val) or '"' in str(val) or "\n" in str(val):
+                return None
+            _xp = ".//*[@*[starts-with(name(), 'data-')][.='" + str(val) + "']]"
+            return f'{prev}.locator("xpath={_xp}")'
         if by == "header" and val not in (None, ""):
             if col_index is None:          # 运行时读表头算列序；算不出 -> 放弃（绝不默认第 1 列）
                 return None

@@ -61,11 +61,46 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.7.30"
-VERSION_DATE = "2026-10-31"
+VERSION = "8.8.0"
+VERSION_DATE = "2026-11-01"
 CHANGELOG = [
     dict(
-        version="8.7.30", date="2026-10-31", tag="当前版本",
+        version="8.8.0", date="2026-11-01", tag="当前版本",
+        theme="<b>从「只认一家前端框架的写法」变成「按数据特征自己认」</b>"
+              " —— 行内列标识 / 行定位都不再写死属性名",
+        summary="V8.7.30 打结时你问了关键一问：<i>「你的修法有没有完全照搬 demo app 的 HTML 结构，"
+                "做了比较多的假设？换个别的业务系统就不行了。」</i> 逐行审查后确认 —— "
+                "<b>div 网格那处只认 <code>data-field</code></b>，正是「只支持一家」的典型。<br><br>"
+                "真实生产系统的行内列标识是前端框架生成的自定义属性："
+                "<code>tr[data-rowid=\"row_1\"]</code> + <code>td[data-colid=\"col_57\"]</code>，"
+                "<b>但属性名叫什么各家不同</b>（第三家可能是 <code>data-rid</code>/<code>data-colx</code>）。<br><br>"
+                "<b>[核心] 按「值的分布」推断，完全不看属性名</b>："
+                "某个属性<b>每行都有值且值互不相同</b> -> 行标识；"
+                "某个属性<b>同一列位置跨行取到相同值</b> -> 列标识。"
+                "两种分布在数学上互斥，所以根本不需要识别名字。"
+                "<code>data-field</code> 降为「推断不出来时的兜底默认值」，老页面行为零变化。<br><br>"
+                "<b>[不只是探测层]</b> 执行层同样写死了 <code>td[data-field='X']</code> —— "
+                "只修探测层会留下半修状态：清单里明明有 <code>col_57</code>，"
+                "真跑却去找 <code>td[data-field='col_57']</code>。<b>两层都改成属性名无关</b>。<br><br>"
+                "<b>[行定位新增最稳一档]</b> 原来只有 <code>row_text</code>（行内文本重复就歧义）/ "
+                "<code>row_index</code>（行序一变就指错行）。"
+                "生产系统的 <code>data-rowid</code> <b>值稳定、与行序无关</b>，"
+                "优先级变成 <code>row_id</code> &gt; <code>row_text</code> &gt; <code>row_index</code>；"
+                "三档都没有<b>仍然不生成行步</b>（不许偷偷按第一行猜）。<br><br>"
+                "<b>[硬证据页]</b> <code>demo/attr_name_variant.html</code> 用 <code>data-rid</code>/"
+                "<code>data-colx</code> + div 网格 —— <b>换掉属性名照样认</b>。"
+                "验收标准就是它：把推断逻辑改回写死 <code>data-colid</code>，这个页面必须变红。<br><br>"
+                "<b>[本轮抓到 5 个静默失效]</b> 老判据 mock 只收一个参数（类型错被吞 -> 判据假空）；"
+                "<b>Playwright <code>locator.evaluate</code> 只收一个 arg</b>（传两个被吞 -> "
+                "有 row_id 却不走行内定位）；XPath 无转义语法（含引号必须退档，不许拼坏表达式）；"
+                "<code>by=header</code> 缺列序时不许默认第 1 列；<code>[!]</code> 符号写进 .py 是 GBK 编不了的字（第 4 次）。<br><br>"
+                "<b>[真链路]</b> 按固定流程清场重跑：<code>登录前置 ok</code>、7 页全探到"
+                "（发票页 <b>201 控件 · 弹窗补充 0</b>）、<code>pytest scripts/</code> "
+                "<b>1 passed in 202.42s</b>、全量 <b>1503 passed</b>。"
+                "7 页数字与 V8.7.30 完全一致 —— 这正是改对了的表现（demo 用 data-field，推断结果还是它）。",
+    ),
+    dict(
+        version="8.7.30", date="2026-10-31", tag="",
         theme="<b>列清单三个源头全断</b> —— 登录静默失败 / div 网格探不到 / 弹窗探测把页面带跑",
         summary="真机 V8.7.27 三轮全 FAILED（<code>表格没有第一行、或没有 '订单名称' 列</code>）。"
                 "顺着「AI 为什么猜列名」查下去，发现 <b>列清单的三个源头全断了</b> —— "

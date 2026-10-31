@@ -53,14 +53,20 @@ def _func(name: str) -> ast.FunctionDef:
 
 
 class _FakePage:
-    """只实现 `evaluate` —— `probe_div_grid_fields` 只用这一个能力。"""
+    """只实现 `evaluate` —— `probe_div_grid_fields` 只用这一个能力。
+
+    V8.8.0：`evaluate` 现在会被传**第二个参数**（列标识的属性名，属性名不再写死），
+    所以这里必须收 `*args`。早期写成 `def evaluate(self, js)` 时，多传一个参数会抛
+    `TypeError`，而调用侧把它 `except` 掉了 -> **判据全变假空**（返回 []），
+    看起来像「功能坏了」，实际是 mock 太窄。动函数签名要连 mock 一起查。
+    """
 
     def __init__(self, rows, boom: bool = False):
         self._rows = rows
         self._boom = boom
         self.calls = 0
 
-    def evaluate(self, js):                     # noqa: ARG002 —— 只关心返回
+    def evaluate(self, js, *args):               # noqa: ARG002 —— 只关心返回
         self.calls += 1
         if self._boom:
             raise RuntimeError("evaluate 故意炸")

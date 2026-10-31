@@ -180,7 +180,17 @@ FEATURES = [
                          # V8.7.29（2026-10-31 实测）：订单详情页的明细行是 **div 网格**
                          #   （`<div class="cell" data-field="lineNo">`），而 probe_row_fields
                          #   只扫 `table` -> 该页 0 列 -> AI 永远看不到 lineNo/lineStatus。
-                         "test_div_grid_row_fields.py"],
+                         "test_div_grid_row_fields.py",
+                         # V8.8.0 P0-A：行内列标识**不许写死属性名**。真实生产系统用
+                         #   `td[data-colid="col_57"]`（框架生成的列契约，值稳定），第三方
+                         #   框架可能叫 data-colx —— 写死 data-field 等于只支持一家。
+                         #   改成按「值分布」推断：行=每行不同，列=同列跨行相同。
+                         "test_grid_attr_inference.py",
+                         # V8.8.0 P0-C：行按**唯一标识**定位（`tr[data-rowid="row_1"]`）。
+                         #   原来只有 row_text / row_index 两档：前者行内文本重复就歧义，
+                         #   后者行序一变就指错行。生产系统的行标识值稳定、与行序无关 -> 最稳。
+                         #   优先级 row_id > row_text > row_index；属性名同样不写死。
+                         "test_row_id_locator.py"],
                  class2=["verify_scope_locate.py"]),
             dict(no="3.2", name="多层嵌套容器", goal="容器套容器（区域内表格、表单里分组）时路径仍能唯一",
                  class1=["test_element_anchor_path.py"],

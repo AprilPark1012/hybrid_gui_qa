@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>生产风格表格 · data-colid + data-rowid</title>
+<!--
+  用途（V8.8.0 P0-A 判据用页）：模拟**真实生产系统**的行内列结构。
+
+  为什么要这个页面
+  ----------------
+  demo 的其他页面全是 `td[data-field="orderName"]` 这种「字段名即语义」的写法，
+  而真实生产系统常用的是前端框架生成的**行列双标识**：
+
+      <tr data-rowid="row_1">              <- 行标识
+        <td data-colid="col_57">...</td>   <- 列标识（值稳定，跨行同列相同）
+        <td data-colid="col_58">...</td>
+      </tr>
+
+  框架原来的 probe_row_fields **只认 data-field**，到这种页面上探到 0 列。
+
+  这个页面要能验出三件事
+  ----------------------
+  1. 能认出「哪个属性是行标识」（值每行不同）
+  2. 能认出「哪个属性是列标识」（值同列跨行相同）
+  3. 列名能对上表头文案（col_57 -> 供应商名称）
+
+  ⚠️ 故意**不用** data-field，也**不用** data-colid/data-rowid 之外的线索 ——
+     这些属性名属于页面自定义，框架必须自己推断出来。
+-->
+<style>
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  .hint { color: #666; font-size: 13px; margin-bottom: 16px; }
+  table { border-collapse: collapse; width: 100%; max-width: 1000px; }
+  th, td { border: 1px solid #d0d7de; padding: 8px 10px; font-size: 13px; text-align: left; }
+  thead th { background: #f6f8fa; font-weight: 600; }
+  tbody tr:nth-child(even) { background: #fbfcfd; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 12px;
+         background: #e8f0fe; color: #1a56db; }
+  .tag.closed { background: #eef0f3; color: #57606a; }
+</style>
+</head>
+<body>
+
+<h2>供应商合同台账</h2>
+<p class="hint">
+  生产系统风格：行用 <code>tr[data-rowid]</code> 标识，列用 <code>td[data-colid]</code> 标识。
+  <strong>没有 data-field</strong>。
+</p>
+
+<table id="tbl-supplier" data-testid="tbl-supplier" aria-label="供应商合同台账">
+  <thead>
+    <tr>
+      <th data-colhead="col_57">供应商名称</th>
+      <th data-colhead="col_58">合同编号</th>
+      <th data-colhead="col_59">签约日期</th>
+      <th data-colhead="col_60">合同金额</th>
+      <th data-colhead="col_61">状态</th>
+      <th data-colhead="col_62">操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr data-rowid="row_1">
+      <td data-colid="col_57">深圳华瑞电子有限公司</td>
+      <td data-colid="col_58">HT-2026-0001</td>
+      <td data-colid="col_59">2026-03-12</td>
+      <td data-colid="col_60">128000.00</td>
+      <td data-colid="col_61"><span class="tag">生效中</span></td>
+      <td data-colid="col_62"><button type="button" title="编辑合同">编辑</button></td>
+    </tr>
+    <tr data-rowid="row_2">
+      <td data-colid="col_57">广州立信物流股份</td>
+      <td data-colid="col_58">HT-2026-0002</td>
+      <td data-colid="col_59">2026-04-08</td>
+      <td data-colid="col_60">76000.00</td>
+      <td data-colid="col_61"><span class="tag closed">已终止</span></td>
+      <td data-colid="col_62"><button type="button" title="编辑合同">编辑</button></td>
+    </tr>
+    <tr data-rowid="row_3">
+      <td data-colid="col_57">东莞恒通五金厂</td>
+      <td data-colid="col_58">HT-2026-0003</td>
+      <td data-colid="col_59">2026-05-21</td>
+      <td data-colid="col_60">34500.00</td>
+      <td data-colid="col_61"><span class="tag">生效中</span></td>
+      <td data-colid="col_62"><button type="button" title="编辑合同">编辑</button></td>
+    </tr>
+  </tbody>
+</table>
+
+</body>
+</html>

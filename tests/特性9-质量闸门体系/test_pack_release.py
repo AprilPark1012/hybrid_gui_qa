@@ -343,6 +343,45 @@ def test_refresh_sums_drops_line_of_deleted_package(tmp_path):
     assert not [l for l in txt.splitlines() if l.strip() and not l.startswith("#")], txt
 
 
+def test_login_maps_are_shipped_for_offline_replay():
+    """`output/login_maps/` 必须进包 —— 它是**离线回放的另一半**。
+
+    命中就有登录步骤缓存 -> **零 AI 复用**（`login_flow_explore.py:179`）；
+    缺失就只能走 **AI 规划登录**，而离线回放环境里 AI 不可用 -> 整条链路在第一步登录就挂。
+
+    `output/` 整目录在 `.gitignore:24` 里，走 `git ls-files` 一律拿不到，
+    必须像 elementMap / 录像 / `_probe_snapshot` 那样在 `collect_files` 里显式补回。
+    """
+    d = REPO / "output" / "login_maps"
+    jsons = [p for p in d.glob("*.json")] if d.is_dir() else []
+    if not jsons:
+        return          # 本机没跑过真链路，没有登录缓存可校验（不是失败）
+    rel = {p.relative_to(REPO).as_posix() for p in pack_release.collect_files()}
+    missing = [p.name for p in jsons if f"output/login_maps/{p.name}" not in rel]
+    assert not missing, (
+        f"`login_maps` 没进包：{missing} —— 收包人离线回放时登录步骤缓存缺失，只能走 AI 规划，"
+        f"而回放环境没有 AI -> 必挂。必须在 collect_files 里显式补回。")
+
+
+def test_probe_snapshot_is_shipped_even_though_gitignored():
+    """`scripts/generated/_probe_snapshot.json` 必须进包 —— 它是 `generate` 的定位来源候选之一。
+
+    它被 `.gitignore:60` 忽略（理由写的是"generate 产物、按次生成"），而 `collect_files`
+    走 `git ls-files --exclude-standard` -> **静默漏掉**：包看着完整（`check_zip` 也不报，
+    因为 `REQUIRED` 只列了 `scripts/generated` 这个**目录名**、不校验目录内具体文件），
+    重跑 `generate` 才暴露缺件 —— 而它正是 `_pick_loc_map_source` 的候选之一。
+
+    修法：`collect_files` 末尾显式补回（与 `_latest_element_map()` / `CASSETTE_SRC` 同手法）。
+    """
+    snap = REPO / "scripts" / "generated" / "_probe_snapshot.json"
+    if not snap.is_file():
+        return          # 本机没跑过 generate，没有快照可校验（不是失败）
+    rel = {p.relative_to(REPO).as_posix() for p in pack_release.collect_files()}
+    assert "scripts/generated/_probe_snapshot.json" in rel, (
+        "`_probe_snapshot.json` 没进包 —— 收包人重跑 `generate` 会缺件。"
+        "它被 .gitignore 忽略，必须在 collect_files 里显式补回（同 elementMap / 录像的做法）。")
+
+
 def test_collect_files_keeps_sources_and_drops_runtime_cruft():
     """打包收集：源代码/用例/生成物要进包，运行时证据与虚拟环境不得进包。"""
     rel = {p.relative_to(REPO).as_posix() for p in pack_release.collect_files()}
@@ -357,7 +396,8 @@ def test_collect_files_keeps_sources_and_drops_runtime_cruft():
     bad = [r for r in rel
            if r.startswith(("log/", ".venv/"))
            or (r.startswith("output/")
-               and not r.startswith(("output/element_maps/", "output/llm_cassettes/")))
+               and not r.startswith(("output/element_maps/", "output/llm_cassettes/",
+                                     "output/login_maps/")))
            or "__pycache__" in r or r.endswith((".zip", ".tar.gz", ".env"))]
     assert not bad, f"包里有不该发的内容：{bad[:5]}"
     # 录像必须在包里（按用户口径与代码包同一个 zip）

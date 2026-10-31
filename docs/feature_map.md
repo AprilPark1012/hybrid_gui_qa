@@ -6,14 +6,14 @@
 ## 总览
 
 - 大特性 **11** 个 · 子特性 **55** 条
-- 一类用例文件 **154** 个 / 用例函数 **1302** 条
+- 一类用例文件 **156** 个 / 用例函数 **1331** 条
 - 二类验证文件 **25** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
 | 1 | AI 链路与离线回放 | 3 | 3 | 2 |
 | 2 | 语义识别与步骤编排 | 4 | 42 | 5 |
-| 3 | 分层定位与控件识别 | 9 | 27 | 6 |
+| 3 | 分层定位与控件识别 | 9 | 29 | 6 |
 | 4 | 选错控件兜底 | 4 | 4 | 2 |
 | 5 | 用例脚本数据三层分离 | 5 | 8 | 0 |
 | 6 | 自愈闭环 Healer | 1 | 0 | 0 |
@@ -56,7 +56,7 @@
 
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
-| 3.1 | 顶层锚点加容器内下钻 | 真实系统只有顶层元素有 testid；子元素靠「锚点 + 容器内相对语义路径」定位 | `test_element_anchor_path.py`(17)、`test_row_fields_cover_all_columns.py`(5)、`test_row_columns_are_named_items.py`(5)、`test_row_container_singleton_hint.py`(5)、`test_row_container_noise_budget.py`(7)、`test_collision_report_noise_budget.py`(6)、`test_div_grid_row_fields.py`(10) | `verify_scope_locate.py` |
+| 3.1 | 顶层锚点加容器内下钻 | 真实系统只有顶层元素有 testid；子元素靠「锚点 + 容器内相对语义路径」定位 | `test_element_anchor_path.py`(17)、`test_row_fields_cover_all_columns.py`(5)、`test_row_columns_are_named_items.py`(5)、`test_row_container_singleton_hint.py`(5)、`test_row_container_noise_budget.py`(7)、`test_collision_report_noise_budget.py`(6)、`test_div_grid_row_fields.py`(10)、`test_grid_attr_inference.py`(14)、`test_row_id_locator.py`(13) | `verify_scope_locate.py` |
 | 3.2 | 多层嵌套容器 | 容器套容器（区域内表格、表单里分组）时路径仍能唯一 | `test_element_anchor_path.py`(17) | - |
 | 3.3 | 弹出层与可展开容器 | 藏在 display:none 菜单里、点开才出现的弹层控件、以及**只在编辑态/动态新增之后才存在**的控件都能被探到并用起来（框架开的必须由框架关）；探到的「藏在哪个入口后面」必须**告诉 AI**（`requires_open` + 规则 1c），否则生成的用例会直接点未展开的弹层控件 -> `element is not visible` 超时 | `test_expandable_menu_discovery.py`(6)、`test_probe_single_entry.py`(15)、`test_probe_page_scope.py`(8)、`test_probe_incremental.py`(7)、`test_editable_state_probe.py`(12)、`test_requires_open_hint.py`(22) | `verify_expandable_menu.py`、`verify_probe_path_parity.py`、`verify_editable_state_probe.py` |
 | 3.4 | 跨页面元素 | 多页面场景下元素跨页可用；同名元素改 `原名@页名` 消歧；explore 期喂给 AI 的**完整清单**必须落盘，作为映射表与运行时快照的**唯一名字来源** | `test_runtime_name_source_is_explore_snapshot.py`(12)、`test_elementmap_list_contract.py`(9)、`test_explore_manifest_authoritative.py`(13)、`test_page_identity_contract.py`(9) | `verify_cross_page.py` |
@@ -141,7 +141,7 @@
 | 9.1 | 布局与命名契约 | tests/ 与生成物的布局、路径拼接（跨平台）、命名空间契约 | `test_test_layout_contract.py`(13)、`test_generated_layout_contract.py`(7)、`test_path_join_contract.py`(2)、`test_click_then_ready_contract.py`(8)、`test_assert_kinds_render.py`(11)、`test_demo_testid_policy.py`(12) | - |
 | 9.2 | 质量闸 | 用例质量 / 生成质量 / demo 新鲜度，**且不许误伤**；**闸门统一契约 + 全量注册表**（B′：实现跟特性走、登记进 core/gates.py）；**验收入口的跳过策略**同归此（跳过必须显式留痕、SKIP != 通过、失败优先于跳过 —— `test_acceptance_skip_policy.py` 物理住本目录） | `test_case_evidence_gate.py`(13)、`test_generate_quality_gate.py`(5)、`test_gate_protocol_registry.py`(8)、`test_assertion_echo_gate.py`(6)、`test_demo_freshness_gate.py`(35)、`test_daily_skip_marker.py`(4)、`test_acceptance_skip_policy.py`(6)、`test_no_false_positive_blocks_ai.py`(12) | `verify_demo_freshness.py` |
 | 9.3 | 环境与编码适配 | 跨平台路径/内存探测/UTF-8 与 cp936 —— 源码不许出现 GBK 编不了的字符；**源码不许有未绑定名**（拷代码漏作用域会被 except 兜成静默降级） | `test_env_adaptation.py`(18)、`test_utf8_io.py`(21)、`test_browser_preflight.py`(4)、`test_venv_python_single_entry.py`(8)、`test_repo_relative_paths_use_forward_slash.py`(5)、`test_no_stale_paths.py`(9)、`test_no_undefined_names.py`(3) | `verify_undefined_names.py` |
-| 9.4 | 交付包与文档同步 | 打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README | `test_pack_release.py`(21)、`test_pack_release_requires_generated_dir.py`(1)、`test_pack_dotenv_never_shipped.py`(5)、`test_readme_structure.py`(16)、`test_docs_sync.py`(16)、`test_build_html_hl.py`(12)、`test_architecture_doc_contract.py`(4) | `verify_html_sync.py` |
+| 9.4 | 交付包与文档同步 | 打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README | `test_pack_release.py`(23)、`test_pack_release_requires_generated_dir.py`(1)、`test_pack_dotenv_never_shipped.py`(5)、`test_readme_structure.py`(16)、`test_docs_sync.py`(16)、`test_build_html_hl.py`(12)、`test_architecture_doc_contract.py`(4) | `verify_html_sync.py` |
 | 9.5 | 保留与产物健康 | 日志/产物保留策略与健康检查 | `test_retention_runs.py`(14)、`test_artifacts_health.py`(9) | `verify_retention_runs.py` |
 | 9.6 | 就绪与等待契约 | 点击后等就绪、等文本刷新策略、选择器生效、**等待式断言 `wait_text` 的渲染契约**（三合一后整条归此）、**动作后置校验（做了 != 生效了）**、**`cases` <-> `scenarios` 三目录新陈代谢**：孤儿 AI 用例 / `source_scenario` 可解析 / 场景指纹同步 / 防空转哨兵（V8.6.4 第二批 · 组 2 把原 9.1 `test_case_scenario_contract.py` 与 9.2 `test_ai_case_scenario_sync.py` 两条同源判据**整文件删**、迁进 `test_scenario_case_script_hygiene.py` —— 三者同源，只留一处口径） | `test_ready_and_locate.py`(12)、`test_wait_text_render_contract.py`(11)、`test_import_targets.py`(4)、`test_generated_pytest_discovery.py`(1)、`test_case_imports_cover_helpers.py`(1)、`test_scenario_case_script_hygiene.py`(9)、`test_target_reachability.py`(5)、`test_declared_wait_budget.py`(24)、`test_action_effect_check.py`(12) | `verify_wait_text.py`、`verify_action_effect_check.py` |
 | 9.7 | 替换安全与闸门解耦 | 用例替换不许破坏结构；闸门自身不许互相耦合 | `test_case_replacement_safety.py`(6)、`test_no_gate_coupling.py`(2) | - |

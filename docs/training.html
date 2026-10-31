@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.7.30）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.8.0）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.7.30 · 2026-10-31　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.8.0 · 2026-11-01　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1400,7 +1400,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>真实系统一般只有<b>顶层元素</b>有 data-testid，子元素没有埋点 -> 定位靠「锚点 + 容器内相对语义路径」。探测端采集：<span class="code-inline">anchor.container_from_ancestors(chain)</span>（最近的可锚定容器）+ <span class="code-inline">anchor.path_for_table_row()</span>（行锚 / 列 / 目标步）。合成的表达式在 Tier1 里排第二（<span class="code-inline">_try_anchor_path()</span>，在 test_id 之后、role+name 之前 —— 结构性锚定比裸语义更稳）；跳过意图复验（它的消歧靠结构，不靠文本相似度）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">probe_page()</span> -> <span class="code-inline">container_from_ancestors()</span> / <span class="code-inline">path_for_table_row()</span>；定位：<span class="code-inline">resolve_locator()</span> -> <span class="code-inline">_try_anchor_path()</span> -> <span class="code-inline">scope_locate.scope_locate()</span>。</p>
       <div class="flow2"><span class="fnode">探针采集 anchor + path</span><span class="farrow">-></span><span class="fnode">Tier1._try_anchor_path()</span><span class="farrow">-></span><span class="fnode">scope_locate()</span><span class="farrow">-></span><span class="fnode g">count == 1 才采用</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_element_anchor_path.py（17 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_fields_cover_all_columns.py（5 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_columns_are_named_items.py（5 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_container_singleton_hint.py（5 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_container_noise_budget.py（7 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_collision_report_noise_budget.py（6 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_div_grid_row_fields.py（10 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/verify_scope_locate.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_element_anchor_path.py（17 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_fields_cover_all_columns.py（5 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_columns_are_named_items.py（5 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_container_singleton_hint.py（5 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_container_noise_budget.py（7 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_collision_report_noise_budget.py（6 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_div_grid_row_fields.py（10 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_grid_attr_inference.py（14 条）</span> <span class="code-inline">tests/特性3-分层定位与控件识别/test_row_id_locator.py（13 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/verify_scope_locate.py</span></p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-3.2" data-sub="3.2"><span class="sno">3.2</span>多层嵌套容器</h5>
@@ -1676,7 +1676,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>交付包与文档同步：<span class="code-inline">build_tools/pack_release.py</span> 打包（内容完整、只留一份 README）、<span class="code-inline">build_tools/build_html.py</span> 是<b>版本号单一来源</b>且生成<b>可复现</b>（换哈希种子逐字节一致）、<span class="code-inline">build_tools/build_feature_map.py</span> 渲染特性映射文档。判据把「文档与代码一致」钉成红。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">build_html.build()</span> -> docs/training.html；<span class="code-inline">build_feature_map.render()</span> -> docs/feature_map.md；<span class="code-inline">verify_html_sync.py</span> 校验可复现 + 与代码一致。</p>
       <div class="flow2"><span class="fnode">pack_release.py</span><span class="farrow">-></span><span class="fnode">build_html.build()（版本单一来源）</span><span class="farrow">-></span><span class="fnode">build_feature_map.render()</span><span class="farrow">-></span><span class="fnode">verify_html_sync.py</span><span class="farrow">-></span><span class="fnode g">可复现 + 与代码同步</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_pack_release.py（21 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_pack_release_requires_generated_dir.py（1 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_pack_dotenv_never_shipped.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_readme_structure.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_docs_sync.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_build_html_hl.py（12 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_architecture_doc_contract.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_html_sync.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_pack_release.py（23 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_pack_release_requires_generated_dir.py（1 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_pack_dotenv_never_shipped.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_readme_structure.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_docs_sync.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_build_html_hl.py（12 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_architecture_doc_contract.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_html_sync.py</span></p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-9.5" data-sub="9.5"><span class="sno">9.5</span>保留与产物健康</h5>
@@ -2092,9 +2092,13 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.7.30</b>（2026-10-31）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.8.0</b>（2026-11-01）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.7.30</span><span class="cl-date">2026-10-31</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>列清单三个源头全断</b> —— 登录静默失败 / div 网格探不到 / 弹窗探测把页面带跑</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.8.0</span><span class="cl-date">2026-11-01</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>从「只认一家前端框架的写法」变成「按数据特征自己认」</b> —— 行内列标识 / 行定位都不再写死属性名</span></div>
+      <p class="cl-sum">V8.7.30 打结时你问了关键一问：<i>「你的修法有没有完全照搬 demo app 的 HTML 结构，做了比较多的假设？换个别的业务系统就不行了。」</i> 逐行审查后确认 —— <b>div 网格那处只认 <code>data-field</code></b>，正是「只支持一家」的典型。<br><br>真实生产系统的行内列标识是前端框架生成的自定义属性：<code>tr[data-rowid="row_1"]</code> + <code>td[data-colid="col_57"]</code>，<b>但属性名叫什么各家不同</b>（第三家可能是 <code>data-rid</code>/<code>data-colx</code>）。<br><br><b>[核心] 按「值的分布」推断，完全不看属性名</b>：某个属性<b>每行都有值且值互不相同</b> -> 行标识；某个属性<b>同一列位置跨行取到相同值</b> -> 列标识。两种分布在数学上互斥，所以根本不需要识别名字。<code>data-field</code> 降为「推断不出来时的兜底默认值」，老页面行为零变化。<br><br><b>[不只是探测层]</b> 执行层同样写死了 <code>td[data-field='X']</code> —— 只修探测层会留下半修状态：清单里明明有 <code>col_57</code>，真跑却去找 <code>td[data-field='col_57']</code>。<b>两层都改成属性名无关</b>。<br><br><b>[行定位新增最稳一档]</b> 原来只有 <code>row_text</code>（行内文本重复就歧义）/ <code>row_index</code>（行序一变就指错行）。生产系统的 <code>data-rowid</code> <b>值稳定、与行序无关</b>，优先级变成 <code>row_id</code> &gt; <code>row_text</code> &gt; <code>row_index</code>；三档都没有<b>仍然不生成行步</b>（不许偷偷按第一行猜）。<br><br><b>[硬证据页]</b> <code>demo/attr_name_variant.html</code> 用 <code>data-rid</code>/<code>data-colx</code> + div 网格 —— <b>换掉属性名照样认</b>。验收标准就是它：把推断逻辑改回写死 <code>data-colid</code>，这个页面必须变红。<br><br><b>[本轮抓到 5 个静默失效]</b> 老判据 mock 只收一个参数（类型错被吞 -> 判据假空）；<b>Playwright <code>locator.evaluate</code> 只收一个 arg</b>（传两个被吞 -> 有 row_id 却不走行内定位）；XPath 无转义语法（含引号必须退档，不许拼坏表达式）；<code>by=header</code> 缺列序时不许默认第 1 列；<code>[!]</code> 符号写进 .py 是 GBK 编不了的字（第 4 次）。<br><br><b>[真链路]</b> 按固定流程清场重跑：<code>登录前置 ok</code>、7 页全探到（发票页 <b>201 控件 · 弹窗补充 0</b>）、<code>pytest scripts/</code> <b>1 passed in 202.42s</b>、全量 <b>1503 passed</b>。7 页数字与 V8.7.30 完全一致 —— 这正是改对了的表现（demo 用 data-field，推断结果还是它）。</p>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.7.30</span><span class="cl-date">2026-10-31</span><span class="cl-tag"></span><span class="cl-theme"><b>列清单三个源头全断</b> —— 登录静默失败 / div 网格探不到 / 弹窗探测把页面带跑</span></div>
       <p class="cl-sum">真机 V8.7.27 三轮全 FAILED（<code>表格没有第一行、或没有 '订单名称' 列</code>）。顺着「AI 为什么猜列名」查下去，发现 <b>列清单的三个源头全断了</b> —— V8.7.24/26 的按页校验、按页补正全都在<b>拿残缺数据做判断</b>，所以怎么改都治不好。<br><br><b>[1 · 登录静默失败]</b> 清 <code>output/</code> 后首次跑登录必炸：<br><code>Error: It looks like you are using Playwright Sync API inside the asyncio loop.</code><br>根因是<b>两处</b>：<code>_probe_login_page</code> 自己 <code>with sync_playwright()</code>（调用方 <code>scan_pages</code> 早已开好 ctx，<b>嵌套必炸</b>）+ <code>plan_login</code> 里裸 <code>asyncio.run</code>。<br><b>失败姿态极差</b>：登录前置失败后<b>探测照常跑</b>，7 页全部被 demo 重定向成 <code>login.html?next=...</code>，每页都探到登录页 login-accounts 的 3 条空 field 列，再被打上「发票列表页」等业务页名 —— <b>脏数据一路喂给 AI</b>。<br><b>[修]</b> <code>_probe_login_page(url, ctx=None)</code> 复用调用方 ctx；<code>plan_login</code> 透传；<code>login_on_page</code> 从 <code>page.context</code> 取；<code>asyncio.run</code> 挪进 <code>run_async_isolated()</code>（<b>独立线程</b>）。<br><b>[实测]</b> 登录页 7 个控件 -&gt; 规划出 4 步（<code>goto</code>/<code>fill super</code>/<code>fill super@123</code>/<code>click</code>）。<br><br><b>[2 · div 网格探不到]</b> <code>order_detail.html</code> 的明细行是 <code>&lt;div class="cell" data-field="lineNo"&gt;</code>，而 <code>probe_row_fields</code> 第一行就是 <code>page.locator("table")</code> —— <b>该页 0 列</b>，AI 永远看不到 <code>lineNo</code>/<code>lineStatus</code>。<br><b>[修]</b> 新增 <code>probe_div_grid_fields()</code>：只认带 <code>data-field</code> 的元素，产出与 <code>probe_row_fields</code> <b>同构</b>（下游提示词/按页校验/首行断言补正全都不用改）；<code>closest('table')</code> 跳过表格内元素避免重复；同名列<b>去重</b>（div 每行都重复渲染 data-field，不去重会随行数膨胀）；表头按「同 class 连续段」推断每行单元格数，<b>推断不出就留空</b>（空表头比错表头安全）。<br><b>[实测]</b> <code>lines-grid</code> -&gt; <code>lineNo</code>（行号）/ <code>lineStatus</code>（状态）。<br><br><b>[3 · 弹窗探测把页面带跑]</b> <code>_try_collect_modal_items</code> 的候选词是 <code>("新建","添加","新增","创建","登记","打开")</code> —— 它<b>假设「创建」都会开弹窗</b>，但发票列表页的「创建」是<b>整页跳转</b>：<br><code>[scan_page] 发票列表页 前=invoice_list.html 后=invoice_create.html?token=...</code><br>页面被带跑后，紧跟着的 <code>probe_row_fields</code> 打在<b>开票页</b>上 —— 发票列表那条真表（单独访问实测 <b>11 列</b>）<b>一条都探不到</b>。<br><b>[修]</b> 点完比 URL：<b>变了 = 导航不是弹窗</b> -&gt; 出声说明 + 退回原页（<code>go_back</code>，失败用 <code>goto(原 URL)</code> 兜底）+ 本次不收集。<br><b>[实测]</b> 7 页列全齐：登录页 3 / 合同列表页 8 / 新建订单页 2 / 订单列表页 12 / 订单详情页 2 / 发票列表页 <b>11</b>；<code>fromOrder</code>（订单编号）<b>终于被探到</b> —— 这正是 AI 一直猜「订单名称」时该用的字段。<br><br><b>[判据]</b> 新增 3 个文件共 <b>26 条</b>（<code>test_login_no_nested_playwright.py</code> 10 / <code>test_div_grid_row_fields.py</code> 10 / <code>test_modal_probe_never_navigates.py</code> 6），每一条都做了<b>反向验证</b>（退回旧代码分别变红 4 / 2 / 2 条）。</p>
     </div>
     <div class="card cl">
@@ -3083,7 +3087,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.7.30</b>（2026-10-31）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.8.0</b>（2026-11-01）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>

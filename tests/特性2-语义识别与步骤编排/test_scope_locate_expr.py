@@ -116,8 +116,16 @@ def test_step_expr_row_nth_is_explicit_and_zero_based():
 
 def test_step_expr_col_field_and_index():
     base = 'page.get_by_test_id("tbl-contracts")'
-    assert step_expr(base, {"axis": "col", "by": "field", "value": "contractNo"}) == \
-        base + ".locator(\"td[data-field='contractNo']\")"
+    got = step_expr(base, {"axis": "col", "by": "field", "value": "contractNo"})
+    # V8.8.0：**不再钉死 `td[data-field='...']`**。
+    #   生产系统的列标识常是前端框架生成的（`data-colid="col_57"`），第三方可能是 data-colx，
+    #   写死属性名的选择器等于「探测层能拿到列、执行层却定位不到那一格」。
+    #   这里钉**行为**（仍是 base 上挂的一次 locator、列值原样进选择器），不钉具体写法。
+    assert got and got.startswith(base + ".locator("), got
+    assert "contractNo" in got, f"列值必须进选择器：{got}"
+    assert got.endswith(")"), got
+    assert "data-field=" not in got and "data-colid=" not in got, (
+        f"执行层又把列属性名写死了：{got}")
     assert step_expr(base, {"axis": "col", "by": "index", "value": 3}) == \
         base + '.locator("td").nth(2)'
 
@@ -148,9 +156,14 @@ def test_path_expr_full_chain_matches_spec_example():
          {"axis": "col", "by": "field", "value": "contractNo"},
          {"axis": "target", "by": "role", "value": "link"}],
     )
-    assert expr == ('page.get_by_test_id("tbl-contracts").locator("tbody tr")'
-                    '.filter(has_text="HT-1005").locator("td[data-field=\'contractNo\']")'
-                    '.get_by_role("link")'), expr
+    # V8.8.0：钉「整条链的形状」（容器 -> 行过滤 -> 列定位 -> 目标），
+    #   **不钉**列那一段的具体选择器写法 —— 属性名不许写死（data-colid/data-colx 都要能用）。
+    assert expr, "整条链拼不出来"
+    assert expr.startswith('page.get_by_test_id("tbl-contracts").locator("tbody tr")'), expr
+    assert '.filter(has_text="HT-1005")' in expr, expr
+    assert "contractNo" in expr, f"列值必须进表达式：{expr}"
+    assert '.get_by_role("link")' in expr, expr
+    assert "data-field=" not in expr, f"列定位又写死了属性名：{expr}"
 
 
 def test_path_expr_without_row_step_never_invents_one():

@@ -86,11 +86,18 @@ def _ancestor_chain(loc, max_depth: int = ANCESTOR_MAX_DEPTH) -> list[dict]:
         return []
 
 
-def _table_context(loc) -> dict | None:
-    """若元素在表格行内 -> 采集「行锚文本 + 列（data-field / 表头文本 / 列序）」，供下钻定位。
+def _table_context(loc, row_attr: str | None = None, col_attr: str | None = None) -> dict | None:
+    """若元素在表格行内 -> 采集「行锚文本 + 行标识 + 列（列标识 / 表头文本 / 列序）」，供下钻定位。
 
     真实项目表格常没有 `data-field`（也不是埋点），所以列信息是**三级降级**：
-    `data-field` → 表头文本 → 显式列序。拿不到就留空（下游据此放弃或另找锚点，绝不猜）。
+    列标识属性 → 表头文本 → 显式列序。拿不到就留空（下游据此放弃或另找锚点，绝不猜）。
+
+    **属性名不写死**（V8.8.0 P0-C）
+    -----------------------------
+    `row_attr` / `col_attr` 由调用方从 `infer_grid_attrs` 的推断结果传入：
+      · `col_attr` —— 列标识属性（`data-colid="col_57"` / `data-colx` / 缺省回落 `data-field`）
+      · `row_attr` —— 行标识属性（`data-rowid="row_1"` / `data-rid`）
+    不传就退回 `data-field` 老口径（老页面行为完全不变）。
 
     **行锚口径（L18 修法 A · 2026-09-28）**：不再取整行 `textContent`（含 demo `seed()` 的随机字段
     -> 每次重启必失配、静默降级），改为「**整表内恰好出现 1 次**的最短单元格文本」。
@@ -98,7 +105,10 @@ def _table_context(loc) -> dict | None:
     """
     try:
         ctx = loc.evaluate(
-            """e => {
+            # [!] Playwright 的 `locator.evaluate(js, arg)` **只接受一个 arg** ——
+            #   传两个会被当成多余位置参数直接抛错（而这里被 `except` 吞掉 -> 整段行内
+            #   上下文静默变 None，表现为「明明有 row_id 却不走行内定位」）。打包成数组传。
+            """(e, [rowAttr, colAttr]) => {
                  const tr = e.closest('tr');
                  if (!tr) return null;
                  const td = e.closest('td,th');
@@ -106,8 +116,10 @@ def _table_context(loc) -> dict | None:
                  const heads = tbl ? Array.from(tbl.querySelectorAll('thead th'))
                                        .map(x => (x.textContent || '').trim()) : [];
                  let colField = '', colHeader = '', colIndex = null;
+                 // V8.8.0：列标识属性名由调用方推断后传入，不写死 data-field
+                 const cAttr = (colAttr || 'data-field');
                  if (td) {
-                   colField = td.getAttribute('data-field') || '';
+                   colField = td.getAttribute(cAttr) || '';
                    const cells = Array.from(tr.children);
                    const idx = cells.indexOf(td);
                    colIndex = idx >= 0 ? idx + 1 : null;
@@ -135,12 +147,21 @@ def _table_context(loc) -> dict | None:
                  const rowText = (tr.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
                  // [!] 无唯一候选 -> **保持现状**（整行文本），绝不静默编锚；stable=false 由生成期告警
                  //    （「该行锚未取得稳定值，数据变动后可能降级为语义兜底」——批 3 落地，P18 §四兜底）
+                 // V8.8.0 P0-C：行标识（`tr[data-rowid="row_1"]` 这类，属性名由调用方推断传入）。
+                 //   比行锚文本更稳：值稳定、与行序无关；行内文本重复时也不受影响。
+                 let rowId = '';
+                 if (rowAttr) {
+                   const rid = (tr.getAttribute(rowAttr) || '').trim();
+                   if (rid) rowId = rid;
+                 }
                  return {row_text: stable ? cand[0].t : rowText, row_anchor_stable: stable,
                          row_text_full: rowText,
+                         row_id: rowId,
                          col_field: colField, col_header: colHeader,
                          col_index: colIndex,
                          table_test_id: tbl ? (tbl.getAttribute('data-testid') || '') : ''};
-               }"""
+               }""",
+            [row_attr or "", col_attr or ""]
         )
         return ctx or None
     except Exception:
@@ -498,6 +519,19 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None,
     在需要时用这些语义字段确定性推导。
     """
     items = []
+    # V8.8.0 P0-C：整页只做**一次**行/列标识属性推断，循环里反复复用。
+    #   为什么只算一次：`infer_grid_attrs` 要扫全页 DOM，放在逐元素循环里会慢到不可用。
+    #   推断不出来（空串）时，下游自动退回 `data-field` 老口径 —— 老页面行为完全不变。
+    _grid_row_attr = ""
+    _grid_col_attr = ""
+    try:
+        for _r in infer_grid_attrs(page):
+            if _r.get("col_attr") and not _grid_col_attr:
+                _grid_col_attr = _r["col_attr"]
+            if _r.get("row_attr") and not _grid_row_attr:
+                _grid_row_attr = _r["row_attr"]
+    except Exception:
+        _grid_row_attr, _grid_col_attr = "", ""
     locators = page.locator(INTERACTIVE_SELECTOR)
     n = min(locators.count(), max_items)
     for i in range(n):
@@ -544,13 +578,16 @@ def probe_page(page: Page, max_items: int = 200, page_name: str | None = None,
         if chain:
             chain[-1]["heading"] = container_heading        # 最外层节点带上最近 heading，供 region 锚用
         anchor = container_from_ancestors(chain)
-        row_ctx = _table_context(loc)
+        row_ctx = _table_context(loc, row_attr=_grid_row_attr, col_attr=_grid_col_attr)
         path = None
         if row_ctx:
+            # V8.8.0 P0-C：行锚优先用 row_id（值稳定、与行序无关），
+            #   拿不到才退回 row_text（行内唯一文本）再退回 row_index。
             path = path_for_table_row(row_text=row_ctx.get("row_text"),
                                       cell_field=row_ctx.get("col_field"),
                                       col_header=row_ctx.get("col_header"),
                                       col_index=row_ctx.get("col_index"),
+                                      row_id=row_ctx.get("row_id") or None,
                                       target_role=role, target_text=None) or None
         elif anchor:
             # P16 批 6（口径 C）：**锚点里的表单字段**（弹层/区块内的输入框、下拉、按钮）没有行/列语境，
@@ -656,14 +693,204 @@ def _opens_new_tab(loc, tag: str) -> bool:
 # 不引入新的定位原语）；`<table>` 内的元素这里跳过，避免与 table 路径重复产出。
 # 表头**尽力对齐**：用"同 class 连续段"推断每行单元格数，推断不出就留空串
 # （宁漏不误伤 —— 空表头比错表头安全，错表头会让 AI 把列名对到错误的语义上）。
-_DIV_GRID_JS = r"""
+_INFER_GRID_ATTRS_JS = r"""
 () => {
-  const cells = Array.from(document.querySelectorAll('[data-field]'));
+  // 按**值的分布**推断：哪个 data-* 属性是「行标识」、哪个是「列标识」。
+  // 判据（纯结构，**完全不看属性名**）：
+  //   · 行标识：该属性在**每一行**都有值，且**行与行之间的值都不同**
+  //             （如 data-rowid="row_1"/"row_2"/"row_3"）
+  //   · 列标识：该属性在**同一列位置**跨行取到**相同的值**
+  //             （如第 1 列的每个单元格都是 data-colid="col_57"）
+  // 为什么不能靠属性名：不同前端框架叫法不同（data-field / data-colid /
+  //   data-colx / data-key ...），写死任何一个都等于只支持一家。
+  const attrMap = (el) => {
+    const r = {};
+    for (const a of Array.from(el.attributes || [])) {
+      if (a.name.indexOf('data-') === 0) r[a.name] = (a.value || '').trim();
+    }
+    return r;
+  };
+
+  const infer = (rows, cellsOf, name, kindName) => {
+    if (rows.length < 2) return null;
+
+    // ---- 行标识：行元素**自身**的 data-*
+    const rowCand = {};
+    for (const r of rows) {
+      const am = attrMap(r);
+      for (const k in am) {
+        if (!am[k]) continue;
+        (rowCand[k] = rowCand[k] || []).push(am[k]);
+      }
+    }
+    let rowAttr = '';
+    for (const k in rowCand) {
+      const vs = rowCand[k];
+      // 每行都有 + 值互不相同 -> 行标识
+      if (vs.length === rows.length && new Set(vs).size === rows.length) { rowAttr = k; break; }
+    }
+
+    // ---- 列标识：单元格的 data-*，同列位置跨行值相同
+    const colCand = {};
+    rows.forEach((r) => {
+      Array.from(cellsOf(r) || []).forEach((c, ci) => {
+        const am = attrMap(c);
+        for (const k in am) {
+          if (!am[k]) continue;
+          colCand[k] = colCand[k] || {};
+          (colCand[k][ci] = colCand[k][ci] || []).push(am[k]);
+        }
+      });
+    });
+    let colAttr = '';
+    let colCount = 0;
+    for (const k in colCand) {
+      const byCol = colCand[k];
+      const idxs = Object.keys(byCol).map(Number);
+      if (!idxs.length) continue;
+      // 每个列位置：至少 2 行都有该属性，且**值只有一种**（跨行稳定）
+      const stable = idxs.every((ci) => {
+        const vs = byCol[ci];
+        return vs.length >= 2 && new Set(vs).size === 1;
+      });
+      if (stable && idxs.length > colCount) { colAttr = k; colCount = idxs.length; }
+    }
+
+    const toArr = (o) => { const a = []; for (const k in o) a.push(o[k]); return a; };
+    return {
+      container: name,
+      kind: kindName,
+      row_attr: rowAttr,
+      col_attr: colAttr,
+      rows: rows.length,
+      cols: colCount,
+      // 样本给诊断用（一眼能看出推断对不对）
+      row_sample: rowAttr ? rowCand[rowAttr].slice(0, 3) : [],
+      col_sample: colAttr ? (() => { const o = colCand[colAttr]; const ks = Object.keys(o).map(Number).sort((a,b)=>a-b); return ks.slice(0, 6).map((ci) => o[ci] && o[ci][0]); })() : [],
+      all_attrs: Object.keys(Object.assign({}, rowCand, colCand)),
+    };
+  };
+
+  const out = [];
+
+  // ---- 路径 1：<table>（行 = tbody tr，单元格 = 直接子 td）
+  //   容器命名必须与 Python 侧 probe_row_fields 的 tname **完全同序**
+  //   （data-testid 优先、再 id、最后兜底名），否则两边对不上、推断白做。
+  Array.from(document.querySelectorAll('table')).forEach((t, ti) => {
+    const rows = Array.from(t.querySelectorAll('tbody tr'));
+    if (rows.length < 2) return;
+    const nm = (t.getAttribute('data-testid') || t.id || ('table' + ti)).trim();
+    const r = infer(rows, (tr) => Array.from(tr.children).filter((c) => c.tagName.toLowerCase() === 'td'), nm, 'table');
+    if (r) out.push(r);
+  });
+
+  // ---- 路径 2：div 网格（行 = 容器子元素，单元格 = 行子元素）
+  Array.from(document.querySelectorAll('div, section, ul, ol')).forEach((c, ci0) => {
+    if (c.closest('table')) return;                 // 表格里的 div 不算网格
+    const kids = Array.from(c.children || []);
+    if (kids.length < 2) return;
+    // 行 = 那些「至少一个子元素带 data-*」的子元素
+    const rows = kids.filter((k) => Array.from(k.children || []).some((g) => Object.keys(attrMap(g)).length > 0));
+    if (rows.length < 2) return;
+    const nm = (c.id || c.getAttribute('data-testid') || (typeof c.className === 'string' ? c.className.trim().split(/\s+/)[0] : '') || ('grid' + ci0)).trim();
+    const r = infer(rows, (row) => Array.from(row.children || []), nm, 'div-grid');
+    if (r && (r.row_attr || r.col_attr)) out.push(r);
+  });
+
+  // 同一容器名只留信息最全的一条（div 网格会因嵌套被扫多次）
+  const best = {};
+  for (const r of out) {
+    const k = r.container + '|' + r.kind;
+    const prev = best[k];
+    const score = (x) => (x.row_attr ? 1 : 0) + (x.col_attr ? 1 : 0) * 2 + x.cols;
+    if (!prev || score(r) > score(prev)) best[k] = r;
+  }
+  return Object.keys(best).map((k) => best[k]);
+}
+"""
+
+
+def infer_grid_attrs(page: Page, max_containers: int = 8) -> list[dict]:
+    """推断页面上每个表格/网格容器用哪个 `data-*` 属性做**行标识**和**列标识**。
+
+    返回 ``[{"container", "kind", "row_attr", "col_attr", "rows", "cols",
+    "row_sample", "col_sample", "all_attrs"}, ...]``
+
+    为什么不写死属性名
+    ------------------
+    不同前端框架的命名完全不同：``data-field`` / ``data-colid`` / ``data-colx`` /
+    ``data-key`` …… 写死任何一个都等于只支持一家。这里**只按值的分布**判断：
+
+    · **行标识** = 该属性在每一行都有值、且**行与行之间值都不同**
+      （``data-rowid="row_1"`` / ``"row_2"`` / ``"row_3"``）
+    · **列标识** = 该属性在**同一列位置跨行取到相同的值**
+      （第 1 列的每个单元格都是 ``data-colid="col_57"``）
+
+    这两种分布互斥且可从页面直接验证，所以不需要认识属性名。
+
+    注意
+    ----
+    这是**诊断/供下游使用**的推断结果，不是「唯一真相」。`probe_row_fields`
+    会在推断出 ``col_attr`` 时优先用它，推断不出时退回 ``data-field``（老行为不变）。
+    推断失败一律返回空列表，**不抛异常** —— 页面结构千奇百怪，探测层不许因为推断不出来就崩。
+    """
+    try:
+        rows = page.evaluate(_INFER_GRID_ATTRS_JS)
+    except Exception:
+        return []
+    if not rows:
+        return []
+    out: list[dict] = []
+    for r in rows[:max_containers]:
+        if not isinstance(r, dict):
+            continue
+        out.append({
+            "container": str(r.get("container") or "").strip(),
+            "kind": str(r.get("kind") or "").strip(),
+            "row_attr": str(r.get("row_attr") or "").strip(),
+            "col_attr": str(r.get("col_attr") or "").strip(),
+            "rows": int(r.get("rows") or 0),
+            "cols": int(r.get("cols") or 0),
+            "row_sample": list(r.get("row_sample") or []),
+            "col_sample": list(r.get("col_sample") or []),
+            "all_attrs": list(r.get("all_attrs") or []),
+        })
+    return out
+
+
+_DIV_GRID_JS = r"""
+(attrName) => {
+  // V8.8.0 P0-A：属性名由调用方传入（推断得到的列标识属性），不再写死 data-field。
+  //   不同前端框架的叫法不同：data-field / data-colid / data-colx / data-key ...
+  //   调用方推断不出时会传 data-field（历史默认，老行为不变）。
+  const attr = (attrName || 'data-field');
+  const cells = Array.from(document.querySelectorAll('[' + attr + ']'));
   if (!cells.length) return [];
   const clsOf = (el) => {
     const c = el.className;
     return (typeof c === 'string' ? c : (c && c.baseVal) || '').trim();
   };
+
+  // ---- V8.8.0：找「表头行」的文案，供「同层兄弟」推不出表头时兜底。
+  //   两种常见结构：
+  //     (a) 表头单元格与数据单元格同父（`<div class=head>表头</div><div class=cell data-field=..>`）
+  //         -> 由下面的「同 class 连续段」直接推断，无需本函数
+  //     (b) 表头自成一行（`<div class=head><div>列名</div>...</div><div class=row><div data-colx=..>值</div>...</div>`）
+  //         -> 本函数处理：找容器里那个「子元素都不带 attr」但子元素数量等于列数的子容器
+  const headerTextsOf = (gridEl, want) => {
+    if (!gridEl || !want) return [];
+    const kids = Array.from(gridEl.children || []);
+    for (const k of kids) {
+      const gk = Array.from(k.children || []);
+      if (gk.length !== want) continue;
+      // 这一行的子元素必须**都没有**列标识属性（否则它是数据行）
+      if (gk.some((g) => (g.getAttribute(attr) || '').trim())) continue;
+      const txt = gk.map((g) => (g.innerText || '').trim().replace(/\s+/g, ' '));
+      if (txt.some((t) => t)) return txt;
+    }
+    return [];
+  };
+
   const out = [];
   for (const c of cells) {
     if (c.closest('table')) continue;
@@ -685,9 +912,21 @@ _DIV_GRID_JS = r"""
       const col = (idx - perRow) % perRow;
       if (col < perRow) header = (sibs[col].innerText || '').trim().replace(/\s+/g, ' ');
     }
+    // (b) 兜底：表头自成一行的情况 —— 用「所在行」的序号当列号，去表头行里取
+    if (!header) {
+      const rowEl = p;                    // 数据行的容器（<div class=row>）
+      const gridEl = rowEl.parentElement;  // 网格容器（<div class=grid>）
+      const rowKids = Array.from(rowEl.children);
+      const colInRow = rowKids.indexOf(c);
+      const want = rowKids.length;
+      if (colInRow >= 0 && want > 1) {
+        const heads = headerTextsOf(gridEl, want);
+        if (heads.length === want) header = heads[colInRow] || '';
+      }
+    }
     out.push({
       grid: p.id || p.getAttribute('data-testid') || clsOf(p) || 'div-grid',
-      field: (c.getAttribute('data-field') || '').trim(),
+      field: (c.getAttribute(attr) || '').trim(),
       index: idx + 1,
       perRow: perRow,
       header: header,
@@ -698,7 +937,8 @@ _DIV_GRID_JS = r"""
 """
 
 
-def probe_div_grid_fields(page: Page, max_grids: int = 5) -> list[dict]:
+def probe_div_grid_fields(page: Page, max_grids: int = 5,
+                          col_attr: str | None = None) -> list[dict]:
     """探测**非 `<table>`** 的行内列（`<div class="cell" data-field="...">` 这类网格）。
 
     返回与 `probe_row_fields` **同构**的条目：`{table, index, field, header, kind}` ——
@@ -708,25 +948,57 @@ def probe_div_grid_fields(page: Page, max_grids: int = 5) -> list[dict]:
     · `index`   = 该单元格在容器子元素里的 DOM 序号（1 起）。**不是列号** ——
       div 网格没有 `<tr>`，列号靠表头对齐，这里不假装有；
     · `header`  = 按"同 class 连续段"推断出的表头文案，推断不出就空串。
+
+    `col_attr`（V8.8.0 P0-A）
+    ------------------------
+    **列标识的属性名，不写死**。不给就按页面结构自动推断（`infer_grid_attrs`），
+    推断不出再退回历史默认 `data-field`。为什么：不同前端框架叫法不同
+    （`data-field` / `data-colid` / `data-colx` / `data-key`），写死任何一个都只支持一家
+    —— 实测 `attr_name_variant.html`（用 `data-colx`）在写死版本上探到 **0 条**。
     """
     out: list[dict] = []
-    try:
-        rows = page.evaluate(_DIV_GRID_JS)
-    except Exception:
-        return out
+    # 先定「要试哪些属性」：显式指定 > 推断结果（可能多个容器各不同）> 历史默认
+    attrs_to_try: list[str] = []
+    if col_attr:
+        attrs_to_try.append(col_attr.strip())
+    else:
+        try:
+            for r in infer_grid_attrs(page):
+                ca = str(r.get("col_attr") or "").strip()
+                if ca and ca not in attrs_to_try:
+                    attrs_to_try.append(ca)
+        except Exception:
+            attrs_to_try = []
+    if "data-field" not in attrs_to_try:
+        attrs_to_try.append("data-field")        # 历史默认（兜底，老行为不变）
+
+    for attr in attrs_to_try:
+        try:
+            rows = page.evaluate(_DIV_GRID_JS, attr)
+        except Exception:
+            rows = []
+        if not rows:
+            continue
+        if _collect_div_rows(rows, max_grids, out):
+            break                                 # 这个属性探到了东西，就用它
+    return out
+
+
+def _collect_div_rows(rows, max_grids: int, out: list[dict]) -> bool:
+    """把 `_DIV_GRID_JS` 的原始行按「同网格同名列去重」整理进 `out`。返回是否收集到东西。"""
     if not rows:
-        return out
+        return False
     grids: dict[str, list[dict]] = {}
     seen: set[tuple[str, str]] = set()
     for r in rows:
         if not isinstance(r, dict):
             continue
         field = str(r.get("field") or "").strip()
-        if not field:                       # 没有 data-field 的不算"列字段"（表格路径才处理 kinds）
+        if not field:                       # 没有列标识的不算"列字段"（表格路径才处理 kinds）
             continue
         gname = str(r.get("grid") or "").strip() or "div-grid"
-        # [!] 同一个网格里**同名列只留一条**：div 网格每行都重复渲染一遍
-        #   `data-field`（实测 2 行 -> lineNo 出现 2 次），不去重的话清单会随行数
+        # [!] 同一个网格里**同名列只留一条**：div 网格每行都重复渲染一遍列标识
+        #   （实测 2 行 -> lineNo 出现 2 次），不去重的话清单会随行数
         #   线性膨胀，提示词里全是重复项（"提示变成噪音就等于没提示"）。
         #   列清单要回答的是"**有哪些列**"，不是"每行各有什么"。
         key = (gname, field)
@@ -734,6 +1006,7 @@ def probe_div_grid_fields(page: Page, max_grids: int = 5) -> list[dict]:
             continue
         seen.add(key)
         grids.setdefault(gname, []).append(r)
+    got = False
     for gname, items in list(grids.items())[:max_grids]:
         for r in items:
             out.append({
@@ -743,7 +1016,8 @@ def probe_div_grid_fields(page: Page, max_grids: int = 5) -> list[dict]:
                 "header": str(r.get("header") or "").strip(),
                 "kind": "",
             })
-    return out
+            got = True
+    return got
 
 
 def probe_row_fields(page: Page, max_tables: int = 5,
@@ -758,6 +1032,18 @@ def probe_row_fields(page: Page, max_tables: int = 5,
     这个清单就是它的依据；不让 AI 猜 CSS（那是本项目铁律）。
     """
     out: list[dict] = []
+    # V8.8.0 P0-A：先推断每个容器用**哪个属性**做列标识，不写死 `data-field`。
+    #   为什么必须推断：真实生产系统的列标识常是前端框架生成的（`data-colid="col_57"`
+    #   这类，值稳定、跨行同列相同），而 demo 用的是 `data-field="orderName"`。
+    #   写死任何一个都只支持一家 -> 换系统就探到 0 列 -> AI 只能猜列名。
+    #   推断不出来时退回 `data-field`（**老行为完全不变**）。
+    _col_attr_of: dict[str, str] = {}
+    try:
+        for _r in infer_grid_attrs(page):
+            if _r.get("col_attr"):
+                _col_attr_of[_r.get("container") or ""] = _r["col_attr"]
+    except Exception:
+        _col_attr_of = {}
     try:
         tables = page.locator("table")
         n = min(tables.count(), max_tables)
@@ -767,6 +1053,8 @@ def probe_row_fields(page: Page, max_tables: int = 5,
         tbl = tables.nth(ti)
         try:
             tname = (tbl.get_attribute("data-testid") or tbl.get_attribute("id") or f"table{ti}").strip()
+            # 该容器推断出的列标识属性；推断不出就用历史默认 data-field
+            col_attr = _col_attr_of.get(tname) or "data-field"
             headers = tbl.locator("thead th").all_inner_texts()
             # V8.4.3：按**真实列位置**遍历**全部 td**（不再只挑 td[data-field]）。
             #   为什么必须这样（Windows 实测追到这一层）：
@@ -783,7 +1071,12 @@ def probe_row_fields(page: Page, max_tables: int = 5,
             m = tds.count()
             for ci in range(m):
                 td = tds.nth(ci)
-                field = (td.get_attribute("data-field") or "").strip()
+                # V8.8.0 P0-A：按**推断出的列标识属性**取值（不再写死 data-field）。
+                field = (td.get_attribute(col_attr) or "").strip()
+                if not field and col_attr != "data-field":
+                    # 推断属性在这一格没有值（勾选列/操作列常见）——
+                    # 再试一次历史默认，避免把「别家框架的表格」里恰好用 data-field 的列漏掉。
+                    field = (td.get_attribute("data-field") or "").strip()
                 header = headers[ci].strip() if ci < len(headers) else ""
                 kind = ""
                 if not field:
