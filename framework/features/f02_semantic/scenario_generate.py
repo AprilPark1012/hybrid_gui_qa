@@ -158,10 +158,12 @@ class Scenario:
 
     def case_extra(self) -> dict:
         """回写进 case 的溯源字段（generator 只读 case_id/steps/asserts，多余字段安全）。"""
+        # [!] as_posix()：Windows 上 str(Path) 给反斜杠，跨平台（Windows 生成 -> Linux 跑）
+        #     拼路径会挂；且判据侧比较路径时用的是正斜杠。
         try:
-            rel = str(self.path.resolve().relative_to(SCENARIOS_DIR.resolve().parent))
+            rel = self.path.resolve().relative_to(SCENARIOS_DIR.resolve().parent).as_posix()
         except Exception:
-            rel = str(self.path)
+            rel = Path(self.path).as_posix()
         extra = {"scenario_id": self.id, "source_scenario": rel}
         # D3（2026-09-24 他定）：记下**当时场景文件的内容指纹**。
         # 场景一改（指纹变）-> 判据当场红 -> 必须重新生成，保证用例与场景同步。

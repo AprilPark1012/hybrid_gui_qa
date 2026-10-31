@@ -762,17 +762,34 @@ class ElementMapPage:
 
     字段就是AprilPark1012定的那五个：`page`（页名）+ `url` + `scenario` + `steps` + `probe_items`。
     `probe`（单页快照）与 `explore`（跨页）**共用这一个形状** —— 两种形状是下游写两套读法的根源。
+
+    `row_fields`（V8.7.22 新增）：本页**表格行内列**清单，来自 `probe_row_fields()`，
+        形如 `[{"table":"invoiceTable","field":"orderName","header":"订单名称","index":3,"kind":"text"}, ...]`。
+
+    [!] 为什么要落盘（2026-10-29 真链路实锤）：
+        用例最后一步 AI 写 `expect_text assert=全链路-{datetime}`（验「搜到了刚建的发票」），
+        被**假绿红线**判成「输入回显」拦下 —— 闸门是对的。错误信息让它改用 `expect_first_row`
+        （结构性证据：列 + 期望值），**但 AI 拼不出 `cell_field`**：那是页面 `td[data-field=...]`
+        的值（如 `orderName`），不是表头文案（「订单名称」）。
+        探针**本来就有** header->field 映射（V8.7.16 的 `_fix_first_row_column_by_header` 靠它反查），
+        但它只活在 explore 的内存里、**从没落进 elementMap** -> case_builder 拿不到 ->
+        只能在错误信息里干说「用 expect_first_row」，AI 试两次都失败 -> 整条链卡死。
+        所以必须**落盘 + 透传**：让错误信息能直接给出「本页可用列：orderName(订单名称) / ...」。
     """
     page: str = ""
     url: str = ""
     scenario: str = ""
     steps: list[TestStep] = field(default_factory=list)
     probe_items: list[dict] = field(default_factory=list)
+    #: 本页表格行内列清单（`probe_row_fields()` 的原样产物）。
+    #: 老产物没有这个键 -> 空列表（向后兼容；开发期不额外兜历史文件）。
+    row_fields: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {"page": self.page, "url": self.url, "scenario": self.scenario,
                 "steps": [s.to_dict() if hasattr(s, "to_dict") else s for s in self.steps],
-                "probe_items": with_isvalid(self.probe_items)}
+                "probe_items": with_isvalid(self.probe_items),
+                "row_fields": list(self.row_fields or [])}
 
     @classmethod
     def from_dict(cls, d: dict) -> "ElementMapPage":
@@ -783,6 +800,7 @@ class ElementMapPage:
             scenario=str(d.get("scenario") or ""),
             steps=[TestStep.from_dict(x) for x in (d.get("steps") or []) if isinstance(x, dict)],
             probe_items=with_isvalid(d.get("probe_items") or []),
+            row_fields=[x for x in (d.get("row_fields") or []) if isinstance(x, dict)],
         )
 
 
@@ -816,10 +834,12 @@ def load_pages(data) -> list[ElementMapPage]:
         if is_item_list:
             return [ElementMapPage(probe_items=with_isvalid(data))]
         pages = [ElementMapPage.from_dict(x) for x in data if isinstance(x, dict)]
-        return [x for x in pages if x.steps or x.probe_items]
+        # V8.7.22：带 `row_fields` 的页也要留下 —— 否则「只有列清单、没有步骤/控件」的页
+        #   会在读回时被丢掉（`page_row_fields` 随之变空 = 数据活着但读不回来）。
+        return [x for x in pages if x.steps or x.probe_items or x.row_fields]
     if isinstance(data, dict):
         one = ElementMapPage.from_dict(data)
-        return [one] if (one.steps or one.probe_items) else []
+        return [one] if (one.steps or one.probe_items or one.row_fields) else []
     return []
 
 
@@ -845,6 +865,14 @@ class ElementMap:
     pages: list[ElementMapPage] = field(default_factory=list)
     #: 场景声明的页元数据（`[{"name":..., "url":...}]`），只用于**切页时定页名**。
     page_meta: list[dict] = field(default_factory=list)
+    #: **页名 -> 该页表格行内列清单**（V8.7.22）。值形如
+    #: `[{"table":"invoiceTable","field":"orderName","header":"订单名称","index":3,"kind":"text"}, ...]`
+    #:
+    #: [!] 为什么不直接挂在 `pages` 上：`pages` 常常是**空的**（explore 侧走
+    #:   `normalized_pages()` 按 goto 边界**自动切页**），显式造 page 对象会绕开那套切页判据
+    #:   （含 `partition_unassigned` 报红），风险远大于收益。这里只带一份「页名 -> 列」映射，
+    #:   `to_dict()` 出盘时按 `pg.page` 并进各页对象 —— 落盘形态不变（仍是 list of page）。
+    page_row_fields: dict[str, list[dict]] = field(default_factory=dict)
 
     def normalized_pages(self) -> list[ElementMapPage]:
         """返回页对象列表（有 pages 用 pages；否则按 goto 现切）—— **读取侧唯一入口**。"""
@@ -903,6 +931,22 @@ class ElementMap:
         "数据活着但没落盘"踩过一次）。挂在首页对象上，与页结构同生共死。
         """
         pages = [pg.to_dict() for pg in self.normalized_pages()]
+        # V8.7.22：把「页名 -> 行内列清单」并进各页对象（`page_row_fields` 是落盘形态的一部分）。
+        #   老产物没有这个键 -> `page_row_fields` 为空 -> 各页 `row_fields` 保持 []（兼容）。
+        #   [!] 单页兜底：`normalized_pages()` 在 `steps` 为空/切页失败时会给出 `page=""`，
+        #     与 `page_row_fields` 的中文页名对不上 —— 那种情况下列清单**只有一份**、没有歧义，
+        #     直接全塞给这一页（否则数据活着但落盘为空 = 等于没落，本项目踩过）。
+        _prf = getattr(self, "page_row_fields", None) or {}
+        if _prf:
+            _single = len(pages) == 1
+            for _pg in pages:
+                if _pg.get("row_fields"):
+                    continue
+                _rows = _prf.get(str(_pg.get("page") or ""))
+                if not _rows and _single:
+                    _rows = [r for v in _prf.values() for r in (v or [])]
+                if _rows:
+                    _pg["row_fields"] = list(_rows)
         un = list(getattr(self, "partition_unassigned", []) or [])
         if un and pages:
             pages[0]["partition_unassigned"] = un
@@ -927,10 +971,16 @@ class ElementMap:
                               if isinstance(x, dict)],
                        probe_items=with_isvalid(d.get("probe_items") or []))
         first = pages[0] if pages else None
+        # V8.7.22：把各页的 `row_fields` 汇总成「页名 -> 列清单」（与 `page_row_fields` 对称，
+        #   这样 from_data(to_dict()) 是幂等的，下游拿 `m.page_row_fields` 就行）。
+        _prf: dict[str, list[dict]] = {}
+        for _pg in pages:
+            if _pg.row_fields:
+                _prf[str(_pg.page or "")] = list(_pg.row_fields)
         return cls(url=(first.url if first else ""), scenario=(first.scenario if first else ""),
                    steps=[s for pg in pages for s in pg.steps],
                    probe_items=[it for pg in pages for it in pg.probe_items],
-                   pages=pages)
+                   pages=pages, page_row_fields=_prf)
 
     @classmethod
     def from_json(cls, path) -> "ElementMap":

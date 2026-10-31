@@ -350,7 +350,42 @@ class CaseQualityError(Exception):
         return sum(len(errs) for _cid, errs in self.entries)
 
 
-def assertion_hard_errors(case: dict, guard: dict | None = None) -> list[str]:
+def _row_field_hint(page_row_fields: dict | None, limit: int = 8) -> str:
+    """把「页名 -> 行内列清单」压成一句**可直接抄**的 `cell_field` 候选提示。
+
+    V8.7.22 由来（2026-10-29 真链路）：AI 写 `expect_text assert=<自己 fill 的值>` 被假绿红线
+    拦下，错误信息让它改用 `expect_first_row` —— **但它拼不出 `cell_field`**：那是页面
+    `td[data-field=...]` 的值（`orderName`），不是表头文案（`订单名称`）。AI 试两次同样写法 ->
+    整条链卡死。所以错误信息必须**直接给出可用值 + 表头对照**，不能让模型去猜。
+
+    输出形如：`；可用列 -> 发票列表页: orderName(订单名称)、invoiceNo(发票号)、…`
+    空映射时返回空串（不编造）。
+    """
+    if not isinstance(page_row_fields, dict) or not page_row_fields:
+        return ""
+    chunks: list[str] = []
+    for page, rows in list(page_row_fields.items())[:3]:
+        seen: list[str] = []
+        for r in (rows or []):
+            if not isinstance(r, dict):
+                continue
+            fld = str(r.get("field") or "").strip()
+            hdr = str(r.get("header") or "").strip()
+            if not fld:
+                continue                      # 没 data-field 的列（勾选列）表达不了 cell_field
+            pair = f"{fld}({hdr})" if hdr and hdr != fld else fld
+            if pair not in seen:
+                seen.append(pair)
+        if seen:
+            more = f" 等 {len(seen)} 列" if len(seen) > limit else ""
+            chunks.append(f"{page or '(未命名页)'}: " + "、".join(seen[:limit]) + more)
+    if not chunks:
+        return ""
+    return "；可用列 -> " + " ｜ ".join(chunks)
+
+
+def assertion_hard_errors(case: dict, guard: dict | None = None,
+                          page_row_fields: dict | None = None) -> list[str]:
     """L36：**断言输入回显** = 硬红线（拒绝落盘），不再只是告警。
 
     为什么必须升级（2026-10-21 L35 真跑）：AI 重规划后断言 `全链路-20261021215943` ——
@@ -363,6 +398,10 @@ def assertion_hard_errors(case: dict, guard: dict | None = None) -> list[str]:
 
     场景确需验证「保存后值仍在」时，在 `assert_guard` 里写 `allow_input_echo: true` 显式豁免
     —— 豁免必须是**人写下来的决定**，不能是模型的自由裁量。
+
+    `page_row_fields`（V8.7.22）：`{页名: [{"field","header","index","kind"}, ...]}`。
+    传进来就**在错误信息里列出可直接抄的 `cell_field` 候选** —— 否则 AI 只知道「该用
+    expect_first_row」，却拼不出 `cell_field` 的值，两轮重试都失败（2026-10-29 实测）。
     """
     g = guard or {}
     allow = g.get("allow_input_echo")
@@ -370,6 +409,7 @@ def assertion_hard_errors(case: dict, guard: dict | None = None) -> list[str]:
         return []
     fills = {str(s.get("value")) for s in (case.get("steps") or [])
              if s.get("op") == "fill" and s.get("value")}
+    _hint = _row_field_hint(page_row_fields)
     bad: list[str] = []
     for a in (case.get("asserts") or []):
         exp = a.get("expect")
@@ -381,7 +421,8 @@ def assertion_hard_errors(case: dict, guard: dict | None = None) -> list[str]:
                 f"断言 {exp!r} 就是本用例自己 fill 进去的值（输入回显 = 假绿）："
                 f"改用「操作之后页面出现的其它证据」——记录落在第一行（expect_first_row）、"
                 f"状态文案、跨页证据（expect_url），或换一条**操作前就能确定**的固定文案"
-                f"（本场景确需验证回显时，在 assert_guard 写 allow_input_echo: true 显式豁免）")
+                f"（本场景确需验证回显时，在 assert_guard 写 allow_input_echo: true 显式豁免）"
+                + _hint)
     return bad
 
 
@@ -677,7 +718,10 @@ def elementmap_to_cases_file(
         except Exception as _e:      # 兜底必须留痕：静默 except 会把自己写错也吞掉（2026-09-24 教训）
             print(f"[!] [case_builder] 数据驱动占位符还原失败（{type(_e).__name__}: {_e}）",
                   file=sys.stderr)
-    red = case_errors(case, guard=guard) + assertion_hard_errors(case, guard=guard)
+    # V8.7.22：把「页名 -> 行内列清单」传给假绿闸门 —— 拦下时能直接给出可抄的 `cell_field`
+    #   候选（`orderName(订单名称)`），不让 AI 去猜 data-field 值。老产物没有该键 -> 空 dict -> 不提示。
+    red = case_errors(case, guard=guard) + assertion_hard_errors(
+        case, guard=guard, page_row_fields=getattr(m, "page_row_fields", None))
     if red:
         # 红线（假绿）-> **拒绝落盘**：产物永不允许带假绿（与生成侧映射质量闸同一口径）
         raise CaseQualityError([(case["case_id"], red)])

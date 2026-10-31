@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from pathlib import Path
 
 from framework.features.f03_locate.element_map import ElementMap, ElementRef, TestStep
@@ -106,9 +107,49 @@ def cache_path(login_url: str, scenario: str) -> Path:
     return LOGIN_MAP_DIR / f"login_{cache_key(login_url, scenario)}.json"
 
 
+def run_async_isolated(factory):
+    """在**独立线程**里跑 `asyncio.run(factory())`，返回其结果（异常原样抛出）。
+
+    为什么必须开线程（V8.7.28 实测取证）
+    --------------------------------
+    Playwright 的 **Sync API 与当前线程的 asyncio event loop 互斥**。本模块的调用者
+    （`shared/login.py:ensure_logged_in` -> `scan_pages_probe.scan_pages`）全部活在
+    `with sync_playwright()` 上下文里，直接 `asyncio.run(...)` 会抛：
+
+        Error: It looks like you are using Playwright Sync API inside the asyncio loop.
+
+    后果不是"报个错就算了"：`scan_pages` 的登录前置失败后**探测照常进行**，7 个页
+    全部被 demo 重定向到 `login.html?next=...`，于是 `probe_row_fields` 在每一页都探到
+    **登录页 login-accounts 的 3 条空 field 列**（角色/账号/密码）并打上"发票列表页"的
+    页名 —— 脏数据一路喂给 AI，AI 只能猜列名（V8.7.24/26 的按页校验全部落空）。
+
+    `_ai_explore_async` 只做 LLM 语义识别、**不碰任何 Playwright 对象**，所以在旁路线程
+    里跑它没有并发风险；线程结束即回收，不留 event loop 给主线程。
+    """
+    box: dict = {}
+
+    def _target():
+        import asyncio
+        try:
+            box["value"] = asyncio.run(factory())
+        except BaseException as e:            # noqa: BLE001 —— 原样抛给调用方，不吞
+            box["error"] = e
+
+    th = threading.Thread(target=_target, name="login-plan-async", daemon=True)
+    th.start()
+    th.join()
+    if "error" in box:
+        raise box["error"]
+    if "value" not in box:
+        raise RuntimeError(
+            "异步规划线程没有返回结果（既没异常也没值）—— 线程可能被提前终止。"
+            "这是框架内部错误，不要当成场景问题排查。")
+    return box["value"]
+
+
 # ---------------------------------------------------------------- 规划（AI，只跑一次）
 def plan_login(spec: dict, base_url: str, *, llm_cassette=None, cassette_strict: bool = False,
-               force: bool = False) -> dict:
+               force: bool = False, ctx=None) -> dict:
     """把 `login: {url, scenario, wait}` 解析成**带步骤**的登录声明（缺缓存时才调 AI）。
 
     返回 `{"login_url", "scenario", "wait", "steps": [TestStep.to_dict(), ...], "cached": bool}`。
@@ -143,15 +184,16 @@ def plan_login(spec: dict, base_url: str, *, llm_cassette=None, cassette_strict:
             print(f"      [login] [!] 缓存读取失败（{type(e).__name__}: {e}）-> 重新规划")
 
     print(f"      [login] [key] 用同一套语义识别规划登录步骤：{scenario[:40]!r}")
-    items, dom_ctx = _probe_login_page(url)
+    items, dom_ctx = _probe_login_page(url, ctx=ctx)
     if not items:
         raise RuntimeError(
             f"登录页 {url} 探不到任何控件 —— 登录步骤无从规划。"
             f"先确认页面能打开（curl {url}），或场景的 login.url 写错了。")
     print(f"      [login] [i] 登录页控件 {len(items)} 个 -> 交给同一个规划器")
-    import asyncio
     from framework.features.f02_semantic.explorer_explore import _ai_explore_async
-    m = asyncio.run(_ai_explore_async(
+    # V8.7.28：**不许**在本线程直接 asyncio.run —— Playwright Sync API 与 event loop 互斥，
+    #   实测会让登录前置静默失败、7 页全被重定向后探成登录页的垃圾列。见 run_async_isolated 的 docstring。
+    m = run_async_isolated(lambda: _ai_explore_async(
         scenario, items, url, dom_ctx=dom_ctx,
         llm_cassette=llm_cassette, cassette_strict=cassette_strict,
         allow_login_steps=True))     # 登录页规划：登录步骤就是正确答案（业务规划仍禁）
@@ -167,32 +209,55 @@ def plan_login(spec: dict, base_url: str, *, llm_cassette=None, cassette_strict:
     return dict(out, steps=[s.to_dict() for s in steps], cached=False)
 
 
-def _probe_login_page(url: str):
+def _probe_login_page(url: str, ctx=None):
     """探登录页（只要**控件清单 + DOM 事实**）。
 
     为什么不用 `scan_page`（探测链唯一入口）：登录页没有弹窗/可展开容器需要展开，
     而 `scan_page` 在"进页面就跳转"的登录页上实测会返回空清单（详见模块尾部注释）。
     这里用同一支探针（`probe_page`）+ 同一份 DOM 事实采集，喂给**同一个规划器**。
 
-    必须**自己开浏览器、自己关**：调用方（`_explore_one`）此刻还没开浏览器，
-    而在 `ensure_logged_in` 里再开一个浏览器是明确禁止的（内存/并发事故来源）。
+    [!] `ctx`（V8.7.28 修复）：**能复用调用方的 context 就必须复用**。
+    原实现无条件 `with sync_playwright()` 自己开浏览器，假设"调用方此刻还没开浏览器"。
+    但真实调用链 `scan_pages` 是 **先开好 `ctx` 再调 `ensure_logged_in`**：
+
+        with sync_playwright() as p:
+            b = p.chromium.launch(...); ctx = b.new_context()
+            ensure_logged_in(ctx, ...)          # -> plan_login -> _probe_login_page -> 再开一个 playwright
+
+    于是 Playwright 抛 `It looks like you are using Playwright Sync API inside the asyncio loop.`
+    （Linux + Python 3.11 实测必炸；Windows 上不炸，所以这个坑长期没暴露）。
+    后果极隐蔽：登录前置失败后探测照常跑，7 页全被重定向成登录页，`probe_row_fields`
+    在每页都探到 login-accounts 的 3 条空列并打上业务页名 —— 脏数据喂给 AI。
     """
-    from playwright.sync_api import sync_playwright
     from framework.features.f02_semantic.explorer_explore import _collect_dom_context
     from framework.features.f03_locate.probe import probe_page
+
+    def _probe_with(pg):
+        pg.goto(url, wait_until="domcontentloaded")
+        try:
+            pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
+        except Exception:                                         # noqa: BLE001
+            pg.wait_for_timeout(500)
+        return probe_page(pg, page_name="登录页"), _collect_dom_context(pg)
+
+    if ctx is not None:
+        # 复用调用方的 context：不开新浏览器（内存/并发事故来源），也不触发嵌套 sync_playwright
+        pg = ctx.new_page()
+        try:
+            return _probe_with(pg)
+        finally:
+            try:
+                pg.close()
+            except Exception:                                     # noqa: BLE001
+                pass
+
+    from playwright.sync_api import sync_playwright
     from framework.shared.browser import launch_opts
 
     with sync_playwright() as p:
         b = p.chromium.launch(**launch_opts(headless=True))
         try:
-            ctx = b.new_context()
-            pg = ctx.new_page()
-            pg.goto(url, wait_until="domcontentloaded")
-            try:
-                pg.wait_for_selector("body[data-hybrid-ready='1']", timeout=8000, state="attached")
-            except Exception:                                         # noqa: BLE001
-                pg.wait_for_timeout(500)
-            return probe_page(pg, page_name="登录页"), _collect_dom_context(pg)
+            return _probe_with(b.new_context().new_page())
         finally:
             b.close()
 
@@ -221,9 +286,24 @@ def run_login_steps(page, spec: dict, *, timeout: int = 15000) -> dict:
         if op not in STEP_OPS:
             raise RuntimeError(unknown_hint(op))
         if op == "goto":
-            target = str(st.value or st.element or "").strip()
+            # [!] 只认 `value`（URL）。**绝不许拿 `element` 顶替**（V8.7.24 修真 bug）：
+            #     旧写法 `str(st.value or st.element or "")` 在 value 为空、element 有值时
+            #     把 `ElementRef(...)` 的 repr 当 URL 传给 page.goto ->
+            #       Error: Page.goto: Protocol error (Page.navigate): Cannot navigate to invalid URL
+            #         navigating to "ElementRef(semantic_name='账号', role='textbox', ...)"
+            #     后果：登录前置整条中断（explore 与 generate 两侧都会炸）。
+            #     真正的病根是「AI 把 goto 和 click 混了」——那要**报错让它重生成**，
+            #     而不是用 element 兜底把错误藏起来（静默降级 = 造假）。
+            target = str(getattr(st, "value", "") or "").strip()
             if not target:
-                raise RuntimeError(f"登录第 {st.order} 步 goto 没有地址")
+                _el = getattr(st, "element", None) or {}
+                _elname = (_el.get("semantic_name") if isinstance(_el, dict)
+                           else getattr(_el, "semantic_name", None))
+                raise RuntimeError(
+                    f"登录第 {st.order} 步 goto 没有地址（value 为空"
+                    + (f"；该步还带了元素 {_elname!r}，可能是把 goto 和 click 写混了" if _elname else "")
+                    + "）—— element 不能当 URL 用"
+                )
             page.goto(target, wait_until="domcontentloaded")
             done += 1
             continue
@@ -271,7 +351,11 @@ def login_on_page(page, spec: dict, base_url: str, *, llm_cassette=None,
     供 `shared.login.ensure_logged_in` 与生成物 harness 共用（唯一执行入口）。
     """
     planned = plan_login(spec, base_url, llm_cassette=llm_cassette,
-                         cassette_strict=cassette_strict)
+                         cassette_strict=cassette_strict,
+                         # V8.7.28：把**已有**的 browser context 透传下去，让 `_probe_login_page`
+                         #   复用而不是自己 `with sync_playwright()` 再开一个 —— 嵌套必炸
+                         #   （`scan_pages` 是本函数的真实调用方，它先开 ctx 再登录）。
+                         ctx=getattr(page, "context", None))
     url = planned["login_url"]
     if (_steps_of(planned)[0].op or "").strip() != "goto":
         page.goto(url, wait_until="domcontentloaded")

@@ -122,8 +122,13 @@ def test_explicit_cmd_splitting_handles_multi_word():
 # ---------------- 真实探测（环境相关，缺环境就 SKIP 不当通过）----------------
 
 def test_probe_deps_on_repo_venv_if_present():
-    venv = REPO / ".venv" / "bin" / "python"
-    if not venv.exists():
+    # [!] 2026-10-29（Windows 实测）：原来硬编码 `.venv/bin/python`（POSIX），
+    #   而 Windows 的 venv 是 `.venv\Scripts\python.exe`（没有 bin/ 目录）
+    #   -> 这条在 Windows 上**永远 skip**（用户机器 6 skipped 里多出来的第 1 条就是它）。
+    #   改用唯一入口 `framework.shared.paths.venv_python_or_none()`。
+    from framework.shared.paths import venv_python_or_none
+    venv = venv_python_or_none(REPO)
+    if venv is None:
         pytest.skip("本机没有 <repo>/.venv（跳过真实探测；判据本体已由假 probe 覆盖）")
     good, why = chain.probe_deps([str(venv)], REPO)
     assert good, f"仓库 venv 应依赖齐全，实际：{why}"

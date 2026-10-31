@@ -41,7 +41,9 @@ def test_every_index_entry_has_a_unique_script():
     idx = _index()
     seen: dict[str, str] = {}
     for cid, meta in idx.items():
-        sp = REPO / meta["script_path"]
+        # [!] 先归一化：存量 index.json 可能是 Windows 写的反斜杠，
+        #     Linux 上 `Path / "a\\b"` 不认反斜杠 -> 拼出不存在的路径（假红）。
+        sp = REPO / str(meta["script_path"]).replace("\\", "/")
         assert sp.is_file(), f"X {cid} 的脚本不存在：{meta['script_path']}"
         assert sp not in seen.values(), f"X 脚本被两条用例共用：{sp}（{cid} / {seen.get(str(sp))}）"
         seen[cid] = sp
@@ -55,7 +57,10 @@ def test_index_and_disk_are_bidirectionally_consistent():
     # [!] 跨平台（2026-10-07 修）：Windows 上 str(relative_to) 给 `scripts\generated\…`，
     # 而 index.json 里存的是 `/` 风格 -> 集合永远对不上（假红）。统一用 as_posix()。
     on_disk = {p.relative_to(REPO).as_posix() for p in GEN.glob("*/*.py") if p.name != "conftest.py"}
-    in_index = {m["script_path"] for m in idx.values()}
+    # [!] 读取侧也必须归一化：2026-10-07 那次只修了 on_disk 一侧（只修半边），
+    #     而存量 index.json 里是写入侧用 str(Path) 存下的反斜杠 -> 判据依然假红。
+    #     2026-10-29 用户 Windows 实测复现，写入侧已改 as_posix()，此处做存量兼容。
+    in_index = {str(m["script_path"]).replace("\\", "/") for m in idx.values()}
     assert not (on_disk - in_index), f"X 磁盘上有 index 不认识的孤儿脚本：{sorted(on_disk - in_index)}"
     assert not (in_index - on_disk), f"X index 里有磁盘上不存在的幽灵条目：{sorted(in_index - on_disk)}"
 

@@ -635,7 +635,119 @@ def _opens_new_tab(loc, tag: str) -> bool:
     return False
 
 
-def probe_row_fields(page: Page, max_tables: int = 5) -> list[dict]:
+# ---------------------------------------------------------------------------
+# 非 <table> 的行内列（div 网格）—— V8.7.29
+# ---------------------------------------------------------------------------
+# 实测背景（2026-10-31）：`order_detail.html` 的明细行是 **div 网格**，不是 `<table>`：
+#
+#     <div class="lines-grid" id="lines-grid">
+#       <div class="head">操作</div><div class="head">行号</div>...    <- 表头（10 个）
+#       <div class="cell">...</div>
+#       <div class="cell" data-field="lineNo">{{ idx + 1 }}</div>
+#       ...
+#       <div class="cell" data-field="lineStatus">{{ ln.status }}</div>
+#     </div>
+#
+# 原实现只扫 `page.locator("table")` —— 这类页面**一条列都探不到**（真机实测 0 条），
+# 于是 AI 永远不知道 `lineNo` / `lineStatus` 可用；它想做行内断言只能瞎猜列名，
+# 而猜出来的名字在运行时必然找不到 -> 断言失败。
+#
+# 口径：**只认带 `data-field` 的单元格**（与 `<table>` 路径同一个"列字段"概念，
+# 不引入新的定位原语）；`<table>` 内的元素这里跳过，避免与 table 路径重复产出。
+# 表头**尽力对齐**：用"同 class 连续段"推断每行单元格数，推断不出就留空串
+# （宁漏不误伤 —— 空表头比错表头安全，错表头会让 AI 把列名对到错误的语义上）。
+_DIV_GRID_JS = r"""
+() => {
+  const cells = Array.from(document.querySelectorAll('[data-field]'));
+  if (!cells.length) return [];
+  const clsOf = (el) => {
+    const c = el.className;
+    return (typeof c === 'string' ? c : (c && c.baseVal) || '').trim();
+  };
+  const out = [];
+  for (const c of cells) {
+    if (c.closest('table')) continue;
+    const p = c.parentElement;
+    if (!p) continue;
+    const sibs = Array.from(p.children);
+    if (sibs.length < 2) continue;
+    const segs = [];
+    for (const s of sibs) {
+      const k = clsOf(s);
+      if (segs.length && segs[segs.length - 1][0] === k) segs[segs.length - 1][1] += 1;
+      else segs.push([k, 1]);
+    }
+    let perRow = 0;
+    if (segs.length >= 2 && segs[0][1] > 0 && segs[1][1] % segs[0][1] === 0) perRow = segs[0][1];
+    const idx = sibs.indexOf(c);
+    let header = '';
+    if (perRow && idx >= perRow) {
+      const col = (idx - perRow) % perRow;
+      if (col < perRow) header = (sibs[col].innerText || '').trim().replace(/\s+/g, ' ');
+    }
+    out.push({
+      grid: p.id || p.getAttribute('data-testid') || clsOf(p) || 'div-grid',
+      field: (c.getAttribute('data-field') || '').trim(),
+      index: idx + 1,
+      perRow: perRow,
+      header: header,
+    });
+  }
+  return out;
+}
+"""
+
+
+def probe_div_grid_fields(page: Page, max_grids: int = 5) -> list[dict]:
+    """探测**非 `<table>`** 的行内列（`<div class="cell" data-field="...">` 这类网格）。
+
+    返回与 `probe_row_fields` **同构**的条目：`{table, index, field, header, kind}` ——
+    下游（提示词拼装 / 按页校验 / 首行断言补正）因此完全不用改，一处产出两处通用。
+
+    · `table`   = 网格容器的 `id` / `data-testid` / class 名（对不上就用 `div-grid`）；
+    · `index`   = 该单元格在容器子元素里的 DOM 序号（1 起）。**不是列号** ——
+      div 网格没有 `<tr>`，列号靠表头对齐，这里不假装有；
+    · `header`  = 按"同 class 连续段"推断出的表头文案，推断不出就空串。
+    """
+    out: list[dict] = []
+    try:
+        rows = page.evaluate(_DIV_GRID_JS)
+    except Exception:
+        return out
+    if not rows:
+        return out
+    grids: dict[str, list[dict]] = {}
+    seen: set[tuple[str, str]] = set()
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        field = str(r.get("field") or "").strip()
+        if not field:                       # 没有 data-field 的不算"列字段"（表格路径才处理 kinds）
+            continue
+        gname = str(r.get("grid") or "").strip() or "div-grid"
+        # [!] 同一个网格里**同名列只留一条**：div 网格每行都重复渲染一遍
+        #   `data-field`（实测 2 行 -> lineNo 出现 2 次），不去重的话清单会随行数
+        #   线性膨胀，提示词里全是重复项（"提示变成噪音就等于没提示"）。
+        #   列清单要回答的是"**有哪些列**"，不是"每行各有什么"。
+        key = (gname, field)
+        if key in seen:
+            continue
+        seen.add(key)
+        grids.setdefault(gname, []).append(r)
+    for gname, items in list(grids.items())[:max_grids]:
+        for r in items:
+            out.append({
+                "table": gname,
+                "index": int(r.get("index") or 0),
+                "field": str(r.get("field") or "").strip(),
+                "header": str(r.get("header") or "").strip(),
+                "kind": "",
+            })
+    return out
+
+
+def probe_row_fields(page: Page, max_tables: int = 5,
+                     include_div_grids: bool = True) -> list[dict]:
     """探测「表格的行内列」清单 —— 供 AI 做**行内定位**（按行内容锚行 + 取该行某列）。
 
     返回 [{"table": <表名/testid>, "field": "contractNo", "header": "合同编号"}, ...]
@@ -689,6 +801,11 @@ def probe_row_fields(page: Page, max_tables: int = 5) -> list[dict]:
                             "header": header, "kind": kind})
         except Exception:
             continue
+    # V8.7.29：<table> 扫完，再补**非 table** 的 div 网格（订单详情页这类）。
+    #   两条路径产出**同构**条目，下游提示词/按页校验/首行断言补正都不用改。
+    #   `include_div_grids=False` 只给"只看 table"的老判据用，生产路径永远开着。
+    if include_div_grids:
+        out.extend(probe_div_grid_fields(page))
     return out
 
 

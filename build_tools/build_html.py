@@ -61,11 +61,392 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.7.12"
-VERSION_DATE = "2026-10-28"
+VERSION = "8.7.30"
+VERSION_DATE = "2026-10-31"
 CHANGELOG = [
     dict(
-        version="8.7.12", date="2026-10-28", tag="当前版本",
+        version="8.7.30", date="2026-10-31", tag="当前版本",
+        theme="<b>列清单三个源头全断</b> —— 登录静默失败 / div 网格探不到 / 弹窗探测把页面带跑",
+        summary="真机 V8.7.27 三轮全 FAILED（<code>表格没有第一行、或没有 '订单名称' 列</code>）。"
+                "顺着「AI 为什么猜列名」查下去，发现 <b>列清单的三个源头全断了</b> —— "
+                "V8.7.24/26 的按页校验、按页补正全都在<b>拿残缺数据做判断</b>，所以怎么改都治不好。<br><br>"
+                "<b>[1 · 登录静默失败]</b> 清 <code>output/</code> 后首次跑登录必炸：<br>"
+                "<code>Error: It looks like you are using Playwright Sync API inside the asyncio loop.</code><br>"
+                "根因是<b>两处</b>：<code>_probe_login_page</code> 自己 <code>with sync_playwright()</code>"
+                "（调用方 <code>scan_pages</code> 早已开好 ctx，<b>嵌套必炸</b>）+ "
+                "<code>plan_login</code> 里裸 <code>asyncio.run</code>。<br>"
+                "<b>失败姿态极差</b>：登录前置失败后<b>探测照常跑</b>，7 页全部被 demo 重定向成 "
+                "<code>login.html?next=...</code>，每页都探到登录页 login-accounts 的 3 条空 field 列，"
+                "再被打上「发票列表页」等业务页名 —— <b>脏数据一路喂给 AI</b>。<br>"
+                "<b>[修]</b> <code>_probe_login_page(url, ctx=None)</code> 复用调用方 ctx；"
+                "<code>plan_login</code> 透传；<code>login_on_page</code> 从 <code>page.context</code> 取；"
+                "<code>asyncio.run</code> 挪进 <code>run_async_isolated()</code>（<b>独立线程</b>）。<br>"
+                "<b>[实测]</b> 登录页 7 个控件 -&gt; 规划出 4 步（<code>goto</code>/<code>fill super</code>/"
+                "<code>fill super@123</code>/<code>click</code>）。<br><br>"
+                "<b>[2 · div 网格探不到]</b> <code>order_detail.html</code> 的明细行是 "
+                "<code>&lt;div class=\"cell\" data-field=\"lineNo\"&gt;</code>，"
+                "而 <code>probe_row_fields</code> 第一行就是 <code>page.locator(\"table\")</code> —— "
+                "<b>该页 0 列</b>，AI 永远看不到 <code>lineNo</code>/<code>lineStatus</code>。<br>"
+                "<b>[修]</b> 新增 <code>probe_div_grid_fields()</code>：只认带 <code>data-field</code> 的元素，"
+                "产出与 <code>probe_row_fields</code> <b>同构</b>（下游提示词/按页校验/首行断言补正全都不用改）；"
+                "<code>closest('table')</code> 跳过表格内元素避免重复；同名列<b>去重</b>"
+                "（div 每行都重复渲染 data-field，不去重会随行数膨胀）；"
+                "表头按「同 class 连续段」推断每行单元格数，<b>推断不出就留空</b>（空表头比错表头安全）。<br>"
+                "<b>[实测]</b> <code>lines-grid</code> -&gt; <code>lineNo</code>（行号）/ "
+                "<code>lineStatus</code>（状态）。<br><br>"
+                "<b>[3 · 弹窗探测把页面带跑]</b> <code>_try_collect_modal_items</code> 的候选词是 "
+                "<code>(\"新建\",\"添加\",\"新增\",\"创建\",\"登记\",\"打开\")</code> —— "
+                "它<b>假设「创建」都会开弹窗</b>，但发票列表页的「创建」是<b>整页跳转</b>：<br>"
+                "<code>[scan_page] 发票列表页 前=invoice_list.html 后=invoice_create.html?token=...</code><br>"
+                "页面被带跑后，紧跟着的 <code>probe_row_fields</code> 打在<b>开票页</b>上 —— "
+                "发票列表那条真表（单独访问实测 <b>11 列</b>）<b>一条都探不到</b>。<br>"
+                "<b>[修]</b> 点完比 URL：<b>变了 = 导航不是弹窗</b> -&gt; 出声说明 + 退回原页"
+                "（<code>go_back</code>，失败用 <code>goto(原 URL)</code> 兜底）+ 本次不收集。<br>"
+                "<b>[实测]</b> 7 页列全齐：登录页 3 / 合同列表页 8 / 新建订单页 2 / 订单列表页 12 / "
+                "订单详情页 2 / 发票列表页 <b>11</b>；<code>fromOrder</code>（订单编号）<b>终于被探到</b> —— "
+                "这正是 AI 一直猜「订单名称」时该用的字段。<br><br>"
+                "<b>[判据]</b> 新增 3 个文件共 <b>26 条</b>"
+                "（<code>test_login_no_nested_playwright.py</code> 10 / "
+                "<code>test_div_grid_row_fields.py</code> 10 / "
+                "<code>test_modal_probe_never_navigates.py</code> 6），"
+                "每一条都做了<b>反向验证</b>（退回旧代码分别变红 4 / 2 / 2 条）。"),
+    dict(
+        version="8.7.27", date="2026-10-30", tag="上一版",
+        theme="<b>提示变成噪音就等于没提示（第三次）</b> —— 跨页同名合并汇总",
+        summary="真机日志里「跨页同名元素」刷了 <b>100+ 行</b>：<br>"
+                "<code>[explore] [!] 跨页同名元素 'HT_1001' 出现在 合同列表页、订单列表页、"
+                "订单详情页、发票列表页 -&gt; 已唯一化为 HT_1001@合同列表页、...</code><br>"
+                "（HT_1002~HT_1013 各 2 行，共 26 行；generate 侧再来一遍）<br>"
+                "<b>行为是对的</b>（合同号在多个页面的列表里都有，必须跨页唯一化），"
+                "但这 100+ 行把「登录前置 ok」「行容器提示」「跨页列警告」等<b>真信息全埋了</b>。<br>"
+                "<b>[口径]</b> 用户选 A：<b>同前缀合并成一行汇总</b>（按「剥掉尾部数字得到的根」分组）。<br>"
+                "<b>[修法]</b> 汇报格式收敛到 <code>framework/shared/collision_report.py</code> 唯一入口，"
+                "explore 与 generate 两处共用。<b>13 个同名元素：26 行 -&gt; 3 行</b>；"
+                "单个仍原样打（那不是噪音）。<br>"
+                "<b>[附]</b> 合并<b>不丢信息</b>：数量、涉及页、唯一化总数都给出，"
+                "完整清单指向 <code>element_map</code> 的 <code>pages[].probe_items</code>。",
+        bullets=[
+            "13 个同名元素：26 行 -> 3 行",
+            "单个同名元素仍原样打（不是噪音）",
+            "explore 与 generate 共用唯一入口",
+            "信息不丢：数量/页/唯一化总数都给出",
+            "判据 6 条（含噪音预算）；退回逐个打印会红",
+        ]),
+    dict(
+        version="8.7.26", date="2026-10-30", tag="",
+        theme="<b>同一个 bug 换了道门进来</b> —— 切页必须只有一份实现",
+        summary="V8.7.24 把<b>警告器</b>改成了按页判，跨页串用问题解决了、真机 PASSED。"
+                "但 V8.7.25 真机又 FAILED：<br>"
+                "<code>AssertionError: 表格没有第一行、或没有 'orderName' 列</code><br>"
+                "<b>[真因]</b> 紧挨着警告器的 <code>_fix_first_row_column_by_header</code>（表头文案反查补正器）"
+                "<b>仍然是跨页全集</b>。第 59 步在<b>发票列表页</b>，AI 写了 "
+                "<code>cell_field='订单名称'</code>（发票页确实有个同名<b>搜索框 label</b>，"
+                "但没有同名的<b>表格列</b>）-> 补正器拿全集的 header-&gt;field 映射反查 -> "
+                "查到<b>订单列表页</b>的 <code>orderName</code>（同表头、唯一解）-> "
+                "把 cell_field 改成 orderName -> 发票页没这列 -> 实跑 715s FAILED。<br>"
+                "<b>[教训]</b> 只改一个入口，同一个 bug 就从另一个门进来。"
+                "切页逻辑已收敛成唯一入口 <code>_steps_page_index</code>，补正器与警告器都走它。",
+        bullets=[
+            "补正器按页反查（不再跨页串味）",
+            "切页逻辑收敛成 _steps_page_index 唯一入口",
+            "该页没有这个表头 -> 不补（诚实降级）",
+            "判据 13 条（含 2 条接线/唯一入口判据）",
+            "反向验证：断掉 pages 接线 -> 变红",
+        ]),
+    dict(
+        version="8.7.25", date="2026-10-30", tag="",
+        theme="<b>PASSED 之后揪出的新 bug</b> —— goto 拿元素对象当 URL",
+        summary="V8.7.24 真机 <code>all --ai</code> <b>PASSED</b>（跨页列串用已修：第 60 步用了发票页真实存在的"
+                "「订单编号」列，跨页列警告 <b>0 条</b>）。但日志里揪出一个被 PASSED 掩盖的真 bug ——<br>"
+                "<code>[explore] [key] 登录前置：[!] 失败 -> Error: Page.goto: Protocol error "
+                "(Page.navigate): Cannot navigate to invalid URL</code><br>"
+                "<code>navigating to 「ElementRef(semantic_name='账号', role='textbox', ...)」</code><br>"
+                "<b>[真因]</b> <code>login_flow_explore.run_login_steps</code> 里 "
+                "<code>target = str(st.value or st.element or 「」)</code> —— "
+                "<code>value</code> 为空、<code>element</code> 有值时，"
+                "<b>把 ElementRef 对象的 repr 当成了 URL</b>。<br>"
+                "比「报错」更糟的是它<b>看起来像兜底</b>：该做的是报「goto 没有地址」让 AI 重生成，"
+                "而不是拿语义对象去顶 URL 位置（<b>静默降级 = 造假</b>）。<br>"
+                "<b>[修法]</b> 只认 <code>value</code>；为空就抛错，并在该步还带 element 时"
+                "提示「可能是把 goto 和 click 写混了」。全仓扫描同类兜底模式（只有这一处）。",
+        bullets=[
+            "goto 只认 value，element 不许当 URL",
+            "value 空 + 带 element -> 报错并提示「写混了」",
+            "generate 侧兜底是 login_url（安全），口径已对齐钉住",
+            "判据 5 条；退回旧写法 3 条变红",
+            "顺带记：PASSED 也会掩盖真 bug，日志要逐条读",
+        ]),
+    dict(
+        version="8.7.24", date="2026-10-29", tag="",
+        theme="<b>改对了写法，用错了页面</b> —— 列清单按页分组 + 按页校验",
+        summary="V8.7.23 的系统提示<b>确实生效了</b>：AI 终于改用 <code>expect_first_row</code>，"
+                "不再用 <code>expect_text</code> 断言自己 fill 的值。但实跑 735s 后 FAILED：<br>"
+                "<code>AssertionError: 表格没有第一行、或没有 'orderName' 列</code><br>"
+                "<b>[真因]</b> AI 写了 <code>cell_field=orderName</code> —— 那是<b>订单列表页</b>的列；"
+                "它要断的<b>发票列表页根本没有这一列</b>（demo 实测该页 data-field 只有 "
+                "invoiceNo/invoiceType/invoiceDate/businessUnit/contractNo/fromOrder/customer/"
+                "currency/salesman/lineCount）。<code>orderName</code> 只在 <code>orders.html</code> 里。<br>"
+                "<b>[三层都缺]</b><br>"
+                "① 提示词把 <code>row_fields</code>（<b>跨页累积的扁平列表</b>）直接 <code>json.dumps</code> "
+                "给模型 -&gt; 它看到一大堆 field、<b>分不清哪个属于哪一页</b> -&gt; 跨页串用；<br>"
+                "② <code>_warn_nonexistent_row_columns</code> 拿<b>跨页全集</b>判存在性 -&gt; "
+                "<code>orderName</code> 在订单页里有 -&gt; <b>静默通过</b>，一声不响；<br>"
+                "③ 运行时 <code>_assert_first_row</code> 定位 "
+                "<code>tbody tr:first-child td[data-field='orderName']</code> -&gt; 找不到 -&gt; FAILED。<br>"
+                "<b>[修法]</b> 提示词<b>按页分组</b>渲染（【订单列表页】的表格列：…）并写明"
+                "「<b>各页的列互不通用</b>」；<code>_warn_nonexistent_row_columns</code> 改为"
+                "<b>按页校验</b>（<code>split_steps_by_page</code> 切页），警告里<b>直接列出该页可用列</b>。",
+        bullets=[
+            "提示词按页分组渲染列清单，写明各页列互不通用",
+            "按页校验 cell_field（不再是跨页全集）",
+            "警告里列出该页可用列 -> AI 下一轮能照着改对",
+            "判据 7 条（含调用点接线）；断掉 pages 传递会红",
+            "切页失败要留痕，不许静默退化成全局集合",
+        ]),
+    dict(
+        version="8.7.23", date="2026-10-29", tag="",
+        theme="<b>把正确姿势送到离模型最近的地方</b> —— 系统提示点名 expect_first_row",
+        summary="V8.7.22 把 <code>cell_field</code> 的候选<b>落盘 + 给到重试反馈</b>了，但那是<b>事后</b>补救："
+                "AI 得先写错一次、被拦一次、才看得到候选。<br>"
+                "用户拍板「<b>不要吝啬那一点重录录像的 token</b>」—— 改提示词，让 AI <b>第一次就写对</b>。<br>"
+                "<b>[三个缺口叠在一起]</b><br>"
+                "① 「不得与 fill 值相同」这条在 prompt <b>第 6 条、长篇中段</b> -&gt; 模型没接上；<br>"
+                "② prompt 说「用 expect_first_row（列 + 期望值）」，但<b>没说 cell_field 从哪来</b>"
+                "—— 要的是 data-field 值（<code>orderName</code>），不是表头文案（<code>订单名称</code>）；<br>"
+                "③ 行内列清单<b>本来就在 prompt 里</b>，但只标成「行内定位用」，"
+                "<b>没告诉它可以用来做首行断言</b>。<br>"
+                "<b>[修法]</b> 把「验记录建出来 -&gt; <b>唯一正确写法 expect_first_row</b>」"
+                "<b>升到系统提示</b>（最高权重、离模型最近），并点明 <code>cell_field</code> "
+                "<b>只能从「表格行内列清单」的 field 抄</b>；列清单那段也补一条「这里就是它的来源」。<br>"
+                "<b>[代价]</b> 录像键 = <code>sha256(系统提示 + 提示词)</code> <b>必然变</b> -&gt; "
+                "已有录像全部失效，需 <code>--llm-record</code> 重录。这是用户明确接受的成本。",
+        bullets=[
+            "系统提示新增铁律：验记录建出来 -> expect_first_row（唯一正确写法）",
+            "系统提示指明 cell_field 来自列清单的 field，不是表头文案",
+            "列清单段补「两种用途」：行内定位 + 首行断言",
+            "判据 5 条；删掉那条铁律会红",
+            "录像键会变 -> 需重录（用户已接受）",
+        ]),
+    dict(
+        version="8.7.22", date="2026-10-29", tag="",
+        theme="<b>拦下了，却没告诉它怎么改</b> —— 行内列清单落盘并喂回 AI",
+        summary="V8.7.21 真链路两次失败（各 2 轮重试），失败原因<b>两轮完全相同</b>：<br>"
+                "AI 最后一步写 <code>expect_text assert=全链路-{datetime}</code>（想验「搜到刚建的发票」），"
+                "被<b>假绿红线</b>判成「输入回显」拦下 —— <b>闸门是对的</b>。<br>"
+                "错误信息让它「改用 expect_first_row」，而又<b>没有人给它 <code>cell_field</code> 的值</b>："
+                "那是页面 <code>td[data-field]</code> 的值（<code>orderName</code>），"
+                "不是表头文案（<code>订单名称</code>）。<br>"
+                "<b>[根因]</b> 探针<b>本来就有</b> header-&gt;field 映射"
+                "（V8.7.16 的 <code>_fix_first_row_column_by_header</code> 靠它反查），"
+                "但它只活在 explore 的内存里、<b>从没落进 elementMap</b> -&gt; case_builder 拿不到 -&gt; "
+                "只能干说「用 expect_first_row」-&gt; AI 试两次都失败 -&gt; 整条链卡死。<br>"
+                "<b>[修法]</b> <code>probe_row_fields()</code> 产物打 <code>page</code> 标记 -&gt; "
+                "落进 <code>ElementMap.page_row_fields</code>（页名-&gt;列清单）-&gt; "
+                "<code>to_dict()</code> 按页并进各页对象 -&gt; 假绿闸门在错误信息里<b>直接列出可抄的候选</b>："
+                "<code>；可用列 -&gt; 发票列表页: orderName(订单名称)、invoiceNo(发票号)</code>。<br>"
+                "<b>[附带]</b> 修了一个环境耦合的假红："
+                "<code>browser_use/logging_config.py:8</code> 在 import 期无条件 <code>load_dotenv()</code>，"
+                "把项目 <code>.env</code> 的 <code>HYBRID_LLM_TIMEOUT=900</code> 写回 <code>os.environ</code> -&gt; "
+                "「默认 180」那条判据在带 <code>.env</code> 的环境里必然红；判据改为拦截 <code>load_dotenv</code>。",
+        bullets=[
+            "probe_row_fields 打 page 标记，落进 ElementMap.page_row_fields",
+            "to_dict 按页并进各页；单页时兜底全塞（页名对不上不丢数据）",
+            "假绿闸门的错误信息直接给出 cell_field 候选（field(表头)）",
+            "判据 11 条；反向断掉接线会红",
+            "修 browser_use 的 load_dotenv 副作用导致的假红",
+        ]),
+    dict(
+        version="8.7.21", date="2026-10-29", tag="",
+        theme="<b>提示变成噪音就等于没提示</b> —— 行容器改「两道闸门 + 汇总一行」",
+        summary="用户两次真机实测（删数据 + 重启 demo，起点完全相同），53 条行容器提示"
+                "<b>稳定复现</b>，且 <b>0 条真命中</b>。<br>"
+                "<b>[实测数据]</b> 登录页 <code>container_heading='演示系统登录'</code> 下 7 个控件，"
+                "其中「用这个账号填入」是 demo 的 <b>4 个快捷登录链接</b>（并列按钮，不是行），"
+                "它一重复就把账号/密码/登录全牵连 -> <b>18 条噪音</b>；"
+                "订单详情页 <code>'详细信息'</code> 下 15 个控件，"
+                "既装表格行内控件（行类型/单位/收入 各 x3）又装表格外按钮（保存/新增行/取消/关闭/全选，各 x1）"
+                "还装空名单元格（role=cell）-> <b>35 条噪音</b>，其中 15 条是「」空名字。<br>"
+                "<b>[根因]</b> <code>container_heading</code> 的粒度是「区块标题」，"
+                "<b>它不知道表格边界在哪</b>。V8.7.18 当初判「ctx_token 非行级 -> 行容器判据站得住」，"
+                "但 <code>container_heading</code> 也非行级 —— 判断错了。<br>"
+                "<b>[修法]</b> 两道闸门：<b>A' 判据</b>容器内 multi_match>1 的控件<b>种类数 >= 2</b>"
+                "才算真行容器（登录页只 1 种 -> 整区不提；详细信息 3 种 -> 算），"
+                "空名字不算一种；<b>A 汇总</b>真行容器只打<b>一行</b>列出区内单实例控件名。<br>"
+                "<b>[效果]</b> 53 条 -> <b>5 行</b>（4 条是本来就该有的精准提示 + 1 行汇总）。",
+        bullets=[
+            "A' 判据：重复控件种类 >= 2 才算真行容器（空名字不算一种）",
+            "A 汇总：真行容器只打一行，不再逐个刷屏",
+            "空名字控件（role=cell 的空单元格）永不提示",
+            "判据 12 条（含噪音预算 <= 5 行），反向退回 >=1 种会红 3 条",
+        ]),
+    dict(
+        version="8.7.20", date="2026-10-29", tag="",
+        theme="<b>同一能力三份实现，只有一份认 Windows</b> —— venv 解释器定位收成唯一入口",
+        summary="用户 Windows 实测 6 skipped，本机 3 skipped。<b>[定位方法]</b> 从 pytest <code>-q</code> "
+                "的点号位置逐个反推（1384 个点 = 1384 个测试，严丝合缝），锁定多出来的第一条是 "
+                "<code>test_offline_chain_python.py::test_probe_deps_on_repo_venv_if_present</code>。<br>"
+                "<b>[根因]</b> 它硬编码 <code>REPO/\".venv\"/\"bin\"/\"python\"</code>（POSIX），"
+                "而 Windows 的 venv 布局是 <code>.venv\\Scripts\\python.exe</code>（<b>没有 bin/ 目录</b>）"
+                " => 这条判据在 Windows 上<b>永远 skip</b>，等于从没被验证过。<br>"
+                "全仓共 <b>3 处</b>同类硬编码：<code>test_offline_chain_python.py:125</code>（永远 skip）、"
+                "<code>verify_slow_target.py:44</code>（静默退回 sys.executable，依赖可能缺）、"
+                "<code>verify_offline_chain_deps.py:99</code>（拿到不存在的路径，跑就失败）。"
+                "而正确的那份（<code>run_verifications._venv_python</code>）其实早就在，"
+                "<code>test_env_adaptation</code> 还专门测过它认得 <code>Scripts/python.exe</code>。<br>"
+                "<b>[修法]</b> 新建 <code>framework/shared/paths.py</code> 作<b>唯一入口</b>："
+                "<code>venv_python_or_none()</code> 没有 venv 就如实 None；<code>venv_python()</code> 才退回当前解释器。"
+                "四处全部改用它，<code>_venv_python</code> 退化成转发。",
+        bullets=[
+            "新建 framework/shared/paths.py 作 venv 解释器定位唯一入口",
+            "三处 POSIX-only 硬编码全部改用唯一入口（含两个 verify_*.py 脚本）",
+            "判据 10 条：含 Windows/POSIX 布局、无 venv 如实 None、同名目录不算、全仓扫描防漂移",
+            "全仓扫描判据曾因「文件里出现过 Scripts 就放行」误放过回退 —— 改成按文件白名单",
+        ]),
+    dict(
+        version="8.7.19", date="2026-10-29", tag="",
+        theme="<b>交付包绝不许带凭据</b> —— 非 git 目录下 .env 会被收进包",
+        summary="用户 Windows 实测 1 failed：<code>test_collect_files_keeps_sources_and_drops_runtime_cruft</code> "
+                "报「包里有不该发的内容：['.env']」。<br>"
+                "<b>[根因]</b> 两层：① <code>Path('.env').suffix == ''</code> —— 隐藏文件没有后缀，"
+                "落不进 <code>EXCLUDE_SUFFIX</code>；② <code>collect_files()</code> 有两条分支，"
+                "git 仓库走 <code>git ls-files --exclude-standard</code>（<code>.gitignore</code> 帮忙排除），"
+                "<b>非 git 目录走 <code>rglob('*')</code> 全遍历</b> —— 而交付包解压后正好是后者。"
+                "于是「开发机绿、交付包解压后红」。<br>"
+                "<b>[修法]</b> 新增 <code>_is_env_secret()</code>：<code>.env</code> / <code>.env.local</code> / "
+                "<code>a.env</code> 一律排除，<b>只放行示例文件</b>（<code>.env.example</code> / "
+                "<code>.env.sample</code> / <code>.env.template</code> / <code>.env.dist</code>），"
+                "并放在<b>两条分支汇合后的公共过滤循环</b>里 —— 防「只修半边」。<br>"
+                "<b>[顺带修掉的诚实性问题]</b> <code>index.json</code> 里 <code>template_fingerprint</code> "
+                "已更新成新渲染器指纹，但脚本本体还是旧模板生成的（<code>重写 0 · 跳过 1</code>）—— "
+                "「index 记新指纹、产物是旧的」是不诚实的。本次 <code>generate --force</code> 重跑，"
+                "<code>重写 1</code>，两者真正一致。",
+        bullets=[
+            "新增 _is_env_secret()：.env 家族一律不进包，只放行示例文件",
+            "过滤放在两分支汇合处 —— git 与非 git 目录口径一致",
+            "generate --force 重跑，脚本本体与 template_fingerprint 对齐",
+            "新增判据 16 条（含非 git 分支模拟 + 端到端查包），反向验证会红 2 条",
+        ]),
+    dict(
+        version="8.7.18", date="2026-10-29", tag="",
+        theme="<b>探测时的 1 个，跑起来可能是 N 个</b> —— 行容器里的单实例控件也要提示",
+        summary="用户真链路日志第 1 轮 434s 白跑：第 50 步 select 期次号@开票页 没给行定位，"
+                "实跑报「本页有 2 个同名匹配」。<br>"
+                "<b>[根因]</b> 探测那一刻开票页只有 1 行，所以「期次号」multi_match=1 -> 框架不提示；"
+                "而实跑到第 50 步时已有 2 行。<b>静态检测看不出会随行数增长的行内控件</b>。"
+                "同页「数量」「单位」因为探测时就有 3 个才被提示到 —— 只提示了它们，漏了期次号。<br>"
+                "<b>[修法 A（用户 2026-10-29 选定）]</b> 同一容器里只要有一个控件 multi_match>1，"
+                "该容器就是<b>行容器</b>，里面所有控件（哪怕单实例）都提醒 AI 给 row_index。"
+                "只提示、不改数据、不替 AI 猜。<br>"
+                "<b>[顺带修掉一个假阳性]</b> 第 2 轮报「第 63 步要查列 合同编号 不在探测到的列里」—— "
+                "而用户确认发票列表页<b>确实有</b>这一列。原因是 _LAST_ROW_FIELDS 只留<b>最后一次</b>"
+                "探测的页（订单列表页），跨页必然误报。改用 _ALL_ROW_FIELDS（累积所有页，按轮次清）。",
+        bullets=[
+            "行容器判定放宽：同区有重复控件 -> 区内单实例控件也给「建议 row_index」提示",
+            "跨页列清单：预检/反查改读 _ALL_ROW_FIELDS（累积所有探测过的页，按轮次清空）",
+            "_LAST_ROW_FIELDS 语义不变（_fill_missing_row_column 仍靠「最后一页」判唯一解）",
+            "新增判据 2 个共 11 条，两条反向验证都会变红",
+        ]),
+    dict(
+        version="8.7.17", date="2026-10-29", tag="",
+        theme="<b>只修半边等于没修</b> —— 路径分隔符：写入侧也要 as_posix()",
+        summary="用户 Windows 上 pytest tests 报 1 failed："
+                "test_index_and_disk_are_bidirectionally_consistent 说"
+                "「磁盘上有 index 不认识的孤儿脚本」。<br>"
+                "<b>[假红]</b> 断言里两个集合其实是<b>同一个文件</b>，只是格式不同："
+                "on_disk 用 as_posix() 得到正斜杠，in_index 直接从 index.json 读出<b>反斜杠</b>。<br>"
+                "<b>[根因]</b> 写入侧 generator_generate.py 用 str(mod.relative_to(BASE)) —— "
+                "Windows 上 Path 的字符串形式是反斜杠。而该判据 2026-10-07 的注释声称「跨平台修过」，"
+                "实际<b>只修了读的一侧</b>，<b>写的一侧没管</b>。<br>"
+                "<b>[修法]</b> 三处一起动：① 写入侧 as_posix()（防新数据错）；"
+                "② 判据读取侧归一化（兼容你机器上的存量反斜杠）；"
+                "③ 拼路径前归一化（Linux 上 Path 与反斜杠字符串拼不出真路径）。<br>"
+                "<b>[验证]</b> 把本机 index.json 临时改成反斜杠再跑该判据 -> <b>1 passed</b>，然后恢复原文件。",
+        bullets=[
+            "写入侧：script_path / source_scenario 全部 as_posix()",
+            "读取侧：判据比较前归一化，兼容存量反斜杠数据（不改用户已有文件）",
+            "新增判据 test_repo_relative_paths_use_forward_slash.py（5 条，含静态钉住 write 侧）",
+            "教训：<b>只修半边等于没修</b> —— 注释写着「已修跨平台」也要核对两侧",
+        ]),
+    dict(
+        version="8.7.16", date="2026-10-29", tag="",
+        theme="<b>AI 时对时错，框架自己兜</b> —— 中文表头当 data-field，按 header 唯一反查补正",
+        summary="V8.7.15 只警告不拦，拦不住这条：用户实测 <b>同一场景、同一清空数据起点</b> 两次结果不同 ——"
+                "第一次 AI 第 2 轮自己把断言改对了（391s PASSED），第二次<b>两轮都写</b> "
+                "<code>cell_field='订单名称'</code>（中文表头）-> 716.8s FAILED、再一轮也 FAILED。<br>"
+                "<b>[根因]</b> 生成的是 <code>td[data-field='订单名称']</code>，而页面真正的列是 "
+                "<code>data-field='orderName'</code> -> 选择器永远命中 0 个，断言等 160s 有界等待后报"
+                "「表格没有第一行、或没有 '订单名称' 列」。<br>"
+                "<b>[判断]</b> 起点相同而结果不同 => <b>AI 非确定性编排缺陷</b>，不能押在"
+                "「下次它自己会改对」上。<br>"
+                "<b>[修法]</b> 新增 <code>_fix_first_row_column_by_header()</code>："
+                "<code>probe_row_fields()</code> 本来就返回 <code>field=orderName / header=订单名称</code> "
+                "这样的成对信息 —— AI 写的是 header，按表头反查 field 是"
+                "<b>唯一确定的映射</b>（不是相似度猜测），补正后<b>出声</b>说明从什么改成了什么。<br>"
+                "<b>[唯一解才改]</b> 同一表头命中多列（多表都有「订单名称」但 field 不同）-> "
+                "<b>原样不动</b>，交给 V8.7.15 的警告 + AI 重试。与 <code>_fill_missing_row_column</code>"
+                "（勾选列唯一解才补）同一口径。",
+        bullets=[
+            "新增 <code>_fix_first_row_column_by_header()</code>：header -> field 唯一反查补正",
+            "接线顺序：<b>先补正、再警告</b>（判据钉住）—— 能补的不该被报成警告",
+            "多义 / 找不到 / 列无 data-field -> 一律不改，诚实降级",
+            "判据 <code>test_first_row_column_header_fallback.py</code>（7 条，含顺序与反向验证）",
+        ]),
+    dict(
+        version="8.7.15", date="2026-10-29", tag="",
+        theme="<b>列名写错别等 715 秒</b> —— <code>expect_first_row</code> 的列在生成阶段就提醒",
+        summary="用户 V8.7.14 实测日志：第 1 轮 62 步实跑 <b>715.0s</b> 后 FAILED，报"
+                "「表格没有第一行、或没有 '订单名称' 列 —— 无法验证第一条记录」；"
+                "第 2 轮 AI 自己把断言改对才 PASSED（391.0s）。<br>"
+                "<b>[性质]</b> 不是框架 bug，是 AI 编排质量（写了个<b>页面上不存在的列名</b>），"
+                "L1 重试按设计兜住了 —— 但<b>那 715 秒是纯浪费</b>（含 160s 有界等待）。<br>"
+                "<b>[机会]</b> 生成阶段其实<b>已经握着探测到的列清单</b>（<code>probe_row_fields</code> 的 "
+                "<code>field</code>/<code>header</code>），却从未拿它校验 AI 写的 <code>cell_field</code>。<br>"
+                "<b>[修法]</b> 新增 <code>_warn_nonexistent_row_columns()</code>："
+                "<code>expect_first_row</code> 要查的列不在探测清单里就<b>打印提醒</b>"
+                "（列出「要查哪个列」+「实际有哪些列」）。<br>"
+                "<b>[刻意不做拦截]</b> <code>_LAST_ROW_FIELDS</code> 只保留<b>最后一次</b>探测的页，"
+                "跨页场景（本用例 4 个页面）列清单必然对不上 -> 拦人必误伤。"
+                "用户 2026-10-29 明确选「只警告不拦」，与本项目「宁漏不误伤」一致 —— "
+                "<b>误拦会让人绕过闸门，比漏报更糟</b>。文案里也自陈「仅供参考、不拦」。",
+        bullets=[
+            "新增 <code>_warn_nonexistent_row_columns()</code>：列不存在时提醒，列出实际可用列",
+            "调用点<b>丢弃返回值</b>（不赋值不判断）—— 判据专门钉住，防以后被改成拦截",
+            "只查 <code>expect_first_row</code>；列清单为空 / 列无 <code>data-field</code> 时静默",
+            "判据 <code>test_row_column_precheck_warns_only.py</code>（5 条，含反向验证）",
+        ]),
+    dict(
+        version="8.7.14", date="2026-10-28", tag="",
+        theme="<b>成功不该被判成失败</b> —— 模型把结果写进 <code>content</code> 通道时，别再丢掉重试",
+        summary="从用户两份 <code>explore --ai</code> 日志里的 <code>Expected tool_calls in response but got none</code> 追起，"
+                "排查跨了整整一轮：先后怀疑<b>大 prompt</b>、<b>端点差异</b>、<b><code>max_tokens</code></b>、"
+                "<b>模型选择</b>、<b><code>reasoning_effort</code> 档位</b>、<b>多轮历史</b>、"
+                "<b><code>_PLANNER_SYSTEM</code> 的「只输出 JSON」</b>、<b><code>reasoning_effort</code> 放 extra_body</b> —— "
+                "用 curl 前后测了 100+ 次<b>全部 100% 成功</b>，一个都复现不出来。<br>"
+                "<b>[转折]</b> 改用<b>框架真链路</b>（<code>llm_from_env()</code> + <code>ChatOpenAICompatible.ainvoke</code>）"
+                "复刻调用，<b>10 次里 8 次命中</b> —— 问题一直在封装层。<br>"
+                "<b>[根因]</b> 上游 <code>browser_use/llm/deepseek/chat.py:179-180</code> 在 <code>msg.tool_calls</code> 为空时"
+                "<b>直接抛 ValueError</b>，而<b>同一响应里的 <code>msg.content</code> 被整个丢掉</b>。"
+                "实测那 8 次的 content <b>全部是完整合法的 JSON</b>（<code>{\"steps\":[...]}</code>），"
+                "<code>finish_reason=stop</code>（正常结束，不是截断、不是超时）。<br>"
+                "<b>[性质]</b> 模型<b>答对了</b>，只是没走工具通道；框架却判失败、重试，<b>每次白等 10~20 秒</b>。"
+                "这是「<b>成功被当成失败</b>」，不是模型失败。<br>"
+                "<b>[修法]</b> ① <code>llm_compat.py</code> 新增 content 通道兜底：命中该异常时重发一次并同时收 "
+                "<code>tool_calls</code>/<code>content</code>，content 是合法 JSON 就<b>解析复用</b>、"
+                "并<b>打印一行说明走了哪条通道</b>（不静默）；解析不出就<b>如实抛错</b>，绝不造假。"
+                "② <code>_PLANNER_SYSTEM</code> 首句「只输出 JSON」改成「必须调用规划工具返回结果」——"
+                "它与强制 function calling 的通道语义冲突，会把模型往文本通道推。<br>"
+                "<b>[验证]</b> 真链路 12/12 通过（修复前 8/10 失败）；兜底 5 条分支用 mock 单测覆盖"
+                "（真链路偶发抓不稳，靠碰运气覆盖异常分支不可靠）；反向验证：摘掉接线判据立刻变红。",
+        bullets=[
+            "<code>llm_compat.py</code> 新增 <code>is_missing_tool_calls()</code>（<b>精确</b>匹配原文，不吞超时/限流/400）",
+            "新增 <code>_invoke_with_content_fallback()</code>：content 是 JSON 就复用、不是就如实抛错、空响应单独报错",
+            "<code>_PLANNER_SYSTEM</code> 首句改为「必须调用规划工具」，与 function calling 语义对齐",
+            "判据 <code>test_content_channel_fallback.py</code>（5 条·接线与判定口径）",
+            "判据 <code>test_content_fallback_unit.py</code>（5 条·mock 覆盖兜底全部分支）",
+            "新增 <code>build_tools/probe_real_llm_path.py</code>：用真链路复刻 explore 调用，排查同类问题直接用",
+        ]),
+    dict(
+        version="8.7.12", date="2026-10-28", tag="",
         theme="<b>诊断不许瞎猜</b> —— <code>got none</code> 先读 effort 再说话，别再把人往错方向带",
         summary="用户在 Windows 上跑 V8.7.11 的 <code>explore --ai</code>，日志里出现"
                 "<code>Expected tool_calls in response but got none</code>，而框架的诊断一口咬定："

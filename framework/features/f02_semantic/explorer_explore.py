@@ -93,12 +93,34 @@ class _PlanModel(BaseModel):
 # 规划用的 system 提示（**唯一出处**）：主路径与文本兜底路径必须用同一份，
 # 否则录像键 sha256(system + prompt) 会因两条路径不同而对不上。
 _PLANNER_SYSTEM = (
-    "你是 GUI 自动化测试规划师。只输出 JSON。"
-    "★铁律：场景文案里出现的 {占位符}（例如 {关键词}、{期望编号}、{客户名称}、{详情地址}）"
-    "必须**逐字原样保留**在你输出的 desc / value / expect 里，一个字都不许改。"
-    "绝对不要把占位符替换成具体值，更不要自己编一个数据值 —— 因为该场景的 data: 会提供多组值，"
-    "框架靠这些占位符把用例展开成多条；一旦被替换或编造，多组数据就会静默退化成只跑一组。"
-)
+    # [!] V8.7.14（2026-10-28 实测）：原来这句是「只输出 JSON」，它把模型往**文本通道**推 ——
+    #   实测用真实 _PLANNER_SYSTEM 时 got none 命中率显著高于简化 prompt，
+    #   而这些「失败」响应的 content 里是**完整合法 JSON**（模型答对了，只是没走 tool_calls）。
+    #   路径1 走的是 output_format=强制 function calling，所以提示词必须**明确要求调工具**，
+    #   与通道语义对齐；否则提示词与调用方式互相打架，模型选哪边都算听话，表现为随机失败。
+        f"你是 GUI 自动化测试规划师。**必须调用规划工具（_PlanModel）返回结构化结果**，"
+        f"不要用纯文本回复、也不要把 JSON 写进正文。"
+        # V8.7.23（用户 2026-10-29 拍板「不要吝啬重录录像的 token」）：
+        #   真链路两次失败都栽在同一条 —— AI 想验「刚建的记录能被搜到」，写了
+        #   `expect_text assert=<自己 fill 的订单名>`，被假绿红线判成「输入回显」拦下，
+        #   两轮重试写同一句 -> 停手 -> 整条链卡死。
+        #   根因不是模型不懂「回显=假绿」，而是**它没有别的表达方式**：正确答案是
+        #   `expect_first_row`（列 + 期望值），但 `cell_field` 要的是 data-field 值（orderName），
+        #   不是表头文案（订单名称）—— 规则散落在 prompt 中段，模型没接上。
+        #   所以把这条升到**系统提示**（最高权重、离模型最近），并说清「不许用整页文本断言
+        #   去验记录建出来」这个唯一正确姿势。
+        f"★铁律：要验证「记录已经建出来了 / 能被搜到 / 出现在列表里」，"
+        f"**唯一正确写法是 `expect_first_row`**（给了 `cell_field` + 期望值，框架去查第一行的那一列）；"
+        f"**绝对不许**用 `expect_text` 去断言你刚刚 fill 进去的值 —— 那是「输入回显」，"
+        f"框架的假绿闸门会直接拒绝落盘，你连试多少次都过不去。"
+        f"`cell_field` 的合法值只能从提示里的「表格行内列清单」的 `field` 里抄"
+        f"（是 data-field 值，如 orderName），**不是表头文案**（如 订单名称）。"
+        f"列清单里 `field` 为空的行（勾选列）用 `cell_by=index` + `cell_index`。"
+        f"★铁律：场景文案里出现的 {{占位符}}（例如 {{关键词}}、{{期望编号}}、{{客户名称}}、{{详情地址}}）"
+        f"必须**逐字原样保留**在你输出的 desc / value / expect 里，一个字都不许改。"
+        f"绝对不要把占位符替换成具体值，更不要自己编一个数据值 —— 因为该场景的 data: 会提供多组值，"
+        f"框架靠这些占位符把用例展开成多条；一旦被替换或编造，多组数据就会静默退化成只跑一组。"
+    )
 
 
 def _norm_name(s: str) -> str:
@@ -267,6 +289,8 @@ def _match_item(sn: str, items: list[dict]) -> tuple[dict | None, str]:
 
 
 from framework.features.f03_locate.row_columns_locate import row_columns_to_items   # V8.4.6：行内列控件唯一入口
+from framework.features.f03_locate.element_map import split_steps_by_page   # V8.7.24：按页校验列清单
+from framework.shared.collision_report import print_collisions   # V8.7.27：跨页同名汇报唯一入口
 
 _row_columns_to_items = row_columns_to_items     # 兼容既有调用点（同口径别名，不是第二份实现）
 
@@ -419,6 +443,13 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
             _single_page_name = ""
             if pages and isinstance(pages[0], dict):
                 _single_page_name = pages[0].get("name") or ""
+            # V8.7.22：给每条列打上**页名**。`probe_row_fields()` 只返回 table/field/header/index/kind，
+            #   不带页信息；落盘后要按页归（AI 的 `cell_field` 候选必须指得清是哪一页的列，
+            #   否则跨页同名列会让它挑错页）。打标记**不影响**下面的 `_row_columns_to_items`
+            #   （它只读 field/header/index/kind）。
+            if _single_page_name:
+                for _rf in row_fields:
+                    _rf.setdefault("page", _single_page_name)
             _remember_required_fields(page_items, _single_page_name)   # 必填项覆盖校验的输入（唯一入口）
             _rc_items = _row_columns_to_items(_single_page_name, row_fields, items)
             if _rc_items:
@@ -427,7 +458,12 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
                 #     所以它「知道要选某一行、却不给列」）。行内控件是行内定位的唯一入口，
                 #     优先级最高，放最前。
                 items[:0] = _rc_items
+            # `_LAST_ROW_FIELDS` = 最后一次探测的页（_fill_missing_row_column 依赖这个语义）：
+            #   每次探测都清 -> 只留当前页。
             _LAST_ROW_FIELDS.clear(); _LAST_ROW_FIELDS.extend(row_fields)   # V8.4.3 兜底用
+            # `_ALL_ROW_FIELDS` = 本次 explore 探测过的**所有页**的列（跨页预检/反查用）：
+            #   **只累积、不在这里清** —— 否则和 _LAST 一样只剩最后一页，跨页又会误报。
+            _ALL_ROW_FIELDS.extend(row_fields)
             b.close()
         return page_items, dom_ctx, "", [], row_fields
     except Exception as e:
@@ -587,10 +623,12 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
     #   [!] 曾经写成 `clear(); extend(本页)` -> 循环跑完只剩**最后一页**的列；
     #   本场景最后一页是发票列表页，勾选列候选因此丢失 -> 兜底恒不触发（实测两次白跑）。
     _LAST_ROW_FIELDS.extend(res.row_fields)
-    for c in res.collisions:
-        print(f"      [explore] [!] 跨页同名元素 {c['semantic_name']!r} 出现在 "
-              f"{'、'.join(c['pages'])} → 已唯一化为 "
-              f"{'、'.join(c['semantic_name'] + '@' + p for p in c['pages'])}")
+    _ALL_ROW_FIELDS.extend(res.row_fields)
+    # V8.7.27：跨页同名元素的**汇报格式**收敛到 shared/collision_report（唯一入口）。
+    #   旧实现逐个名字打两行 -> 实测某场景刷了 100+ 行，把真信息全埋了
+    #   （与 V8.7.18 行容器 53 条同一个道理：提示变成噪音就等于没提示）。
+    #   现按「同前缀」合并成一行汇总（用户 2026-10-30 选 A）。
+    print_collisions(res.collisions, prefix="      [explore]")
     if res.pre_pending:
         print("      [explore] [!] 场景探测前置没跑到的步骤：" + "、".join(str(s) for s in res.pre_pending)
               + "（找到过但没点成功 / 或任何一页都没匹配到 -> 该前置等于没做，别当它生效了）")
@@ -663,6 +701,7 @@ def ai_explore(
     # 不重置会跨轮串味（清单越滚越长 -> 校验失真）。
     _LAST_REQUIRED_FIELDS.clear()
     _LAST_ROW_FIELDS.clear()
+    _ALL_ROW_FIELDS.clear()   # V8.7.18：跨页累积清单按**轮次**清（多轮重试不能串味）
     globals()["_CURRENT_SCENARIO"] = scenario or ""
     # 2026-10-10 A 方案：把本次声明的**身份前置**记进全局（提示词 + 产出兜底两处读）
     globals()["_CURRENT_PROBE_PRE"] = [str(x).strip() for x in (probe_pre or []) if str(x).strip()]
@@ -1209,6 +1248,13 @@ def _drop_declared_pre_steps(steps: list[TestStep], probe_pre: list | None) -> l
 # V8.4.3：最近一次探测到的「行内列清单」—— 供 `_finalize_map` 的确定性兜底读
 #   （勾选列没有 data-field，AI 常常不给列指定；候选唯一时可以安全补全）
 _LAST_ROW_FIELDS: list[dict] = []
+# V8.7.18（2026-10-29 用户实测）：`_LAST_ROW_FIELDS` 只留**最后一次**探测的页，
+#   跨页场景下列清单对不上 -> 预检/反查会误报「列不存在」，把 AI 写对的说成错的。
+#   实测：第 63 步在**发票列表页**要查「合同编号」（该页确实有这一列），
+#   而清单是**订单列表页**的 -> 报「不在探测到的列里」= 假阳性。
+#   这里累计**所有探测过的页**的列，只给预检/反查用（不动 _LAST_ROW_FIELDS，
+#   因为 _fill_missing_row_column 依赖「最后一次」的语义来判勾选列唯一解）。
+_ALL_ROW_FIELDS: list[dict] = []
 # 本场景探到的**全部清单条目**（跨页累积）。用途：`multi_match` 硬清单（重复控件）——
 # 与 `_LAST_REQUIRED_FIELDS` **共用同一个单一入口** `_remember_required_fields`（见那里的纪律说明：
 # 探测有单页/跨页两条路径，缓存只在一边写就会静默失效，这个坑本项目已经犯过两次）。
@@ -1395,6 +1441,206 @@ def check_required_field_coverage(steps: list, required: list[dict],
     return missing
 
 
+def _steps_page_index(steps: list, pages: list | None, by_page: dict | None) -> dict[int, str]:
+    """算出「每个步骤属于哪一页」-> `{id(step): 页名}`（**唯一入口**）。
+
+    为什么必须是唯一入口（V8.7.25 的真教训）：
+        V8.7.24 只把 `_warn_nonexistent_row_columns` 改成了按页判，
+        而**紧挨着它的 `_fix_first_row_column_by_header` 仍然是跨页全集**。
+        结果 bug 从另一个门进来了 —— 2026-10-30 实测：
+            第 59 步 `expect_first_row` 在**发票列表页**，AI 写了 `cell_field='订单名称'`（表头文案）
+            -> 补正器拿**全集的 header->field 映射**反查
+            -> 查到**订单列表页**的 `orderName`（同表头、唯一解）
+            -> 把 `cell_field` 改成了 `orderName`
+            -> 发票页没有这一列 -> 实跑 715s FAILED「表格没有第一行、或没有 'orderName' 列」
+        同一个「跨页串味」，换个函数就复现。所以**切页这件事只能有一份实现**。
+
+    `pages`（`[{"name","url"}]`）+ `by_page`（`{页名: ...}`）都非空才切；
+    否则返回空 dict -> 调用方退化为全局集合（老行为，宁漏不误伤）。
+    """
+    out: dict[int, str] = {}
+    if not pages or not by_page:
+        return out
+    try:
+        for grp in split_steps_by_page(steps, pages, None):
+            pn = str(grp.get("page") or "").strip()
+            for s in (grp.get("steps") or []):
+                out[id(s)] = pn
+    except Exception as _e:      # 兜底必须留痕（静默 except 会把自己写错也吞掉）
+        print(f"      [explore] [!] 按页校验列清单时切页失败（{type(_e).__name__}: {_e}）"
+              f"-> 退化为全局集合", file=__import__("sys").stderr)
+        return {}
+    return out
+
+
+def _fix_first_row_column_by_header(steps: list, row_fields: list | None,
+                                    pages: list | None = None) -> list[str]:
+    """`expect_first_row` 的 `cell_field` 写成了**中文表头**时，按 header 反查 field 补正。
+
+    由来（2026-10-29 用户 V8.7.14 二次实测）：
+      AI 写 `cell_field='订单名称'`（这是**表头文案**，不是 `data-field`），生成出来是
+          tbody tr:first-child td[data-field='订单名称']
+      而页面上真正的列是 `data-field='orderName'` -> 选择器永远命中 0 个
+      -> 实跑 **716.8 秒**（含 160s 有界等待）后报
+          「表格没有第一行、或没有 '订单名称' 列 —— 无法验证「第一条记录」」。
+      [!] 关键证据：**同一场景、同一清空数据起点**，上一次 AI 第 2 轮自己改对了（391s PASSED），
+          这一次**两轮都写中文表头**（716.8s + 又一次 FAILED）。
+          => 这是 AI 的**非确定性编排缺陷**，不能指望它「下次会改对」，框架必须自己兜。
+
+    为什么这个补正**不是猜**（与项目「绝不猜 CSS」铁律不冲突）：
+      `probe_row_fields()` 返回的就是 `{"field": "orderName", "header": "订单名称"}` ——
+      `header` 是页面真实表头文案、`field` 是真实 `data-field`。
+      AI 给的是 header 文案，**反查得到的 field 是唯一确定的映射关系**，不是相似度猜测、
+      也不是编造。等价于把「用中文名写错的字段」翻译回它唯一对应的代码名。
+
+    [!] 只在**唯一解**时才改：
+      同一个 header 命中多列（多个表格都有「订单名称」列但 field 不同）-> `len(hits) != 1`
+      -> **原样不动**，交给 `_warn_nonexistent_row_columns` 警告 + AI 重试。
+      这条与 `_fill_missing_row_column`（勾选列唯一解才补）同一口径。
+    """
+    notes: list[str] = []
+    if not row_fields:
+        return notes
+
+    # header -> [field, ...]（只收有 field 的列；没有 data-field 的列补不上）
+    # V8.7.25：同时按**页**分一份 —— 各页的 header->field 映射**互不通用**
+    #   （发票列表页有「订单名称」这个**搜索框 label**，但没有同名的**表格列**；
+    #     拿订单列表页的映射去补，就会补出一个该页不存在的 field）。
+    by_header: dict[str, list[str]] = {}
+    by_header_page: dict[str, dict[str, list[str]]] = {}
+    valid_fields: set[str] = set()
+    for rf in row_fields:
+        f = str(rf.get("field") or "").strip()
+        if not f:
+            continue
+        valid_fields.add(f)
+        h = str(rf.get("header") or "").strip()
+        if h:
+            by_header.setdefault(h, []).append(f)
+            _pg = str(rf.get("page") or "").strip()
+            if _pg:
+                by_header_page.setdefault(_pg, {}).setdefault(h, []).append(f)
+
+    _page_of = _steps_page_index(steps, pages, by_header_page)
+
+    for st in steps:
+        if str(getattr(st, "op", "") or "") != "expect_first_row":
+            continue
+        cf = str(getattr(st, "cell_field", "") or "").strip()
+        if not cf or cf in valid_fields:      # 没填 / 本来就合法 -> 不动
+            continue
+        # 先看该步骤所在页自己的映射（唯一正确的口径）
+        _pn = _page_of.get(id(st), "")
+        if _pn and _pn in by_header_page:
+            hits = by_header_page[_pn].get(cf) or []
+            # 该页没有这个表头 -> **不补**（补出来必然是该页不存在的列）
+            if not hits:
+                continue
+        elif _pn:
+            # 知道页名，但该页没探到任何列清单 -> 诚实降级，不拿别页的映射猜
+            continue
+        else:
+            # 切不出页 -> 退化为全局（老行为，宁漏不误伤）
+            hits = by_header.get(cf) or []
+        if len(hits) != 1:                    # 找不到 or 不唯一 -> 不动（诚实降级）
+            continue
+        st.cell_field = hits[0]
+        notes.append(f"第 {getattr(st, 'order', '?')} 步 `cell_field={cf!r}` 是**表头文案**、"
+                     f"不是 data-field -> 已按表头反查补正为 {hits[0]!r}"
+                     f"（唯一映射，非猜测{('；仅限「' + _pn + '」这一页') if _pn else ''}）")
+    return notes
+
+
+def _warn_nonexistent_row_columns(steps: list, row_fields: list | None,
+                                  pages: list | None = None) -> list[str]:
+    """`expect_first_row` 要查的列**不在该步骤所在页的列清单里** -> **只警告，绝不拦**。
+
+    由来（2026-10-29 用户 V8.7.14 实测）：AI 写了一步
+        expect_first_row  value=全链路-{datetime}  desc="列表第一条就是刚创建的订单"
+    而订单列表页**没有「订单名称」这一列** -> 实跑 **715 秒**（含 160s 有界等待）后报
+        「表格没有第一行、或没有 '订单名称' 列 —— 无法验证第一条记录」-> 整个用例 FAILED 重连。
+    第 2 轮 AI 自己把断言改对了才 PASSED（391s）——**那 715 秒是纯浪费**。
+
+    V8.7.24（2026-10-29 第二次实测，本条改造的真因）：
+        旧实现拿**跨页全集**判存在性：
+            fields = {rf["field"] for rf in row_fields}       # 所有页的列混在一起
+            if cf and cf not in fields: ...                   # 别的页有这列 -> 不报警
+        于是 AI 写 `cell_field=orderName` 断**发票列表页**（该页根本没有 orderName，
+        只有 invoiceNo/fromOrder/customer/...）时，**静默通过** -> 实跑 735s FAILED。
+        修复：**按 `split_steps_by_page()` 切页，逐页用该页的列清单判**，
+        并把「该页可用列」直接写进警告 —— AI 下一轮就能照着改对。
+
+    `pages`（页元数据 `[{"name","url"}]`）：用于给步骤定页名。不传 -> 退化为全局集合
+    （老行为，宁漏不误伤）。
+
+    [!] 为什么**只警告不拦**（用户 2026-10-29 定，与「宁漏不误伤」一致）：
+        列清单来自探针，探针可能漏列（弹层/懒加载/分页外的列）。误拦的后果比漏报更糟：
+        用户会绕过这道闸门、甚至不再信它。所以只打印提醒，返回的 notes 不参与拦截判断。
+    """
+    notes: list[str] = []
+    if not row_fields:
+        return notes
+
+    # 页名 -> 该页的 field 集合
+    by_page: dict[str, set[str]] = {}
+    for rf in row_fields:
+        pg = str(rf.get("page") or "").strip()
+        fld = str(rf.get("field") or "").strip()
+        if pg and fld:
+            by_page.setdefault(pg, set()).add(fld)
+    all_fields = {str(rf.get("field") or "").strip() for rf in row_fields}
+    all_fields.discard("")
+    if not all_fields:
+        return notes
+
+    # 步骤 -> 所在页（V8.7.25：切页逻辑收敛到 `_steps_page_index` 唯一入口，
+    #   不许这里和 `_fix_first_row_column_by_header` 各写一份 —— 那正是 bug 换门重来的原因）
+    page_of = _steps_page_index(steps, pages, by_page)
+
+    bad: list[tuple[object, str, str, set[str]]] = []
+    for s in steps:
+        if str(getattr(s, "op", "") or "") != "expect_first_row":
+            continue
+        cf = str(getattr(s, "cell_field", "") or "").strip()
+        if not cf:
+            continue
+        pn = page_of.get(id(s), "")
+        if pn and pn in by_page:
+            # 已知页 -> 只认该页的列（这是本版的核心改动）
+            if cf in by_page[pn]:
+                continue
+            bad.append((getattr(s, "order", "?"), cf, pn, by_page[pn]))
+        elif cf not in all_fields:
+            # 不知道页（或该页没探到列）-> 用全局集合，宁漏不误伤
+            bad.append((getattr(s, "order", "?"), cf, "", all_fields))
+
+    if not bad:
+        return notes
+
+    # [!] 必须真的**打印**出来 —— 警告的意义就是让人/AI 在日志里看见。
+    #   V8.7.24 我一度把这段当「return 之后的死代码」删掉，全量立刻红了 3 条
+    #   （`test_warns_when_column_missing` / `test_warning_never_blocks` /
+    #    `test_behavior_single_page_still_detects_bad_column` 都在断 stdout）。
+    #   它不是死代码：**返回值**进 `_WARN_NOTES` 记账、**打印**给人看，两条腿都要。
+    import sys
+    print(f"      [explore] [!] 有 {len(bad)} 步 `expect_first_row` 要查的列**不在该步骤所在页**"
+          f"（实跑会报「没有这一列」；**仅供参考、不拦**）:", flush=True)
+    for order, cf, pn, avail in bad:
+        show = sorted(avail)
+        head = "、".join(show[:10]) + ("…" if len(show) > 10 else "")
+        if pn:
+            msg = (f"第 {order} 步 expect_first_row 的 cell_field={cf!r} "
+                   f"**不在「{pn}」这一页的列里**（该页可用列：{head or '（没探到）'}）"
+                   f"—— 实跑会报「表格没有第一行、或没有 {cf!r} 列」。"
+                   f"各页列**互不通用**，别拿别的页的 field 断本页")
+        else:
+            msg = (f"第 {order} 步 expect_first_row 的 cell_field={cf!r} "
+                   f"不在探测到的任何一页列清单里（可用：{head or '（没探到）'}）")
+        print(f"        - {msg}", flush=True)
+        notes.append(msg)
+    return notes
+
+
 def _fill_missing_row_column(steps: list, row_fields: list | None) -> list[str]:
     """**确定性兜底**（V8.4.3）：`row_text` 给了但**列缺失**的行内步骤，若解**唯一**就补上。
 
@@ -1498,6 +1744,23 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
         for m in _miss[:5]:
             print(f"        - {m}")
         _REQUIRED_COVERAGE_NOTES.extend(_miss)
+    # V8.7.15（2026-10-29 实测）：`expect_first_row` 的 cell_field 可能**在页面上根本不存在**。
+    #   实测两次（同一场景、同一清空数据起点）：
+    #     · 第一次：AI 第 2 轮自己把断言改对 -> 391s PASSED
+    #     · 第二次：AI 两轮都写中文表头 `订单名称` -> 716.8s FAILED + 又一次 FAILED
+    #   报错都是「表格没有第一行、或没有 '订单名称' 列 —— 无法验证「第一条记录」」。
+    #   AI 是**非确定性**的，不能指望「下次它自己会改对」，框架必须自己兜。
+    # 两步走（先补正、再警告）：
+    #   ① 能**唯一反查**的（AI 写了表头文案，而 header->field 映射唯一）-> 直接补正 + 出声；
+    #   ② 补不上的（找不到 / 同 header 多列 / 列本身没有 data-field）-> 只警告，绝不拦。
+    _rowcol_fixed = _fix_first_row_column_by_header(steps, _ALL_ROW_FIELDS or None,
+                                                    pages=pages)   # V8.7.25：按页反查（各页映射互不通用）
+    if _rowcol_fixed:
+        print(f"      [explore] [OK] 有 {len(_rowcol_fixed)} 步 `expect_first_row` 的列写成了**表头文案**"
+              f" -> 已按表头反查补正（唯一映射，不是猜）:")
+        for _x in _rowcol_fixed[:5]:
+            print(f"        - {_x}")
+    _warn_nonexistent_row_columns(steps, _ALL_ROW_FIELDS or None, pages=pages)   # V8.7.24：按页校验（各页的列互不通用）
     _HARDCODED_NOTES.clear()   # [!] 无条件清（理由同上面的必填项 notes：会留旧账）
     if hard:
         print(f"      [explore] [!] 有 {len(hard)} 步把**表格行数据的具体值写死**了"
@@ -1585,9 +1848,20 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
     #   （`login.html`），而 `probe_items` 里存的是**中文页名**（`登录页`）=> 两边对不上
     #   => `_partition_items` 全部匹配失败 => 488 条控件全堆第一页、其余页全空。
     #   表现：generate 报「缺失项」卡死，看着像命名口径冲突，实为**页名映射断了**。
+    # V8.7.22：把「页名 -> 行内列清单」带进 ElementMap（落盘后 case_builder 才拿得到）。
+    #   数据源 = `_ALL_ROW_FIELDS`（本轮探测过的**所有页**的列，每条已由 `_probe_one_page` 打上 `page`）。
+    #   [!] 为什么必须落盘：AI 写 `expect_first_row` 要的是 `cell_field` = 页面 `td[data-field]` 的值
+    #     （`orderName`），不是表头文案（`订单名称`）。这个映射本来只活在探针内存里 ->
+    #     case_builder 只能干说「用 expect_first_row」，AI 拼不出值 -> 试两次都失败（2026-10-29 实测）。
+    _prf: dict[str, list[dict]] = {}
+    for _rf in (_ALL_ROW_FIELDS or []):
+        _pg = str(_rf.get("page") or "").strip()
+        if _pg:
+            _prf.setdefault(_pg, []).append(dict(_rf))
     return ElementMap(url=first_url, scenario=scenario, steps=steps,
                       probe_items=list(manifest or []),
-                      page_meta=[dict(p) for p in (pages or []) if isinstance(p, dict)])
+                      page_meta=[dict(p) for p in (pages or []) if isinstance(p, dict)],
+                      page_row_fields=_prf)
 
 
 # 触发弹窗的关键词（识别"新建/添加/新增/创建"类按钮 → 点开以探测表单控件）
@@ -1674,9 +1948,37 @@ def _try_collect_modal_items(pg, base_items: list[dict]) -> list[dict]:
         if btn.count() != 1:
             return []
         # P22 批 3：置灰按钮（超管点「+ 新建订单」）会让常规点击 30s 超时 -> 整段探测中断
+        _url_before = ""
+        try:
+            _url_before = pg.url
+        except Exception:                                             # noqa: BLE001
+            _url_before = ""
         if not _probe_click(btn.first, timeout=8000):
             print(f"      [explore] [!] 点不开「{_one_line(opener.get('name') or '')}」"
                   f"（常规与置灰降级都失败）→ 跳过弹窗补充（不影响其余探测）")
+            return []
+        # [!] V8.7.30：**「新建/创建」类按钮有两种** —— 弹窗开（本函数要处理的），
+        #   和**整页跳转**（发票列表页的「创建」直接跳 invoice_create.html）。
+        #   原实现假设前者，点了后者就把**探测所在的页面**带跑了：`scan_page` 之后
+        #   `probe_row_fields` 打在开票页上 -> 发票列表页那条真表 11 列**一条都探不到**
+        #   （真机实测：发票列表页 0 列，而单独访问该页是 11 列）。
+        #   判据很干脆：点完 URL 变了 = 导航，不是弹窗 -> 立刻退回原页，本次不收集。
+        try:
+            _url_after = pg.url
+        except Exception:                                             # noqa: BLE001
+            _url_after = _url_before
+        if _url_before and _url_after and _url_after != _url_before:
+            print(f"      [explore] [!] 「{_one_line(opener.get('name') or '')}」是**导航**不是弹窗"
+                  f"（{_url_before.split('/')[-1] or '/'} -> {_url_after.split('/')[-1] or '/'}）"
+                  f"→ 退回原页，跳过弹窗补充（否则会把后面对本页的列探测带跑）")
+            try:
+                pg.go_back(wait_until="domcontentloaded")
+            except Exception:                                         # noqa: BLE001
+                try:
+                    pg.goto(_url_before, wait_until="domcontentloaded")
+                except Exception:                                     # noqa: BLE001
+                    pass
+            _dismiss_tips(pg)
             return []
         _dismiss_tips(pg)          # 权限拦截会弹提示浮层 -> 由触发方收掉，别挡后面的探测
 
@@ -2082,11 +2384,81 @@ def _collapse_row_repeats(items: list[dict]) -> None:
     # [!] **原地改写**：调用方传进来的是它自己要用的那一份 list。返回一个新 list 而不改原列表
     #     = 收敛只打印、清单里一条都没少（实测就这么静默失效过一轮：`_2/_3` 残渣就是这么留下的）。
     items[:] = kept
+    # V8.7.21 方案 A′+A（用户 2026-10-29 定）：把「行容器」判定**收紧**，并且**只打汇总**。
+    #
+    # 背景（V8.7.18 方案 A 的来历）：`期次号@开票页` 探测时页面上只有 1 行 -> multi_match=1
+    #   -> 不提示 AI 给行定位；而实跑到第 50 步时开票页已有 2 行 -> 2 个同名匹配
+    #   -> `RuntimeError: 本页有 2 个同名匹配` -> 434s 白跑一轮。
+    #   所以 V8.7.18 加了「同一容器里有一个重复控件 -> 整容器都是行容器 -> 逐个提示」。
+    #
+    # [!] 但 V8.7.18 的扩散**在真链路上是纯噪音**（2026-10-29 用户两次真机实测，53 条稳定复现）：
+    #   实测数据（探针快照，两次跑完全一致）：
+    #     登录页 / container_heading='演示系统登录' -> 7 个控件：
+    #       账号、密码、登 录、用这个账号填入(x4) —— 其中「用这个账号填入」是 demo 的
+    #       4 个**快捷登录链接**（并列按钮，不是行！），它一重复，账号/密码/登录 全被牵连 -> 18 条噪音
+    #     订单详情页 / container_heading='详细信息' -> 15 个控件：
+    #       行内控件（行类型/单位/收入，各 x3）+ **表格外按钮**（保存/新增行/取消/关闭/全选，各 x1）
+    #       + 空名单元格（role=cell，名字为空）-> 35 条噪音，其中 15 条是「」空名字
+    #   根因：`container_heading` 的粒度是「区块标题」，**它不知道表格边界在哪** ——
+    #     同一个 heading 里既装表格行、又装表格外按钮、还装空单元格。
+    #
+    # 所以改成两道闸门（A′ 判据 + A 汇总）：
+    #   A′ 判据：容器内 multi_match>1 的控件**种类数 >= 2** 才算「真行容器」。
+    #            登录页只有 1 种（快捷登录链接）-> 不算 -> 整区不提；
+    #            详细信息有 3 种（单位/行类型/收入）-> 算。
+    #            （空名字**不算一种** —— 否则 `「」`x15 会让任意容器都"种类够"）
+    #   A  汇总：真行容器里**打一行汇总**列出该区单实例控件名，**不再逐个刷屏**。
+    #
+    # [!] 诚实的边界：若某个真表格里只重复了 1 种控件，A′ 会把它按登录页排掉 ->
+    #   退回「不扩散」。但那种控件自己 multi_match>1，下面的逐个提示仍会提示它，
+    #   只是不扩散到同区其他控件 —— 这是「宁漏不误伤」的口径（用户 2026-10-29 认可）。
+    # [!] 只提示、绝不改数据：不动 multi_match（那会让质量闸误拦单行场景），
+    #   也不替 AI 猜 row_index（猜错 = 写进别的行，静默污染数据）。
+    def _ck_of(it: dict) -> tuple[str, str, str]:
+        return (str(it.get("page") or ""), str(it.get("container_heading") or ""),
+                str(it.get("ctx_token") or ""))
+
+    def _nm_of(it: dict) -> str:
+        return str(it.get("help_text") or it.get("name") or "").strip()
+
+    _dup_kinds: dict[tuple[str, str, str], set[str]] = {}
+    _singles: dict[tuple[str, str, str], list[str]] = {}
     for it in kept:
+        _ck = _ck_of(it)
+        _nm = _nm_of(it)
         if int(it.get("multi_match") or 1) > 1:
-            print(f"      [explore] [key] 同容器重复控件「{it.get('help_text') or it.get('name')}」"
-                  f"（{it.get('page')}）-> 收敛成 1 条，multi_match={it['multi_match']}"
-                  f"（用例操作它时**必须**给行定位：row_index / row_text）")
+            if _nm:                     # 空名字不算「一种控件」
+                _dup_kinds.setdefault(_ck, set()).add(_nm)
+        elif _nm:
+            _singles.setdefault(_ck, []).append(_nm)
+
+    # A′ 判据：重复控件种类 >= 2 -> 真行容器
+    _real_row_containers = {ck for ck, names in _dup_kinds.items() if len(names) >= 2}
+
+    # 逐条提示 multi_match>1 的控件（精准，这部分本来就有，空名字跳过）
+    for it in kept:
+        _mm = int(it.get("multi_match") or 1)
+        if _mm <= 1:
+            continue
+        _nm = _nm_of(it)
+        if not _nm:
+            continue                    # 空名字（role=cell 的空单元格）提示无意义
+        print(f"      [explore] [key] 同容器重复控件「{_nm}」"
+              f"（{it.get('page')}）-> 收敛成 1 条，multi_match={it['multi_match']}"
+              f"（用例操作它时**必须**给行定位：row_index / row_text）")
+
+    # A 汇总：真行容器只打一行，不逐个刷屏
+    for _ck in sorted(_real_row_containers):
+        _names = _singles.get(_ck, [])
+        if not _names:
+            continue
+        _page, _heading = _ck[0], _ck[1]
+        _shown = "、".join(_names[:8])
+        _more = f" 等 {len(_names)} 个" if len(_names) > 8 else f" 共 {len(_names)} 个"
+        print(f"      [explore] [key] 「{_heading or '(无标题)'}」区（{_page}）内有 "
+              f"{len(_dup_kinds[_ck])} 种重复控件 -> 该区视为**行容器**；"
+              f"区内另有单实例控件：{_shown}{_more}"
+              f" —— 若运行时行数增长它们也可能多匹配，需要时请给 row_index / row_text")
 
 
 # 采集"完整版 DOM 上下文"用的交互元素选择器（加上 dropdown/select/combobox 等）
@@ -2822,18 +3194,57 @@ def _build_planner_prompt(scenario: str, items: list[dict], url: str,
                      "该弹窗标题 的那个名字；“用页面顶部筛选条件” -> 用另一个。选错不会报错，只会悄悄操作到别的控件）\n\n")
     # 行内列清单（2026-09-17）：表格里「动态生成的那一行」只能靠 行锚文本+列字段 定位，
     # 把可用的列字段（td[data-field]）列给 AI —— 不然它只能猜 CSS（本项目铁律）。
+    # V8.7.23：这段原来是纯「行内定位」用途；2026-10-29 实测发现 AI 还缺一条明确的政策 ——
+    #   「验记录建出来了该用 expect_first_row + 这里的 field」，于是它退而用 expect_text 断言自己 fill 的值，
+    #   被假绿闸门拦死、两轮重试写同一句。这里把**验记录**的用法也写进来（同一份数据、两种用途）。
+    # V8.7.24（2026-10-29 第二次实测，本次真因）：上面那条生效了（AI 改用 expect_first_row 了），
+    #   但**它拿了订单列表页的 `orderName` 去断发票列表页** —— 发票列表页根本没有这一列
+    #   （它的 data-field 只有 invoiceNo/invoiceType/invoiceDate/businessUnit/contractNo/fromOrder/
+    #    customer/currency/salesman/lineCount），实跑报
+    #     「表格没有第一行、或没有 'orderName' 列」。
+    #   根因：`row_fields` 是**跨页累积**的扁平列表（`scan_pages` 把每页的列 append 到一起），
+    #   直接 json.dumps 给模型 -> 它只看到一大堆 field，**分不清哪个属于哪一页** -> 跨页串用。
+    #   所以这里必须**按页分组**渲染，并把「只能用目标步骤所在页的列」写成显式规则。
     if row_fields:
         _rf, _rf_hidden = _clip_by_chars(row_fields)
+        # 按 page 分组（`scan_pages` 已保证每条都带 page；没有 page 的归到「(未标页)」）
+        _by_page: dict[str, list[dict]] = {}
+        for _r in _rf:
+            if not isinstance(_r, dict):
+                continue
+            _by_page.setdefault(str(_r.get("page") or "(未标页)"), []).append(_r)
+        _grouped: list[str] = []
+        for _pn, _rows in _by_page.items():
+            _grouped.append(f"【{_pn}】的表格列：")
+            for _r in _rows:
+                _f = str(_r.get("field") or "").strip()
+                _h = str(_r.get("header") or "").strip()
+                _ix = _r.get("index")
+                _kd = str(_r.get("kind") or "").strip()
+                _desc = f"field={_f or '(空，无 data-field)'}"
+                if _h:
+                    _desc += f" · 表头={_h}"
+                if _ix is not None:
+                    _desc += f" · index={_ix}"
+                if _kd:
+                    _desc += f" · kind={_kd}"
+                _grouped.append(f"    - {_desc}")
         prompt += (
-            "表格行内列清单（**行内定位**用：row_text 取那一行里的唯一锚文本，"
+            "表格行内列清单（**按页面分组**；行内定位与首行断言都用它，"
             "列用下面这些**真实列**指定，禁止自造 field）：\n"
-            "  每条含 index（**真实列号，从 1 起**）/ field（有 data-field 才有，可能为空）/ "
-            "header（表头文案）/ kind（该列里的控件种类）。\n"
             "  · 列**有** field -> 用 `cell_field=<field>`；\n"
             "  · 列**没有** field（field 为空，如 kind=checkbox 的勾选列）-> **不要自造 field、"
             "也不要拿这行里别的元素顶替**，改用 `cell_by=index` + `cell_index=<该列的 index>`；\n"
             "  · 或列有表头文案时用 `cell_by=header` + `cell_field=<表头文案>`。\n"
-            f"{json.dumps(_rf, ensure_ascii=False, indent=1)}\n"
+            "  · **要验「记录建出来了 / 搜到了」** -> `expect_first_row` + "
+            "`cell_field=<这里某个 field>` + `value=<刚填的那个名称>`。"
+            "**这是唯一正确写法**：`expect_first_row` 查的是「第一行的这一列」，是结构性证据；"
+            "而 `expect_text` 查整页文本，跟你刚 fill 的值一比就构成「输入回显」，闸门会拒绝落盘。\n"
+            "  · ★★**必须用「这条断言发生在哪一页」那张表的列** —— 各页的列**互不通用**！"
+            "拿别的页的 field 去断本页，实跑会报「表格没有第一行、或没有 'XXX' 列」。"
+            "（2026-10-29 实测：AI 拿订单列表页的 `orderName` 去断发票列表页，"
+            "而发票列表页没有这一列 -> 整条用例 FAILED。）\n"
+            + "\n".join(_grouped) + "\n"
             + (f"  （[!] 另有 {_rf_hidden} 条列未列出 —— 按篇幅裁剪）\n" if _rf_hidden else "")
             + "\n"
         )

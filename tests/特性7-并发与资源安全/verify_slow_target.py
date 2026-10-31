@@ -41,9 +41,11 @@ from framework.shared.text_io import force_stdio                     # noqa: E40
 
 force_stdio()
 
-PY = str(ROOT / ".venv" / "bin" / "python")
-if not Path(PY).exists():
-    PY = sys.executable
+# [!] 2026-10-29：跨平台解释器定位改用唯一入口（原写法只认 POSIX 的 .venv/bin/python，
+#   Windows 的 .venv\Scripts\python.exe 认不出来 -> 会静默退回系统 python、依赖缺失）。
+from framework.shared.paths import venv_python   # noqa: E402
+
+PY = venv_python(ROOT)
 
 DEMO_PORT = int(os.environ.get("VERIFY_DEMO_PORT", "8011"))
 PROXY_PORT = int(os.environ.get("VERIFY_PROXY_PORT", "8012"))

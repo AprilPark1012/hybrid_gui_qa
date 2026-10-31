@@ -43,6 +43,30 @@ EXCLUDE_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache", "log", "output"
 RELEASES_DIRNAME = "releases"
 RELEASE_NOTES_GLOB = "RELEASE_NOTES_*.md"
 EXCLUDE_SUFFIX = {".zip", ".tar.gz", ".pyc", ".pyo"}
+
+#: `.env` 家族的**示例文件**（不含真凭据，要随包交付当模板）
+_ENV_ALLOW = {".env.example", ".env.sample", ".env.template", ".env.dist"}
+
+
+def _is_env_secret(name: str) -> bool:
+    """是不是**含凭据的 env 文件**（` .env` / `.env.local` / `a.env` ...）。
+
+    为什么单列一个函数、不塞进 `EXCLUDE_SUFFIX`（2026-10-29 用户 Windows 实测抓到的真 bug）：
+      `Path(".env").suffix == ""` —— 隐藏文件没有后缀！所以它**落不进 EXCLUDE_SUFFIX**
+      （`""` 不在 `{.zip,.tar.gz,.pyc,.pyo}` 里）。
+      而 git 分支靠 `.gitignore` 侥幸把它排除了，**非 git 目录（交付包解压后）走 rglob 分支**
+      时就会被收进包 -> 用户本地那份**含 API key 的 .env** 被原样发出去。
+      实测现象：`test_collect_files_keeps_sources_and_drops_runtime_cruft` 报
+      「包里有不该发的内容：['.env']」，而他机器上正是解压目录（非 git）。
+
+    口径：`.env` 与 `.env.*`（及 `*.env`）一律排除，**只放行示例文件**。
+    """
+    n = str(name or "").strip().lower()
+    if not n:
+        return False
+    if n in _ENV_ALLOW:
+        return False
+    return n == ".env" or n.startswith(".env.") or n.endswith(".env")
 # 包里必须有的东西（少一个说明包不完整）
 REQUIRED = ("README.md", "build_tools/build_html.py", "docs/training.html", "framework/features/f10_cli/cli.py",
             "framework/shared/text_io.py",
@@ -131,6 +155,8 @@ def collect_files(exclude_test_artifacts: bool = False) -> list[Path]:
             continue                      # releases/ 下**只**放行升级日志
         if p.suffix in EXCLUDE_SUFFIX or p.name.endswith(".tar.gz"):
             continue
+        if _is_env_secret(p.name):
+            continue          # 含凭据的 env 文件绝不进包（见 _is_env_secret 的说明）
         out.append(p)
 
     # [!] 2026-10-12（V8.5.1）**已删除**上一版在这里硬塞 `_auth.json` 的逻辑。

@@ -98,7 +98,52 @@ FEATURES = [
                           #   => 根因是「模型偶发不调工具」，与 prompt 大小、effort 档位都无关。
                           #   判据钉住：必须读 LLM_REASONING_EFFORT 再分流，且 effort 已高时
                           #   不许再给「档位太低/改 high」的误导结论（只查非注释代码，注释里的反面教材合法）。
-                          "test_got_none_diagnosis_honesty.py"],
+                          "test_got_none_diagnosis_honesty.py",
+                          # V8.7.14（2026-10-28 实测定位）：模型把结构化结果写进 content 通道时
+                          #   上游直接抛 got none 并把 content 丢掉 -> 框架把「成功」判成「失败」去重试。
+                          #   test_content_channel_fallback.py = 接线与判定口径（静态）；
+                          #   test_content_fallback_unit.py   = mock 上游响应，覆盖兜底 5 条分支（行为）。
+                          "test_content_channel_fallback.py",
+                          "test_content_fallback_unit.py",
+                          # V8.7.15（2026-10-29 用户实测）：expect_first_row 的 cell_field
+                          #   可能压根不在页面上 -> 实跑 715s 才报「没有这一列」。生成阶段已有
+                          #   探测到的列清单却没校验。判据钉住：只警告不拦（跨页会误报，
+                          #   用户定「宁漏不误伤」）。
+                          "test_row_column_precheck_warns_only.py",
+                          # V8.7.16（2026-10-29 二次实测）：AI **同一场景同一起点**两次结果不同
+                          #   （一次第 2 轮改对了、一次两轮都写中文表头）=> 非确定性，不能赌它
+                          #   下次会改对。header->field 唯一反查补正（多义不猜）。
+                          "test_first_row_column_header_fallback.py",
+                          # V8.7.18（2026-10-29 用户实测）：列清单预检要覆盖**所有探测过的页**。
+                          #   第 63 步在发票列表页要查「合同编号」（该页确实有），而清单是订单
+                          #   列表页的 -> 报「不在探测到的列里」= 假阳性。改用 _ALL_ROW_FIELDS。
+                          "test_row_fields_cross_page_coverage.py",
+                         # V8.7.22（2026-10-29 真链路两次失败）：AI 想写 expect_first_row 验
+                         #   「搜到了刚建的发票」，但 cell_field 是 td[data-field] 的值
+                         #   （orderName）而不是表头文案（订单名称），探针有映射却没落盘
+                         #   -> 错误信息给不出候选 -> AI 两轮写同样 -> 卡死。
+                         "test_row_fields_reach_ai.py",
+                         # V8.7.23（2026-10-29 用户拍板「不要吝啬重录录像的 token」）：
+                         #   AI 只会用 expect_text 断言自己 fill 的值 -> 被假绿闸门拦死。
+                         #   把「验记录建出来 -> 唯一正确写法 expect_first_row」升到系统提示，
+                         #   并指明 cell_field 只能从行内列清单的 field 抄（不是表头文案）。
+                         "test_prompt_points_to_cell_field.py",
+                         # V8.7.24（2026-10-29 第二次真机实测）：AI 改用 expect_first_row 了，
+                         #   但拿订单页的 orderName 去断发票列表页（该页没这列）-> 735s FAILED。
+                         #   列清单按页分组渲染 + 按页校验 cell_field（警告里列出该页可用列）。
+                         "test_row_column_page_scoped.py",
+                         # V8.7.25（2026-10-30 V8.7.24 真机日志揪出）：登录步骤的 goto 拿 element 顶 URL
+                         #   -> Page.goto: Cannot navigate to invalid URL -> 登录前置整条中断。
+                         "test_login_goto_never_uses_element.py",
+                         # V8.7.28（2026-10-30 清 output/ 后首次跑必炸）：登录链路里
+                         #   `_probe_login_page` 自己 `with sync_playwright()`（调用方 scan_pages 已开 ctx）
+                         #   + `plan_login` 里裸 asyncio.run -> 与 Playwright Sync API 互斥 -> 登录前置失败
+                         #   -> 探测照常跑、7 页全被重定向成登录页、每页探到 login-accounts 的 3 条空列。
+                         "test_login_no_nested_playwright.py",
+                         # V8.7.30（2026-10-31 真机日志揪出）：弹窗补充把「创建」当成开弹窗，
+                         #   而发票列表页的「创建」是**整页跳转** -> 探测所在页面被带跑 ->
+                         #   该页真表 11 列一条都探不到（AI 只能猜列名）。点完比 URL 判导航。
+                         "test_modal_probe_never_navigates.py"],
                  class2=["verify_role_switch_click.py"]),
             dict(no="2.3", name="步骤到定位的合成", goal="步骤里的语义名/属性如何合成可执行定位表达式"
                                                        "（`verify_scope_locate.py` 物理住在 tests/特性3-分层定位与控件识别/，"
@@ -118,7 +163,24 @@ FEATURES = [
         dir="特性3-分层定位与控件识别",
         subs=[
             dict(no="3.1", name="顶层锚点加容器内下钻", goal="真实系统只有顶层元素有 testid；子元素靠「锚点 + 容器内相对语义路径」定位",
-                 class1=["test_element_anchor_path.py", "test_row_fields_cover_all_columns.py", "test_row_columns_are_named_items.py"],
+                 class1=["test_element_anchor_path.py", "test_row_fields_cover_all_columns.py",
+                         "test_row_columns_are_named_items.py",
+                         # V8.7.18（2026-10-29 用户实测）：行容器里的**单实例**控件也要提示
+                         #   给 row_index。实测「期次号@开票页」探测时只有 1 个 -> 不提示 ->
+                         #   实跑到那步已 2 行 -> 2 个同名匹配 -> 434s 白跑（探测≠运行）。
+                         "test_row_container_singleton_hint.py",
+                         # V8.7.21（2026-10-29 用户两次真机实测 53 条稳定复现）：
+                         #   V8.7.18 的「容器内一个重复 -> 整区逐个提示」是纯噪音：
+                         #   登录页 18 条（4 个快捷登录链接牵连账号/密码/登录）、
+                         #   订单详情页 35 条（15 条是空名字的表格单元格）。
+                         #   A' 判据：重复控件种类 >= 2 才算真行容器；A 汇总：只打一行。
+                         "test_row_container_noise_budget.py",
+                         # V8.7.27（2026-10-30）：跨页同名元素刷 100+ 行 -> 同前缀合并成一行汇总
+                         "test_collision_report_noise_budget.py",
+                         # V8.7.29（2026-10-31 实测）：订单详情页的明细行是 **div 网格**
+                         #   （`<div class="cell" data-field="lineNo">`），而 probe_row_fields
+                         #   只扫 `table` -> 该页 0 列 -> AI 永远看不到 lineNo/lineStatus。
+                         "test_div_grid_row_fields.py"],
                  class2=["verify_scope_locate.py"]),
             dict(no="3.2", name="多层嵌套容器", goal="容器套容器（区域内表格、表单里分组）时路径仍能唯一",
                  class1=["test_element_anchor_path.py"],
@@ -309,10 +371,23 @@ FEATURES = [
             dict(no="9.3", name="环境与编码适配", goal="跨平台路径/内存探测/UTF-8 与 cp936 —— 源码不许出现 GBK 编不了的字符；"
                                                       "**源码不许有未绑定名**（拷代码漏作用域会被 except 兜成静默降级）",
                  class1=["test_env_adaptation.py", "test_utf8_io.py", "test_browser_preflight.py",
+                         # V8.7.20（2026-10-29 用户 Windows 实测 6 skipped vs 本机 3 skipped）：
+                         #   venv 解释器定位全仓 3 份实现、只有 1 份认 Windows。
+                         #   `Path(REPO)/".venv"/"bin"/"python"` 在 Windows 永不存在 -> 判据永远 skip（假绿）。
+                         "test_venv_python_single_entry.py",
+                         # V8.7.17（2026-10-29 用户 Windows 实测 1 failed）：写进 json 的仓库相对
+                         #   路径必须正斜杠。Windows 上 str(Path) 给反斜杠，与判据侧 as_posix()
+                         #   口径不同 -> 同一文件两个格式 -> 假红「孤儿脚本」。
+                         #   [!] 2026-10-07 只修了读的一侧（只修半边），这次写入+读取+拼路径三处都归一化。
+                         "test_repo_relative_paths_use_forward_slash.py",
                          "test_no_stale_paths.py", "test_no_undefined_names.py"],
                  class2=["verify_undefined_names.py"]),
             dict(no="9.4", name="交付包与文档同步", goal="打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README",
                  class1=["test_pack_release.py", "test_pack_release_requires_generated_dir.py",
+                         # V8.7.19（2026-10-29 用户 Windows 实测 1 failed）：交付包绝不许带含凭据的 `.env`。
+                         #   根因 `Path(".env").suffix == ""` 落不进 EXCLUDE_SUFFIX；git 分支靠 .gitignore
+                         #   侥幸排除，**非 git 目录（交付包解压后）走 rglob 全收** -> 用户手工建的 .env 会被打进包。
+                         "test_pack_dotenv_never_shipped.py",
                          "test_readme_structure.py", "test_docs_sync.py", "test_build_html_hl.py", "test_architecture_doc_contract.py"],
                  class2=["verify_html_sync.py"]),
             dict(no="9.5", name="保留与产物健康", goal="日志/产物保留策略与健康检查",

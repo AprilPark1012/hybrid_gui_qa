@@ -96,7 +96,10 @@ def main() -> int:
         print("  [skip]  demo 未在跑 -> 跳过（先起 demo，或走 tests/_runner/run_verifications.sh 的统一入口）")
         return 3
 
-    good_py = str(REPO / ".venv" / "bin" / "python")
+    # [!] 2026-10-29：原写法 str(REPO/".venv"/"bin"/"python") 在 Windows 上是**不存在的路径**
+    #   （venv 布局是 .venv\Scripts\python.exe），拿去跑会直接失败。改用唯一入口。
+    from framework.shared.paths import venv_python
+    good_py = venv_python(REPO)
     bad_py = find_dep_less_python()
 
     # (3) 常规：正常环境

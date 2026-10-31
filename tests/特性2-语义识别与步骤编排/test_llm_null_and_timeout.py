@@ -93,6 +93,36 @@ def test_llm_timeout_illegal_falls_back(monkeypatch, bad):
     assert cfg.llm_timeout_s() == 180.0
 
 
+def _isolate_dotenv(monkeypatch) -> None:
+    """拦掉**所有** `load_dotenv()` 调用，让判据能验「没有该环境变量时的默认值」。
+
+    [!] 为什么必须拦（2026-10-29 实测，追到第三方库）：
+        `browser_use/logging_config.py:8` 在**模块 import 期**无条件调用 `load_dotenv()`（无参），
+        它会顺着调用者文件向上找 `.env` -> 命中项目根的 `.env` -> 把 `HYBRID_LLM_TIMEOUT=900`
+        等值**写回 `os.environ`**。
+        于是判据里 `monkeypatch.delenv("HYBRID_LLM_TIMEOUT")` 刚删掉，
+        `llm_from_env()` 首次 import browser_use 时又被塞回 900 -> `c.timeout == 900.0` 而不是 180。
+        **这不是被测代码的问题**（`llm_timeout_s()` 本身完全正确：删掉环境变量就返回 180），
+        是第三方库的副作用；判据要验的是「没配时的默认值」，所以必须让它找不到 `.env`。
+
+    patch 三处是为了覆盖全部引用形态：
+      · `dotenv.load_dotenv` / `dotenv.main.load_dotenv` —— 后来的 import 拿到的替身；
+      · `browser_use.logging_config.load_dotenv` —— 模块若**已被 import**，它命名空间里存的是原函数。
+    """
+    import dotenv
+    import dotenv.main as _dm
+    _noop = lambda *a, **k: False  # noqa: E731
+    monkeypatch.setattr(dotenv, "load_dotenv", _noop, raising=False)
+    monkeypatch.setattr(dotenv, "find_dotenv", lambda *a, **k: "", raising=False)
+    monkeypatch.setattr(_dm, "load_dotenv", _noop, raising=False)
+    monkeypatch.setitem(__import__("sys").modules, "dotenv", dotenv)
+    try:
+        import browser_use.logging_config as _blc
+        monkeypatch.setattr(_blc, "load_dotenv", _noop, raising=False)
+    except Exception:            # 还没装/还没 import -> 上面的 patch 已足够
+        pass
+
+
 def test_llm_client_really_has_timeout_via_real_entry(monkeypatch):
     """走**真入口** `llm_from_env()`：超时必须真的挂到 SDK 上，且 SDK 不许自己重试。
 
@@ -105,6 +135,7 @@ def test_llm_client_really_has_timeout_via_real_entry(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("HYBRID_LLM_TIMEOUT", raising=False)
+    _isolate_dotenv(monkeypatch)      # 第三方库 import 期会 load_dotenv()，不拦就测不到默认值
 
     c = cfg.llm_from_env()
     assert c.timeout == 180.0, (
@@ -126,6 +157,7 @@ def test_deepseek_branch_also_has_timeout(monkeypatch):
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
     monkeypatch.delenv("HYBRID_LLM_TIMEOUT", raising=False)
+    _isolate_dotenv(monkeypatch)      # 同上：第三方库 import 期 load_dotenv() 会盖回默认值
 
     c = cfg.llm_from_env()
     assert c.timeout == 180.0

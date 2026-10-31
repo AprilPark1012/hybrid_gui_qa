@@ -84,6 +84,24 @@ def rejects_named_tool_choice(err: BaseException) -> bool:
     return any(_TOOL_CHOICE_REJECTED.search(s) for s in _unwrap_chain(err))
 
 
+def is_missing_tool_calls(err: BaseException) -> bool:
+    """这个异常是不是「模型给了内容却没走 tool_calls 通道」。
+
+    V8.7.14（2026-10-28 实测定位）：browser_use 的 deepseek/chat.py:179-180 在
+        msg.tool_calls 为空时**直接抛 ValueError**，而**同一响应里的 msg.content 被丢掉**。
+    实测 24 次真链路调用、8 次触发，这 8 次的 content **全部是完整合法的 JSON**
+    （如 `{"steps":[{...}]}`），也就是说：**模型把该给的东西全给了，只是没走 tool_calls**，
+    框架却把这当成失败去重试（每次白等 10~20 秒）。
+
+    => 这是「成功被判成失败」，不是模型失败。判定必须精确到这句原文，别吞掉别的错。
+    """
+    for s in _unwrap_chain(err):
+        low = str(s).lower()
+        if "expected tool_calls in response but got none" in low:
+            return True
+    return False
+
+
 @dataclass
 class ChatOpenAICompatible(ChatDeepSeek):
     """任何 OpenAI 兼容端点都能用的客户端（结构化输出走 `tools` / function calling）。
@@ -150,13 +168,20 @@ class ChatOpenAICompatible(ChatDeepSeek):
             return await super().ainvoke(messages, output_format=output_format,
                                          tools=tools, stop=stop, **kwargs)
         except Exception as e:
-            if not rejects_named_tool_choice(e):
-                raise
-            _REJECTED_ENDPOINTS.add(key)
-            print(f"      [llm] [!] 端点不接受「指名函数」形式的 tool_choice（{key[1]}）"
-                  f" -> 自动降级改用 tool_choice=auto 重试（本进程内后续直接走降级形态）")
-            return await self._invoke_without_tool_choice(messages, output_format,
-                                                          stop=stop, **kwargs)
+            if rejects_named_tool_choice(e):
+                _REJECTED_ENDPOINTS.add(key)
+                print(f"      [llm] [!] 端点不接受「指名函数」形式的 tool_choice（{key[1]}）"
+                      f" -> 自动降级改用 tool_choice=auto 重试（本进程内后续直接走降级形态）")
+                return await self._invoke_without_tool_choice(messages, output_format,
+                                                              stop=stop, **kwargs)
+            # [!] V8.7.14（2026-10-28 实测定位）：模型「答对了但没走 tool_calls 通道」——
+            #   上游把 content 整个丢掉后抛 ValueError，上层却当失败去重试（每次白等 10~20 秒）。
+            #   实测 8/24 命中，8 次 content 全部是完整合法 JSON、finish_reason=stop（正常结束）。
+            #   => 这不是失败，是**成功被判成失败**。解析 content 直接复用，重发一次比整轮重试便宜。
+            if is_missing_tool_calls(e):
+                return await self._invoke_with_content_fallback(messages, output_format,
+                                                                stop=stop, **kwargs)
+            raise
 
     async def _invoke_without_tool_choice(
         self,
@@ -226,3 +251,126 @@ class ChatOpenAICompatible(ChatDeepSeek):
         raw = msg.tool_calls[0].function.arguments
         parsed = json.loads(raw) if isinstance(raw, str) else raw
         return ChatInvokeCompletion(completion=output_format.model_validate(parsed), usage=None)
+
+    async def _invoke_with_content_fallback(
+        self,
+        messages: list[BaseMessage],
+        output_format: Any,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """模型把结构化结果写进了 `content` 而没走 `tool_calls` -> **解析 content**，别当失败。
+
+        为什么需要这一层（V8.7.14，2026-10-28 实测定位根因）：
+            上游 `deepseek/chat.py:179-180` 在 `msg.tool_calls` 为空时直接抛
+            `ValueError('Expected tool_calls in response but got none')`，
+            **同一响应里的 `msg.content` 被整个丢掉**。
+            而实测（24 次真链路调用 / 8 次命中）这 8 次的 content **全部是完整合法的 JSON**：
+
+                {"steps":[{"order":1,"op":"fill","semantic_name":"账号","value":"super",...}]}
+
+            `finish_reason=stop`（正常结束，不是 length 截断、不是超时）——
+            也就是说：**模型答对了，只是没走工具通道**，框架却判失败并重试，
+            每次白等 10~20 秒。这是「成功被当成失败」。
+
+        口径（与项目「静默降级=造假」原则的边界）：
+            · **必须打印一行说明**本次走的是 content 通道，不静默 —— 让人知道发生了什么；
+            · content 解析不出来 / 不符合 schema -> **如实抛错**，绝不返回空壳假装成功；
+            · 只在这一种异常下走这条路（`is_missing_tool_calls` 精确匹配原文），别的错照抛。
+
+        为什么要重新发一次请求而不是就地取 content：
+            异常抛出时 content 已经在上游栈里被丢弃，本层拿不到 —— 只能重发。
+            但这仍比上层「整轮重试」便宜：重试要重跑整个规划流程，这里只重发一次 LLM 调用。
+        """
+        import json
+
+        from browser_use.llm.deepseek.serializer import DeepSeekMessageSerializer
+        from browser_use.llm.exceptions import ModelProviderError
+
+        name = getattr(output_format, "__name__", "result")
+        try:
+            schema = SchemaOptimizer.create_optimized_json_schema(output_format)
+        except Exception:
+            schema = output_format.model_json_schema()
+        schema = dict(schema or {})
+        schema.pop("title", None)
+        call_tools = [{
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": f"Return a JSON object of type {name}",  # l34a-ok function-calling 的函数描述栏，不是步骤字段
+                "parameters": schema,
+            },
+        }]
+
+        common = self._request_kwargs()
+        if stop:
+            common["stop"] = stop
+        client = self._client()
+        try:
+            resp = await client.chat.completions.create(  # type: ignore
+                model=self.model,
+                messages=DeepSeekMessageSerializer.serialize_messages(messages),  # type: ignore
+                tools=call_tools,  # type: ignore
+                tool_choice={"type": "function", "function": {"name": name}},  # type: ignore
+                **common,
+            )
+        except Exception as e:
+            raise ModelProviderError(str(e), model=self.name) from e
+
+        msg = resp.choices[0].message
+        raw = None
+        channel = ""
+        if msg.tool_calls:
+            raw = msg.tool_calls[0].function.arguments
+            channel = "tool_calls"
+        elif (msg.content or "").strip():
+            # 模型走了文本通道 —— 直接把 content 当 JSON 解析
+            raw = msg.content
+            channel = "content"
+        if raw is None:
+            raise ModelProviderError(
+                "既没有 tool_calls 也没有 content —— 端点返回空响应，无法恢复",
+                model=self.name)
+
+        parsed = self._extract_json(raw)
+        if parsed is None:
+            raise ModelProviderError(
+                f"模型没返回可用的 tool_calls，{channel} 通道里的内容也不是可解析的 JSON"
+                f"（前 120 字: {str(raw)[:120]!r}）—— 不做猜测，交给上层退到纯文本路径",
+                model=self.name)
+        if channel == "content":
+            # 刻意出声：这不是 tool_calls 拿到的，必须让人知道本次走了哪条通道
+            print(f"      [llm] [i] 本次模型把结构化结果写进了 **content 通道**"
+                  f"（未走 tool_calls）-> 已直接解析复用，未触发重试", flush=True)
+        return ChatInvokeCompletion(completion=output_format.model_validate(parsed), usage=None)
+
+    @staticmethod
+    def _extract_json(raw: Any) -> dict | None:
+        """从 tool_calls 参数或 content 文本里取出 JSON 对象（容忍 ```json 围栏与前后废话）。"""
+        import json
+        import re
+
+        if isinstance(raw, dict):
+            return raw
+        if not isinstance(raw, str):
+            return None
+        t = raw.strip()
+        # 去掉 markdown 代码围栏
+        m = re.search(r"```(?:json)?\s*(.+?)\s*```", t, re.S)
+        if m:
+            t = m.group(1).strip()
+        try:
+            v = json.loads(t)
+            return v if isinstance(v, dict) else None
+        except Exception:
+            pass
+        # 兜底：截取第一个 { 到最后一个 } 之间
+        i, j = t.find("{"), t.rfind("}")
+        if i != -1 and j > i:
+            try:
+                v = json.loads(t[i:j + 1])
+                return v if isinstance(v, dict) else None
+            except Exception:
+                return None
+        return None

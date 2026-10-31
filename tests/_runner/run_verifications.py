@@ -108,13 +108,15 @@ def _now_cst() -> str:
 
 
 def _venv_python(repo: Path = REPO) -> str:
-    """找 venv 解释器（跨平台）；找不到退回当前解释器。"""
-    for c in (repo / ".venv" / "Scripts" / "python.exe",      # Windows
-              repo / ".venv" / "bin" / "python3",             # POSIX
-              repo / ".venv" / "bin" / "python"):
-        if c.exists():
-            return str(c)
-    return sys.executable or "python3"
+    """找 venv 解释器（跨平台）；找不到退回当前解释器。
+
+    [!] 2026-10-29：实现**搬到** `framework/shared/paths.py`（唯一入口）——
+        原先这份是仓库里**唯一正确**的一份，但另外 3 处各写了一遍 POSIX-only 版本
+        （`test_offline_chain_python` / `verify_slow_target` / `verify_offline_chain_deps`），
+        在 Windows 上全部失效。现在这里只做转发，防止再次漂移。
+    """
+    from framework.shared.paths import venv_python
+    return venv_python(repo)
 
 
 def _mem_available_mb_proc() -> int | None:

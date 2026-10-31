@@ -16,6 +16,7 @@ import json
 import re
 from pathlib import Path
 
+from framework.shared.collision_report import print_collisions
 from framework.shared.config import BASE, CASES_DIR, SCRIPTS_DIR, target_url
 from framework.features.f03_locate.element_map import (row_scope_violation,         # 行定位判据的唯一入口
                                                apply_row_locator_fallback,     # 框架兜底：行定位
@@ -1663,10 +1664,8 @@ def _probe_declared_pages(pages: list[tuple[str, str]],
     _record_conflict_bases(merged_items)
     # 原始名 → 出现过的页名集合（跨页用例必须用 @页名 形式；按用例过滤见 _dup_raw_names_for_case）
     dup_pages: dict[str, set[str]] = {c["semantic_name"]: set(c["pages"]) for c in collisions}
-    for c in collisions:
-        print(f"[generate] [!] 跨页同名元素 {c['semantic_name']!r} 出现在 {'、'.join(c['pages'])}"
-              f" → 已唯一化为 "
-              + "、".join(f"{c['semantic_name']}@{p}" for p in c["pages"]))
+    # V8.7.27：与探测期共用同一份汇报格式（shared/collision_report，唯一入口）
+    print_collisions(collisions, prefix="[generate]")
     loc_map: dict[str, str] = {}
     ambiguous: set[str] = set()
     for it in merged_items:
@@ -2220,10 +2219,14 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
         _scen_fp = str(c.get("scenario_fingerprint") or "")[:16]
         # 脚本路径：能相对仓库就存相对（便于迁移/审阅），不能（判据的临时沙箱）就存绝对 ——
         # 硬用 relative_to 会在沙箱路径上抛 ValueError（判据当场抓出来的 X）
+        # [!] 必须 as_posix()：Windows 上 str(Path) 给反斜杠，而判据侧 on_disk 用 as_posix()
+        #     得到正斜杠 -> 同一个脚本两边格式不同，集合永远对不上，报「孤儿脚本」假红
+        #     （2026-10-29 用户 Windows 实测：in_index 存 `scripts\generated\…`、
+        #      on_disk 是 `scripts/generated/…`，判据红而磁盘其实完全一致）。
         try:
-            _mod_path = str(mod.relative_to(BASE))
+            _mod_path = mod.relative_to(BASE).as_posix()
         except ValueError:
-            _mod_path = str(mod)
+            _mod_path = Path(mod).as_posix()
         _meta = {
             "script_path": _mod_path,
             "scenario_id": sid,
