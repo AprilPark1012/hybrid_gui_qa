@@ -5,15 +5,15 @@
 
 ## 总览
 
-- 大特性 **11** 个 · 子特性 **55** 条
-- 一类用例文件 **156** 个 / 用例函数 **1331** 条
+- 大特性 **11** 个 · 子特性 **58** 条
+- 一类用例文件 **159** 个 / 用例函数 **1374** 条
 - 二类验证文件 **25** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
 |---|---|---:|---:|---:|
 | 1 | AI 链路与离线回放 | 3 | 3 | 2 |
 | 2 | 语义识别与步骤编排 | 4 | 42 | 5 |
-| 3 | 分层定位与控件识别 | 9 | 29 | 6 |
+| 3 | 分层定位与控件识别 | 11 | 31 | 6 |
 | 4 | 选错控件兜底 | 4 | 4 | 2 |
 | 5 | 用例脚本数据三层分离 | 5 | 8 | 0 |
 | 6 | 自愈闭环 Healer | 1 | 0 | 0 |
@@ -21,7 +21,7 @@
 | 8 | 离线回放 | 5 | 8 | 3 |
 | 9 | 质量闸门体系 | 8 | 42 | 6 |
 | 10 | CLI 帮助契约 | 10 | 14 | 0 |
-| 11 | 交付即验证 | 2 | 3 | 0 |
+| 11 | 交付即验证 | 3 | 4 | 0 |
 
 ## 特性 1 · AI 链路与离线回放
 
@@ -31,8 +31,8 @@
 
 | 子特性 | 名称 | 目标 | 一类（用例数）| 二类 |
 |---|---|---|---|---|
-| 1.1 | AI 链路与离线回放 | 真 AI 链路（all --ai）与离线回放（录像）各自可独立跑通（不含已删除的手搓链路） | `test_acceptance_entry.py`(8)、`test_offline_chain_python.py`(9) | `verify_e2e_scenario1_online.py` |
-| 1.2 | 统一验收入口 | 四条验收原则能用一条命令跑完（run_acceptance）。[!] 跳过策略（如 --skip-ai 必须显式留痕、SKIP != 通过）的判据物理住在 tests/特性9-质量闸门体系/，按「登记目录 == 物理目录」登记在 9.2 | `test_acceptance_entry.py`(8) | - |
+| 1.1 | AI 链路与离线回放 | 真 AI 链路（all --ai）与离线回放（录像）各自可独立跑通（不含已删除的手搓链路） | `test_acceptance_entry.py`(10)、`test_offline_chain_python.py`(9) | `verify_e2e_scenario1_online.py` |
+| 1.2 | 统一验收入口 | 四条验收原则能用一条命令跑完（run_acceptance）。[!] 跳过策略（如 --skip-ai 必须显式留痕、SKIP != 通过）的判据物理住在 tests/特性9-质量闸门体系/，按「登记目录 == 物理目录」登记在 9.2 | `test_acceptance_entry.py`(10) | - |
 | 1.3 | 单包即离线可跑 | 无外网机器解压交付包即可离线跑通 AI 链路（录像随代码包一起发，只有一个 zip） | `test_render_entrypoint.py`(2) | `verify_offline_delivery.py` |
 
 ## 特性 2 · 语义识别与步骤编排
@@ -65,6 +65,8 @@
 | 3.7 | 行内单元格定位 | 行锚 + 单元格：列的指定方式（多列 by）与支持的 op（不只 click） | `test_row_cell_col_by.py`(12)、`test_row_cell_ops.py`(10) | - |
 | 3.8 | 重复控件信号与行定位闸门 | 同一容器内重复出现的控件（表格每行一个）收敛成一条并标 `multi_match`，AI 据此给行定位（`row_index`）；生成期拦下「引用重复控件却没给行定位」的步骤。**框架确定性兜底（V8.4.6）**：模型不写也不阻塞 —— 能由用例结构判死的（刚新增行 -> `row_index=-1`）由 `apply_row_locator_fallback()` 补上（只认精确键、宁漏不误伤、出现行锚后不再兜底），判不出来的照旧报红；字段口径只有一处（`ROW_LOCATOR_FIELDS` + `has_row_locator()`）**行内定位走多命中（V8.4.6）**：`_act_row` 不再先走要求语义唯一的 `_loc()`（行内同名列控件必然多个 -> 会被判死），改走探测期录下的「锚点 + 容器内相对语义」（`scope_locate`）拿多命中 locator 再 `.nth(行号)`；行内 `select` 未给 value 时与非行内**同口径**（选第一个真选项、留痕、无选项才报错） | `test_multi_match_signal.py`(18)、`test_row_locate_uses_scope.py`(4)、`test_row_index_lands_in_case.py`(5)、`test_elementmap_readers_accept_list_form.py`(3) | - |
 | 3.9 | 元素自身 id 定位档 | 元素**自身**带稳定 `id` 时，给定位链多一档：`test_id` > `element_id` > 锚点下钻 > `role+name` ——有些控件的祖先链里**没有任何可锚容器**（容器是裸 `<div>`），若它又与别的控件同名，`role+name` **必然歧义**；此时 `id` 是唯一可用的稳定身份（实测：订单详情页底部那个「保存」与行工具栏「保存」撞名，而它自身 id 唯一 -> 靠这一档定住）。口径：采集进条目 -> 进运行时快照白名单 -> 定位链一档；**不进 AI 提示词、也不进录像结构键**（省 token 且不让录像失效）；改回任何一环都会被判据抓住（含「白名单静默丢弃」这个最隐蔽的坑） | `test_element_id_is_captured_and_used.py`(7) | - |
+| 3.10 | 可点击性补探 | 默认选择器看不见、但实测能点的元素（裸 div onclick / 无 href 的 a / canvas / img 等）也要进清单 —— 显式事件处理器直接采信，纯样式信号（cursor:pointer / tabindex / contenteditable）需两条互相印证；宁可漏补也不制造假控件（噪音 = 没提示） | `test_clickable_probe_signals.py`(11) | - |
+| 3.11 | 视觉 grounding 兜底 | 确定性定位（语义 + a11y + 可点击性补探）都失败时，用截图向多模态模型要 0-1000 归一化坐标 -> 按截图实际尺寸换算像素 -> 点击 -> **校验有没有生效**（签名没变就报 no-effect，绝不报成功）；空回复做一次收紧重试（国产模型思考模式会吃光 token 预算）；失败只报原因不抛；不是主路径，只在兜底时调用。真机实测：同一页 4 个同名按钮中定位指定那一行，偏差 8.5 px、命中；定位单按钮偏差 0.8 px | `test_visual_grounding.py`(18) | - |
 
 ## 特性 4 · 选错控件兜底
 
@@ -176,4 +178,5 @@
 |---|---|---|---|---|
 | 11.1 | 验证入口契约（两档重试口径） | `cli verify` 独立入口的契约（能单独重跑，不必再走一遍 explore）；两档重试的能力口径：① 产出物被质量闸拦下（写死行数据 / 严重误选 / 必填未编排 / 行定位缺失）-> 带原因重生成；② 生成脚本后真跑一次 -> 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、回放同样可带失败原因推进重试轮、退出码可区分（2 产出侧 / 3 实跑侧）。[!] V8.6.3：本特性**只挂物理住在本目录的判据**；两档重试的其余判据物理住在 tests/特性2-语义识别与步骤编排/（登记在 2.2），按「登记目录 == 物理目录」不在此重复挂。[!] V8.6.4：原 `test_retry_is_bounded`（被特性2 严格覆盖）、原只查「全文 >= 1 次」的 `test_replay_mode_does_not_retry`（删任一档都不红）已删。[!] V8.7.2（契约变更）：回放**不再**一刀切跳过重试 —— 重试会把失败原因写进 prompt，下一轮 prompt 就不是「同一份录像」；录像若录了那一轮就该推进（否则「失败→修复」永远不可离线复演）。强判据由此改名并改契约：`test_replay_advances_to_next_round_in_both_retry_paths` 钉「两档各自都允许推进」+「分支体不许是 break / exit 3」+「缺录像必须 exit 2 报缺」；「白转」防线改由 `_should_retry_again` 有界约束 + 缺录像 fail loud 覆盖 | `test_verify_entry_contract.py`(5)、`test_verify_observability.py`(10)、`test_verify_concurrent_and_skip.py`(15) | - |
 | 11.2 `[判据住特性2]` | 实跑档重试（判据住特性2） | 实跑档（generate + 逐条实跑）失败 -> 带原因整轮重来；回放同样带失败原因推进（缺录像 exit 2 报缺）；实跑未过 exit 3 —— 能力口径保留在本条；其判据（test_ai_retry_contract / test_ai_retry_same_cause，前者 V8.6.4 第二批由 test_ai_retry_loop 改名 —— 它守的是「上限 / 回炉 / 接线」契约）物理住在 tests/特性2-语义识别与步骤编排/，按「登记目录 == 物理目录」登记在 2.2 | - | - |
+| 11.3 | 失败取证（CDP 证据包） | 失败时能拿出客观证据而不是一段 AI 的理由：CDP 抓 console / 异常 / network / 性能指标 / 无障碍树摘要，落成证据包；非 Chromium 系降级为 supported=False + 原因（绝不报错、也不假装拿到数据）；事件条数有上限且截断留痕；证据包里的敏感头（Authorization / Cookie / Set-Cookie / X-Api-Key 等）必须脱敏—— 证据包会被转发，脱敏是交付安全的一部分 | `test_failure_evidence_cdp.py`(12) | - |
 

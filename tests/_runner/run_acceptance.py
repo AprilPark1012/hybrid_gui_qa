@@ -126,6 +126,12 @@ def _verdict(rc: int, allow_skip: bool = False) -> str:
     但在报告里仍然**如实列出**（不许被吞成"通过"了事）。
     [!] 其余任何一步跳过仍然是 skip（R7 硬口径：SKIP ≠ 通过）。
     """
+    # [!] 幂等的关键：调用方有时直接塞进来一个**判定字符串**（如场景2 的 `ok_skipped`），
+    #     它既不是 0 也不是 3，落到下面会被判成 fail —— 这是本文件自己的 bug
+    #     （2026-10-31 实测：场景2 恒 ok_skipped，于是 e2e 那一步**每次都红**，
+    #     而它自己的子汇总写着「通过 3 · 失败 0」，看着像别的地方坏了）。
+    if isinstance(rc, str) and rc in ("ok", "ok_skipped", "skip", "fail"):
+        return rc
     if rc == 0:
         return "ok"
     if rc == 3:

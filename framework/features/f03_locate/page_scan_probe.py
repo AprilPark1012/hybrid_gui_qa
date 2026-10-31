@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 from framework.features.f03_locate.probe import probe_page
 from framework.features.f03_locate.expandable_probe import expand_and_collect
 from framework.features.f03_locate.editable_probe import enter_editable_and_collect
+from framework.features.f03_locate.clickable_probe import probe_clickable_extras
 from framework.features.f02_semantic.explorer_explore import _try_collect_modal_items, _merge_items
 
 __all__ = ["ScanResult", "scan_page"]
@@ -58,6 +59,7 @@ class ScanResult:
     base_items: list[dict] = field(default_factory=list)
     menu_items: list[dict] = field(default_factory=list)
     modal_items: list[dict] = field(default_factory=list)
+    clickable_items: list[dict] = field(default_factory=list)
 
     @property
     def base_count(self) -> int:
@@ -71,6 +73,11 @@ class ScanResult:
     def modal_count(self) -> int:
         return len(self.modal_items)
 
+    @property
+    def clickable_count(self) -> int:
+        """默认选择器看不见、但实测能点的元素数（A+ 档补进来的那批）。"""
+        return len(self.clickable_items)
+
 
 def scan_page(
     page,
@@ -80,6 +87,7 @@ def scan_page(
     with_expand: bool = True,
     with_modal: bool = True,
     with_editable: bool = True,
+    with_clickable: bool = True,
     settle_s: float = 2.5,
 ) -> ScanResult:
     """在**已就绪**的页面上做完一套标准探测。
@@ -90,6 +98,9 @@ def scan_page(
       with_expand: 是否做「可展开容器」补充（隐藏菜单里的控件靠它才拿得到）。
       with_modal : 是否做「弹窗/弹层」补充。
       with_editable: 是否做「编辑态/动态新增」补充（点「编辑」「新增」各一次再重采，探完复原）。
+      with_clickable: 是否做「可点击性」补充（A+ 档能力2）—— 把默认选择器看不见、
+                      但实测能点的元素（裸 div onclick / 无 href 的 a / canvas 等）补进清单。
+                      关掉：HYBRID_CLICKABLE_PROBE=0。
       settle_s   : 展开后等待新控件出现的最长时间（有界轮询，不是固定 sleep）。
 
     返回 `ScanResult`。
@@ -117,6 +128,16 @@ def scan_page(
     if with_editable:
         edit_items = enter_editable_and_collect(page, base + menu + modal, settle_s=settle_s)
 
+    # 3.6) 可点击性补探（A+ 档能力2，2026-10-31）
+    #      为什么需要：默认选择器只认 button/input/select/textarea/a[href] + 少量 role，
+    #      而老系统里大量可点元素是裸 div[onclick] / 无 href 的 a / canvas，
+    #      这类元素**两条路都看不见**（a11y 树也把它们降级成纯文本）-> AI 以为"这里不能点"。
+    #      判定口径见 clickable_probe.judge_clickable（显式 handler 直接信；纯样式信号要两条互相印证）。
+    clickable: list[dict] = []
+    if with_clickable:
+        clickable = probe_clickable_extras(page, base + menu + modal + edit_items,
+                                          page_name=page_name)
+
     # 4) 打页名标签（跨页路径要求每一项都带 page）
     if tag_page and page_name:
         for it in menu:
@@ -125,13 +146,19 @@ def scan_page(
             it["page"] = page_name
         for it in edit_items:
             it["page"] = page_name
+        for it in clickable:
+            it["page"] = page_name
 
     # 5) 合并成一份清单（与 explore 侧同源的合并语义）
-    merged = _merge_items(_merge_items(_merge_items(base, menu), modal), edit_items)
+    merged = _merge_items(
+        _merge_items(_merge_items(_merge_items(base, menu), modal), edit_items),
+        clickable,
+    )
 
     return ScanResult(
         items=merged,
         base_items=base,
         menu_items=menu,
         modal_items=modal,
+        clickable_items=clickable,
     )

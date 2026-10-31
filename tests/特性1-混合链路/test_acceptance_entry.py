@@ -23,6 +23,10 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# [!] 本文件多处 `import run_acceptance`，它在 tests/_runner/ 下：
+#     不显式加这一条就只能靠"别的模块先 import 过"才跑得起来 —— 单独跑这个文件会
+#     ModuleNotFoundError（2026-10-31 实测；全量跑时被前面的模块掩盖，属隐式顺序依赖）。
+sys.path.insert(0, str(REPO / "tests" / "_runner"))
 
 ENTRY = REPO / "tests" / "_runner" / "run_acceptance.py"
 SCEN1 = REPO / "tests" / "特性8-离线回放" / "verify_e2e_scenario3_replay.py"
@@ -88,6 +92,27 @@ def test_summarize_skip_is_not_pass():
     assert ra.summarize([("a", "ok"), ("b", "fail")])[-1] == 1
     # 负向自证：失败优先于跳过（两者都有时不能报 3 把失败藏起来）
     assert ra.summarize([("a", "fail"), ("b", "skip")])[-1] == 1, "有失败时不许退化成「跳过」"
+
+
+def test_verdict_is_idempotent_on_verdict_strings():
+    """★ `_verdict` 必须幂等：喂进去**判定字符串**要原样返回。
+
+    为什么（2026-10-31 实测的真 bug）：`step_e2e` 里场景2 直接塞 `"ok_skipped"`，
+    而 `_verdict("ok_skipped")` 既不是 0 也不是 3 -> 落到 `return "fail"`，
+    于是 E2E 那一步**每次都红**，可它自己的子汇总写着「通过 3 · 跳过 0 · 失败 0」——
+    红在收尾、证据在中间，很容易把人引去查别的地方（fail-fast 还会连带跳过二类）。
+    负向自证：把幂等分支摘掉，本条必红。
+    """
+    import run_acceptance as ra
+    for s in ("ok", "ok_skipped", "skip", "fail"):
+        assert ra._verdict(s) == s, f"[NG] 判定字符串 %r 被二次判定成 %r" % (s, ra._verdict(s))
+
+
+def test_e2e_step_treats_ok_skipped_as_not_fail():
+    """场景2 在本版是 `ok_skipped`（无手搓用例）—— 它**不许**把 E2E 整体判成 fail。"""
+    import run_acceptance as ra
+    worst = 1 if any(ra._verdict(rc) == "fail" for rc in ("ok", "ok_skipped")) else 0
+    assert worst == 0, "[NG] ok_skipped 被判成了失败"
 
 
 def test_scenario1_offline_verifier_exists_and_is_falsifiably_offline():

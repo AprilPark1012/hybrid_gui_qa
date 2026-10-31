@@ -231,7 +231,7 @@ output/ log/  运行期证据：`output/element_maps/`（**elementMap 是交付�
 
 - **培训页 [`docs/training.html`](docs/training.html)**（团队主文档，由 `build_tools/build_html.py` 生成）：
   1 为什么是「混合」· 2 目录结构 · 3 整体流程 · 4 场景/用例怎么写 · 5 函数调用地图 ·
-  6 框架特性设计实现（11 特性 / 54 子特性）· 7 常见坑 · 8 动手跑一遍（含**环境变量与运行开关**表）· 9 收尾
+  6 框架特性设计实现（11 特性 / 58 子特性）· 7 常见坑 · 8 动手跑一遍（含**环境变量与运行开关**表）· 9 收尾
 - **发行说明 [`releases/RELEASE_NOTES_V*.md`](releases/)**：每版改了什么（**变更日志都在这里**，随交付包一并发出）
 - **字段契约**：`scenarios/README.md`（场景文件）+ 培训页第 4 章（用例文件）
 - **框架判据**：一类 `test_*.py` / 二类 `verify_*.py` 都按**特性**住在 `tests/特性N-.../` 下（`test_*` 秒级、不需要 demo；`verify_*` 端到端且含**负向证伪**）；`tests/_helpers/` 是共享辅助模块（**不含任何 `test_*`**），`tests/_runner/` 是二类入口与工具

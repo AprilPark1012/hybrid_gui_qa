@@ -1606,6 +1606,14 @@ TUNABLE_CATALOG: list[tuple[str, str, str]] = [
      "动作后置校验的严格模式（1=开）：页面出现**拒绝提示**时直接判失败（CI 零兜底）"),
     ("HYBRID_EDITABLE_PROBE", "1",
      "「编辑态/动态新增」补探开关：探测时点一次「编辑」「新增」再重采（有些控件只在编辑态才存在）"),
+    ("HYBRID_VISION_GROUNDING", "1",
+     "「视觉 grounding 兜底」开关（A+ 档）：确定性定位全失败时，用截图向多模态模型要归一化坐标"
+     "再点击并校验生效。模型走 LLM_MODEL（需具备视觉能力）；0=关。它不在主路径上，"
+     "只在兜底时被调用，关掉只会少一层保底，不影响正常定位"),
+    ("HYBRID_CLICKABLE_PROBE", "1",
+     "「可点击性」补探开关（A+ 档）：探测时把默认选择器看不见、但实测能点的元素"
+     "（裸 div onclick / 无 href 的 a / canvas 等）补进清单 —— 显式事件处理器直接采信，"
+     "纯样式信号（cursor:pointer / tabindex / contenteditable）需两条互相印证才采信。0=关"),
     ("HYBRID_EDIT_VERBS", "(空)",
      "追加「进编辑态」动词（逗号分隔）—— 框架内置表不含业务专有词"),
     ("HYBRID_ADD_VERBS", "(空)",

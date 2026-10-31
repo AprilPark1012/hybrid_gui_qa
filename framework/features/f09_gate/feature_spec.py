@@ -243,6 +243,23 @@ FEATURES = [
                       "改回任何一环都会被判据抓住（含「白名单静默丢弃」这个最隐蔽的坑）",
                  class1=["test_element_id_is_captured_and_used.py"],
                  class2=[]),
+            dict(no="3.10", name="可点击性补探", goal="默认选择器看不见、但实测能点的元素（裸 div onclick / 无 href 的 a / "
+                                                     "canvas / img 等）也要进清单 —— 显式事件处理器直接采信，纯样式信号"
+                                                     "（cursor:pointer / tabindex / contenteditable）需两条互相印证；"
+                                                     "宁可漏补也不制造假控件（噪音 = 没提示）",
+                 class1=["test_clickable_probe_signals.py"],
+                 class2=[]),
+
+            dict(no="3.11", name="视觉 grounding 兜底", goal="确定性定位（语义 + a11y + 可点击性补探）都失败时，"
+                                                     "用截图向多模态模型要 0-1000 归一化坐标 -> 按截图实际尺寸换算像素 -> 点击 -> "
+                                                     "**校验有没有生效**（签名没变就报 no-effect，绝不报成功）；"
+                                                     "空回复做一次收紧重试（国产模型思考模式会吃光 token 预算）；"
+                                                     "失败只报原因不抛；不是主路径，只在兜底时调用。"
+                                                     "真机实测：同一页 4 个同名按钮中定位指定那一行，偏差 8.5 px、命中；"
+                                                     "定位单按钮偏差 0.8 px",
+                 class1=["test_visual_grounding.py"],
+                 class2=[]),
+
         ],
     ),
 
@@ -530,6 +547,15 @@ FEATURES = [
                       "前者 V8.6.4 第二批由 test_ai_retry_loop 改名 —— 它守的是「上限 / 回炉 / 接线」契约）"
                       "物理住在 tests/特性2-语义识别与步骤编排/，按「登记目录 == 物理目录」登记在 2.2",
                  class1=[], class2=[], status="判据住特性2"),
+            dict(no="11.3", name="失败取证（CDP 证据包）",
+                 goal="失败时能拿出客观证据而不是一段 AI 的理由：CDP 抓 console / 异常 / network / "
+                      "性能指标 / 无障碍树摘要，落成证据包；非 Chromium 系降级为 supported=False + 原因"
+                      "（绝不报错、也不假装拿到数据）；事件条数有上限且截断留痕；"
+                      "证据包里的敏感头（Authorization / Cookie / Set-Cookie / X-Api-Key 等）必须脱敏"
+                      "—— 证据包会被转发，脱敏是交付安全的一部分",
+                 class1=["test_failure_evidence_cdp.py"],
+                 class2=[]),
+
         ],
     ),
 ]

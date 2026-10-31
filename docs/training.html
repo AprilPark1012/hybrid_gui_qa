@@ -1301,16 +1301,16 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
 <!-- ========== 6. 框架特性设计实现说明（按特性/子特性 · 以代码为基准） ========== -->
 <section>
-  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 55 子特性）</h2>
+  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 58 子特性）</h2>
   <p class="sec-sub">第 5 章 5.2 讲「一条主线上有什么」；本章按 <b>特性 -&gt; 子特性</b> 横向拆开：每个子特性给「<b>关键实现逻辑</b> + <b>函数调用关系</b> + <b>证据（判据文件）</b>」，并配一张<b>图例</b>。编号 / 名称 / 目标 / 判据归属<b>直接读单一来源</b> <span class="code-inline">framework/features/f09_gate/feature_spec.py</span> 渲染（它同时被 <span class="code-inline">build_tools/build_feature_map.py</span> 渲染成 <span class="code-inline">docs/feature_map.md</span>）；实现逻辑以 <span class="code-inline">framework/</span> 下的<b>真实代码为准</b>。</p>
-  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 55 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
+  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 58 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
   <div class="card"><h4 style="margin-bottom:8px">图例 0 · 端到端函数调用地图（cli 是总入口，两条路——真 AI 链路 / 离线回放——共用同一条确定性下游）</h4><svg viewBox="0 0 920 252" width="100%" height="auto" role="img" style="background:#0d1117;border-radius:10px;padding:4px;display:block"><defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#64748b"/></marker></defs><rect x="40" y="14" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="40" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">python -m framework.cli  ->  main()</text><rect x="40" y="76" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="102" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_explore()  ->  explorer.ai_explore()</text><rect x="40" y="138" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="164" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_generate()  ->  generator.generate_scripts()</text><rect x="40" y="200" width="560" height="42" rx="9" fill="#0f2a20" stroke="#22c55e" stroke-width="1.2"/><text x="320" y="226" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_run()  ->  pytest  ->  生成物 _harness._act / _loc / _assert_*</text><line x1="320" y1="56" x2="320" y2="74" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="118" x2="320" y2="136" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="180" x2="320" y2="198" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><rect x="648" y="86" width="252" height="94" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="110" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">probe 层（只描述、不定位）</text><text x="774" y="132" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">scan_page / probe_page</text><text x="774" y="150" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">expandable / editable / modal</text><text x="774" y="168" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">anchor + path（容器下钻）</text><line x1="648" y1="110" x2="602" y2="104" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><line x1="648" y1="158" x2="602" y2="162" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><rect x="648" y="198" width="252" height="46" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="218" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">locator_bridge.resolve_locator()</text><text x="774" y="235" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">Tier1 精确 -> Tier2 指纹（唯一性校验）</text><line x1="648" y1="221" x2="602" y2="221" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/></svg></div>
   <div class="card">
-    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 55 子特性）</h4>
+    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 58 子特性）</h4>
     <table class="tbl"><tr><th style="width:46px">No</th><th style="width:230px">特性</th><th style="width:110px">key</th><th style="width:64px">子特性</th><th>目标</th></tr>
     <tr><td>1</td><td><b>AI 链路与离线回放</b></td><td><span class="code-inline">mixed_chain</span></td><td>3</td><td>只剩真 AI 链路（all --ai）与离线回放两种运行形态：都能跑通，且有一条统一验收入口</td></tr>
     <tr><td>2</td><td><b>语义识别与步骤编排</b></td><td><span class="code-inline">semantic</span></td><td>4</td><td>把「人的自然语言」变成「可执行的步骤序列」—— 面向生成，对人友好也对机器友好</td></tr>
-    <tr><td>3</td><td><b>分层定位与控件识别</b></td><td><span class="code-inline">locate</span></td><td>9</td><td>在生产系统的复杂页面上仍能唯一定位到目标控件 —— 面向执行</td></tr>
+    <tr><td>3</td><td><b>分层定位与控件识别</b></td><td><span class="code-inline">locate</span></td><td>11</td><td>在生产系统的复杂页面上仍能唯一定位到目标控件 —— 面向执行</td></tr>
     <tr><td>4</td><td><b>选错控件兜底</b></td><td><span class="code-inline">ambiguity</span></td><td>4</td><td>同名/同区域控件不许被选错；选不准就大声失败，绝不静默点到错的</td></tr>
     <tr><td>5</td><td><b>用例脚本数据三层分离</b></td><td><span class="code-inline">layers</span></td><td>5</td><td>用例（意图）/ 脚本（可执行）/ 数据（多变）三层各司其职，数据变了不用改用例</td></tr>
     <tr><td>6</td><td><b>自愈闭环 Healer</b></td><td><span class="code-inline">healer</span></td><td>1</td><td>定位失败时能自动修复并留痕（当前无判据，属规划中）</td></tr>
@@ -1318,7 +1318,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <tr><td>8</td><td><b>离线回放</b></td><td><span class="code-inline">replay</span></td><td>5</td><td>没有外网的机器也能跑 AI 链路 —— 靠 LLM 录像</td></tr>
     <tr><td>9</td><td><b>质量闸门体系</b></td><td><span class="code-inline">gate</span></td><td>8</td><td>框架自己守自己：布局/命名/环境/交付/就绪/安全六类契约，坏了就红</td></tr>
     <tr><td>10</td><td><b>CLI 帮助契约</b></td><td><span class="code-inline">cli</span></td><td>10</td><td>命令行对新手友好：帮助自动覆盖、参数错必报错、退出码能区分好坏</td></tr>
-    <tr><td>11</td><td><b>交付即验证</b></td><td><span class="code-inline">verify</span></td><td>2</td><td>两档验证：① 产出物被闸门拦下 -&gt; 带具体原因让 AI 重生成；② 生成脚本后真跑一次 -&gt; 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、回放同样可带失败原因推进重试轮（缺录像 exit 2 报缺）、退出码可区分（2 产出侧 / 3 实跑侧）</td></tr>
+    <tr><td>11</td><td><b>交付即验证</b></td><td><span class="code-inline">verify</span></td><td>3</td><td>两档验证：① 产出物被闸门拦下 -&gt; 带具体原因让 AI 重生成；② 生成脚本后真跑一次 -&gt; 失败带原因整轮重来。两档都有界（HYBRID_AI_RETRY 默认 2 / 上界 5）、回放同样可带失败原因推进重试轮（缺录像 exit 2 报缺）、退出码可区分（2 产出侧 / 3 实跑侧）</td></tr>
     </table>
   </div>
   <section class="feat">
@@ -1332,7 +1332,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>真 AI 链路与离线回放都在下游汇合于 <span class="code-inline">cases/*.json</span>：(1) 真 AI 链路 <span class="code-inline">cli.py::cmd_explore()</span> -> <span class="code-inline">explorer.ai_explore()</span> 产 ElementMap，再由 <span class="code-inline">case_builder.elementmap_to_cases_file()</span> 落 <span class="code-inline">cases/ai_*.json</span>（默认落盘，<span class="code-inline">--no-cases</span> 关）；(2) 离线回放：<span class="code-inline">--llm-cassette</span> 走 <span class="code-inline">explorer._replay_from_cassette()</span>（不联网、不要 key），出来是同一套用例。两条路产物形态一致，下游完全共用（手搓链路已在 V8.6 删除）。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">main()</span> -> <span class="code-inline">cmd_explore()</span> -> <span class="code-inline">_collect_pages_context()</span> -> <span class="code-inline">page_scan.scan_page()</span> -> <span class="code-inline">probe.probe_page()</span> -> ElementMap -> <span class="code-inline">elementmap_to_cases_file()</span> -> cases；cases -> <span class="code-inline">generate_scripts()</span> -> <span class="code-inline">_render_pytest_case()</span> -> scripts/generated/；scripts -> <span class="code-inline">cmd_run()</span> -> pytest -> 生成物 <span class="code-inline">_harness._act/_loc</span> -> <span class="code-inline">locator_bridge.resolve_locator()</span>。</p>
       <div class="flow2"><span class="fnode">cases/*.json</span><span class="farrow">-></span><span class="fnode g">generate_scripts()</span><span class="farrow">-></span><span class="fnode">scripts/generated/*.py</span><span class="farrow">-></span><span class="fnode">pytest（零 token）</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_acceptance_entry.py（8 条）</span> <span class="code-inline">tests/特性1-混合链路/test_offline_chain_python.py（9 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性1-混合链路/verify_e2e_scenario1_online.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_acceptance_entry.py（10 条）</span> <span class="code-inline">tests/特性1-混合链路/test_offline_chain_python.py（9 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性1-混合链路/verify_e2e_scenario1_online.py</span></p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-1.2" data-sub="1.2"><span class="sno">1.2</span>统一验收入口</h5>
@@ -1340,7 +1340,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b><span class="code-inline">tests/_runner/run_acceptance.py</span> 把 R7 四项（框架自测 / 特性自测 / demo 新鲜度 / E2E 三场景）收成一条命令，顺序按「便宜先跑 + fail fast」：[0] 闸门自检 -> [1] demo 新鲜度 -> [2] 框架自测 <span class="code-inline">pytest tests/</span> -> [3] E2E 场景3->2->1 -> [4] 特性自测。退出码：0 通过 / 1 有失败 / 2 用法错 / 3 有跳过（<b>SKIP != 通过</b>）。跳过策略（如 <span class="code-inline">--skip-ai</span>）必须显式留痕、如实标「跳过」且不算通过，不许静默少跑。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">run_acceptance.py</span> -> 子进程跑<span class="code-inline">verify_*.py</span> / <span class="code-inline">pytest</span> -> 汇总退出码；<span class="code-inline">--list</span> 只看不跑、<span class="code-inline">--only</span> 只跑某项、<span class="code-inline">--keep-going</span> 跑完再汇总。</p>
       <div class="flow2"><span class="fnode">run_acceptance.py</span><span class="farrow">-></span><span class="fnode g">step_gate_selfcheck()</span><span class="farrow">-></span><span class="fnode g">step_framework_selftest()</span><span class="farrow">-></span><span class="fnode">step_e2e() 3->2->1</span><span class="farrow">-></span><span class="fnode r">SKIP != 通过 -> exit 3</span><span class="farrow">-></span><span class="fnode">退出码 0/1/2/3</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_acceptance_entry.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_acceptance_entry.py（10 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-1.3" data-sub="1.3"><span class="sno">1.3</span>单包即离线可跑</h5>
@@ -1459,6 +1459,16 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <h5 class="subfeat-title" id="sub-3.9" data-sub="3.9"><span class="sno">3.9</span>元素自身 id 定位档</h5>
       <p class="codesrc"><b>目标：</b>元素**自身**带稳定 `id` 时，给定位链多一档：`test_id` &gt; `element_id` &gt; 锚点下钻 &gt; `role+name` ——有些控件的祖先链里**没有任何可锚容器**（容器是裸 `&lt;div&gt;`），若它又与别的控件同名，`role+name` **必然歧义**；此时 `id` 是唯一可用的稳定身份（实测：订单详情页底部那个「保存」与行工具栏「保存」撞名，而它自身 id 唯一 -&gt; 靠这一档定住）。口径：采集进条目 -&gt; 进运行时快照白名单 -&gt; 定位链一档；**不进 AI 提示词、也不进录像结构键**（省 token 且不让录像失效）；改回任何一环都会被判据抓住（含「白名单静默丢弃」这个最隐蔽的坑）</p>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_element_id_is_captured_and_used.py（7 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+    </div>
+    <div class="subfeat">
+      <h5 class="subfeat-title" id="sub-3.10" data-sub="3.10"><span class="sno">3.10</span>可点击性补探</h5>
+      <p class="codesrc"><b>目标：</b>默认选择器看不见、但实测能点的元素（裸 div onclick / 无 href 的 a / canvas / img 等）也要进清单 —— 显式事件处理器直接采信，纯样式信号（cursor:pointer / tabindex / contenteditable）需两条互相印证；宁可漏补也不制造假控件（噪音 = 没提示）</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_clickable_probe_signals.py（11 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+    </div>
+    <div class="subfeat">
+      <h5 class="subfeat-title" id="sub-3.11" data-sub="3.11"><span class="sno">3.11</span>视觉 grounding 兜底</h5>
+      <p class="codesrc"><b>目标：</b>确定性定位（语义 + a11y + 可点击性补探）都失败时，用截图向多模态模型要 0-1000 归一化坐标 -&gt; 按截图实际尺寸换算像素 -&gt; 点击 -&gt; **校验有没有生效**（签名没变就报 no-effect，绝不报成功）；空回复做一次收紧重试（国产模型思考模式会吃光 token 预算）；失败只报原因不抛；不是主路径，只在兜底时调用。真机实测：同一页 4 个同名按钮中定位指定那一行，偏差 8.5 px、命中；定位单按钮偏差 0.8 px</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_visual_grounding.py（18 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
   <section class="feat">
@@ -1794,6 +1804,11 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <h5 class="subfeat-title" id="sub-11.2" data-sub="11.2"><span class="sno">11.2</span>实跑档重试（判据住特性2） <span class="code-inline">[判据住特性2]</span></h5>
       <p class="codesrc"><b>目标：</b>实跑档（generate + 逐条实跑）失败 -&gt; 带原因整轮重来；回放同样带失败原因推进（缺录像 exit 2 报缺）；实跑未过 exit 3 —— 能力口径保留在本条；其判据（test_ai_retry_contract / test_ai_retry_same_cause，前者 V8.6.4 第二批由 test_ai_retry_loop 改名 —— 它守的是「上限 / 回炉 / 接线」契约）物理住在 tests/特性2-语义识别与步骤编排/，按「登记目录 == 物理目录」登记在 2.2</p>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b>无<br><b>证据 · 二类（特性自证）：</b>无</p>
+    </div>
+    <div class="subfeat">
+      <h5 class="subfeat-title" id="sub-11.3" data-sub="11.3"><span class="sno">11.3</span>失败取证（CDP 证据包）</h5>
+      <p class="codesrc"><b>目标：</b>失败时能拿出客观证据而不是一段 AI 的理由：CDP 抓 console / 异常 / network / 性能指标 / 无障碍树摘要，落成证据包；非 Chromium 系降级为 supported=False + 原因（绝不报错、也不假装拿到数据）；事件条数有上限且截断留痕；证据包里的敏感头（Authorization / Cookie / Set-Cookie / X-Api-Key 等）必须脱敏—— 证据包会被转发，脱敏是交付安全的一部分</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性11-交付即验证/test_failure_evidence_cdp.py（12 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
   <div class="card" style="border-top:4px solid var(--brand);margin-top:18px"><h4>[pin] 读本章的顺序建议（新手路线）</h4><p style="font-size:.94rem;line-height:1.8">1 先读 <b>特性 1</b>（AI 链路怎么产出用例）-&gt; 2 再读 <b>特性 5</b>（用例/脚本/数据怎么分工，这是你日常改的东西）-&gt; 3 跑一遍第 5 章 5.2 的六个阶段对照代码 -&gt; 4 遇到点不中元素时回读 <b>特性 2 / 3 / 4</b> -&gt; 5 交付或换机器前读 <b>特性 8</b>（录像与出厂闸门）-&gt; 6 改完代码用 <b>特性 9 / 10</b> 的入口自检。</p><p class="codesrc">判据条数以实跑输出为准（<span class="code-inline">pytest tests/ -q</span> · <span class="code-inline">python tests/_runner/run_acceptance.py</span>）；本页条数是生成时从测试文件数出来的（与 build_feature_map.py 同口径）。</p></div>
@@ -3127,7 +3142,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       </ul>
     </li>
     <li class="toc-chap has-sub">
-      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 55 子特性）</a>
+      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 58 子特性）</a>
       <ul class="toc-l2">
         <li class="toc-feat">
           <a href="#feat-1">特性 1AI 链路与离线回放 mixed_chain</a>
@@ -3161,6 +3176,8 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
             <li><a href="#sub-3.7">3.7行内单元格定位</a></li>
             <li><a href="#sub-3.8">3.8重复控件信号与行定位闸门</a></li>
             <li><a href="#sub-3.9">3.9元素自身 id 定位档</a></li>
+            <li><a href="#sub-3.10">3.10可点击性补探</a></li>
+            <li><a href="#sub-3.11">3.11视觉 grounding 兜底</a></li>
           </ul>
         </li>
         <li class="toc-feat">
@@ -3248,6 +3265,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
           <ul class="toc-l3 open" id="tocsub-feat-11">
             <li><a href="#sub-11.1">11.1验证入口契约（两档重试口径）</a></li>
             <li><a href="#sub-11.2">11.2实跑档重试（判据住特性2） [判据住特性2]</a></li>
+            <li><a href="#sub-11.3">11.3失败取证（CDP 证据包）</a></li>
           </ul>
         </li>
       </ul>
