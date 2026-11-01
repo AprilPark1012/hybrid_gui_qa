@@ -61,11 +61,42 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.8.0"
+VERSION = "8.9.0"
 VERSION_DATE = "2026-11-01"
 CHANGELOG = [
     dict(
-        version="8.8.0", date="2026-11-01", tag="当前版本",
+        version="8.9.0", date="2026-11-01", tag="当前版本",
+        theme="<b>补三块「旁路」能力：看不见的控件要看得见、失败了要拿得出证据、"
+              "定位不到时还有最后一手</b>",
+        summary="V8.8.0 之后的三块缺口，各自补一件工具，<b>主链路一行没改</b>。<br><br>"
+                "<b>[1] 可点击性补探</b>：默认选择器只认 button/input/select/textarea/a[href] 加少量 role，"
+                "而老系统里大量可点元素是裸 <code>div[onclick]</code>、无 <code>href</code> 的 "
+                "<code>a</code>、<code>canvas</code> —— <b>无障碍树也看不见它们</b>，于是 AI 以为"
+                "「这里不能点」。现在按 DOM 事实判定：显式事件处理器（<code>onclick</code> / CDP 查到的 "
+                "click 监听器）直接采信；纯样式信号（<code>cursor:pointer</code> / <code>tabindex</code> / "
+                "<code>contenteditable</code>）需<b>两条互相印证</b>才采信（单条会造大量假控件，噪音=没提示）。"
+                "实测：非语义页 6 个可点元素，默认只探到 1 个，补探到 5 个，并正确拒绝只有 "
+                "<code>cursor:pointer</code> 的那个。<br><br>"
+                "<b>[2] CDP 失败取证</b>：失败了只有一段 AI 的理由等于没有证据。"
+                "用 <code>context.new_cdp_session(page)</code> 直接抓 console / 异常 / network / "
+                "性能指标 / 无障碍树摘要，落成证据包 —— <b>不需要换驱动</b>。"
+                "网络头里的 <code>Authorization</code> / <code>Cookie</code> / <code>Set-Cookie</code> / "
+                "<code>X-Api-Key</code> <b>一律脱敏</b>（证据包会被转发，这是交付安全）；"
+                "非 Chromium 系降级为 <code>supported=False</code> + 原因，绝不把用例搞挂。<br><br>"
+                "<b>[3] 视觉 grounding 兜底</b>：语义 + a11y + 补探全都定位不到时，最后还剩像素。"
+                "截图交给多模态模型要 <b>0-1000 归一化坐标</b>，按截图实际尺寸换算，点下去，"
+                "<b>然后校验有没有生效</b>（签名没变就报 no-effect，绝不报成功）。"
+                "实测：4 个完全同名按钮中定位指定那一行，偏差 8.5px 命中，点击后输入框被填入。<br><br>"
+                "<b>顺带修两个框架自己的 bug</b>：验收入口 <code>_verdict()</code> 不认判定字符串 "
+                "-> 场景2 的 <code>ok_skipped</code> 被判成 fail -> E2E 恒红，而且 fail-fast 会"
+                "<b>连带跳过整段二类特性自测</b>（看着像跑过验收，最慢那段其实一次没跑）；"
+                "另有一条判据文件缺 <code>tests/_runner</code> 的 sys.path（单独跑必 ModuleNotFoundError）。",
+        notes="三块能力全部有判据（41 条）且做过 8 组负向自证。<br>"
+              "<b>诚实边界</b>：取证与视觉兜底目前是「可调用、已实测」的能力，"
+              "<b>尚未在 run 失败路径上自动触发</b> —— 那要改执行期契约，单独立项评审。",
+    ),
+    dict(
+        version="8.8.0", date="2026-11-01", tag="上一版",
         theme="<b>从「只认一家前端框架的写法」变成「按数据特征自己认」</b>"
               " —— 行内列标识 / 行定位都不再写死属性名",
         summary="V8.7.30 打结时你问了关键一问：<i>「你的修法有没有完全照搬 demo app 的 HTML 结构，"

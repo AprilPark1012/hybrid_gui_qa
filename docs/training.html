@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.8.0）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.0）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.8.0 · 2026-11-01　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.0 · 2026-11-01　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -2107,9 +2107,125 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.8.0</b>（2026-11-01）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.9.0</b>（2026-11-01）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.8.0</span><span class="cl-date">2026-11-01</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>从「只认一家前端框架的写法」变成「按数据特征自己认」</b> —— 行内列标识 / 行定位都不再写死属性名</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.9.0</span><span class="cl-date">2026-11-01</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>补三块「旁路」能力：看不见的控件要看得见、失败了要拿得出证据、定位不到时还有最后一手</b></span></div>
+      <p class="cl-sum">V8.8.0 之后的三块缺口，各自补一件工具，<b>主链路一行没改</b>。<br><br><b>[1] 可点击性补探</b>：默认选择器只认 button/input/select/textarea/a[href] 加少量 role，而老系统里大量可点元素是裸 <code>div[onclick]</code>、无 <code>href</code> 的 <code>a</code>、<code>canvas</code> —— <b>无障碍树也看不见它们</b>，于是 AI 以为「这里不能点」。现在按 DOM 事实判定：显式事件处理器（<code>onclick</code> / CDP 查到的 click 监听器）直接采信；纯样式信号（<code>cursor:pointer</code> / <code>tabindex</code> / <code>contenteditable</code>）需<b>两条互相印证</b>才采信（单条会造大量假控件，噪音=没提示）。实测：非语义页 6 个可点元素，默认只探到 1 个，补探到 5 个，并正确拒绝只有 <code>cursor:pointer</code> 的那个。<br><br><b>[2] CDP 失败取证</b>：失败了只有一段 AI 的理由等于没有证据。用 <code>context.new_cdp_session(page)</code> 直接抓 console / 异常 / network / 性能指标 / 无障碍树摘要，落成证据包 —— <b>不需要换驱动</b>。网络头里的 <code>Authorization</code> / <code>Cookie</code> / <code>Set-Cookie</code> / <code>X-Api-Key</code> <b>一律脱敏</b>（证据包会被转发，这是交付安全）；非 Chromium 系降级为 <code>supported=False</code> + 原因，绝不把用例搞挂。<br><br><b>[3] 视觉 grounding 兜底</b>：语义 + a11y + 补探全都定位不到时，最后还剩像素。截图交给多模态模型要 <b>0-1000 归一化坐标</b>，按截图实际尺寸换算，点下去，<b>然后校验有没有生效</b>（签名没变就报 no-effect，绝不报成功）。实测：4 个完全同名按钮中定位指定那一行，偏差 8.5px 命中，点击后输入框被填入。<br><br><b>顺带修两个框架自己的 bug</b>：验收入口 <code>_verdict()</code> 不认判定字符串 -> 场景2 的 <code>ok_skipped</code> 被判成 fail -> E2E 恒红，而且 fail-fast 会<b>连带跳过整段二类特性自测</b>（看着像跑过验收，最慢那段其实一次没跑）；另有一条判据文件缺 <code>tests/_runner</code> 的 sys.path（单独跑必 ModuleNotFoundError）。</p>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
+        <li>三</li>
+        <li>块</li>
+        <li>能</li>
+        <li>力</li>
+        <li>全</li>
+        <li>部</li>
+        <li>有</li>
+        <li>判</li>
+        <li>据</li>
+        <li>（</li>
+        <li>4</li>
+        <li>1</li>
+        <li> </li>
+        <li>条</li>
+        <li>）</li>
+        <li>且</li>
+        <li>做</li>
+        <li>过</li>
+        <li> </li>
+        <li>8</li>
+        <li> </li>
+        <li>组</li>
+        <li>负</li>
+        <li>向</li>
+        <li>自</li>
+        <li>证</li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>诚</li>
+        <li>实</li>
+        <li>边</li>
+        <li>界</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>：</li>
+        <li>取</li>
+        <li>证</li>
+        <li>与</li>
+        <li>视</li>
+        <li>觉</li>
+        <li>兜</li>
+        <li>底</li>
+        <li>目</li>
+        <li>前</li>
+        <li>是</li>
+        <li>「</li>
+        <li>可</li>
+        <li>调</li>
+        <li>用</li>
+        <li>、</li>
+        <li>已</li>
+        <li>实</li>
+        <li>测</li>
+        <li>」</li>
+        <li>的</li>
+        <li>能</li>
+        <li>力</li>
+        <li>，</li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>尚</li>
+        <li>未</li>
+        <li>在</li>
+        <li> </li>
+        <li>r</li>
+        <li>u</li>
+        <li>n</li>
+        <li> </li>
+        <li>失</li>
+        <li>败</li>
+        <li>路</li>
+        <li>径</li>
+        <li>上</li>
+        <li>自</li>
+        <li>动</li>
+        <li>触</li>
+        <li>发</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>—</li>
+        <li>—</li>
+        <li> </li>
+        <li>那</li>
+        <li>要</li>
+        <li>改</li>
+        <li>执</li>
+        <li>行</li>
+        <li>期</li>
+        <li>契</li>
+        <li>约</li>
+        <li>，</li>
+        <li>单</li>
+        <li>独</li>
+        <li>立</li>
+        <li>项</li>
+        <li>评</li>
+        <li>审</li>
+        <li>。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.8.0</span><span class="cl-date">2026-11-01</span><span class="cl-tag">上一版</span><span class="cl-theme"><b>从「只认一家前端框架的写法」变成「按数据特征自己认」</b> —— 行内列标识 / 行定位都不再写死属性名</span></div>
       <p class="cl-sum">V8.7.30 打结时你问了关键一问：<i>「你的修法有没有完全照搬 demo app 的 HTML 结构，做了比较多的假设？换个别的业务系统就不行了。」</i> 逐行审查后确认 —— <b>div 网格那处只认 <code>data-field</code></b>，正是「只支持一家」的典型。<br><br>真实生产系统的行内列标识是前端框架生成的自定义属性：<code>tr[data-rowid="row_1"]</code> + <code>td[data-colid="col_57"]</code>，<b>但属性名叫什么各家不同</b>（第三家可能是 <code>data-rid</code>/<code>data-colx</code>）。<br><br><b>[核心] 按「值的分布」推断，完全不看属性名</b>：某个属性<b>每行都有值且值互不相同</b> -> 行标识；某个属性<b>同一列位置跨行取到相同值</b> -> 列标识。两种分布在数学上互斥，所以根本不需要识别名字。<code>data-field</code> 降为「推断不出来时的兜底默认值」，老页面行为零变化。<br><br><b>[不只是探测层]</b> 执行层同样写死了 <code>td[data-field='X']</code> —— 只修探测层会留下半修状态：清单里明明有 <code>col_57</code>，真跑却去找 <code>td[data-field='col_57']</code>。<b>两层都改成属性名无关</b>。<br><br><b>[行定位新增最稳一档]</b> 原来只有 <code>row_text</code>（行内文本重复就歧义）/ <code>row_index</code>（行序一变就指错行）。生产系统的 <code>data-rowid</code> <b>值稳定、与行序无关</b>，优先级变成 <code>row_id</code> &gt; <code>row_text</code> &gt; <code>row_index</code>；三档都没有<b>仍然不生成行步</b>（不许偷偷按第一行猜）。<br><br><b>[硬证据页]</b> <code>demo/attr_name_variant.html</code> 用 <code>data-rid</code>/<code>data-colx</code> + div 网格 —— <b>换掉属性名照样认</b>。验收标准就是它：把推断逻辑改回写死 <code>data-colid</code>，这个页面必须变红。<br><br><b>[本轮抓到 5 个静默失效]</b> 老判据 mock 只收一个参数（类型错被吞 -> 判据假空）；<b>Playwright <code>locator.evaluate</code> 只收一个 arg</b>（传两个被吞 -> 有 row_id 却不走行内定位）；XPath 无转义语法（含引号必须退档，不许拼坏表达式）；<code>by=header</code> 缺列序时不许默认第 1 列；<code>[!]</code> 符号写进 .py 是 GBK 编不了的字（第 4 次）。<br><br><b>[真链路]</b> 按固定流程清场重跑：<code>登录前置 ok</code>、7 页全探到（发票页 <b>201 控件 · 弹窗补充 0</b>）、<code>pytest scripts/</code> <b>1 passed in 202.42s</b>、全量 <b>1503 passed</b>。7 页数字与 V8.7.30 完全一致 —— 这正是改对了的表现（demo 用 data-field，推断结果还是它）。</p>
     </div>
     <div class="card cl">
@@ -3102,7 +3218,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.8.0</b>（2026-11-01）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.0</b>（2026-11-01）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
