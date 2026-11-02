@@ -93,10 +93,19 @@ def test_verify_pytest_call_passes_timeout() -> None:
     # 定位试跑那一处 run_capture（含 pytest 与 node 变量）
     i = src.find('"-m", "pytest", node')
     assert i > 0, "找不到 --verify 的试跑调用"
-    # 超时值在 try 之前取（_vto = config.verify_timeout_s()），所以要**向前也看一段**
-    seg = src[max(0, i - 400):i + 420]
+    # 超时值在 try 之前算（`_vto, _vto_why = _verify_budget_s(...)`），所以要**向前也看一段**。
+    # [!] 窗口必须够宽：2026-11-02 在预算计算前又插了「本次试跑预算 …」的提示打印，
+    #     原 400 字窗口一下就不够了 -> 假红。**钉的是「调用前必须算出超时」这个契约，
+    #     不是它离调用多少行**，所以窗口给足。
+    seg = src[max(0, i - 1600):i + 420]
     assert "timeout=" in seg, "--verify 的 pytest 调用必须显式传 timeout="
-    assert "verify_timeout_s()" in seg, "超时必须走 verify_timeout_s()（唯一入口，可调）"
+    # [!] 2026-11-02 起入口收敛成 `_verify_budget_s(script)`：默认预算仍来自
+    #     `config.verify_timeout_s()`（可调），但会按**用例声明的业务等待**上调
+    #     （写死 900 会把「慢机器上正常等待」误判成「卡死」）。判据钉「唯一入口」+「可调」。
+    assert ("_verify_budget_s(" in seg or "verify_timeout_s()" in seg), \
+        "超时必须走唯一入口（_verify_budget_s / verify_timeout_s）"
+    assert "verify_timeout_s()" in src, \
+        "默认预算必须仍来自可调的 verify_timeout_s()"
 
 
 def test_verify_handles_timeout_expired() -> None:
@@ -105,9 +114,16 @@ def test_verify_handles_timeout_expired() -> None:
     assert "subprocess.TimeoutExpired" in src, "必须捕获 subprocess.TimeoutExpired"
     i = src.find("except subprocess.TimeoutExpired")
     assert i > 0
-    seg = src[i:i + 900]
+    # [!] 判据钉的是「这段报错必须包含哪些信息」，**不钉字符窗口**：
+    #     2026-11-02 给超时分支加了「停在哪一步 / 落盘 / 看门狗栈」之后，原来 900 字的窗口
+    #     把那句手工复跑命令挤到窗口外 -> 假红。窗口一变就红的判据钉的是排版，不是契约。
+    _tail = src[i:]
+    _end = _tail.find("\n        except ")
+    seg = _tail if _end < 0 else _tail[:_end]
     assert "HYBRID_VERIFY_TIMEOUT" in seg, "报错里要告诉用户调哪个值"
     assert "pytest" in seg, "报错里要给出手工复跑命令（定位停在哪一步）"
+    assert "_last_step_line" in seg, "超时必须说「停在哪一步」（原来把已捕获输出丢了）"
+    assert "_find_watchdog_tail" in seg, "超时必须区分「看门狗有栈」与「看门狗没装上」"
 
 
 # ---------- ③ 阻塞前必须交代进度（可观测性） ----------
@@ -155,8 +171,11 @@ def test_verify_timeout_registered_in_cli_config() -> None:
     """`HYBRID_VERIFY_TIMEOUT` 必须登记进 `cli config` 的清单。"""
     src = _cli()
     assert '"HYBRID_VERIFY_TIMEOUT"' in src, "必须登记进环境变量清单（否则用户不知道能调）"
-    i = src.find('"HYBRID_VERIFY_TIMEOUT"')
-    seg = src[i:i + 500]
+    # [!] 必须定位到**登记清单那一处**，不能 `find` 第一次出现（2026-11-02：第一次出现
+    #     已经变成预算推导函数里的 env 读取，导致「默认值 900」找不到 -> 假红）。
+    i = src.find('("HYBRID_VERIFY_TIMEOUT", "900"')
+    assert i > 0, "cli config 清单里没登记默认值 900"
+    seg = src[i:i + 700]
     assert "900" in seg, "登记项要写出默认值"
     assert "卡" in seg or "超时" in seg, "登记项要说明它治的是什么问题"
 

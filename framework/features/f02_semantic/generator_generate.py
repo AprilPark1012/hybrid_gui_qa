@@ -2681,6 +2681,14 @@ _READY_TIMEOUT_MS = int(os.environ.get("HYBRID_READY_TIMEOUT", "15000"))
 _READY_SELECTOR = os.environ.get("HYBRID_READY_SELECTOR", "")
 _READY_REQUIRED = os.environ.get("HYBRID_READY_REQUIRED", "0") == "1"
 _LOCATE_TIMEOUT_MS = int(os.environ.get("HYBRID_LOCATE_TIMEOUT", "5000"))
+#: 「快速窗口」毫秒数：>0 时**所有定位等待都被夹到它以内**。
+#: 只在一个地方开：`_replay_last_search`（「等状态流转」里**每轮**都要重放一次搜索点击）。
+#: 为什么必须夹（2026-11-02 用户 Windows 实测）：慢目标下 `HYBRID_LOCATE_TIMEOUT` 会被调到 15000，
+#: 加上 Playwright 动作默认可操作性等待，一次重放要 50 秒 -> 160s 的业务等待只够轮询 **3 轮**，
+#: 订单自动关闭约 150s，正好卡临界 —— 第 1 轮红、第 2 轮才绿（AI 白重试一次）。
+#: 夹到 2 秒后同样 160s 能轮询几十轮，业务值一变就能探到。
+#: 注意：这里**只夹等待上限**，不改变「探到就走」的语义，也不影响任何带 `timeout_ms=` 的显式声明。
+_FAST_WINDOW_MS = 0
 _READY_WARNED = set()
 
 
@@ -2700,6 +2708,8 @@ def _count_attached(cand, timeout_ms=None):
     等到 attached 再数，判定语义不变（仍要求 count==1 才接受）。
     """
     ms = _LOCATE_TIMEOUT_MS if timeout_ms is None else timeout_ms
+    if _FAST_WINDOW_MS:                       # 见 _FAST_WINDOW_MS 注释：只在重放搜索期间开
+        ms = min(ms, _FAST_WINDOW_MS)
     try:
         cand.first.wait_for(state="attached", timeout=ms)
     except Exception:
@@ -2987,6 +2997,20 @@ def _click_row_cell(page, row_text, cell_field, tabs=None, op="click", value=Non
     return None
 
 
+def _wait_summary(page, rounds, slow_n, slowest, slowest_at, refresh) -> None:
+    """有界等待的**一条**汇总：轮了几次、几轮慢、最慢一轮多久。
+
+    为什么要有：日志只写「轮询 3 轮」时，看不出是「业务值真的没变」还是
+    「轮询太慢吃掉了轮次」—— 两者修法完全不同（改断言 vs 降每轮成本）。
+    这条总结一次把两种可能分开，且只占一行（逐轮日志会刷屏，实测打过 243 行）。
+    """
+    try:
+        _log(page, "info", f"有界等待汇总：共 {rounds} 轮 · 慢轮 {slow_n} 个（单轮>=5s）"
+                           f" · 最慢 {slowest:.1f}s（第 {slowest_at} 轮）· refresh={refresh}")
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
 def _assert_first_row(page, field, expected, desc="", timeout_ms=None, refresh="none"):
     """断言「表格第一行的某列」包含期望文本 —— 直接覆盖「新建后列表第一条记录就是它」这类需求。
 
@@ -3008,8 +3032,10 @@ def _assert_first_row(page, field, expected, desc="", timeout_ms=None, refresh="
     _attempts = 0
     _last = ""
     _seen_zero = False
+    _slow_n, _slowest, _slowest_at = 0, 0.0, 0
     while True:
         _attempts += 1
+        _round_t0 = _t.time()                  # 本轮计时（慢轮要打出来，见下）
         try:
             _cell = page.locator(_sel)
             _n = _cell.count()
@@ -3018,12 +3044,20 @@ def _assert_first_row(page, field, expected, desc="", timeout_ms=None, refresh="
             else:
                 _last = str(_cell.first.inner_text() or "")
                 if str(expected) in _last:
+                    # [!] 成功这一轮也要算进「最慢」（它还没走到下面的逐轮计时）——
+                    #   否则首轮就探到的等待会报「最慢 0.0s（第 0 轮）」，看着像数据坏了。
+                    _cur_round = _t.time() - _round_t0
+                    _wait_summary(page, _attempts, _slow_n,
+                                  max(_slowest, _cur_round),
+                                  _slowest_at or (_attempts if _cur_round >= _slowest else 0),
+                                  refresh)
                     _ok(page, desc or f"第一行 {field} 含 {expected}",
                         f"first_row_{field}", f"{expected}（轮询 {_attempts} 轮 · refresh={refresh}）")
                     return
         except Exception as _e:                                # noqa: BLE001
             _last = f"{type(_e).__name__}: {str(_e)[:80]}"
         if _t.time() >= _deadline:
+            _wait_summary(page, _attempts, _slow_n, _slowest, _slowest_at, refresh)
             if _seen_zero and _last == "":
                 raise AssertionError(
                     f"表格没有第一行、或没有 {field!r} 列 —— 无法验证「第一条记录」（断言无法成立）")
@@ -3038,6 +3072,21 @@ def _assert_first_row(page, field, expected, desc="", timeout_ms=None, refresh="
         elif refresh == "research":
             _replay_last_search(page)
         page.wait_for_timeout(500)
+        # [!] 每轮成本必须可观测，但**绝不能刷屏**（2026-11-02 实测踩到：阈值定 1.0s 时，
+        #   健康机器上每轮约 1.09s（含 500ms 固定间隔）-> 一次等待打了 **243 行**，
+        #   把真正的信号埋掉了）。口径改成两级：
+        #     · 个体：只在单轮 >= 5s 时逐条打，且**最多 3 条**（慢轮通常是同一类问题）；
+        #     · 汇总：退出时**一条**总结（总轮数 / 慢轮数 / 最慢一轮）——
+        #       「160s 只赌 3 次」这种事实在总结里一眼可见。
+        _round_s = _t.time() - _round_t0
+        if _round_s > _slowest:
+            _slowest, _slowest_at = _round_s, _attempts
+        if _round_s >= 5.0:
+            _slow_n += 1
+            if _slow_n <= 3:
+                _log(page, "info", f"轮询第 {_attempts} 轮花了 {_round_s:.1f}s"
+                                   f"（读到 {_last[:40]!r} · refresh={refresh}）—— 单轮太慢会把"
+                                   f"业务等待的轮次吃掉，检查定位/就绪预算或页面响应")
 
 
 # ---- 用例间数据复位（2026-09-14）----
@@ -4008,19 +4057,41 @@ def _is_search_semantic(name: str) -> bool:
     return ("搜索" in n) or ("查询" in n) or ("search" in n)
 
 
-def _replay_last_search(page) -> bool:
+def _replay_last_search(page, budget_ms: int = 2000) -> bool:
     """重放**最近一次搜索点击**（P22 · refresh=research）。
 
     为什么需要：demo 列表页不会自己刷新（无 setInterval）-> 「等状态流转」必须**重新取数**。
     口径 = 用同一个语义名再点一次那次搜索按钮；没有记录就如实返回 False（不猜、不假装重放过了）。
+
+    [!] **必须走「快速窗口」**（2026-11-02 定）：这是**每轮轮询都要做一次**的动作。
+    慢目标下定位预算会被调到 15000ms，加上 Playwright 动作默认可操作性等待，
+    一次重放实测要 **50 秒** —— 于是 160s 的业务等待只够轮询 **3 轮**，而订单自动关闭
+    约 150s，正好卡在临界：第 1 轮红、第 2 轮才绿（白烧一轮 AI 生成 + 一轮试跑）。
+    夹到 `budget_ms` 之后同样 160s 能轮询几十轮，业务值一变就探到。
+    探不到就如实返回 False（下一轮继续），**不假装重放成功**。
     """
+    global _FAST_WINDOW_MS
     if not _LAST_SEARCH:
         return False
+    _prev_fast, _prev_default = _FAST_WINDOW_MS, None
+    _FAST_WINDOW_MS = int(budget_ms)
     try:
+        try:                                   # 动作本身（可操作性等待）也按这个上限
+            _prev_default = page.default_timeout
+            page.set_default_timeout(int(budget_ms))
+        except Exception:                                      # noqa: BLE001
+            _prev_default = None
         _act(page, "click", semantic=_LAST_SEARCH)
         return True
     except Exception:                                          # noqa: BLE001
         return False
+    finally:
+        _FAST_WINDOW_MS = _prev_fast
+        if _prev_default is not None:
+            try:
+                page.set_default_timeout(int(_prev_default))
+            except Exception:                                  # noqa: BLE001
+                pass
 
 
 def _assert_wait_text(page, text, timeout_ms=30000, refresh="none", desc="", selector=""):

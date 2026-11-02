@@ -478,15 +478,23 @@ class Cassette:
             if r < min_ratio:                          # quick_ratio 是上界，先廉价筛掉
                 continue
             r = _difflib.SequenceMatcher(None, old_scen, _cur_scen).ratio()
-            if r >= min_ratio and (best is None or r > best[0]):
-                best = (r, f, rec)
+            if r >= min_ratio:
+                # [!] 平手必须**取最新录制**（与上一级「结构键」同一口径）。
+                #   2026-11-02 实测踩到：同一场景先后录过两份录像（前一份的答案后来被
+                #   L0 闸门判不合格，后一份才是对的），两份**场景相似度都是 100%**，
+                #   原实现 `r > best[0]` 平手不换 -> 保留的是字典序先扫到的那份 = **更旧的那份**
+                #   -> 回放永远拿到那份已被判死的答案 -> 闸门拦下 -> 重试还是同一份 -> 死路。
+                #   结构键那一级 2026-10-11 就修过「同键取最新」，这一级漏了同一个口径。
+                _cand = (r, str(rec.get("created_at") or ""), f.name, f, rec)
+                if best is None or (_cand[0], _cand[1]) > (best[0], best[1]):
+                    best = _cand
         if best:
-            r, f, rec = best
+            r, _created, _fname, f, rec = best
             self.hits += 1
             self.last_key = rec.get("key") or key
             self.last_match = "fuzzy"
             print(f"      [cassette] [!] 用的是**相似度匹配**的录像 {f.name}"
-                  f"（相似度 {r*100:.2f}%；不是逐字相同）")
+                  f"（场景相似度 {r*100:.2f}%）")
             print(f"      [cassette] [!] 该录像录于 {rec.get('created_at','?')}"
                   f"（框架 {rec.get('framework_version','?')}）—— 步骤是**当时那批数据**下做的判断，"
                   f"换了数据请人工核对产物。")

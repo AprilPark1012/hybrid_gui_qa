@@ -40,6 +40,7 @@ AprilPark1012在 Windows 上跑 `explore --ai`（默认带 --verify），报：
 from __future__ import annotations
 
 import os
+import os
 import subprocess
 import sys
 
@@ -121,3 +122,57 @@ def run_capture(cmd: list[str], *, cwd=None, env: dict | None = None,
         cmd, cwd=cwd, env=utf8_env(env), timeout=timeout,
         capture_output=True, text=True, encoding="utf-8", errors="replace", **kw,
     )
+
+
+def run_capture_tree(cmd: list[str], *, cwd=None, env: dict | None = None,
+                     timeout: float | None = None) -> subprocess.CompletedProcess:
+    """同 `run_capture`，但**超时时连同子进程树一起杀掉**，并把已捕获的输出带回。
+
+    为什么需要这一版（2026-11-02 用户实测「试跑 900s 卡住」时定）：
+      1) `subprocess.run(timeout=...)` 只杀**直接子进程**。pytest 被杀了，它拉起的
+         Chromium / 驱动进程**可能继续活着**，还占着被测服务与端口 -> 紧接着的重试轮
+         在更脏的环境里跑，于是「两轮都超时」，现象看着像"这条用例就是跑不完"。
+      2) 超时那一下**已经把输出抓在手里了**（`TimeoutExpired.stdout/stderr`），
+         原实现直接丢掉 -> 用户只能看到一句"真卡住"，不知道停在哪一步。
+         留着它，报错里就能直接给出「停在 step N」。
+
+    跨平台杀法：POSIX 用 `start_new_session=True` + `os.killpg`；
+    Windows 用 `CREATE_NEW_PROCESS_GROUP` + `taskkill /F /T`（没有 taskkill 就退回 kill）。
+    """
+    kw: dict = dict(cwd=cwd, env=utf8_env(env), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True, encoding="utf-8", errors="replace")
+    if os.name == "nt":                                            # pragma: no cover - 平台分支
+        kw["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        kw["start_new_session"] = True
+    proc = subprocess.Popen(cmd, **kw)                              # noqa: S603
+    try:
+        out, err = proc.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc)
+        try:
+            out, err = proc.communicate(timeout=15)
+        except Exception:                                           # noqa: BLE001
+            out, err = "", ""
+        exc = subprocess.TimeoutExpired(cmd, timeout or 0, output=out, stderr=err)
+        raise exc
+
+
+def _kill_tree(proc) -> None:
+    """尽力杀掉整个进程树（失败不抛：清理动作不该把报错路径搞乱）。"""
+    pid = getattr(proc, "pid", None)
+    if not pid:
+        return
+    try:
+        if os.name == "nt":                                         # pragma: no cover - 平台分支
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                           capture_output=True, timeout=20)
+        else:
+            os.killpg(os.getpgid(pid), __import__("signal").SIGKILL)
+    except Exception:                                               # noqa: BLE001
+        pass
+    try:
+        proc.kill()
+    except Exception:                                               # noqa: BLE001
+        pass

@@ -27,9 +27,11 @@
 """
 from __future__ import annotations
 import json
+import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import NoReturn
 
 from framework.shared import config
@@ -42,6 +44,7 @@ from framework.features.f07_concurrency.retention_run import (                  
     DEFAULT_KEEP_RUNS, DEFAULT_KEEP_RUN_DAYS, DEFAULT_MAX_DELETE,
     auto_prune_runs, prune_runs,
 )
+from framework.shared.text_io import run_capture_tree  # noqa: F401
 from framework.shared.text_io import force_stdio, fs_encoding_warning, run_capture, utf8_env
 
 
@@ -743,6 +746,7 @@ def cmd_explore(rest: list[str] = None):
     #   数字本身没错，错在**两条日志长得一样**：分不清是哪一档在重试，也数不出总共重试了几次。
     #   修法：每条重试日志都必须带 ①档位标签 ②该档第 k/N ③跨档累计第 M 次。
     retry_seq = 0
+    prev_sources: dict[str, str] | None = None   # 上一轮各用例出自哪条录像（回放模式短路用）
     while True:
         done = []           # 每轮重新收集（重跑时旧产物不该混进来）
         for idx, job in enumerate(jobs, 1):
@@ -755,6 +759,7 @@ def cmd_explore(rest: list[str] = None):
             feedback = _next_round_feedback(l1_feedback, _warns_in)
             cur_warns: list[str] = []
             prev_reason = ""
+            _prev_src = ""          # 上一轮用的是哪份录像（回放模式 L0 短路用）
             attempt = 0
             while True:
                 try:
@@ -781,6 +786,23 @@ def cmd_explore(rest: list[str] = None):
                 if qerr is None:
                     break                       # 合格 -> 收工
                 print(f"[explore] [!] [L0 产出物档] 第 {attempt + 1}/{retry_limit + 1} 次产出**校验不合格**")
+                # [!] 回放模式下的**真死路**（2026-11-02 实测）：重试的 prompt 虽然带了本轮失败原因，
+                #   但录像目录里若没有那一轮，lookup 会**回落到相似度**并选中**同一份**录像 ->
+                #   拿到的还是同一个已被判不合格的答案，转两圈白跑，最后只报"重试用尽"，
+                #   用户完全看不出"是因为录像里根本没有第二个答案"。
+                #   判据：连续两轮用的录像 key 相同 -> 立即停，并说清怎么才能拿到新答案。
+                if replay and cassette is not None:
+                    _src = cassette.source_tag()
+                    if _src and _prev_src and _src == _prev_src:
+                        print(f"[explore] [NG] 回放模式下连续两轮用的是**同一份录像**（{_src}）"
+                              f"-> 答案不会变，重试没有意义，立即停手")
+                        print("[explore]    录像里只有这一份答案（或没有「失败→修复」的下一轮）。"
+                              "要有不同的答案：① 加 --llm-record 实时调用；"
+                              "② 或到联网机器重录一份含重试轮的录像包；③ 或先修正场景/断言")
+                        print("[explore]    本轮校验给出的具体失败原因见下：")
+                        print(qerr)
+                        raise SystemExit(2)
+                    _prev_src = _src
                 if replay:
                     # V8.7.2（2026-10-25）：回放**不再**一刀切放弃重试。
                     #
@@ -824,7 +846,23 @@ def cmd_explore(rest: list[str] = None):
         # ---- L1：实跑校验（便宜的先跑已在 _explore_one 内做完 L0）----
         if not (done and do_verify):
             break
+        # [!] V8.9.1（2026-11-02 用户实测）：**回放模式下重试不产生新答案**。
+        #   录像决定内容：同一条录像重放出来的还是同一个用例。实测形态 —— 一条用例在回放里
+        #   两轮拿到**同一个 case 文件名**（同名同内容），第二轮必然重复同一个失败，
+        #   白等一个 900s 试跑窗（两轮 = 半小时，最后结论还是"不可用"）。
+        #   判据：新一轮全部用例的 `llm_source` 与上一轮**完全相同** -> 跳过重复试跑。
+        #   为什么用 llm_source 而不是"文件名相同"：文件名带秒级时间戳，换轮会变，
+        #   但它记的是**答案来自哪条录像**，那才是"会不会有新答案"的真判据。
+        if replay and prev_sources is not None:
+            cur_sources = _case_llm_sources([n for _, n in done])
+            if cur_sources and cur_sources == prev_sources:
+                print("[explore] [NG] [L1 实跑档] 回放模式下新一轮用例与上一轮**出自同一条录像**"
+                      "（llm_source 相同）-> 再试跑只会重复同一个失败，直接判不可用")
+                print("[explore]    要有不同的答案，请加 --llm-record 实时调用（或换一份录像）；"
+                      "回放模式重试只是白等")
+                raise SystemExit(3)
         ok, reasons = _verify_cases_detailed(done)
+        prev_sources = _case_llm_sources([n for _, n in done])
         if ok is not False:
             break                       # 全通过（或环境问题没跑成，不判死刑）
         if replay:
@@ -922,6 +960,116 @@ def _ai_cases_on_disk(only: list[str] | None = None) -> list[tuple[str, str]]:
             continue
         out.append((f.parent.name, cid))
     return out
+
+
+def _declared_wait_s(script_path) -> float:
+    """把生成脚本里**声明的业务等待**加起来（秒）。
+
+    为什么需要：`--verify` 的试跑超时原来是写死的 900s（按 62 步基线 360s 的 2.5 倍）。
+    但真实用例里「等订单状态按时间自动流转」这类**有界等待**是按场景声明设的（实测 4 处 × 160s）。
+    慢机器上这些等待一处都没命中时，总时长 = 正常执行（400~500s）+ 4×160s ≈ **1040s > 900s**
+    -> 用例其实**在正常地等**，却被判成「真卡住」（2026-11-02 用户 Windows 实测：同一场景
+    第 1 轮 504s / 第 2 轮 395s 正常，更早那次因此被判 900s 超时）。
+
+    口径：直接数生成脚本里的 `timeout_ms=NNNN`（那是**运行时真正会用**的预算，不是猜的）。
+    读不到就返回 0（= 退回默认预算，绝不因为读不到就把预算放大）。
+    """
+    try:
+        src = Path(script_path).read_text(encoding="utf-8", errors="replace")
+    except Exception:                                               # noqa: BLE001
+        return 0.0
+    total = 0
+    for m in re.finditer(r"timeout_ms\s*=\s*(\d+)", src):
+        try:
+            total += int(m.group(1))
+        except ValueError:
+            continue
+    return total / 1000.0
+
+
+def _verify_budget_s(script_path) -> tuple[float, str]:
+    """试跑预算 = max(默认, 基线 + 声明等待 × 1.2)。返回 (秒, 人话依据)。
+
+    **用户显式设了 `HYBRID_VERIFY_TIMEOUT` 就听用户的**（那是明确选择，不该被我改）。
+    """
+    import os as _os
+    raw = str(_os.environ.get("HYBRID_VERIFY_TIMEOUT") or "").strip()
+    if raw:
+        return config.verify_timeout_s(), f"HYBRID_VERIFY_TIMEOUT={raw}（你显式设的，框架不做推导）"
+    base = config.verify_timeout_s()
+    decl = _declared_wait_s(script_path)
+    if decl <= 0:
+        return base, f"默认 {base:.0f}s（脚本里没读到声明等待）"
+    want = 600.0 + decl * 1.2
+    if want <= base:
+        return base, f"默认 {base:.0f}s（声明等待 {decl:.0f}s 已被默认预算覆盖）"
+    return want, (f"按声明等待推导：基线 600s + 声明等待 {decl:.0f}s × 1.2 = {want:.0f}s"
+                  f"（默认 {base:.0f}s 不够 —— 有界等待在慢机器上会烧满）")
+
+
+def _case_llm_sources(names: list[str]) -> dict[str, str]:
+    """把一组用例名映射到「它的答案来自哪条录像」（case json 里的 `llm_source`）。
+
+    为什么需要：回放模式下**重试不产生新答案** —— 录像里存的是什么，重放出来就是什么。
+    实测（2026-11-02）：一条用例在回放里两轮拿到同名同内容的用例，第二轮重复同一个失败，
+    白等一个 900s 试跑窗（两轮半小时，结论还是"不可用"）。
+    判据用 `llm_source`（答案的出处）而不是文件名（带秒级时间戳，换轮就变）——
+    出处相同 = 不会有新答案。
+    读不到就返回空 dict（= 判断不了，**不短路**，宁可多试一轮也别误杀）。
+    """
+    out: dict[str, str] = {}
+    for name in names:
+        try:
+            hits = list(config.CASES_DIR.glob(f"*/{name}.json"))
+            if not hits:
+                continue
+            data = json.loads(hits[0].read_text(encoding="utf-8"))
+            src = str(data.get("llm_source") or "").strip()
+            if src:
+                out[name] = src
+        except Exception:                                           # noqa: BLE001
+            continue
+    return out
+
+
+def _last_step_line(text: str) -> str:
+    """从已捕获的 pytest 输出里揪出**最后一条用例步骤行**（形如 `[TEST] [step 164] ...`）。
+
+    为什么需要：超时判失败时，用户唯一想知道的就是"停在哪一步"。这句话原实现没有，
+    因为捕获的输出被丢掉了（2026-11-02 用户实测报「卡住」，两边都只能靠猜）。
+    抓不到就返回空串 —— 那本身也是信息（说明卡在用例开始之前）。
+    """
+    last = ""
+    for ln in (text or "").splitlines():
+        t = ln.strip()
+        if t.startswith("[TEST]") or t.startswith("[CHECK]") or t.startswith("[heal]"):
+            if "[step" in t or "setup" in t or "teardown" in t:
+                last = t
+    return last[:300]
+
+
+def _find_watchdog_tail(max_lines: int = 12) -> tuple[str, list[str]] | None:
+    """找最近一次运行的 `log/<run>/watchdog.txt` 并返回其尾部。
+
+    为什么需要：用例看门狗（HYBRID_CASE_TIMEOUT 默认 600s）会在 600s 把**所有线程栈**写进去。
+    它存在 => 600s 时用例确实还在跑（栈直接指出卡在哪一行）；
+    它不存在 => 600s 时看门狗压根没装上（卡在夹具之前），这两条路要分开说，
+    否则会把人往「某一步等不到」的方向带（用户实测就卡在这个歧义上）。
+    """
+    try:
+        from framework.shared.config import LOG_DIR
+        cands = sorted([p for p in LOG_DIR.glob("*/watchdog.txt") if p.is_file()],
+                       key=lambda p: p.stat().st_mtime, reverse=True)
+    except Exception:                                               # noqa: BLE001
+        return None
+    if not cands:
+        return None
+    p = cands[0]
+    try:
+        lines = [ln.rstrip() for ln in p.read_text(encoding="utf-8", errors="replace").splitlines()]
+    except Exception:                                               # noqa: BLE001
+        return None
+    return str(p), lines[-max_lines:]
 
 
 def _verify_cases(entries: list[tuple[str, str]]) -> bool | None:
@@ -1072,26 +1220,59 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
         node = f"{_script}::test_{name}"
         tag = f"【{label}】" if label else ""
         _p(f"  [2/2] 正在试跑 {tag}{name}（pytest 子进程，输出先被捕获、结束才显示）…")
+        _rt = time.monotonic()
+        # [!] 预算必须**在打印提示之前**算出来：先报「这次给多少秒、依据是什么」，
+        #     再开跑。顺序反了会 UnboundLocalError（踩过）。
+        _vto, _vto_why = _verify_budget_s(_script)
         _p("        提示：这类全链路用例常含「等订单状态流转」的有界等待（最长约 160s），"
            "单条 3~10 分钟属正常；想看实时进度去 log/ 下最新的 run 目录，"
            "逐条校验日志落在 output/verify/")
-        _rt = time.monotonic()
-        _vto = config.verify_timeout_s()
+        _p(f"        本次试跑预算 {_vto:.0f}s —— {_vto_why}")
         # [!] 必须给 timeout：run_capture 默认 timeout=None = 子进程卡住父进程永久等。
         try:
-            r = run_capture([sys.executable, "-m", "pytest", node, "-v", "-s"],
-                            cwd=str(config.BASE), timeout=_vto)
-        except subprocess.TimeoutExpired:
-            msg = (f"        [!] 试跑 {tag}{name} 超过 {_vto:.0f}s 仍未结束 -> 判失败"
-                   f"（这是真卡住，不是刷屏）")
-            _p(msg)
+            # [!] 必须用 run_capture_tree：`subprocess.run(timeout=)` 只杀直接子进程，
+            #     pytest 被杀后它拉起的 Chromium/驱动可能还在跑、还占着被测服务 -> 下一轮重试
+            #     在更脏的环境里跑，两轮都超时（2026-11-02 用户实测形态）。
+            r = run_capture_tree([sys.executable, "-m", "pytest", node, "-v", "-s"],
+                                 cwd=str(config.BASE), timeout=_vto)
+        except subprocess.TimeoutExpired as _exc:
+            # [!] 超时那一下**输出已经在手上**（TimeoutExpired.stdout/stderr）——
+            #     原实现直接丢掉，用户只看到一句"真卡住"，不知道停在哪个 step。
+            _partial = _exc.stdout if isinstance(_exc.stdout, (str, bytes)) else ""
+            if isinstance(_partial, bytes):
+                _partial = _partial.decode("utf-8", "replace")
+            _partial = _partial or ""
+            _step = _last_step_line(_partial)
+            _dump = vdir / f"{name}_TIMEOUT_{_now()}.log"
+            try:
+                _dump.write_text(_partial, encoding="utf-8")
+            except Exception:                                      # noqa: BLE001
+                _dump = None
+            _p(f"        [!] 试跑 {tag}{name} 超过 {_vto:.0f}s 仍未结束 -> 判失败"
+               f"（这是真卡住，不是刷屏）")
+            _p(f"            预算 {_vto:.0f}s —— {_vto_why}")
+            if _step:
+                _p(f"            **停在**：{_step}")
+            else:
+                _p("            没抓到任何用例步骤输出 -> 卡在**用例开始之前**"
+                   "（夹具/浏览器启动/服务无响应），不是某一步等不到")
+            if _dump:
+                _p(f"            已捕获输出（共 {len(_partial.splitlines())} 行）落盘：{_dump}")
+            _wd = _find_watchdog_tail()
+            if _wd:
+                _p(f"            看门狗栈（{_wd[0]}）最后 12 行：")
+                for _ln in _wd[1]:
+                    _p(f"              {_ln}")
+            else:
+                _p("            未找到 watchdog.txt -> 说明 600s 的用例看门狗**没装上**"
+                   "（= 卡在夹具之前）；否则它应先在 600s 触发并留下栈")
             _p("            可能原因：demo 服务没响应 / 订单状态一直没流转到已关闭 / "
                "某一步的元素永远等不到")
             _p("            处置：① 调大 HYBRID_VERIFY_TIMEOUT；"
                "② 或先手工跑一次该 pytest 看停在哪一步：")
             _p(f"                 python -m pytest {node} -v -s")
-            return label, name, False, (f"用例 {name} 试跑超时（>{_vto:.0f}s），"
-                                        f"多半卡在某个永远等不到的条件上")
+            return label, name, False, (f"用例 {name} 试跑超时（>{_vto:.0f}s）"
+                                        + (f"，停在：{_step}" if _step else "，卡在用例开始之前"))
         _p(f"        试跑结束 {tag}{name}（耗时 {time.monotonic() - _rt:.1f}s）")
         text = (r.stdout or "") + (r.stderr or "")
         log = vdir / f"{name}_{_now()}.log"

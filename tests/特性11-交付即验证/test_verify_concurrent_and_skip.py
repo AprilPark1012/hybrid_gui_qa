@@ -105,7 +105,10 @@ def test_verify_timeout_still_per_case() -> None:
     src = _src()
     i = src.find("def _verify_cases_detailed")
     seg = src[i:i + 12000]
-    assert "verify_timeout_s()" in seg, "必须用可配的 verify 超时"
+    # [!] 2026-11-02：入口收敛成 `_verify_budget_s(脚本)`（默认仍走可调的
+    #     verify_timeout_s()，但会按用例声明的业务等待上调，避免把「慢机器正常等待」
+    #     误判成「卡死」）。这里钉「每条独立超时 + 走唯一入口」。
+    assert ("_verify_budget_s(" in seg or "verify_timeout_s()" in seg), "必须走可配的统一预算入口"
     assert "except subprocess.TimeoutExpired" in seg, "超时必须单独捕获并判该条失败"
 
 
