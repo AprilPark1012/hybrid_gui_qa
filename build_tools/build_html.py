@@ -61,11 +61,11 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.9.2-dev"
+VERSION = "8.9.2"
 VERSION_DATE = "2026-11-03"
 CHANGELOG = [
     dict(
-        version="8.9.2-dev", date="2026-11-03", tag="内部试跑版（未正式发版）",
+        version="8.9.2", date="2026-11-03", tag="当前版本",
         theme="<b>行区信号：探测时唯一 &ne; 运行时唯一</b> —— 修「开票页只探到 1 行、</"
               "运行期变 2 行就必红」，白跑 400+ 秒的那种",
         summary="真 AI 链路实测（用户 Windows <code>all --ai</code>）：第 1 轮试跑 <b>FAILED 424.9s</b>"
@@ -94,8 +94,11 @@ CHANGELOG = [
               "本轮还修了两个自身缺陷：① 去重键用了 <code>str(step_get(...))</code>，而 <code>element</code> 可能是 "
               "<code>ElementRef</code> -> 拿到的是 repr -> 去重静默失效（实测警告仍是 6 条，修后 4 条）；"
               "② 警告标签原为「行内控件缺行定位（多匹配）」，行区那条不是多匹配，标签不能替它说谎 -> 改中性。<br>"
-              "<b>未验项</b>：提示词效果只能在<b>真 AI</b> 上验（回放验不了 AI 会不会写 <code>row_index</code>），"
-              "本版等真机一次干净 <code>all --ai</code> 确认后才转正式。",
+              "<b>真机验证（用户 Windows 真 AI <code>all --ai</code>，2026-11-03）</b>："
+              "<b>第 1 轮就 PASSED 391.6s，零重试</b>（日志里 <code>[L1 实跑档]</code> 出现 <b>0</b> 次）—— "
+              "对比 V8.9.1 同场景「第 1 轮 FAILED 424.9s → 重试 → 第 2 轮 PASSED 399.1s」，"
+              "那 7~8 分钟白跑消失了。<br>"
+              "判据 <code>test_row_zone_signal.py</code> <b>17 条</b> + 4 组负向自证；一类 <b>1590 passed</b>。",
     ),
     dict(
         version="8.9.1", date="2026-11-02", tag="上一版",

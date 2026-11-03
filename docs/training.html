@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.2-dev）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.2）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.2-dev · 2026-11-03　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.2 · 2026-11-03　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -2122,9 +2122,9 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.9.2-dev</b>（2026-11-03）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
-    <div class="card cl">
-      <div class="cl-head"><span class="cl-ver">V8.9.2-dev</span><span class="cl-date">2026-11-03</span><span class="cl-tag">内部试跑版（未正式发版）</span><span class="cl-theme"><b>行区信号：探测时唯一 &ne; 运行时唯一</b> —— 修「开票页只探到 1 行、</运行期变 2 行就必红」，白跑 400+ 秒的那种</span></div>
+    <p class="sec-sub">当前版本 <b>V8.9.2</b>（2026-11-03）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <div class="card cl cl-cur">
+      <div class="cl-head"><span class="cl-ver">V8.9.2</span><span class="cl-date">2026-11-03</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>行区信号：探测时唯一 &ne; 运行时唯一</b> —— 修「开票页只探到 1 行、</运行期变 2 行就必红」，白跑 400+ 秒的那种</span></div>
       <p class="cl-sum">真 AI 链路实测（用户 Windows <code>all --ai</code>）：第 1 轮试跑 <b>FAILED 424.9s</b>（<code>定位失败：本页有 2 个同名匹配（期次号）</code>），靠带原因重试第 2 轮才 PASSED 399.1s。<br><br><b>根因不是模型不听话，是探针的观测时机</b>：开票页<b>探测时只有 1 行</b> -> 期次号/发票行类型/数量/单位 全部 <code>multi_match=1</code> -> AI 清单里看着唯一、生成期闸门也不拦；而开票页的行数是<b>订单带入</b>的，运行期 2 行 -> 就炸。<br><br>探针能看到的<b>确定性结构事实</b>是：「该容器里有一个『新增行』动作 => 这个区必然会长多行」，与当前行数无关。<code>row_zone</code> 就是把这条事实提前说出去：<br>&nbsp;&nbsp;① <b>探针</b> <code>mark_row_zone()</code>：区内<b>当前唯一的输入类</b>控件标 <code>row_zone</code>；<br>&nbsp;&nbsp;② <b>提示词</b>单列一段「行区控件（当前唯一但会随行增长）」，要求排在新增行之后必须给 <code>row_index</code>；<br>&nbsp;&nbsp;③ <b>运行时快照</b>白名单补 <code>row_zone</code>（不补就落不了盘 = 静默失效）；<br>&nbsp;&nbsp;④ <b>框架兜底</b> R1 放宽到「<code>multi_match&gt;1</code> <b>或</b> <code>row_zone</code>」补 <code>row_index=-1</code>（只覆盖「刚点过新增行」那类能判死的情形）。<br><br><b>口径三条（不误伤的关键）</b>：只标输入类（按钮随行增长不会变成「第几行的保存」）；只标当前唯一的（<code>multi_match&gt;1</code> 已有更强信号）；<b>绝不动 <code>multi_match</code></b>（写它会让质量闸在单行场景误拦）。跨页同名控件<b>不给纯基名</b>（会补错页）。<br><br><b>诚实的边界</b>：开票页的行是「带入」的、用例里没有对该页的新增行动作 => R1 兜底<b>不覆盖</b>，而且框架<b>不能猜第几行</b>（猜 <code>-1</code> 会填到末行、静默污染数据）。所以真正能省掉那 424.9 秒的是<b>提示词</b>，兜底只盖「刚新增行」那类。</p>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
         <li>判</li>
@@ -2431,50 +2431,100 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         <li><</li>
         <li>b</li>
         <li>></li>
-        <li>未</li>
+        <li>真</li>
+        <li>机</li>
         <li>验</li>
-        <li>项</li>
+        <li>证</li>
+        <li>（</li>
+        <li>用</li>
+        <li>户</li>
+        <li> </li>
+        <li>W</li>
+        <li>i</li>
+        <li>n</li>
+        <li>d</li>
+        <li>o</li>
+        <li>w</li>
+        <li>s</li>
+        <li> </li>
+        <li>真</li>
+        <li> </li>
+        <li>A</li>
+        <li>I</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>a</li>
+        <li>l</li>
+        <li>l</li>
+        <li> </li>
+        <li>-</li>
+        <li>-</li>
+        <li>a</li>
+        <li>i</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>，</li>
+        <li>2</li>
+        <li>0</li>
+        <li>2</li>
+        <li>6</li>
+        <li>-</li>
+        <li>1</li>
+        <li>1</li>
+        <li>-</li>
+        <li>0</li>
+        <li>3</li>
+        <li>）</li>
         <li><</li>
         <li>/</li>
         <li>b</li>
         <li>></li>
         <li>：</li>
-        <li>提</li>
-        <li>示</li>
-        <li>词</li>
-        <li>效</li>
-        <li>果</li>
-        <li>只</li>
-        <li>能</li>
-        <li>在</li>
         <li><</li>
         <li>b</li>
         <li>></li>
-        <li>真</li>
+        <li>第</li>
         <li> </li>
+        <li>1</li>
+        <li> </li>
+        <li>轮</li>
+        <li>就</li>
+        <li> </li>
+        <li>P</li>
         <li>A</li>
-        <li>I</li>
+        <li>S</li>
+        <li>S</li>
+        <li>E</li>
+        <li>D</li>
+        <li> </li>
+        <li>3</li>
+        <li>9</li>
+        <li>1</li>
+        <li>.</li>
+        <li>6</li>
+        <li>s</li>
+        <li>，</li>
+        <li>零</li>
+        <li>重</li>
+        <li>试</li>
         <li><</li>
         <li>/</li>
         <li>b</li>
         <li>></li>
-        <li> </li>
-        <li>上</li>
-        <li>验</li>
         <li>（</li>
-        <li>回</li>
-        <li>放</li>
-        <li>验</li>
-        <li>不</li>
-        <li>了</li>
-        <li> </li>
-        <li>A</li>
-        <li>I</li>
-        <li> </li>
-        <li>会</li>
-        <li>不</li>
-        <li>会</li>
-        <li>写</li>
+        <li>日</li>
+        <li>志</li>
+        <li>里</li>
         <li> </li>
         <li><</li>
         <li>c</li>
@@ -2482,48 +2532,151 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         <li>d</li>
         <li>e</li>
         <li>></li>
+        <li>[</li>
+        <li>L</li>
+        <li>1</li>
+        <li> </li>
+        <li>实</li>
+        <li>跑</li>
+        <li>档</li>
+        <li>]</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li>出</li>
+        <li>现</li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>0</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>次</li>
+        <li>）</li>
+        <li>—</li>
+        <li>—</li>
+        <li> </li>
+        <li>对</li>
+        <li>比</li>
+        <li> </li>
+        <li>V</li>
+        <li>8</li>
+        <li>.</li>
+        <li>9</li>
+        <li>.</li>
+        <li>1</li>
+        <li> </li>
+        <li>同</li>
+        <li>场</li>
+        <li>景</li>
+        <li>「</li>
+        <li>第</li>
+        <li> </li>
+        <li>1</li>
+        <li> </li>
+        <li>轮</li>
+        <li> </li>
+        <li>F</li>
+        <li>A</li>
+        <li>I</li>
+        <li>L</li>
+        <li>E</li>
+        <li>D</li>
+        <li> </li>
+        <li>4</li>
+        <li>2</li>
+        <li>4</li>
+        <li>.</li>
+        <li>9</li>
+        <li>s</li>
+        <li> </li>
+        <li>→</li>
+        <li> </li>
+        <li>重</li>
+        <li>试</li>
+        <li> </li>
+        <li>→</li>
+        <li> </li>
+        <li>第</li>
+        <li> </li>
+        <li>2</li>
+        <li> </li>
+        <li>轮</li>
+        <li> </li>
+        <li>P</li>
+        <li>A</li>
+        <li>S</li>
+        <li>S</li>
+        <li>E</li>
+        <li>D</li>
+        <li> </li>
+        <li>3</li>
+        <li>9</li>
+        <li>9</li>
+        <li>.</li>
+        <li>1</li>
+        <li>s</li>
+        <li>」</li>
+        <li>，</li>
+        <li>那</li>
+        <li> </li>
+        <li>7</li>
+        <li>~</li>
+        <li>8</li>
+        <li> </li>
+        <li>分</li>
+        <li>钟</li>
+        <li>白</li>
+        <li>跑</li>
+        <li>消</li>
+        <li>失</li>
+        <li>了</li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li>判</li>
+        <li>据</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>t</li>
+        <li>e</li>
+        <li>s</li>
+        <li>t</li>
+        <li>_</li>
         <li>r</li>
         <li>o</li>
         <li>w</li>
         <li>_</li>
-        <li>i</li>
+        <li>z</li>
+        <li>o</li>
         <li>n</li>
-        <li>d</li>
         <li>e</li>
-        <li>x</li>
-        <li><</li>
-        <li>/</li>
-        <li>c</li>
-        <li>o</li>
-        <li>d</li>
-        <li>e</li>
-        <li>></li>
-        <li>）</li>
-        <li>，</li>
-        <li>本</li>
-        <li>版</li>
-        <li>等</li>
-        <li>真</li>
-        <li>机</li>
-        <li>一</li>
-        <li>次</li>
-        <li>干</li>
-        <li>净</li>
-        <li> </li>
-        <li><</li>
-        <li>c</li>
-        <li>o</li>
-        <li>d</li>
-        <li>e</li>
-        <li>></li>
-        <li>a</li>
-        <li>l</li>
-        <li>l</li>
-        <li> </li>
-        <li>-</li>
-        <li>-</li>
-        <li>a</li>
+        <li>_</li>
+        <li>s</li>
         <li>i</li>
+        <li>g</li>
+        <li>n</li>
+        <li>a</li>
+        <li>l</li>
+        <li>.</li>
+        <li>p</li>
+        <li>y</li>
         <li><</li>
         <li>/</li>
         <li>c</li>
@@ -2532,13 +2685,49 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
         <li>e</li>
         <li>></li>
         <li> </li>
-        <li>确</li>
-        <li>认</li>
-        <li>后</li>
-        <li>才</li>
-        <li>转</li>
-        <li>正</li>
-        <li>式</li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>1</li>
+        <li>7</li>
+        <li> </li>
+        <li>条</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>+</li>
+        <li> </li>
+        <li>4</li>
+        <li> </li>
+        <li>组</li>
+        <li>负</li>
+        <li>向</li>
+        <li>自</li>
+        <li>证</li>
+        <li>；</li>
+        <li>一</li>
+        <li>类</li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>1</li>
+        <li>5</li>
+        <li>9</li>
+        <li>0</li>
+        <li> </li>
+        <li>p</li>
+        <li>a</li>
+        <li>s</li>
+        <li>s</li>
+        <li>e</li>
+        <li>d</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
         <li>。</li>
       </ul></div>
     </div>
@@ -3912,7 +4101,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.2-dev</b>（2026-11-03）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.2</b>（2026-11-03）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
