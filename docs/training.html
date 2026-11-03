@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.1）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.2-dev）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.1 · 2026-11-02　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.2-dev · 2026-11-03　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1301,16 +1301,16 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
 <!-- ========== 6. 框架特性设计实现说明（按特性/子特性 · 以代码为基准） ========== -->
 <section>
-  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 60 子特性）</h2>
+  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 61 子特性）</h2>
   <p class="sec-sub">第 5 章 5.2 讲「一条主线上有什么」；本章按 <b>特性 -&gt; 子特性</b> 横向拆开：每个子特性给「<b>关键实现逻辑</b> + <b>函数调用关系</b> + <b>证据（判据文件）</b>」，并配一张<b>图例</b>。编号 / 名称 / 目标 / 判据归属<b>直接读单一来源</b> <span class="code-inline">framework/features/f09_gate/feature_spec.py</span> 渲染（它同时被 <span class="code-inline">build_tools/build_feature_map.py</span> 渲染成 <span class="code-inline">docs/feature_map.md</span>）；实现逻辑以 <span class="code-inline">framework/</span> 下的<b>真实代码为准</b>。</p>
-  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 60 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
+  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 61 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
   <div class="card"><h4 style="margin-bottom:8px">图例 0 · 端到端函数调用地图（cli 是总入口，两条路——真 AI 链路 / 离线回放——共用同一条确定性下游）</h4><svg viewBox="0 0 920 252" width="100%" height="auto" role="img" style="background:#0d1117;border-radius:10px;padding:4px;display:block"><defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#64748b"/></marker></defs><rect x="40" y="14" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="40" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">python -m framework.cli  ->  main()</text><rect x="40" y="76" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="102" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_explore()  ->  explorer.ai_explore()</text><rect x="40" y="138" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="164" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_generate()  ->  generator.generate_scripts()</text><rect x="40" y="200" width="560" height="42" rx="9" fill="#0f2a20" stroke="#22c55e" stroke-width="1.2"/><text x="320" y="226" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_run()  ->  pytest  ->  生成物 _harness._act / _loc / _assert_*</text><line x1="320" y1="56" x2="320" y2="74" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="118" x2="320" y2="136" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="180" x2="320" y2="198" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><rect x="648" y="86" width="252" height="94" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="110" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">probe 层（只描述、不定位）</text><text x="774" y="132" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">scan_page / probe_page</text><text x="774" y="150" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">expandable / editable / modal</text><text x="774" y="168" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">anchor + path（容器下钻）</text><line x1="648" y1="110" x2="602" y2="104" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><line x1="648" y1="158" x2="602" y2="162" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><rect x="648" y="198" width="252" height="46" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="218" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">locator_bridge.resolve_locator()</text><text x="774" y="235" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">Tier1 精确 -> Tier2 指纹（唯一性校验）</text><line x1="648" y1="221" x2="602" y2="221" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/></svg></div>
   <div class="card">
-    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 60 子特性）</h4>
+    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 61 子特性）</h4>
     <table class="tbl"><tr><th style="width:46px">No</th><th style="width:230px">特性</th><th style="width:110px">key</th><th style="width:64px">子特性</th><th>目标</th></tr>
     <tr><td>1</td><td><b>AI 链路与离线回放</b></td><td><span class="code-inline">mixed_chain</span></td><td>3</td><td>只剩真 AI 链路（all --ai）与离线回放两种运行形态：都能跑通，且有一条统一验收入口</td></tr>
     <tr><td>2</td><td><b>语义识别与步骤编排</b></td><td><span class="code-inline">semantic</span></td><td>4</td><td>把「人的自然语言」变成「可执行的步骤序列」—— 面向生成，对人友好也对机器友好</td></tr>
-    <tr><td>3</td><td><b>分层定位与控件识别</b></td><td><span class="code-inline">locate</span></td><td>11</td><td>在生产系统的复杂页面上仍能唯一定位到目标控件 —— 面向执行</td></tr>
+    <tr><td>3</td><td><b>分层定位与控件识别</b></td><td><span class="code-inline">locate</span></td><td>12</td><td>在生产系统的复杂页面上仍能唯一定位到目标控件 —— 面向执行</td></tr>
     <tr><td>4</td><td><b>选错控件兜底</b></td><td><span class="code-inline">ambiguity</span></td><td>4</td><td>同名/同区域控件不许被选错；选不准就大声失败，绝不静默点到错的</td></tr>
     <tr><td>5</td><td><b>用例脚本数据三层分离</b></td><td><span class="code-inline">layers</span></td><td>5</td><td>用例（意图）/ 脚本（可执行）/ 数据（多变）三层各司其职，数据变了不用改用例</td></tr>
     <tr><td>6</td><td><b>自愈闭环 Healer</b></td><td><span class="code-inline">healer</span></td><td>1</td><td>定位失败时能自动修复并留痕（当前无判据，属规划中）</td></tr>
@@ -1469,6 +1469,11 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <h5 class="subfeat-title" id="sub-3.11" data-sub="3.11"><span class="sno">3.11</span>视觉 grounding 兜底</h5>
       <p class="codesrc"><b>目标：</b>确定性定位（语义 + a11y + 可点击性补探）都失败时，用截图向多模态模型要 0-1000 归一化坐标 -&gt; 按截图实际尺寸换算像素 -&gt; 点击 -&gt; **校验有没有生效**（签名没变就报 no-effect，绝不报成功）；空回复做一次收紧重试（国产模型思考模式会吃光 token 预算）；失败只报原因不抛；不是主路径，只在兜底时调用。真机实测：同一页 4 个同名按钮中定位指定那一行，偏差 8.5 px、命中；定位单按钮偏差 0.8 px</p>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_visual_grounding.py（18 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+    </div>
+    <div class="subfeat">
+      <h5 class="subfeat-title" id="sub-3.12" data-sub="3.12"><span class="sno">3.12</span>行区信号 row_zone</h5>
+      <p class="codesrc"><b>目标：</b>「探测时唯一」不等于「运行时唯一」：只要该容器里有『新增行』这类行增删动作，这个区**必然会长多行**（与当前行数无关）。探针据此给区内**当前唯一的输入类**控件标 `row_zone`，① 提示词专门一段要求「排在新增行之后必须给 row_index」② 框架兜底在「前文确有新增行 + 无行锚」时补 `row_index=-1`。口径三条：只标输入类（按钮随行增长也不会变成第几行的保存＝误伤）、只标当前唯一的（multi_match&gt;1 已有更强信号）、不动 multi_match（写它会让质量闸在单行场景误拦）。跨页同名控件不给纯基名（会补错页）。来历：真 AI 链路开票页探测 1 行、用例自己点新增行 -&gt; 运行期 2 个同名匹配 -&gt; 第 1 轮 424.9s 白跑，靠带原因重试才通</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_row_zone_signal.py（17 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
   <section class="feat">
@@ -2117,9 +2122,428 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.9.1</b>（2026-11-02）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
-    <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.9.1</span><span class="cl-date">2026-11-02</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>把「查不下去的失败」改成「一眼能指认」：回放选了旧录像、重试是死路、超时不留现场、慢目标被误判卡死、慢轮刷屏淹没信号</b></span></div>
+    <p class="sec-sub">当前版本 <b>V8.9.2-dev</b>（2026-11-03）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.9.2-dev</span><span class="cl-date">2026-11-03</span><span class="cl-tag">内部试跑版（未正式发版）</span><span class="cl-theme"><b>行区信号：探测时唯一 &ne; 运行时唯一</b> —— 修「开票页只探到 1 行、</运行期变 2 行就必红」，白跑 400+ 秒的那种</span></div>
+      <p class="cl-sum">真 AI 链路实测（用户 Windows <code>all --ai</code>）：第 1 轮试跑 <b>FAILED 424.9s</b>（<code>定位失败：本页有 2 个同名匹配（期次号）</code>），靠带原因重试第 2 轮才 PASSED 399.1s。<br><br><b>根因不是模型不听话，是探针的观测时机</b>：开票页<b>探测时只有 1 行</b> -> 期次号/发票行类型/数量/单位 全部 <code>multi_match=1</code> -> AI 清单里看着唯一、生成期闸门也不拦；而开票页的行数是<b>订单带入</b>的，运行期 2 行 -> 就炸。<br><br>探针能看到的<b>确定性结构事实</b>是：「该容器里有一个『新增行』动作 => 这个区必然会长多行」，与当前行数无关。<code>row_zone</code> 就是把这条事实提前说出去：<br>&nbsp;&nbsp;① <b>探针</b> <code>mark_row_zone()</code>：区内<b>当前唯一的输入类</b>控件标 <code>row_zone</code>；<br>&nbsp;&nbsp;② <b>提示词</b>单列一段「行区控件（当前唯一但会随行增长）」，要求排在新增行之后必须给 <code>row_index</code>；<br>&nbsp;&nbsp;③ <b>运行时快照</b>白名单补 <code>row_zone</code>（不补就落不了盘 = 静默失效）；<br>&nbsp;&nbsp;④ <b>框架兜底</b> R1 放宽到「<code>multi_match&gt;1</code> <b>或</b> <code>row_zone</code>」补 <code>row_index=-1</code>（只覆盖「刚点过新增行」那类能判死的情形）。<br><br><b>口径三条（不误伤的关键）</b>：只标输入类（按钮随行增长不会变成「第几行的保存」）；只标当前唯一的（<code>multi_match&gt;1</code> 已有更强信号）；<b>绝不动 <code>multi_match</code></b>（写它会让质量闸在单行场景误拦）。跨页同名控件<b>不给纯基名</b>（会补错页）。<br><br><b>诚实的边界</b>：开票页的行是「带入」的、用例里没有对该页的新增行动作 => R1 兜底<b>不覆盖</b>，而且框架<b>不能猜第几行</b>（猜 <code>-1</code> 会填到末行、静默污染数据）。所以真正能省掉那 424.9 秒的是<b>提示词</b>，兜底只盖「刚新增行」那类。</p>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
+        <li>判</li>
+        <li>据</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>t</li>
+        <li>e</li>
+        <li>s</li>
+        <li>t</li>
+        <li>_</li>
+        <li>r</li>
+        <li>o</li>
+        <li>w</li>
+        <li>_</li>
+        <li>z</li>
+        <li>o</li>
+        <li>n</li>
+        <li>e</li>
+        <li>_</li>
+        <li>s</li>
+        <li>i</li>
+        <li>g</li>
+        <li>n</li>
+        <li>a</li>
+        <li>l</li>
+        <li>.</li>
+        <li>p</li>
+        <li>y</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>1</li>
+        <li>7</li>
+        <li> </li>
+        <li>条</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>+</li>
+        <li> </li>
+        <li>4</li>
+        <li> </li>
+        <li>组</li>
+        <li>负</li>
+        <li>向</li>
+        <li>自</li>
+        <li>证</li>
+        <li>（</li>
+        <li>摘</li>
+        <li>输</li>
+        <li>入</li>
+        <li>类</li>
+        <li>限</li>
+        <li>制</li>
+        <li> </li>
+        <li>/</li>
+        <li> </li>
+        <li>摘</li>
+        <li>兜</li>
+        <li>底</li>
+        <li>放</li>
+        <li>宽</li>
+        <li> </li>
+        <li>/</li>
+        <li> </li>
+        <li>摘</li>
+        <li>快</li>
+        <li>照</li>
+        <li>白</li>
+        <li>名</li>
+        <li>单</li>
+        <li> </li>
+        <li>/</li>
+        <li> </li>
+        <li>去</li>
+        <li>重</li>
+        <li>键</li>
+        <li>走</li>
+        <li>唯</li>
+        <li>一</li>
+        <li>入</li>
+        <li>口</li>
+        <li>）</li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li>本</li>
+        <li>轮</li>
+        <li>还</li>
+        <li>修</li>
+        <li>了</li>
+        <li>两</li>
+        <li>个</li>
+        <li>自</li>
+        <li>身</li>
+        <li>缺</li>
+        <li>陷</li>
+        <li>：</li>
+        <li>①</li>
+        <li> </li>
+        <li>去</li>
+        <li>重</li>
+        <li>键</li>
+        <li>用</li>
+        <li>了</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>s</li>
+        <li>t</li>
+        <li>r</li>
+        <li>(</li>
+        <li>s</li>
+        <li>t</li>
+        <li>e</li>
+        <li>p</li>
+        <li>_</li>
+        <li>g</li>
+        <li>e</li>
+        <li>t</li>
+        <li>(</li>
+        <li>.</li>
+        <li>.</li>
+        <li>.</li>
+        <li>)</li>
+        <li>)</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>，</li>
+        <li>而</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>e</li>
+        <li>l</li>
+        <li>e</li>
+        <li>m</li>
+        <li>e</li>
+        <li>n</li>
+        <li>t</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li>可</li>
+        <li>能</li>
+        <li>是</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>E</li>
+        <li>l</li>
+        <li>e</li>
+        <li>m</li>
+        <li>e</li>
+        <li>n</li>
+        <li>t</li>
+        <li>R</li>
+        <li>e</li>
+        <li>f</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li>-</li>
+        <li>></li>
+        <li> </li>
+        <li>拿</li>
+        <li>到</li>
+        <li>的</li>
+        <li>是</li>
+        <li> </li>
+        <li>r</li>
+        <li>e</li>
+        <li>p</li>
+        <li>r</li>
+        <li> </li>
+        <li>-</li>
+        <li>></li>
+        <li> </li>
+        <li>去</li>
+        <li>重</li>
+        <li>静</li>
+        <li>默</li>
+        <li>失</li>
+        <li>效</li>
+        <li>（</li>
+        <li>实</li>
+        <li>测</li>
+        <li>警</li>
+        <li>告</li>
+        <li>仍</li>
+        <li>是</li>
+        <li> </li>
+        <li>6</li>
+        <li> </li>
+        <li>条</li>
+        <li>，</li>
+        <li>修</li>
+        <li>后</li>
+        <li> </li>
+        <li>4</li>
+        <li> </li>
+        <li>条</li>
+        <li>）</li>
+        <li>；</li>
+        <li>②</li>
+        <li> </li>
+        <li>警</li>
+        <li>告</li>
+        <li>标</li>
+        <li>签</li>
+        <li>原</li>
+        <li>为</li>
+        <li>「</li>
+        <li>行</li>
+        <li>内</li>
+        <li>控</li>
+        <li>件</li>
+        <li>缺</li>
+        <li>行</li>
+        <li>定</li>
+        <li>位</li>
+        <li>（</li>
+        <li>多</li>
+        <li>匹</li>
+        <li>配</li>
+        <li>）</li>
+        <li>」</li>
+        <li>，</li>
+        <li>行</li>
+        <li>区</li>
+        <li>那</li>
+        <li>条</li>
+        <li>不</li>
+        <li>是</li>
+        <li>多</li>
+        <li>匹</li>
+        <li>配</li>
+        <li>，</li>
+        <li>标</li>
+        <li>签</li>
+        <li>不</li>
+        <li>能</li>
+        <li>替</li>
+        <li>它</li>
+        <li>说</li>
+        <li>谎</li>
+        <li> </li>
+        <li>-</li>
+        <li>></li>
+        <li> </li>
+        <li>改</li>
+        <li>中</li>
+        <li>性</li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>未</li>
+        <li>验</li>
+        <li>项</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>：</li>
+        <li>提</li>
+        <li>示</li>
+        <li>词</li>
+        <li>效</li>
+        <li>果</li>
+        <li>只</li>
+        <li>能</li>
+        <li>在</li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>真</li>
+        <li> </li>
+        <li>A</li>
+        <li>I</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>上</li>
+        <li>验</li>
+        <li>（</li>
+        <li>回</li>
+        <li>放</li>
+        <li>验</li>
+        <li>不</li>
+        <li>了</li>
+        <li> </li>
+        <li>A</li>
+        <li>I</li>
+        <li> </li>
+        <li>会</li>
+        <li>不</li>
+        <li>会</li>
+        <li>写</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>r</li>
+        <li>o</li>
+        <li>w</li>
+        <li>_</li>
+        <li>i</li>
+        <li>n</li>
+        <li>d</li>
+        <li>e</li>
+        <li>x</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>）</li>
+        <li>，</li>
+        <li>本</li>
+        <li>版</li>
+        <li>等</li>
+        <li>真</li>
+        <li>机</li>
+        <li>一</li>
+        <li>次</li>
+        <li>干</li>
+        <li>净</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>a</li>
+        <li>l</li>
+        <li>l</li>
+        <li> </li>
+        <li>-</li>
+        <li>-</li>
+        <li>a</li>
+        <li>i</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li>确</li>
+        <li>认</li>
+        <li>后</li>
+        <li>才</li>
+        <li>转</li>
+        <li>正</li>
+        <li>式</li>
+        <li>。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.9.1</span><span class="cl-date">2026-11-02</span><span class="cl-tag">上一版</span><span class="cl-theme"><b>把「查不下去的失败」改成「一眼能指认」：回放选了旧录像、重试是死路、超时不留现场、慢目标被误判卡死、慢轮刷屏淹没信号</b></span></div>
       <p class="cl-sum">用户实测报了两种故障：<b>离线回放失败</b>（0 产物）与<b>试跑 900s 被判卡住</b>。逐个复现之后，一共揪出 <b>5 个</b>问题，它们有一个共同点 —— <b>错了不告诉你错在哪</b>。<br><br><b>[1] 回放选错录像（真因）</b>：录像查找第三级「相似度匹配」写的是 <code>r &gt; best[0]</code> —— <b>平手不换</b>。同一场景先后录过两份（前一份的答案后来被闸门判不合格，后一份才对），两份场景相似度都是 100%，于是永远拿到字典序先扫到的那份 = <b>更旧、已被判死的那份</b> -> 闸门拦下 -> 重试还是它 -> 死路。结构键那一级 2026-10-11 就修过「同键多份取最新录制」，<b>这一级漏了同一口径</b>。实测前后对比：修前命中 <code>4466a560</code>（14:07 那份被拦下的答案）-> L0 拦下 -> 重试用尽 -> 0 产物；修后命中 <code>94ce5d9a</code>（14:20 的正确答案）-> 50 步用例 -> <b>试跑 PASSED 405.2s</b>。<br><br><b>[2] 回放模式的重试是死路</b>：录像决定内容，重试不产生新答案。L1 档两轮拿到<b>同名同内容</b>的用例，第二轮必然重复同一个失败，白等一个 900s 试跑窗（两轮半小时）；L0 档重试的 prompt 虽带失败原因，但录像里没有那一轮时会<b>回落到相似度</b>并命中同一份 -> 转两圈后只报「重试用尽」，用户看不出「录像里根本没有第二个答案」。现在两档都在<b>动手之前</b>用「答案出处」判定同源并立即停，明确给出三条出路（--llm-record / 重录含重试轮的包 / 先修场景断言）。<br><br><b>[3] 试跑超时什么都不留</b>：<code>TimeoutExpired</code> 里<b>本就捕获着</b>子进程的全部输出（含 <code>[step N]</code>），原实现直接丢掉 —— 用户只看到一句「真卡住」。现在打出「<b>停在</b>：[step N] …」+ 全文落盘；抓不到步骤输出就明说「卡在<b>用例开始之前</b>」，两种归因不再混为一谈。<br><br><b>[4] 只杀直接子进程</b>：<code>subprocess.run(timeout=)</code> 杀掉 pytest 后，它拉起的 <b>Chromium 可能还活着</b>、还占着被测服务 -> 重试轮在更脏的环境里跑 -> <b>两轮都超时</b>。新增 <code>run_capture_tree()</code>，POSIX 用 <code>killpg</code>、Windows 用 <code>taskkill /F /T</code>，连树杀，并把已捕获输出随异常带回。<br><br><b>[5] 慢目标被误判成「卡死」</b>：试跑预算原来写死 900s（按 62 步基线 360s 的 2.5 倍）。但真实用例里「等订单状态自动流转」这类<b>有界等待</b>是按场景声明设的（实测 4 处 × 160s）；慢机器上一处都没命中时，总时长 = 正常执行 400~500s + 4×160s ≈ <b>1040s &gt; 900s</b> -> 用例其实<b>在正常地等</b>，却被判「真卡住」。现在预算按<b>生成脚本里真实的 <code>timeout_ms=</code></b> 推导（基线 600s + 声明等待 × 1.2，本例算出 <b>1368s</b>），并在开跑前把依据打出来；<b>用户显式设了 HYBRID_VERIFY_TIMEOUT 就听用户的</b>。<br><br><b>[6] 轮询太粗 + 慢轮刷屏</b>：「重放最近一次搜索」是<b>每轮都做</b>的动作，慢目标下一次可能吃掉几十秒 -> 160s 的业务等待只够轮询 <b>3 轮</b>，而业务值约 150s 才变，正好卡临界（第 1 轮红、第 2 轮才绿，白烧一轮生成 + 一轮试跑）。现在该动作走 <b>2 秒快速窗口</b>（只夹等待上限，不改「探到就走」），实测同一等待能轮询 <b>148 轮</b>；同时把慢轮日志做成<b>两级</b>：个体只在单轮 ≥5s 时打、最多 3 条，退出时一条汇总（<code>共 148 轮 · 慢轮 0 个 · 最慢 1.1s</code>）—— 第一版阈值定 1.0s 时，健康机器每轮约 1.09s，一次等待打了 <b>243 行</b>，把信号全埋了，这条是自己踩完自己修的。</p>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
         <li>判</li>
@@ -3488,7 +3912,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.1</b>（2026-11-02）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.2-dev</b>（2026-11-03）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
@@ -3528,7 +3952,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       </ul>
     </li>
     <li class="toc-chap has-sub">
-      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 60 子特性）</a>
+      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 61 子特性）</a>
       <ul class="toc-l2">
         <li class="toc-feat">
           <a href="#feat-1">特性 1AI 链路与离线回放 mixed_chain</a>
@@ -3564,6 +3988,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
             <li><a href="#sub-3.9">3.9元素自身 id 定位档</a></li>
             <li><a href="#sub-3.10">3.10可点击性补探</a></li>
             <li><a href="#sub-3.11">3.11视觉 grounding 兜底</a></li>
+            <li><a href="#sub-3.12">3.12行区信号 row_zone</a></li>
           </ul>
         </li>
         <li class="toc-feat">

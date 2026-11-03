@@ -229,6 +229,33 @@ def row_scope_violation(step: "dict | TestStep | None", multi_match: "int | None
             f"**刚新增的空行只能用 `row_index`**。")
 
 
+def row_zone_violation(step, row_zone: "set[str] | None") -> "str | None":
+    """「引用了**行区**控件、却没给行定位」-> 返回**可改的原因**；否则 None。
+
+    与 `row_scope_violation` 的区别（**措辞必须不同，不许谎报**）：
+      · `row_scope_violation`：探测期就实测**多个**，说「重复出现 N 个」；
+      · 本函数：探测期只有 **1 个**（该区当前只有一行），但该区**有『新增行』动作**
+        -> 运行期行数会增长 -> 那时就可能同时命中多个。说「重复 N 个」是**假话**，
+        与「不许编造」的底线冲突，所以走单独一段措辞。
+
+    级别：**建议/警告**（不是硬拦）。理由（2026-11-03 实测）：同名开票页只填一行的用例
+    在运行期是**可以通过**的（如果恰好只有一行），硬拦会把能跑的用例拒掉 = 误伤。
+    """
+    if not row_zone:
+        return None
+    name = step_name_of(step)
+    if not name:
+        return None
+    if str(name) not in row_zone:
+        return None
+    if has_row_locator(step):
+        return None
+    return (f"{name!r} 所在区有「新增行」类动作（该区会随行增长，探测时只有一行）"
+            f"-> 运行期行数一变就会同时命中多个。**排在新增行之后操作它请补行定位**："
+            f"`row_index`（第 N 行，从 1 起；`-1` = 最后一行）或 `row_text` + 列字段。"
+            f"（当前未拦，但运行期若该页真有多行，这步会红。）")
+
+
 # ---- 行内定位的字段口径（**唯一一处**）：什么才算「这步已经给了行定位」 ----
 # 判据（row_scope_violation）与兜底（apply_row_locator_fallback）都读它：
 # 两处各写一份字段清单 = 日后只改一处 -> 又是静默失效（2026-10-11 L30 的教训）。
@@ -282,7 +309,55 @@ def is_row_add_step(step) -> bool:
     return any(base.startswith(h) for h in _ROW_ADD_NAME_HINTS)
 
 
-def apply_row_locator_fallback(steps, mm_map) -> list[dict]:
+def row_zone_names(items) -> set[str]:
+    """从清单条目里取「行区内的输入类控件」名（探针标 `row_zone=True`）。
+
+    [!] 为什么要单独一个助手：探针把信号打在**条目**上，而兜底函数手里只有 `{名字: 重复数}`。
+    这一层就是「条目 -> 名字集合」的唯一转换点；两侧（explore 产出 / generate 渲染）共用它，
+    免得一处按 `semantic_name` 查、另一处按基名查，又变成静默不一致。
+
+    同时给出**基名**（`@页名` 之前那段）：探测期步骤引用的还是基名，唯一化之后才带后缀 ——
+    2026-10-10 实测只按带后缀的名字查会零重合（判据静默失效）。
+    """
+    # [!] 名字形态要**两种都给**，但不许拿基名去宽匹配步骤 —— 那正是 2026-10-11 栽过的坑：
+    #   `数量` 在「订单详情页」和「开票页」各有一个，拿基名兜底会把开票页的信号套到详情页那步上，
+    #   补出错误的 `row_index=-1`（兜底是**直接改用例**，补错比不补危险得多）。
+    #   所以：
+    #     · `名字@页名` —— 唯一化之后的形态，**精确匹配**，全给；
+    #     · 纯基名 —— **只在该名字只出现在一个页面时**才给（无歧义），否则不给。
+    # ① 先按**全部条目**统计「这个名字出现在哪些页」—— 判歧义必须看全集。
+    #    只看 row_zone 条目会漏判：`数量` 在详情页有一份（非 row_zone）、在开票页有一份（row_zone），
+    #    只看后者会误判「单页唯一」而给出纯基名 -> 详情页那步被补上错误的 row_index。
+    pages_of: dict[str, set[str]] = {}
+    row_zone_bases: set[str] = set()
+    suffixed: set[str] = set()
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        nm = str(it.get("semantic_name") or "").strip()
+        if not nm:
+            continue
+        base, _, page_of_name = nm.partition("@")
+        page = str(it.get("page") or page_of_name or "").strip()
+        if page:
+            pages_of.setdefault(base, set()).add(page)
+        else:
+            pages_of.setdefault(base, set()).add("")      # 页名不明 -> 按有歧义处理
+        if it.get("row_zone"):
+            row_zone_bases.add(base)
+            if page:
+                suffixed.add(f"{base}@{page}")
+            if page_of_name:
+                suffixed.add(nm)                          # 已是 `名字@页名` 原样保留
+    out: set[str] = set(suffixed)
+    for base in row_zone_bases:
+        pages = pages_of.get(base) or set()
+        if len(pages) == 1 and "" not in pages:
+            out.add(base)                                 # 单页唯一 -> 基名无歧义
+    return out
+
+
+def apply_row_locator_fallback(steps, mm_map, row_zone: "set[str] | None" = None) -> list[dict]:
     """【框架兜底 · 唯一入口】给整条用例补「能判死」的行定位；推不出的**不动**（照旧报红）。
 
     为什么要有它（2026-10-11，方案 ③）：AI（deepseek-flash）稳定不写 `row_index`
@@ -291,6 +366,7 @@ def apply_row_locator_fallback(steps, mm_map) -> list[dict]:
 
     只认一条能判死的规则：
       R1 **刚新增的那一行** —— 该步没有任何行定位 + 它前面**存在**「新增行」动作 +
+         （该控件探测期重复 `multi_match>1`，**或**它被探针标了 `row_zone`＝所在区有新增行动作） +
          自那次新增之后**没有**任何步骤给出过行锚（row_text / 列字段）。此时该步引用的
          重复控件只可能是**刚建的那行**：想指别的行就必须给锚，否则它无法定位 -> 补
          `row_index: -1`（最后一行，引擎已支持）。
@@ -321,7 +397,13 @@ def apply_row_locator_fallback(steps, mm_map) -> list[dict]:
         #   补出了错误的 `row_index=-1`。判据（只读、报红）误伤还看得见，
         #   兜底是**直接改用例**的行为 —— 必须宁漏不误伤（补错比不补危险得多）。
         mm = (mm_map or {}).get(str(name))
-        if not mm or int(mm) <= 1:
+        # [!] 2026-11-03（L37）：**探测时唯一**不等于「运行时也唯一」。
+        #   开票页探测时只有 1 行 -> 期次号 mm=1 -> 原条件直接跳过；而用例自己点了「新增行」，
+        #   运行期就是 2 个同名匹配 -> 424.9s 白跑（用户 Windows 真机实测）。
+        #   探针已把「该区有新增行动作 -> 会随行增长」标成 `row_zone`，这里把它与 mm>1 **同等对待**。
+        #   仍然宁漏不误伤：`row_zone` 只含**输入类**控件（按钮不标），且要求「此前确有新增行动作」。
+        _in_row_zone = bool(row_zone) and str(name) in row_zone
+        if not _in_row_zone and (not mm or int(mm) <= 1):
             continue
         if anchor_seen:
             continue

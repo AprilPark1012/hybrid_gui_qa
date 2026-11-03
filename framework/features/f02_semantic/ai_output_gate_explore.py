@@ -43,7 +43,11 @@ class AiOutputGate(Gate):
         ("_HARDCODED_NOTES", "AI 用了写死的行数据（应为行定位）", BLOCK),
         ("SEMANTIC_MISMATCH_NOTES", "语义误选（AI 选的控件与步骤语义不符）", BLOCK),
         ("_REQUIRED_COVERAGE_NOTES", "场景点名的必填项 AI 没编排", BLOCK),
-        ("_ROW_SCOPE_NOTES", "行内控件缺行定位（多匹配）", WARN),
+        # [!] 标签**去掉「（多匹配）」**（2026-11-03）：这个列表现在同时装两类问题 ——
+        #   「探测期已经多个」（多匹配）与「探测期唯一、但区内有新增行动作会变多」（行区信号）。
+        #   两类共用一个标签时，后者的措辞会被前者的「多匹配」诬陷成假话（探测时它确实只有 1 个）。
+        #   具体性质由每条 note 自己的文字说清，标签只说共性「缺行定位」。
+        ("_ROW_SCOPE_NOTES", "行内控件缺行定位", WARN),
     )
 
     def check(self, **kw) -> GateResult:

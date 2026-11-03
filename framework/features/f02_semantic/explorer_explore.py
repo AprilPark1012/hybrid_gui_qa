@@ -25,6 +25,9 @@ from framework.features.f03_locate.element_map import (ElementMap, TestStep, Ele
                                               row_scope_violation, step_get,
                                               item_multi_match_map, multi_match_of_name,
                                               apply_row_locator_fallback, has_row_locator,
+                                              row_zone_names,
+                                              row_zone_violation,
+                                              step_name_of,
                                               apply_scene_start_fallback)
 from framework.shared.browser import launch_opts
 from framework.shared.login import ensure_logged_in      # P22 批 5：登录前置
@@ -1791,16 +1794,44 @@ def _finalize_map(url: str, scenario: str, steps: list[TestStep],
     # 2026-10-11 V8.4.6（方案 ③ 框架兜底）：**能判死**的行定位缺失先补上 ——
     #   走唯一入口 `apply_row_locator_fallback()`；补出来的 row_index 会**落进用例 JSON**
     #   （可审计、可复核），补不出来的仍由下面的判据报红并喂回重试（① 那层保留）。
-    _fb = apply_row_locator_fallback(steps, _mm_of)
+    _fb = apply_row_locator_fallback(steps, _mm_of, row_zone_names(manifest))
     if _fb:
         print(f"  [explore] [key] 框架兜底补行定位 {len(_fb)} 处（规则 R1：刚新增行 -> row_index=-1）: "
               f"{', '.join(n['name'] for n in _fb[:8])}")
+    _mm_noted: set[str] = set()          # 已按「多匹配」报过的控件名（下面行区那条要跳过，别重复报）
     for _st in (steps or []):
         _elem = step_get(_st, "element")
         _elem = getattr(_elem, "semantic_name", _elem) or ""
         _reason = row_scope_violation(_st, multi_match_of_name(_mm_of, _elem))
         if _reason:
             _ROW_SCOPE_NOTES.append(_reason)
+            # [!] 去重键必须用 `step_name_of()`（唯一入口）：steps 可能是 dict 也可能是 `TestStep`
+            #   且 `element` 可能是 `ElementRef` —— 这时 `str(_elem)` 拿到的是 repr
+            #   （`ElementRef(semantic_name='数量@开票页')`），与行区循环里的干净名字**对不上**，
+            #   去重就静默失效（2026-11-03 实测：去重写了但警告仍是 6 条）。
+            _nm_mm = step_name_of(_st)
+            if _nm_mm:
+                _mm_noted.add(_nm_mm)
+    # 行区信号（2026-11-03 · L37）：探测期只有 1 行、但该区有『新增行』动作的控件。
+    #   与上面 multi_match 那条**同一出口**（_ROW_SCOPE_NOTES -> 警告 + 进重试原因），
+    #   但措辞不同（不许谎报"重复 N 个"，那时它确实只有 1 个）。
+    _rz_of = row_zone_names(manifest)
+    if _rz_of:
+        _rz_notes = 0
+        for _st in (steps or []):
+            _nm_rz = step_name_of(_st)
+            # [!] 同一个控件别报两遍：它若已按「多匹配」报过（探测期就多个），
+            #   那条信息**更强**（真的多），行区这条只是"会变多"的弱推断 -> 跳过。
+            #   实测：不去重时同一次产出会出 6 条警告，其中 2 条形同重复。
+            if _nm_rz in _mm_noted:
+                continue
+            _rz_reason = row_zone_violation(_st, _rz_of)
+            if _rz_reason:
+                _ROW_SCOPE_NOTES.append(_rz_reason)
+                _rz_notes += 1
+        if _rz_notes:
+            print(f"  [explore] [!] 行区控件缺行定位 {_rz_notes} 处（探测时唯一，但区内有新增行动作）"
+                  f" -> 运行期行数增长会同时命中多个")
     if _ROW_SCOPE_NOTES:
         print(f"  [explore] [!] 行定位缺失 {len(_ROW_SCOPE_NOTES)} 处"
               f"（重复控件没给行定位 -> 带去重试让 AI 补）")
@@ -2249,6 +2280,64 @@ def _open_layer_and_collect(pg, cand: dict, absorb, collected: list | None = Non
         print(f"      [explore] [!] 弹层探测失败（{shown}）：{type(e).__name__}: {str(e)[:140]}{hint}")
         return False
 
+# ---- 行区信号（2026-11-03 · L37）------------------------------------------------
+# [!] 为什么必须有这一层（用户 Windows 真机 2026-11-03 实测）：
+#   开票页**探测时只有 1 行** -> 期次号/发票行类型/数量/单位 全都 `multi_match=1`
+#   -> AI 清单里看着唯一、`row_scope_violation` 也不拦
+#   -> 但 AI 用例自己会点「新增行」，运行期行数变 2
+#   -> `RuntimeError: 本页有 2 个同名匹配（期次号）` -> **424.9s 白跑一轮**，
+#      靠「带原因重试」才收敛（每次浪费 7~8 分钟）。
+#
+#   探针能看到的**确定性结构事实**是：「该容器里有一个『新增行/删除』这类行增删动作」
+#   -> 这个区**必然会长多行**，与当前行数无关。运行期判多匹配也是**按页/按名**算的，
+#   所以这个信号必须提前给出去，而不是等运行期炸。
+#
+# 口径三条（缺一条就会变成噪音或误伤）：
+#   ① 只标**输入类**（input/select/textarea/textbox/combobox）—— `保存/取消/新增行`
+#      随行增长也不会变成「第几行的保存」，给它们补行定位是误伤；
+#   ② 只标**当前唯一**的（`multi_match>1` 的已有更强信号，不必重复标）；
+#   ③ **不动 `multi_match`** —— 写它会让质量闸在「单行场景」误拦（2026-10-29 已定口径）。
+#      `row_zone` 是**建议级**信号：提示词要求给行定位，兜底只补「能判死」的情形。
+_ROW_ADD_HINTS = ("新增行", "添加行", "增加行", "追加行", "新增明细", "添加明细", "加一行")
+_INPUT_TAGS = ("input", "select", "textarea")
+_INPUT_ROLES = ("textbox", "combobox", "searchbox", "spinbutton")
+
+
+def _rz_name(it: dict) -> str:
+    return str(it.get("help_text") or it.get("name") or "").strip()
+
+
+def _rz_ck(it: dict) -> tuple:
+    return (str(it.get("page") or ""), str(it.get("container_heading") or ""),
+            str(it.get("ctx_token") or ""))
+
+
+def mark_row_zone(items: list[dict]) -> dict[tuple, list[str]]:
+    """给「行区里当前唯一的输入控件」打 `row_zone=True`，返回 `{容器键: [名字...]}`（可审计/可测）。
+
+    纯标记、不改 `multi_match`、不改顺序、不加删条目 —— 幂等。打印交给调用方（噪音预算）。
+    """
+    def _is_row_add(it: dict) -> bool:
+        return any(_rz_name(it).startswith(h) for h in _ROW_ADD_HINTS)
+
+    def _is_input(it: dict) -> bool:
+        return (str(it.get("tag") or "").lower() in _INPUT_TAGS
+                or str(it.get("role") or "").lower() in _INPUT_ROLES)
+
+    row_zone_ck = {_rz_ck(it) for it in items if _is_row_add(it)}
+    hit: dict[tuple, list[str]] = {}
+    for it in items:
+        if _rz_ck(it) not in row_zone_ck:
+            continue
+        if not _is_input(it) or int(it.get("multi_match") or 1) > 1 or not _rz_name(it):
+            continue
+        it["row_zone"] = True
+        hit.setdefault(_rz_ck(it), []).append(_rz_name(it))
+    # [!] 这里**不打印**：打印由调用方决定 —— 必须并进既有的「行容器」那一行，
+    #   否则同一个页面会多出一行噪音（实测把噪音预算从 5 行顶到 6 行，判据当场红）。
+    return hit
+
+
 
 def _close_layer_by_item(pg, items: list[dict]) -> None:
     """用给定控件清单里的「取消/关闭」按钮把当前层关掉（有 test_id 才对，避免同名点错）。
@@ -2447,18 +2536,32 @@ def _collapse_row_repeats(items: list[dict]) -> None:
               f"（{it.get('page')}）-> 收敛成 1 条，multi_match={it['multi_match']}"
               f"（用例操作它时**必须**给行定位：row_index / row_text）")
 
-    # A 汇总：真行容器只打一行，不逐个刷屏
-    for _ck in sorted(_real_row_containers):
+    # 行区标记先算（下面两条打印路径都要用）
+    _rz_hit = mark_row_zone(kept)
+
+    # A 汇总：真行容器只打一行，不逐个刷屏。
+    # [!] 行区名单**并进同一行**（2026-11-03）：单独再打一行会让同一页多一行噪音，
+    #   实测把 `test_row_container_noise_budget` 的预算从 5 行顶到 6 行当场红 ——
+    #   而那个预算正是防「V8.7.18 那种 53 条刷屏」的闸门，不能为了新功能放宽它。
+    for _ck in sorted(_real_row_containers | set(_rz_hit)):
         _names = _singles.get(_ck, [])
-        if not _names:
+        _rzs = _rz_hit.get(_ck, [])
+        if not _names and not _rzs:
             continue
         _page, _heading = _ck[0], _ck[1]
-        _shown = "、".join(_names[:8])
-        _more = f" 等 {len(_names)} 个" if len(_names) > 8 else f" 共 {len(_names)} 个"
-        print(f"      [explore] [key] 「{_heading or '(无标题)'}」区（{_page}）内有 "
-              f"{len(_dup_kinds[_ck])} 种重复控件 -> 该区视为**行容器**；"
-              f"区内另有单实例控件：{_shown}{_more}"
-              f" —— 若运行时行数增长它们也可能多匹配，需要时请给 row_index / row_text")
+        _parts: list[str] = []
+        if _ck in _real_row_containers:
+            _shown = "、".join(_names[:8])
+            _more = f" 等 {len(_names)} 个" if len(_names) > 8 else f" 共 {len(_names)} 个"
+            _parts.append(f"{len(_dup_kinds[_ck])} 种重复控件 -> 该区视为**行容器**；"
+                          f"区内另有单实例控件：{_shown}{_more}")
+        if _rzs:
+            _parts.append(
+                f"其中 {len(_rzs)} 个**当前唯一**、但区内有『新增行』动作（运行时会随行增长）："
+                f"{'、'.join(_rzs[:8])}{'' if len(_rzs) <= 8 else f' 等 {len(_rzs)} 个'}")
+        print(f"      [explore] [key] 「{_heading or '(无标题)'}」区（{_page}）内 "
+              + "；".join(_parts)
+              + " —— 若运行时行数增长它们也可能多匹配，需要时请给 row_index / row_text")
 
 
 # 采集"完整版 DOM 上下文"用的交互元素选择器（加上 dropdown/select/combobox 等）
@@ -2694,7 +2797,9 @@ def _multi_match_block(items: list[dict] | None = None) -> str:
     items = items if items is not None else (_LAST_PAGE_ITEMS or [])
     mm = [(str(it.get("semantic_name") or ""), int(it.get("multi_match") or 1))
           for it in items if int(it.get("multi_match") or 1) > 1]
-    if not mm:
+    # [!] 早退条件必须把 `row_zone` 算进来：一整页「探测时全都唯一、但区里有新增行」是完全正常的
+    #   （开票页初始就 1 行）—— 那时 `mm` 是空的，若在这里 return，行区那段永远出不来 = 白改。
+    if not mm and not any(it.get("row_zone") for it in items):
         return ""
     out = ["===== 重复出现的控件（探测期实测：同一容器里每行/每条各一个）=====",
            "[!] 下面每个控件在页面上都有**多个**（个数已给出），**操作它们必须给行定位** ——",
@@ -2704,6 +2809,21 @@ def _multi_match_block(items: list[dict] | None = None) -> str:
     for nm, n in mm[:40]:
         out.append(f"  - {nm}（重复 {n} 个）")
     out.append("（不在上面的控件不受此约束。）")
+    # [!] 行区信号（2026-11-03 · L37）：上面那份只覆盖「探测时**已经**重复」的控件。
+    #   探测时页面上只有 1 行的那批（如期次号）不在其中 —— 但用例自己点「新增行」后，
+    #   它们运行期就会变成多个。实测这导致 424.9s 白跑一轮（用户 Windows 2026-11-03）。
+    #   单独一段、措辞明确「当前唯一但会增长」，避免 AI 误以为矛盾。
+    _rz = [str(it.get("semantic_name") or "") for it in items
+           if it.get("row_zone") and int(it.get("multi_match") or 1) <= 1]
+    if _rz:
+        out.append("")
+        out.append("===== 行区控件（探测时**当前唯一**，但所在区有「新增行」动作 -> 运行时会随行增长）=====")
+        out.append("[!] 这些控件**不要**因为「探测时只有一个」就省略行定位 —— 用例里一旦先点「新增行」，")
+        out.append("    它们在运行期就会变成多个同名匹配，**只给语义名会直接失败**。")
+        out.append("    凡是你排在某一步「新增行」之后要操作的，**必须**带 `row_index`（新增的那行用 `-1`）。")
+        for nm in _rz[:40]:
+            out.append(f"  - {nm}")
+        out.append("（这一段的控件与上一段不重叠。）")
     return "\n".join(out) + "\n\n"
 
 

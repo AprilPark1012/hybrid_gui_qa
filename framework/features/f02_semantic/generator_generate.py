@@ -20,6 +20,7 @@ from framework.shared.collision_report import print_collisions
 from framework.shared.config import BASE, CASES_DIR, SCRIPTS_DIR, target_url
 from framework.features.f03_locate.element_map import (row_scope_violation,         # 行定位判据的唯一入口
                                                apply_row_locator_fallback,     # 框架兜底：行定位
+                                               row_zone_names,                 # 行区信号（L37）
                                                apply_scene_start_fallback,    # 框架兜底：多余起手页导航
                                                step_get)                      # 步骤字段读取（唯一入口）
 from framework.features.f05_layers import probe_snapshot_generate as probe_snapshot   # explore 快照的唯一读写入口（V8.4.3+）
@@ -824,7 +825,9 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
         _v2 = int((_it2 or {}).get("multi_match") or 1)
         if _v2 > 1:
             _mm_fb.setdefault(str(_n), _v2)
-    _fb = apply_row_locator_fallback(steps, _mm_fb)
+    # [!] 行区信号（2026-11-03 · L37）：`row_zone` 条目从**同源**清单里取（`it_map` 就是定位来源条目），
+    #   不另立信号 —— 与 mm 一样「同源纪律」。取不到就是空集合，兜底退回原口径（不会误补）。
+    _fb = apply_row_locator_fallback(steps, _mm_fb, row_zone_names((it_map or {}).values()))
     # P25 兜底（要求11）：**新开标签页**的点击要切成 `click_new_tab`。
     #   判据：清单里该控件 `opens_new_tab is True` 且该步 op 恰为 `click`（已是 click_new_tab 的不动）。
     #   为什么必须兜（实测第 8 层）：demo「查看订单」是 window.open 新开页，写 `click` 的话

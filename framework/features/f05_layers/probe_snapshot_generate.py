@@ -38,6 +38,9 @@ SNAPSHOT_FILENAME = "_probe_snapshot.json"
 _KEEP = ("semantic_name", "test_id", "element_id", "role", "tag", "name", "placeholder", "text",
          "label", "nearby_text", "container_heading", "help_text", "page", "page_hint",
          "anchor", "path", "opens_new_tab",
+         # 行区信号（2026-11-03 · L37）：探针标「该控件所在区有『新增行』类动作 -> 运行时会随行增长」。
+         #   必须进快照 —— generate 期兜底与闸门都要读它，丢了就等于没标（历史教训：白名单漏字段=静默失效）。
+         "row_zone",
          # P25 片 3：**有效性标记要进运行时快照**（D3：置 false 的条目保留在快照里 = 留痕，
          #   但**不参与定位索引** —— 见 index_from_items）。
          "isValid")
