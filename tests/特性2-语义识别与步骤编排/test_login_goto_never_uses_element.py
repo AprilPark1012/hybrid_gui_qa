@@ -134,7 +134,11 @@ def test_no_element_as_url_fallback_anywhere() -> None:
 
 def test_generate_side_uses_login_url_not_element() -> None:
     """⑤ generate 侧 goto 兜底必须是 `login_url`（不是 element）。"""
-    assert 'page.goto(str(st.get("value") or login_url)' in _SRC_GEN, (
-        "generate 侧登录 goto 的兜底不是 login_url —— 别退化成 element"
+    # [!] 2026-11-04（V8.9.5）：登录导航收口到唯一改写入口 `_rewrite_base()` 之后，
+    #   形态从 `page.goto(str(st.get("value") or login_url))` 变成
+    #   `page.goto(_rewrite_base(str(st.get("value") or login_url)), ...)`。
+    #   **判据口径不变**（兜底仍必须是 login_url），只是允许外面这层改写。
+    assert 'page.goto(_rewrite_base(str(st.get("value") or login_url))' in _SRC_GEN, (
+        "generate 侧登录 goto 的兜底不是 login_url（或没走 _rewrite_base 改写）—— 别退化成 element"
     )
     assert 'st.get("value") or el' not in _SRC_GEN, "generate 侧有把 element 当 URL 的写法"

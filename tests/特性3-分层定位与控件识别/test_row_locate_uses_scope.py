@@ -54,7 +54,12 @@ def test_row_select_without_value_matches_non_row_semantics():
     assert "跳过空占位" in body or "真选项" in body, \
         "行内 select 未给 value 时没有按「选第一项」处理（会与 `_act` 口径不一致）"
     assert "select_option(index=" in body, "行内 select 没有按索引选第一项"
-    assert "没有任何可选选项" in body, "真没选项时必须明确报错（不许静默）"
+    # [!] 2026-11-04（V8.9.5）：改成「有界等可选项」后，措辞从「没有任何可选选项」变成
+    #   「**等了 Nms 仍无**可选选项」。口径不变（真没选项必须明确报错、不许静默取第一个），
+    #   并且额外钉住「必须说明等过多久」，否则用户分不清「没这项」和「还没加载出来」。
+    assert ("可选选项" in body) and ("仍无" in body or "没有任何可选选项" in body), \
+        "真没选项时必须明确报错（不许静默）"
+    assert "_wait_real_options(" in body, "行内 select 没有走「可选项就绪」有界等待（慢目标下必红）"
 
 
 def test_scope_locate_is_the_single_shared_entry():

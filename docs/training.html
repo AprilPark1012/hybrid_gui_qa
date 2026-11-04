@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.4）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.5）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.4 · 2026-11-04　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.5 · 2026-11-04　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1301,14 +1301,14 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
 <!-- ========== 6. 框架特性设计实现说明（按特性/子特性 · 以代码为基准） ========== -->
 <section>
-  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 62 子特性）</h2>
+  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 63 子特性）</h2>
   <p class="sec-sub">第 5 章 5.2 讲「一条主线上有什么」；本章按 <b>特性 -&gt; 子特性</b> 横向拆开：每个子特性给「<b>关键实现逻辑</b> + <b>函数调用关系</b> + <b>证据（判据文件）</b>」，并配一张<b>图例</b>。编号 / 名称 / 目标 / 判据归属<b>直接读单一来源</b> <span class="code-inline">framework/features/f09_gate/feature_spec.py</span> 渲染（它同时被 <span class="code-inline">build_tools/build_feature_map.py</span> 渲染成 <span class="code-inline">docs/feature_map.md</span>）；实现逻辑以 <span class="code-inline">framework/</span> 下的<b>真实代码为准</b>。</p>
-  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 62 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
+  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 63 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
   <div class="card"><h4 style="margin-bottom:8px">图例 0 · 端到端函数调用地图（cli 是总入口，两条路——真 AI 链路 / 离线回放——共用同一条确定性下游）</h4><svg viewBox="0 0 920 252" width="100%" height="auto" role="img" style="background:#0d1117;border-radius:10px;padding:4px;display:block"><defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#64748b"/></marker></defs><rect x="40" y="14" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="40" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">python -m framework.cli  ->  main()</text><rect x="40" y="76" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="102" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_explore()  ->  explorer.ai_explore()</text><rect x="40" y="138" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="164" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_generate()  ->  generator.generate_scripts()</text><rect x="40" y="200" width="560" height="42" rx="9" fill="#0f2a20" stroke="#22c55e" stroke-width="1.2"/><text x="320" y="226" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_run()  ->  pytest  ->  生成物 _harness._act / _loc / _assert_*</text><line x1="320" y1="56" x2="320" y2="74" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="118" x2="320" y2="136" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="180" x2="320" y2="198" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><rect x="648" y="86" width="252" height="94" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="110" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">probe 层（只描述、不定位）</text><text x="774" y="132" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">scan_page / probe_page</text><text x="774" y="150" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">expandable / editable / modal</text><text x="774" y="168" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">anchor + path（容器下钻）</text><line x1="648" y1="110" x2="602" y2="104" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><line x1="648" y1="158" x2="602" y2="162" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><rect x="648" y="198" width="252" height="46" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="218" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">locator_bridge.resolve_locator()</text><text x="774" y="235" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">Tier1 精确 -> Tier2 指纹（唯一性校验）</text><line x1="648" y1="221" x2="602" y2="221" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/></svg></div>
   <div class="card">
-    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 62 子特性）</h4>
+    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 63 子特性）</h4>
     <table class="tbl"><tr><th style="width:46px">No</th><th style="width:230px">特性</th><th style="width:110px">key</th><th style="width:64px">子特性</th><th>目标</th></tr>
-    <tr><td>1</td><td><b>AI 链路与离线回放</b></td><td><span class="code-inline">mixed_chain</span></td><td>3</td><td>只剩真 AI 链路（all --ai）与离线回放两种运行形态：都能跑通，且有一条统一验收入口</td></tr>
+    <tr><td>1</td><td><b>AI 链路与离线回放</b></td><td><span class="code-inline">mixed_chain</span></td><td>4</td><td>只剩真 AI 链路（all --ai）与离线回放两种运行形态：都能跑通，且有一条统一验收入口</td></tr>
     <tr><td>2</td><td><b>语义识别与步骤编排</b></td><td><span class="code-inline">semantic</span></td><td>4</td><td>把「人的自然语言」变成「可执行的步骤序列」—— 面向生成，对人友好也对机器友好</td></tr>
     <tr><td>3</td><td><b>分层定位与控件识别</b></td><td><span class="code-inline">locate</span></td><td>12</td><td>在生产系统的复杂页面上仍能唯一定位到目标控件 —— 面向执行</td></tr>
     <tr><td>4</td><td><b>选错控件兜底</b></td><td><span class="code-inline">ambiguity</span></td><td>4</td><td>同名/同区域控件不许被选错；选不准就大声失败，绝不静默点到错的</td></tr>
@@ -1349,6 +1349,11 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">pack_release.main()</span> -> <span class="code-inline">check_cassettes.check()</span>（出厂闸门）-> 产包；<span class="code-inline">offline_explore_chain</span> -> <span class="code-inline">cli explore --llm-cassette</span> -> generate -> run。</p>
       <div class="flow2"><span class="fnode">pack_release.main()</span><span class="farrow">-></span><span class="fnode">check_cassettes.check()（出厂闸门）</span><span class="farrow">-></span><span class="fnode g">代码包 + 录像包</span><span class="farrow">-></span><span class="fnode">offline_explore_chain.main()</span><span class="farrow">-></span><span class="fnode y">cli explore --llm-cassette</span><span class="farrow">-></span><span class="fnode">generate -> run</span></div>
       <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_render_entrypoint.py（2 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性1-混合链路/verify_offline_delivery.py</span></p>
+    </div>
+    <div class="subfeat">
+      <h5 class="subfeat-title" id="sub-1.4" data-sub="1.4"><span class="sno">1.4</span>目标地址覆盖对全链路生效</h5>
+      <p class="codesrc"><b>目标：</b>`HYBRID_BASE_URL` 必须同时作用于**业务步骤、登录流、场景身份前置**三条导航路径（改写走唯一入口 `_rewrite_base`）；否则同一个包在用户内网/慢代理上会「一半打新地址、一半打写死地址」—— 会话 cookie 互不通用，第一个业务步就等不到元素</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_base_url_override_login.py（8 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
   <section class="feat">
@@ -2127,9 +2132,393 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.9.4</b>（2026-11-04）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.9.5</b>（2026-11-04）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.9.4</span><span class="cl-date">2026-11-04</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>堵两个「看不见的假绿」</b>：自愈零判据（L11）+ 行区产物带病分发（A'）</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.9.5</span><span class="cl-date">2026-11-04</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b><code>HYBRID_BASE_URL</code> 覆盖对登录/身份前置也生效</b> —— 交付到内网改 base 才真的能跑</span></div>
+      <p class="cl-sum">L22（慢目标唯一红灯）取证时挖出的两个<b>交付级缺陷</b>，比 L22 本身严重：<br><br><b>① 登录流绕过地址改写</b>：<code>_goto</code> 一直支持 <code>HYBRID_BASE_URL</code> 覆盖，但 <code>_login_flow</code> 里是<b>裸 <code>page.goto()</code></b> —— 设了覆盖以后，业务步骤打到新地址、<b>登录仍打到生成期的 <code>localhost:8000</code></b>。两个 origin 的会话 cookie 互不通用 => 业务页未登录 => 第一个业务步就「等了 15000ms 仍是 0 个」，自愈也救不回来。<br><b>② 场景身份前置同样绕过</b>：fixture 里 <code>pg.goto(_host)</code>（<code>_host</code> 是生成期记录的地址）—— 本机表现为 <code>ERR_CONNECTION_REFUSED</code>，有实例在时更糟：<b>静默在错的身份下把整条用例跑完</b>。<br><br><b>对交付的实际影响</b>：把包发到内网、配 <code>HYBRID_BASE_URL</code> 指向用户系统时，<b>登录会打到包里写死的地址</b> —— 这条链路此前根本跑不起来。慢目标闸门也因此长期红着，而它测的是「半套 8000 + 半套 8012 的混合物」。<br><br><b>修法</b>：抽<b>唯一改写入口</b> <code>_rewrite_base()</code>，<code>_goto</code> / <code>_login_flow</code>（两条路径）/ 身份前置 fixture 全部收口。判据用 <b>AST 扫 harness 里全部 <code>.goto()</code> 调用点</b> —— 正是这条抓出了第二处（身份前置）。<br><br><b>③ 顺带修 select 的「可选项就绪」</b>：慢目标下 <code>select</code> 控件已渲染、<code>&lt;option&gt;</code> 还在异步填，旧实现<b>当帧就判死</b>（<code>没有任何可选选项</code>）。改为有界等待 <code>_wait_real_options()</code>（deadline 取 <code>HYBRID_READY_TIMEOUT</code>，慢目标闸门已放大到 45s）；<b>等不到仍照旧报错、绝不静默取第一个</b>（不猜的红线不动）。</p>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
+        <li>判</li>
+        <li>据</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>t</li>
+        <li>e</li>
+        <li>s</li>
+        <li>t</li>
+        <li>_</li>
+        <li>b</li>
+        <li>a</li>
+        <li>s</li>
+        <li>e</li>
+        <li>_</li>
+        <li>u</li>
+        <li>r</li>
+        <li>l</li>
+        <li>_</li>
+        <li>o</li>
+        <li>v</li>
+        <li>e</li>
+        <li>r</li>
+        <li>r</li>
+        <li>i</li>
+        <li>d</li>
+        <li>e</li>
+        <li>_</li>
+        <li>l</li>
+        <li>o</li>
+        <li>g</li>
+        <li>i</li>
+        <li>n</li>
+        <li>.</li>
+        <li>p</li>
+        <li>y</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>8</li>
+        <li> </li>
+        <li>条</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>+</li>
+        <li> </li>
+        <li>2</li>
+        <li> </li>
+        <li>组</li>
+        <li>负</li>
+        <li>向</li>
+        <li>自</li>
+        <li>证</li>
+        <li>（</li>
+        <li>退</li>
+        <li>回</li>
+        <li>裸</li>
+        <li> </li>
+        <li>p</li>
+        <li>a</li>
+        <li>g</li>
+        <li>e</li>
+        <li>.</li>
+        <li>g</li>
+        <li>o</li>
+        <li>t</li>
+        <li>o</li>
+        <li> </li>
+        <li>/</li>
+        <li> </li>
+        <li>o</li>
+        <li>p</li>
+        <li>t</li>
+        <li>i</li>
+        <li>o</li>
+        <li>n</li>
+        <li> </li>
+        <li>只</li>
+        <li>读</li>
+        <li>一</li>
+        <li>次</li>
+        <li>）</li>
+        <li>。</li>
+        <li>子</li>
+        <li>特</li>
+        <li>性</li>
+        <li>新</li>
+        <li>增</li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>1</li>
+        <li>.</li>
+        <li>4</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>端</li>
+        <li>到</li>
+        <li>端</li>
+        <li>：</li>
+        <li>二</li>
+        <li>类</li>
+        <li>慢</li>
+        <li>目</li>
+        <li>标</li>
+        <li>闸</li>
+        <li>门</li>
+        <li>从</li>
+        <li>红</li>
+        <li>转</li>
+        <li>绿</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>—</li>
+        <li>—</li>
+        <li> </li>
+        <li>修</li>
+        <li>前</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>1</li>
+        <li> </li>
+        <li>f</li>
+        <li>a</li>
+        <li>i</li>
+        <li>l</li>
+        <li>e</li>
+        <li>d</li>
+        <li>,</li>
+        <li> </li>
+        <li>1</li>
+        <li> </li>
+        <li>e</li>
+        <li>r</li>
+        <li>r</li>
+        <li>o</li>
+        <li>r</li>
+        <li> </li>
+        <li>i</li>
+        <li>n</li>
+        <li> </li>
+        <li>7</li>
+        <li>8</li>
+        <li>.</li>
+        <li>8</li>
+        <li>1</li>
+        <li>s</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>（</li>
+        <li>跑</li>
+        <li>不</li>
+        <li>到</li>
+        <li>第</li>
+        <li>一</li>
+        <li>个</li>
+        <li>业</li>
+        <li>务</li>
+        <li>步</li>
+        <li>）</li>
+        <li>，</li>
+        <li>修</li>
+        <li>后</li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>1</li>
+        <li> </li>
+        <li>p</li>
+        <li>a</li>
+        <li>s</li>
+        <li>s</li>
+        <li>e</li>
+        <li>d</li>
+        <li> </li>
+        <li>i</li>
+        <li>n</li>
+        <li> </li>
+        <li>2</li>
+        <li>1</li>
+        <li>9</li>
+        <li>.</li>
+        <li>3</li>
+        <li>5</li>
+        <li>s</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li>·</li>
+        <li> </li>
+        <li>[</li>
+        <li>O</li>
+        <li>K</li>
+        <li>]</li>
+        <li> </li>
+        <li>慢</li>
+        <li>目</li>
+        <li>标</li>
+        <li>下</li>
+        <li>全</li>
+        <li>绿</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li>注</li>
+        <li>意</li>
+        <li>：</li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>L</li>
+        <li>2</li>
+        <li>2</li>
+        <li> </li>
+        <li>的</li>
+        <li>历</li>
+        <li>史</li>
+        <li>诊</li>
+        <li>断</li>
+        <li>要</li>
+        <li>作</li>
+        <li>废</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>：</li>
+        <li>旧</li>
+        <li>台</li>
+        <li>账</li>
+        <li>写</li>
+        <li>的</li>
+        <li>是</li>
+        <li>「</li>
+        <li>订</li>
+        <li>单</li>
+        <li>详</li>
+        <li>情</li>
+        <li>页</li>
+        <li>行</li>
+        <li>内</li>
+        <li>输</li>
+        <li>入</li>
+        <li>框</li>
+        <li>等</li>
+        <li>不</li>
+        <li>到</li>
+        <li>、</li>
+        <li>应</li>
+        <li>补</li>
+        <li>行</li>
+        <li>区</li>
+        <li>就</li>
+        <li>绪</li>
+        <li>信</li>
+        <li>号</li>
+        <li>」</li>
+        <li>，</li>
+        <li>而</li>
+        <li>当</li>
+        <li>前</li>
+        <li>实</li>
+        <li>测</li>
+        <li>故</li>
+        <li>障</li>
+        <li>在</li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>登</li>
+        <li>录</li>
+        <li>/</li>
+        <li>身</li>
+        <li>份</li>
+        <li>前</li>
+        <li>置</li>
+        <li>的</li>
+        <li>地</li>
+        <li>址</li>
+        <li>不</li>
+        <li>回</li>
+        <li>写</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>，</li>
+        <li>补</li>
+        <li>行</li>
+        <li>区</li>
+        <li>就</li>
+        <li>绪</li>
+        <li>*</li>
+        <li>*</li>
+        <li>修</li>
+        <li>不</li>
+        <li>了</li>
+        <li>它</li>
+        <li>*</li>
+        <li>*</li>
+        <li>。</li>
+        <li>取</li>
+        <li>证</li>
+        <li>方</li>
+        <li>法</li>
+        <li>记</li>
+        <li>在</li>
+        <li> </li>
+        <li>s</li>
+        <li>e</li>
+        <li>s</li>
+        <li>s</li>
+        <li>i</li>
+        <li>o</li>
+        <li>n</li>
+        <li>-</li>
+        <li>l</li>
+        <li>o</li>
+        <li>g</li>
+        <li>。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.9.4</span><span class="cl-date">2026-11-04</span><span class="cl-tag">上一版</span><span class="cl-theme"><b>堵两个「看不见的假绿」</b>：自愈零判据（L11）+ 行区产物带病分发（A'）</span></div>
       <p class="cl-sum">V8.9.3 之后按「B -> A'」推进，两块都不动主链路、默认行为不变。<br><br><b>B · 自愈 5 条行为判据（原 L11「零判据」）</b>：<code>f06_healer/healer_run.py</code>（178 行）<b>真接在生成链上</b>（<code>generator_generate.py:3639</code> 调 <code>_HEALER.try_heal</code>），此前只有 <code>test_docs_sync</code>/<code>test_no_stale_paths</code> 的非行为引用 —— <b>零行为判据</b>。自愈一退化就是「静默点错控件、用例还绿」，用户看不见，最贵。补的 5 条：① 无用元素（<code>goto</code>/<code>expect_text</code>/无 element）早退且<b>不污染事件流</b>；② A 级必须以 <code>阈值×0.75</code>/<code>MINGAP×0.6</code> 调 <code>resolve_locator</code>（抓真实传参，不靠注释）；③ A 级失败才进 B 级，且<code>_llm_renegotiate</code> 是<b>未实现的骨架</b> —— 必须如实说「未实现」且不得回退成「需配 key」的误导；④ 三态裁决 <code>recovered</code>/<code>real_bug</code>/<code>failed</code>，<b><code>real_bug</code> 时 locator 必须置空</b>（否则运行期继续用错的 locator 点下去 = 掩盖真 bug）；⑤ heals json+md 留下「原语义 -> 新 locator -> 置信度 -> 结果」可审 diff。<br><br><b>A' · 行区控件严格体检（打包硬闸）</b>：<code>HYBRID_ROW_ZONE_STRICT=1</code> 时，包里用例若「引用了行区控件却没给 <code>row_index</code>/<code>row_text</code>」-> <b>拒绝出包</b>。<br>为什么不放在 explore：<code>ai_output</code> 闸门里这类是<b>警告级</b>，是 2026-10-13 的裁决 —— 回放模式下「报缺陷 -> 喂回重试」走不通（AI 产出固定），硬拦会把整个 <code>all --ai</code> 挡死。所以硬闸只加在<b>分发链路</b>：产物可以先跑，但不许当交付物发出去。</p>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
         <li>判</li>
@@ -4966,7 +5355,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.4</b>（2026-11-04）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.5</b>（2026-11-04）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
@@ -5006,7 +5395,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       </ul>
     </li>
     <li class="toc-chap has-sub">
-      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 62 子特性）</a>
+      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 63 子特性）</a>
       <ul class="toc-l2">
         <li class="toc-feat">
           <a href="#feat-1">特性 1AI 链路与离线回放 mixed_chain</a>
@@ -5015,6 +5404,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
             <li><a href="#sub-1.1">1.1AI 链路与离线回放</a></li>
             <li><a href="#sub-1.2">1.2统一验收入口</a></li>
             <li><a href="#sub-1.3">1.3单包即离线可跑</a></li>
+            <li><a href="#sub-1.4">1.4目标地址覆盖对全链路生效</a></li>
           </ul>
         </li>
         <li class="toc-feat">

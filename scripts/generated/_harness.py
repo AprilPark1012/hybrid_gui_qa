@@ -31,6 +31,7 @@ if _sys.platform == "win32":
         pass
 
 from pathlib import Path
+import time                       # select 的「可选项就绪」有界等待要用
 import pytest
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import expect as _expect
@@ -341,6 +342,25 @@ def _maybe_scene_pre(page):
           f"-> 留到后面的导航再试（尚未到业务页是正常的）")
 
 
+def _rewrite_base(url):
+    """把生成期写死的绝对地址改写成 `HYBRID_BASE_URL` 指向的 origin（**唯一入口**）。
+
+    为什么必须抽出来（2026-11-04 L22 取证）：`_goto` 早就做这个改写，但 `_login_flow`
+    里是**裸 `page.goto(...)`** —— 于是设了 `HYBRID_BASE_URL` 时：
+      · 业务步骤走 `_goto` -> 打到 8012（慢代理/预发）；
+      · 登录步骤走 `_login_flow` -> **仍打到生成期的 localhost:8000**；
+    两个 origin 的会话 cookie 互不通用 -> 业务页未登录 -> 第一个业务步就「等了 15000ms 仍是 0 个」。
+    慢目标闸门因此一直在测「半套 8000 + 半套 8012 的混合物」，看起来像「元素等不到」。
+    交付给用户后改 base 指向自己系统时，**登录会打到包里写死的地址** —— 这是功能性缺陷，不只是闸门问题。
+    """
+    _t = str(url or "").strip()
+    if not _t or not _HYBRID_BASE:
+        return url
+    import urllib.parse as _up
+    u, o = _up.urlsplit(_t), _up.urlsplit(_HYBRID_BASE)
+    return _up.urlunsplit((o.scheme, o.netloc, u.path, u.query, u.fragment))
+
+
 def _goto(page, url):
     """统一导航入口：(1) 支持 HYBRID_BASE_URL 覆盖目标（同一套用例跑本机/慢代理/预发）
     (2) goto 之后等页面数据就绪（F1）。生成脚本里的每个 goto 都走这里。
@@ -353,13 +373,35 @@ def _goto(page, url):
         raise RuntimeError(
             f"_goto 收到**相对地址** {target!r}（没补 base）—— 生成器应按用例 base_url 补齐；"
             f"手写脚本请写全 `http://host/path`（相对地址在 playwright 里必然导航失败）")
-    if _HYBRID_BASE:
-        import urllib.parse as _up
-        u, o = _up.urlsplit(url), _up.urlsplit(_HYBRID_BASE)
-        target = _up.urlunsplit((o.scheme, o.netloc, u.path, u.query, u.fragment))
+    target = _rewrite_base(url)          # [!] 与 `_login_flow` 同一个改写入口，不许各写一份
     page.goto(target)
     _wait_ready(page, target)
     _maybe_scene_pre(page)
+
+
+def _wait_real_options(loc, deadline_ms=None):
+    """**有界**等到 select 的「真选项」出现，返回 (真选项下标列表, 选项总数, 已等毫秒)。
+
+    为什么必须等（2026-11-04 L22 取证，慢目标闸门实测）：300ms/请求时，行内 `select`
+    控件已经渲染出来、`<option>` 还在异步填 —— 旧实现当帧就判「没有任何可选项」并报红
+    （`按行定位的 select 未给 value，且该控件没有任何可选选项`），
+    看起来像「框架不支持行内 select」，实际是**选项就绪没有观测条件**。
+
+    等是合法的**就绪等待**，不是猜：超过 deadline 仍为空 -> 由调用方照旧报错，绝不静默取第一个。
+    deadline 默认取 `HYBRID_READY_TIMEOUT`（慢目标闸门会按延迟放大它）。
+    """
+    _dl = int(deadline_ms if deadline_ms is not None
+              else (_os.environ.get("HYBRID_READY_TIMEOUT") or 15000))
+    _t0 = time.time()
+    while True:
+        _opts = loc.locator("option")
+        _n = _opts.count()
+        _real = [i for i in range(_n)
+                 if (_opts.nth(i).get_attribute("value") or "").strip() != ""]
+        _waited = int((time.time() - _t0) * 1000)
+        if _real or _waited >= _dl:
+            return _real, _n, _waited
+        time.sleep(0.2)
 
 
 def _wait_ready(page, url=""):
@@ -803,14 +845,15 @@ def _login_flow(page, steps, wait=None, login_url=""):
     seq = list(steps or [])
     has_goto = any((s or {}).get("op") == "goto" for s in seq)
     if login_url and not has_goto:
-        page.goto(login_url, wait_until="domcontentloaded")
+        # [!] 必须走 `_rewrite_base`：登录与业务步骤**同一个目标地址**，否则换环境跑必挂
+        page.goto(_rewrite_base(login_url), wait_until="domcontentloaded")
     for i, st in enumerate(seq, 1):
         st = st or {}
         op = str(st.get("op") or "").strip()
         if op not in STEP_OPS:
             raise RuntimeError(f"登录第 {i} 步：{unknown_hint(op)}")
         if op == "goto":
-            page.goto(str(st.get("value") or login_url), wait_until="domcontentloaded")
+            page.goto(_rewrite_base(str(st.get("value") or login_url)), wait_until="domcontentloaded")
             continue
         el = st.get("element") or {}
         if not isinstance(el, dict) or not el:
@@ -933,8 +976,12 @@ def page(request, _pool):
     _steps, _host = _pre_steps_of(_cid)
     if _steps and _host:
         try:
-            pg.goto(_host)
-            _wait_ready(pg, _host)
+            # [!] 与 `_goto` / `_login_flow` 同一个改写入口（2026-11-04 L22）：
+            #   身份前置原来也是裸 `pg.goto(_host)`，`_host` 是**生成期**记录的地址 —— 设了
+            #   `HYBRID_BASE_URL` 后它会打到别的实例（本机表现为 ERR_CONNECTION_REFUSED，
+            #   有实例在时更糟：静默在错的身份下跑完整条用例）。
+            pg.goto(_rewrite_base(_host))
+            _wait_ready(pg, _rewrite_base(_host))
             from framework.shared.pre_actions_run import run_pre_actions
             _done = run_pre_actions(pg, _steps, "场景身份前置", require_all_resolvable=True,
                                     resolvable_wait_ms=15000, log_tag="setup")
@@ -1471,13 +1518,12 @@ def _act(page, action, semantic=None, primary=None, value=None, force=False, ind
             # `<option value="">请选择</option>`（order_new.html:45,51,57,69），而场景里
             # 「各选第一项」的人话意思显然是「选第一个**真**选项」—— 按字面选 index 0
             # 会落进「请选择」-> 表单校验不过 -> 订单建不出来（2026-09-30 实测卡了两轮）。
-            _opts = loc.locator("option")
-            _real = [i for i in range(_opts.count())
-                     if (_opts.nth(i).get_attribute("value") or "").strip() != ""]
+            # 有界等「可选项就绪」（慢目标下 option 是异步填的）
+            _real, _n_opts, _waited = _wait_real_options(loc)
             if int(index) >= len(_real):
                 raise AssertionError(
-                    f"select 第 {index} 个有效选项不存在（该控件 {_opts.count()} 个选项，"
-                    f"去掉空占位后只有 {len(_real)} 个）")
+                    f"select 第 {index} 个有效选项不存在（该控件 {_n_opts} 个选项，"
+                    f"去掉空占位后只有 {len(_real)} 个；已等待 {_waited}ms）")
             loc.select_option(index=_real[int(index)])
         else:
             loc.select_option(str(value))
@@ -1555,15 +1601,16 @@ def _act_row(page, semantic, row_index, op="click", value=None):
         #   路径上 V8.4 就定成「选第一项」了 => 一处能跑、一处必炸，看起来像"框架不支持"。
         #   留痕：选了什么要打出来（可审计）；真没选项才报错（不静默）。
         if value is None or not str(value).strip():
-            _opts = el.locator("option")
-            _real = [i for i in range(_opts.count())
-                     if (_opts.nth(i).get_attribute("value") or "").strip() != ""]
+            # 有界等「可选项就绪」：慢目标下 option 比控件晚到（实测 300ms/请求时必现）
+            _real, _n_opts, _waited = _wait_real_options(el)
             if not _real:
                 raise RuntimeError(
-                    f"按行定位的 select 未给 value，且该控件没有任何可选选项"
-                    f"（{semantic!r} 第 {row_index} 行）—— 请在场景/用例里写清要选哪一项")
+                    f"按行定位的 select 未给 value，且该控件**等了 {_waited}ms 仍无**可选选项"
+                    f"（{semantic!r} 第 {row_index} 行，共 {_n_opts} 个 option）"
+                    f"—— 请在场景/用例里写清要选哪一项，或确认该下拉是否真的该有数据")
             _log(page, "row", f"{semantic} 行内 select 未给 value -> 按「选第一项」"
-                              f"选第 {_real[0]} 个真选项（共 {_opts.count()} 个，跳过空占位）")
+                              f"选第 {_real[0]} 个真选项（共 {_n_opts} 个，跳过空占位）"
+                              f"（等可选项就绪 {_waited}ms）")
             el.select_option(index=_real[0])
         else:
             try:

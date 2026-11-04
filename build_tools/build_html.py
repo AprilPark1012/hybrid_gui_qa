@@ -61,11 +61,43 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.9.4"
+VERSION = "8.9.5"
 VERSION_DATE = "2026-11-04"
 CHANGELOG = [
     dict(
-        version="8.9.4", date="2026-11-04", tag="当前版本",
+        version="8.9.5", date="2026-11-04", tag="当前版本",
+        theme="<b><code>HYBRID_BASE_URL</code> 覆盖对登录/身份前置也生效</b> —— 交付到内网改 base 才真的能跑",
+        summary="L22（慢目标唯一红灯）取证时挖出的两个<b>交付级缺陷</b>，比 L22 本身严重：<br><br>"
+                "<b>① 登录流绕过地址改写</b>：<code>_goto</code> 一直支持 <code>HYBRID_BASE_URL</code> 覆盖，"
+                "但 <code>_login_flow</code> 里是<b>裸 <code>page.goto()</code></b> —— 设了覆盖以后，"
+                "业务步骤打到新地址、<b>登录仍打到生成期的 <code>localhost:8000</code></b>。"
+                "两个 origin 的会话 cookie 互不通用 => 业务页未登录 => 第一个业务步就"
+                "「等了 15000ms 仍是 0 个」，自愈也救不回来。<br>"
+                "<b>② 场景身份前置同样绕过</b>：fixture 里 <code>pg.goto(_host)</code>（<code>_host</code> 是"
+                "生成期记录的地址）—— 本机表现为 <code>ERR_CONNECTION_REFUSED</code>，"
+                "有实例在时更糟：<b>静默在错的身份下把整条用例跑完</b>。<br><br>"
+                "<b>对交付的实际影响</b>：把包发到内网、配 <code>HYBRID_BASE_URL</code> 指向用户系统时，"
+                "<b>登录会打到包里写死的地址</b> —— 这条链路此前根本跑不起来。"
+                "慢目标闸门也因此长期红着，而它测的是「半套 8000 + 半套 8012 的混合物」。<br><br>"
+                "<b>修法</b>：抽<b>唯一改写入口</b> <code>_rewrite_base()</code>，"
+                "<code>_goto</code> / <code>_login_flow</code>（两条路径）/ 身份前置 fixture 全部收口。"
+                "判据用 <b>AST 扫 harness 里全部 <code>.goto()</code> 调用点</b> —— "
+                "正是这条抓出了第二处（身份前置）。<br><br>"
+                "<b>③ 顺带修 select 的「可选项就绪」</b>：慢目标下 <code>select</code> 控件已渲染、"
+                "<code>&lt;option&gt;</code> 还在异步填，旧实现<b>当帧就判死</b>"
+                "（<code>没有任何可选选项</code>）。改为有界等待 <code>_wait_real_options()</code>"
+                "（deadline 取 <code>HYBRID_READY_TIMEOUT</code>，慢目标闸门已放大到 45s）；"
+                "<b>等不到仍照旧报错、绝不静默取第一个</b>（不猜的红线不动）。",
+        notes="判据 <code>test_base_url_override_login.py</code> <b>8 条</b> + 2 组负向自证"
+              "（退回裸 page.goto / option 只读一次）。子特性新增 <b>1.4</b>。<br>"
+              "<b>端到端：二类慢目标闸门从红转绿</b> —— 修前 <code>1 failed, 1 error in 78.81s</code>"
+              "（跑不到第一个业务步），修后 <b><code>1 passed in 219.35s</code> · [OK] 慢目标下全绿</b>。<br>"
+              "注意： <b>L22 的历史诊断要作废</b>：旧台账写的是「订单详情页行内输入框等不到、"
+              "应补行区就绪信号」，而当前实测故障在<b>登录/身份前置的地址不回写</b>，"
+              "补行区就绪**修不了它**。取证方法记在 session-log。",
+    ),
+    dict(
+        version="8.9.4", date="2026-11-04", tag="上一版",
         theme="<b>堵两个「看不见的假绿」</b>：自愈零判据（L11）+ 行区产物带病分发（A'）",
         summary="V8.9.3 之后按「B -> A'」推进，两块都不动主链路、默认行为不变。<br><br>"
                 "<b>B · 自愈 5 条行为判据（原 L11「零判据」）</b>："
