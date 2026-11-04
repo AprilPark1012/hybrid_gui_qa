@@ -1785,6 +1785,9 @@ TUNABLE_CATALOG: list[tuple[str, str, str]] = [
      "动作后置校验总开关：业务动词点击后判「动作是否真的生效（有导航/有写请求/无拒绝提示）」，默认只留痕"),
     ("HYBRID_STRICT_EFFECT", "0",
      "动作后置校验的严格模式（1=开）：页面出现**拒绝提示**时直接判失败（CI 零兜底）"),
+    ("HYBRID_ROW_ZONE_STRICT", "0",
+     "行区控件严格体检（1=开）：打包时若用例里「行区控件没给 row_index/row_text」-> **拒绝出包**。"
+     "只拦分发链路，不拦 explore（回放模式下硬拦会把主推命令挡死，2026-10-13 裁决）"),
     ("HYBRID_EDITABLE_PROBE", "1",
      "「编辑态/动态新增」补探开关：探测时点一次「编辑」「新增」再重采（有些控件只在编辑态才存在）"),
     ("HYBRID_VISION_GROUNDING", "1",

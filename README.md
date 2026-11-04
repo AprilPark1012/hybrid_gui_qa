@@ -1,7 +1,7 @@
 # hybrid_gui_qa — LLM 驱动的混合 GUI 自动化测试框架
 
-> 当前版本 **V8.9.3**（2026-11-04）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
-> · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/)（最新：[`RELEASE_NOTES_V8.9.3.md`](releases/RELEASE_NOTES_V8.9.3.md)） · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
+> 当前版本 **V8.9.4**（2026-11-04）· 版本号单一来源 = `build_tools/build_html.py` 顶部 `VERSION`
+> · 变更记录见 [`releases/RELEASE_NOTES_V*.md`](releases/)（最新：[`RELEASE_NOTES_V8.9.4.md`](releases/RELEASE_NOTES_V8.9.4.md)） · 团队培训页（**先看这个**）：[`docs/training.html`](docs/training.html)
 
 **一句话**：把 **LLM 语义编排（AI 智能探索）** 和 **Playwright（浏览器采集证据 + 确定性执行）** 组合成一套混合测试框架 ——
 AI 负责理解意图、规划步骤、挑元素；Playwright 负责精确定位、唯一性校验、可复现回归。

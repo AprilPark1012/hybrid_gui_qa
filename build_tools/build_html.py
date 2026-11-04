@@ -61,11 +61,40 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.9.3"
+VERSION = "8.9.4"
 VERSION_DATE = "2026-11-04"
 CHANGELOG = [
     dict(
-        version="8.9.3", date="2026-11-04", tag="当前版本",
+        version="8.9.4", date="2026-11-04", tag="当前版本",
+        theme="<b>堵两个「看不见的假绿」</b>：自愈零判据（L11）+ 行区产物带病分发（A'）",
+        summary="V8.9.3 之后按「B -> A'」推进，两块都不动主链路、默认行为不变。<br><br>"
+                "<b>B · 自愈 5 条行为判据（原 L11「零判据」）</b>："
+                "<code>f06_healer/healer_run.py</code>（178 行）<b>真接在生成链上</b>"
+                "（<code>generator_generate.py:3639</code> 调 <code>_HEALER.try_heal</code>），"
+                "此前只有 <code>test_docs_sync</code>/<code>test_no_stale_paths</code> 的非行为引用 —— "
+                "<b>零行为判据</b>。自愈一退化就是「静默点错控件、用例还绿」，用户看不见，最贵。"
+                "补的 5 条：① 无用元素（<code>goto</code>/<code>expect_text</code>/无 element）早退且<b>不污染事件流</b>；"
+                "② A 级必须以 <code>阈值×0.75</code>/<code>MINGAP×0.6</code> 调 <code>resolve_locator</code>（抓真实传参，不靠注释）；"
+                "③ A 级失败才进 B 级，且<code>_llm_renegotiate</code> 是<b>未实现的骨架</b> —— 必须如实说「未实现」"
+                "且不得回退成「需配 key」的误导；④ 三态裁决 <code>recovered</code>/<code>real_bug</code>/<code>failed</code>，"
+                "<b><code>real_bug</code> 时 locator 必须置空</b>（否则运行期继续用错的 locator 点下去 = 掩盖真 bug）；"
+                "⑤ heals json+md 留下「原语义 -> 新 locator -> 置信度 -> 结果」可审 diff。<br><br>"
+                "<b>A' · 行区控件严格体检（打包硬闸）</b>：<code>HYBRID_ROW_ZONE_STRICT=1</code> 时，"
+                "包里用例若「引用了行区控件却没给 <code>row_index</code>/<code>row_text</code>」-> <b>拒绝出包</b>。<br>"
+                "为什么不放在 explore：<code>ai_output</code> 闸门里这类是<b>警告级</b>，是 2026-10-13 的裁决 —— "
+                "回放模式下「报缺陷 -> 喂回重试」走不通（AI 产出固定），硬拦会把整个 <code>all --ai</code> 挡死。"
+                "所以硬闸只加在<b>分发链路</b>：产物可以先跑，但不许当交付物发出去。",
+        notes="判据：<code>test_healer_behavior.py</code> <b>5 条</b> + 3 组负向自证（摘 real_bug 清空 locator / "
+              "A 级不放宽阈值 / 早退也记事件，各自当场红）；<code>test_row_zone_pack_strict.py</code> <b>5 条</b> + "
+              "2 组负向自证（只认 row_index 误伤 row_text / 拔掉 main 接线）。一类 <b>1601 passed</b>；"
+              "子特性 <b>62</b>（新增 6.1/6.2 自愈，9.4 补严格体检）。<br>"
+              "<b>顺手修的干货</b>：<code>UNVERIFIED.md</code> 里原计划 4 条判据中，"
+              "「B 级只在 A 级失败后触发」已<b>过时</b> —— B 级是刻意未实现的骨架，判据按其真实约束重写。<br>"
+              "<b>踩坑（第三次）</b>：新注释里又写了 <code>-></code>(U+21D2)，GBK 编不了 -> 判据红。"
+              "规矩：往 .py 写中文后先扫一遍 GBK 再跑测试。",
+    ),
+    dict(
+        version="8.9.3", date="2026-11-04", tag="上一版",
         theme="<b>行区提示词改「无条件」</b> —— 原措辞把 AI 放走了：条件限定让它判定「不适用」",
         summary="V8.9.2 之后用户真机复核（用户本地生成的用例 JSON，非本仓库文件）：<code>期次号</code> 那步"
                 "只有 <code>element/index</code>，<b>没有 <code>row_index</code></b> —— "

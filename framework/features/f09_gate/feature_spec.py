@@ -321,12 +321,17 @@ FEATURES = [
 
     dict(
         no=6, key="healer", name="自愈闭环 Healer",
-        goal="定位失败时能自动修复并留痕（当前无判据，属规划中）",
+        goal="定位失败时按**放宽阈值**重定位并留痕；real_bug 时**绝不返回 locator**（自愈不许掩盖真 bug）",
         dir="特性6-自愈闭环Healer",
-        status="规划中（零判据）",
         subs=[
-            dict(no="6.1", name="失败自愈", goal="[!] 待定：主定位失败时尝试候选并记录自愈过程",
-                 class1=[], class2=[], status="规划中"),
+            dict(no="6.1", name="失败自愈（A 级）",
+                 goal="放宽阈值（阈值×0.75 / MINGAP×0.6）再定位一次；无用元素（goto/expect_text/无 element）"
+                      "直接早退且**不记事件**；B 级 LLM 重猜是**未实现的骨架**且必须如实说明（不许误导去配 key）",
+                 class1=["test_healer_behavior.py"], class2=[]),
+            dict(no="6.2", name="三态裁决与可审 diff",
+                 goal="recovered / real_bug / failed 各自判对；业务断言不通过或抛异常一律 real_bug 且 **locator 置空**；"
+                      "heals json+md 留下「原语义 -> 新 locator -> 置信度 -> 结果」",
+                 class1=["test_healer_behavior.py"], class2=[]),
         ],
     ),
 
@@ -422,8 +427,13 @@ FEATURES = [
                          "test_repo_relative_paths_use_forward_slash.py",
                          "test_no_stale_paths.py", "test_no_undefined_names.py"],
                  class2=["verify_undefined_names.py"]),
-            dict(no="9.4", name="交付包与文档同步", goal="打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README",
+            dict(no="9.4", name="交付包与文档同步",
+                 goal="打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README；"
+                      "`HYBRID_ROW_ZONE_STRICT=1` 时行区控件缺行定位的产物**拒绝出包**（A' 严格体检）",
                  class1=["test_pack_release.py", "test_pack_release_requires_generated_dir.py",
+                         # A'（2026-11-04）：行区控件缺 row_index 的产物**不许当交付物发出去**。
+                         #   闸门只加在打包链路（explore 那道仍是警告级，回放模式下硬拦会把主推命令挡死）。
+                         "test_row_zone_pack_strict.py",
                          # V8.7.19（2026-10-29 用户 Windows 实测 1 failed）：交付包绝不许带含凭据的 `.env`。
                          #   根因 `Path(".env").suffix == ""` 落不进 EXCLUDE_SUFFIX；git 分支靠 .gitignore
                          #   侥幸排除，**非 git 目录（交付包解压后）走 rglob 全收** -> 用户手工建的 .env 会被打进包。

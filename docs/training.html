@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.3）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.4）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.3 · 2026-11-04　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.4 · 2026-11-04　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1301,19 +1301,19 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
 <!-- ========== 6. 框架特性设计实现说明（按特性/子特性 · 以代码为基准） ========== -->
 <section>
-  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 61 子特性）</h2>
+  <h2 class="sec-title" id="chap-6"><span class="n">6</span>框架特性设计实现说明（11 特性 / 62 子特性）</h2>
   <p class="sec-sub">第 5 章 5.2 讲「一条主线上有什么」；本章按 <b>特性 -&gt; 子特性</b> 横向拆开：每个子特性给「<b>关键实现逻辑</b> + <b>函数调用关系</b> + <b>证据（判据文件）</b>」，并配一张<b>图例</b>。编号 / 名称 / 目标 / 判据归属<b>直接读单一来源</b> <span class="code-inline">framework/features/f09_gate/feature_spec.py</span> 渲染（它同时被 <span class="code-inline">build_tools/build_feature_map.py</span> 渲染成 <span class="code-inline">docs/feature_map.md</span>）；实现逻辑以 <span class="code-inline">framework/</span> 下的<b>真实代码为准</b>。</p>
-  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 61 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
+  <div class="diffbox"><b>与旧版培训页的差异（一律以代码为准）：</b><br>(1) 旧版本章按 <b>9 个特性</b> 讲，把「语义识别」与「分层定位」合成一条、其后编号整体前移（旧特性 5 = 自愈 Healer）；现规格是 <b>11 特性 / 62 子特性</b>，Healer 是特性 6、并发是特性 7 —— 本章已按规格重排。<br>(2) 子特性 3.6「iframe 内控件」规格标 <span class="code-inline">status=未实现</span>，属<b>如实标注的缺口</b>，本章照标，不粉饰。<br>(3) 特性 6（自愈 Healer）规格标「规划中（零判据）」：指<b>没有自动化判据</b>，不等于没实现（<span class="code-inline">run/healer.py</span> 是已实现的）—— 已实现 != 已验证。</div>
   <div class="card"><h4 style="margin-bottom:8px">图例 0 · 端到端函数调用地图（cli 是总入口，两条路——真 AI 链路 / 离线回放——共用同一条确定性下游）</h4><svg viewBox="0 0 920 252" width="100%" height="auto" role="img" style="background:#0d1117;border-radius:10px;padding:4px;display:block"><defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#64748b"/></marker></defs><rect x="40" y="14" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="40" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">python -m framework.cli  ->  main()</text><rect x="40" y="76" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="102" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_explore()  ->  explorer.ai_explore()</text><rect x="40" y="138" width="560" height="42" rx="9" fill="#111c2e" stroke="#3b82f6" stroke-width="1.2"/><text x="320" y="164" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_generate()  ->  generator.generate_scripts()</text><rect x="40" y="200" width="560" height="42" rx="9" fill="#0f2a20" stroke="#22c55e" stroke-width="1.2"/><text x="320" y="226" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">cmd_run()  ->  pytest  ->  生成物 _harness._act / _loc / _assert_*</text><line x1="320" y1="56" x2="320" y2="74" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="118" x2="320" y2="136" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><line x1="320" y1="180" x2="320" y2="198" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><rect x="648" y="86" width="252" height="94" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="110" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">probe 层（只描述、不定位）</text><text x="774" y="132" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">scan_page / probe_page</text><text x="774" y="150" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">expandable / editable / modal</text><text x="774" y="168" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">anchor + path（容器下钻）</text><line x1="648" y1="110" x2="602" y2="104" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><line x1="648" y1="158" x2="602" y2="162" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/><rect x="648" y="198" width="252" height="46" rx="9" fill="#2a230f" stroke="#fbbf24" stroke-width="1.2"/><text x="774" y="218" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-family="sans-serif">locator_bridge.resolve_locator()</text><text x="774" y="235" text-anchor="middle" fill="#9fb0c4" font-size="10.5" font-family="sans-serif">Tier1 精确 -> Tier2 指纹（唯一性校验）</text><line x1="648" y1="221" x2="602" y2="221" stroke="#475569" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/></svg></div>
   <div class="card">
-    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 61 子特性）</h4>
+    <h4 style="margin-bottom:8px">特性总览（直接读 feature_spec.py：11 特性 / 62 子特性）</h4>
     <table class="tbl"><tr><th style="width:46px">No</th><th style="width:230px">特性</th><th style="width:110px">key</th><th style="width:64px">子特性</th><th>目标</th></tr>
     <tr><td>1</td><td><b>AI 链路与离线回放</b></td><td><span class="code-inline">mixed_chain</span></td><td>3</td><td>只剩真 AI 链路（all --ai）与离线回放两种运行形态：都能跑通，且有一条统一验收入口</td></tr>
     <tr><td>2</td><td><b>语义识别与步骤编排</b></td><td><span class="code-inline">semantic</span></td><td>4</td><td>把「人的自然语言」变成「可执行的步骤序列」—— 面向生成，对人友好也对机器友好</td></tr>
     <tr><td>3</td><td><b>分层定位与控件识别</b></td><td><span class="code-inline">locate</span></td><td>12</td><td>在生产系统的复杂页面上仍能唯一定位到目标控件 —— 面向执行</td></tr>
     <tr><td>4</td><td><b>选错控件兜底</b></td><td><span class="code-inline">ambiguity</span></td><td>4</td><td>同名/同区域控件不许被选错；选不准就大声失败，绝不静默点到错的</td></tr>
     <tr><td>5</td><td><b>用例脚本数据三层分离</b></td><td><span class="code-inline">layers</span></td><td>5</td><td>用例（意图）/ 脚本（可执行）/ 数据（多变）三层各司其职，数据变了不用改用例</td></tr>
-    <tr><td>6</td><td><b>自愈闭环 Healer</b></td><td><span class="code-inline">healer</span></td><td>1</td><td>定位失败时能自动修复并留痕（当前无判据，属规划中）</td></tr>
+    <tr><td>6</td><td><b>自愈闭环 Healer</b></td><td><span class="code-inline">healer</span></td><td>2</td><td>定位失败时按**放宽阈值**重定位并留痕；real_bug 时**绝不返回 locator**（自愈不许掩盖真 bug）</td></tr>
     <tr><td>7</td><td><b>并发与资源安全</b></td><td><span class="code-inline">concurrency</span></td><td>4</td><td>并行跑验证不许把内存打爆；资源闸门不许支配一类自测</td></tr>
     <tr><td>8</td><td><b>离线回放</b></td><td><span class="code-inline">replay</span></td><td>5</td><td>没有外网的机器也能跑 AI 链路 —— 靠 LLM 录像</td></tr>
     <tr><td>9</td><td><b>质量闸门体系</b></td><td><span class="code-inline">gate</span></td><td>8</td><td>框架自己守自己：布局/命名/环境/交付/就绪/安全六类契约，坏了就红</td></tr>
@@ -1561,18 +1561,23 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     </div>
   </section>
   <section class="feat">
-    <h4 class="feat-title" id="feat-6" data-feat="6"><span class="fno">特性 6</span>自愈闭环 Healer <span class="fkey">healer</span> <span class="fkey">[规划中（零判据）]</span></h4>
-    <p class="feat-goal"><b>目标：</b>定位失败时能自动修复并留痕（当前无判据，属规划中）　<b>目录：</b><span class="code-inline">tests/特性6-自愈闭环Healer/</span></p>
+    <h4 class="feat-title" id="feat-6" data-feat="6"><span class="fno">特性 6</span>自愈闭环 Healer <span class="fkey">healer</span></h4>
+    <p class="feat-goal"><b>目标：</b>定位失败时按**放宽阈值**重定位并留痕；real_bug 时**绝不返回 locator**（自愈不许掩盖真 bug）　<b>目录：</b><span class="code-inline">tests/特性6-自愈闭环Healer/</span></p>
     <p class="codesrc" style="margin:2px 0 0">图例 · 自愈闭环（兜底，不是瞎猜；每一次都可审）</p>
     <div class="flow2"><span class="fnode">定位失败</span><span class="farrow">-></span><span class="fnode y">A 级放宽阈值</span><span class="farrow">-></span><span class="fnode y">B 级 LLM 重猜（需 key）</span><span class="farrow">-></span><span class="fnode r">三态裁决</span></div>
     <div class="subfeat">
-      <h5 class="subfeat-title" id="sub-6.1" data-sub="6.1"><span class="sno">6.1</span>失败自愈 <span class="code-inline">[规划中]</span></h5>
-      <p class="codesrc"><b>目标：</b>[!] 待定：主定位失败时尝试候选并记录自愈过程</p>
+      <h5 class="subfeat-title" id="sub-6.1" data-sub="6.1"><span class="sno">6.1</span>失败自愈（A 级）</h5>
+      <p class="codesrc"><b>目标：</b>放宽阈值（阈值×0.75 / MINGAP×0.6）再定位一次；无用元素（goto/expect_text/无 element）直接早退且**不记事件**；B 级 LLM 重猜是**未实现的骨架**且必须如实说明（不许误导去配 key）</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b><b>代码已存在、但零判据</b>：<span class="code-inline">run/healer.py</span> 的 <span class="code-inline">Healer.try_heal()</span> 在定位失败时自愈 —— Level-A <span class="code-inline">_negotiate()</span> 放宽阈值重定位（<span class="code-inline">resolve_locator(tier2_threshold * 0.75, tier2_gap * 0.6)</span>，确定性、无 LLM）；Level-B <span class="code-inline">_llm_renegotiate()</span> 请 LLM 重猜（需 key，无 key 自动跳过）；每次自愈落 <span class="code-inline">output/heals/heals_*.json|.md</span> 成<b>可审 diff</b>（<span class="code-inline">dump()</span>），并用业务后置断言裁决成 <b>recovered / real_bug / failed</b> 三态（绝不静默改写脚本）。runner 侧接入：<span class="code-inline">_run_step()</span> 里 resolve 失败 -> <span class="code-inline">healer.try_heal()</span>；指纹自愈 -> <span class="code-inline">record_heal()</span>。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">runner._run_step()</span> -> <span class="code-inline">resolve_locator()</span> 失败 -> <span class="code-inline">Healer.try_heal()</span> -> <span class="code-inline">_negotiate()</span> -> <span class="code-inline">_record()</span> / <span class="code-inline">dump()</span>。</p>
       <div class="flow2"><span class="fnode">runner._run_step() 定位失败</span><span class="farrow">-></span><span class="fnode">Healer.try_heal()</span><span class="farrow">-></span><span class="fnode y">A 级 _negotiate() 放宽阈值</span><span class="farrow">-></span><span class="fnode y">B 级 _llm_renegotiate()（需 key）</span><span class="farrow">-></span><span class="fnode r">recovered / real_bug / failed</span></div>
       <div class="diffbox">[!] 与规格一致但需说明：<span class="code-inline">feature_spec.py</span> 把特性 6 标为 <span class="code-inline">规划中（零判据）</span> —— 指的是「还没有自动化判据」，不等于「没实现」：代码里 healer 是<b>已实现</b>的。已实现 != 已验证，这是一条待补的缺口。</div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b>无<br><b>证据 · 二类（特性自证）：</b>无</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性6-自愈闭环Healer/test_healer_behavior.py（5 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+    </div>
+    <div class="subfeat">
+      <h5 class="subfeat-title" id="sub-6.2" data-sub="6.2"><span class="sno">6.2</span>三态裁决与可审 diff</h5>
+      <p class="codesrc"><b>目标：</b>recovered / real_bug / failed 各自判对；业务断言不通过或抛异常一律 real_bug 且 **locator 置空**；heals json+md 留下「原语义 -&gt; 新 locator -&gt; 置信度 -&gt; 结果」</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性6-自愈闭环Healer/test_healer_behavior.py（5 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
   <section class="feat">
@@ -1687,11 +1692,11 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-9.4" data-sub="9.4"><span class="sno">9.4</span>交付包与文档同步</h5>
-      <p class="codesrc"><b>目标：</b>打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README</p>
+      <p class="codesrc"><b>目标：</b>打包内容完整（含运行期必需文件）、文档与代码一致、只留一份 README；`HYBRID_ROW_ZONE_STRICT=1` 时行区控件缺行定位的产物**拒绝出包**（A' 严格体检）</p>
       <p style="font-size:.9rem;margin:4px 0"><b>关键实现逻辑：</b>交付包与文档同步：<span class="code-inline">build_tools/pack_release.py</span> 打包（内容完整、只留一份 README）、<span class="code-inline">build_tools/build_html.py</span> 是<b>版本号单一来源</b>且生成<b>可复现</b>（换哈希种子逐字节一致）、<span class="code-inline">build_tools/build_feature_map.py</span> 渲染特性映射文档。判据把「文档与代码一致」钉成红。</p>
       <p style="font-size:.88rem;margin:4px 0"><b>函数调用关系：</b><span class="code-inline">build_html.build()</span> -> docs/training.html；<span class="code-inline">build_feature_map.render()</span> -> docs/feature_map.md；<span class="code-inline">verify_html_sync.py</span> 校验可复现 + 与代码一致。</p>
       <div class="flow2"><span class="fnode">pack_release.py</span><span class="farrow">-></span><span class="fnode">build_html.build()（版本单一来源）</span><span class="farrow">-></span><span class="fnode">build_feature_map.render()</span><span class="farrow">-></span><span class="fnode">verify_html_sync.py</span><span class="farrow">-></span><span class="fnode g">可复现 + 与代码同步</span></div>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_pack_release.py（23 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_pack_release_requires_generated_dir.py（1 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_pack_dotenv_never_shipped.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_readme_structure.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_docs_sync.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_build_html_hl.py（12 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_architecture_doc_contract.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_html_sync.py</span></p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性9-质量闸门体系/test_pack_release.py（23 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_pack_release_requires_generated_dir.py（1 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_row_zone_pack_strict.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_pack_dotenv_never_shipped.py（5 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_readme_structure.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_docs_sync.py（16 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_build_html_hl.py（12 条）</span> <span class="code-inline">tests/特性9-质量闸门体系/test_architecture_doc_contract.py（4 条）</span><br><b>证据 · 二类（特性自证）：</b><span class="code-inline">tests/特性9-质量闸门体系/verify_html_sync.py</span></p>
     </div>
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-9.5" data-sub="9.5"><span class="sno">9.5</span>保留与产物健康</h5>
@@ -2122,9 +2127,492 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.9.3</b>（2026-11-04）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.9.4</b>（2026-11-04）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.9.3</span><span class="cl-date">2026-11-04</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>行区提示词改「无条件」</b> —— 原措辞把 AI 放走了：条件限定让它判定「不适用」</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.9.4</span><span class="cl-date">2026-11-04</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>堵两个「看不见的假绿」</b>：自愈零判据（L11）+ 行区产物带病分发（A'）</span></div>
+      <p class="cl-sum">V8.9.3 之后按「B -> A'」推进，两块都不动主链路、默认行为不变。<br><br><b>B · 自愈 5 条行为判据（原 L11「零判据」）</b>：<code>f06_healer/healer_run.py</code>（178 行）<b>真接在生成链上</b>（<code>generator_generate.py:3639</code> 调 <code>_HEALER.try_heal</code>），此前只有 <code>test_docs_sync</code>/<code>test_no_stale_paths</code> 的非行为引用 —— <b>零行为判据</b>。自愈一退化就是「静默点错控件、用例还绿」，用户看不见，最贵。补的 5 条：① 无用元素（<code>goto</code>/<code>expect_text</code>/无 element）早退且<b>不污染事件流</b>；② A 级必须以 <code>阈值×0.75</code>/<code>MINGAP×0.6</code> 调 <code>resolve_locator</code>（抓真实传参，不靠注释）；③ A 级失败才进 B 级，且<code>_llm_renegotiate</code> 是<b>未实现的骨架</b> —— 必须如实说「未实现」且不得回退成「需配 key」的误导；④ 三态裁决 <code>recovered</code>/<code>real_bug</code>/<code>failed</code>，<b><code>real_bug</code> 时 locator 必须置空</b>（否则运行期继续用错的 locator 点下去 = 掩盖真 bug）；⑤ heals json+md 留下「原语义 -> 新 locator -> 置信度 -> 结果」可审 diff。<br><br><b>A' · 行区控件严格体检（打包硬闸）</b>：<code>HYBRID_ROW_ZONE_STRICT=1</code> 时，包里用例若「引用了行区控件却没给 <code>row_index</code>/<code>row_text</code>」-> <b>拒绝出包</b>。<br>为什么不放在 explore：<code>ai_output</code> 闸门里这类是<b>警告级</b>，是 2026-10-13 的裁决 —— 回放模式下「报缺陷 -> 喂回重试」走不通（AI 产出固定），硬拦会把整个 <code>all --ai</code> 挡死。所以硬闸只加在<b>分发链路</b>：产物可以先跑，但不许当交付物发出去。</p>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
+        <li>判</li>
+        <li>据</li>
+        <li>：</li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>t</li>
+        <li>e</li>
+        <li>s</li>
+        <li>t</li>
+        <li>_</li>
+        <li>h</li>
+        <li>e</li>
+        <li>a</li>
+        <li>l</li>
+        <li>e</li>
+        <li>r</li>
+        <li>_</li>
+        <li>b</li>
+        <li>e</li>
+        <li>h</li>
+        <li>a</li>
+        <li>v</li>
+        <li>i</li>
+        <li>o</li>
+        <li>r</li>
+        <li>.</li>
+        <li>p</li>
+        <li>y</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>5</li>
+        <li> </li>
+        <li>条</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>+</li>
+        <li> </li>
+        <li>3</li>
+        <li> </li>
+        <li>组</li>
+        <li>负</li>
+        <li>向</li>
+        <li>自</li>
+        <li>证</li>
+        <li>（</li>
+        <li>摘</li>
+        <li> </li>
+        <li>r</li>
+        <li>e</li>
+        <li>a</li>
+        <li>l</li>
+        <li>_</li>
+        <li>b</li>
+        <li>u</li>
+        <li>g</li>
+        <li> </li>
+        <li>清</li>
+        <li>空</li>
+        <li> </li>
+        <li>l</li>
+        <li>o</li>
+        <li>c</li>
+        <li>a</li>
+        <li>t</li>
+        <li>o</li>
+        <li>r</li>
+        <li> </li>
+        <li>/</li>
+        <li> </li>
+        <li>A</li>
+        <li> </li>
+        <li>级</li>
+        <li>不</li>
+        <li>放</li>
+        <li>宽</li>
+        <li>阈</li>
+        <li>值</li>
+        <li> </li>
+        <li>/</li>
+        <li> </li>
+        <li>早</li>
+        <li>退</li>
+        <li>也</li>
+        <li>记</li>
+        <li>事</li>
+        <li>件</li>
+        <li>，</li>
+        <li>各</li>
+        <li>自</li>
+        <li>当</li>
+        <li>场</li>
+        <li>红</li>
+        <li>）</li>
+        <li>；</li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>t</li>
+        <li>e</li>
+        <li>s</li>
+        <li>t</li>
+        <li>_</li>
+        <li>r</li>
+        <li>o</li>
+        <li>w</li>
+        <li>_</li>
+        <li>z</li>
+        <li>o</li>
+        <li>n</li>
+        <li>e</li>
+        <li>_</li>
+        <li>p</li>
+        <li>a</li>
+        <li>c</li>
+        <li>k</li>
+        <li>_</li>
+        <li>s</li>
+        <li>t</li>
+        <li>r</li>
+        <li>i</li>
+        <li>c</li>
+        <li>t</li>
+        <li>.</li>
+        <li>p</li>
+        <li>y</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>5</li>
+        <li> </li>
+        <li>条</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>+</li>
+        <li> </li>
+        <li>2</li>
+        <li> </li>
+        <li>组</li>
+        <li>负</li>
+        <li>向</li>
+        <li>自</li>
+        <li>证</li>
+        <li>（</li>
+        <li>只</li>
+        <li>认</li>
+        <li> </li>
+        <li>r</li>
+        <li>o</li>
+        <li>w</li>
+        <li>_</li>
+        <li>i</li>
+        <li>n</li>
+        <li>d</li>
+        <li>e</li>
+        <li>x</li>
+        <li> </li>
+        <li>误</li>
+        <li>伤</li>
+        <li> </li>
+        <li>r</li>
+        <li>o</li>
+        <li>w</li>
+        <li>_</li>
+        <li>t</li>
+        <li>e</li>
+        <li>x</li>
+        <li>t</li>
+        <li> </li>
+        <li>/</li>
+        <li> </li>
+        <li>拔</li>
+        <li>掉</li>
+        <li> </li>
+        <li>m</li>
+        <li>a</li>
+        <li>i</li>
+        <li>n</li>
+        <li> </li>
+        <li>接</li>
+        <li>线</li>
+        <li>）</li>
+        <li>。</li>
+        <li>一</li>
+        <li>类</li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>1</li>
+        <li>6</li>
+        <li>0</li>
+        <li>1</li>
+        <li> </li>
+        <li>p</li>
+        <li>a</li>
+        <li>s</li>
+        <li>s</li>
+        <li>e</li>
+        <li>d</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>；</li>
+        <li>子</li>
+        <li>特</li>
+        <li>性</li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>6</li>
+        <li>2</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>（</li>
+        <li>新</li>
+        <li>增</li>
+        <li> </li>
+        <li>6</li>
+        <li>.</li>
+        <li>1</li>
+        <li>/</li>
+        <li>6</li>
+        <li>.</li>
+        <li>2</li>
+        <li> </li>
+        <li>自</li>
+        <li>愈</li>
+        <li>，</li>
+        <li>9</li>
+        <li>.</li>
+        <li>4</li>
+        <li> </li>
+        <li>补</li>
+        <li>严</li>
+        <li>格</li>
+        <li>体</li>
+        <li>检</li>
+        <li>）</li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>顺</li>
+        <li>手</li>
+        <li>修</li>
+        <li>的</li>
+        <li>干</li>
+        <li>货</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>：</li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>U</li>
+        <li>N</li>
+        <li>V</li>
+        <li>E</li>
+        <li>R</li>
+        <li>I</li>
+        <li>F</li>
+        <li>I</li>
+        <li>E</li>
+        <li>D</li>
+        <li>.</li>
+        <li>m</li>
+        <li>d</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li>里</li>
+        <li>原</li>
+        <li>计</li>
+        <li>划</li>
+        <li> </li>
+        <li>4</li>
+        <li> </li>
+        <li>条</li>
+        <li>判</li>
+        <li>据</li>
+        <li>中</li>
+        <li>，</li>
+        <li>「</li>
+        <li>B</li>
+        <li> </li>
+        <li>级</li>
+        <li>只</li>
+        <li>在</li>
+        <li> </li>
+        <li>A</li>
+        <li> </li>
+        <li>级</li>
+        <li>失</li>
+        <li>败</li>
+        <li>后</li>
+        <li>触</li>
+        <li>发</li>
+        <li>」</li>
+        <li>已</li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>过</li>
+        <li>时</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>—</li>
+        <li>—</li>
+        <li> </li>
+        <li>B</li>
+        <li> </li>
+        <li>级</li>
+        <li>是</li>
+        <li>刻</li>
+        <li>意</li>
+        <li>未</li>
+        <li>实</li>
+        <li>现</li>
+        <li>的</li>
+        <li>骨</li>
+        <li>架</li>
+        <li>，</li>
+        <li>判</li>
+        <li>据</li>
+        <li>按</li>
+        <li>其</li>
+        <li>真</li>
+        <li>实</li>
+        <li>约</li>
+        <li>束</li>
+        <li>重</li>
+        <li>写</li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>踩</li>
+        <li>坑</li>
+        <li>（</li>
+        <li>第</li>
+        <li>三</li>
+        <li>次</li>
+        <li>）</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>：</li>
+        <li>新</li>
+        <li>注</li>
+        <li>释</li>
+        <li>里</li>
+        <li>又</li>
+        <li>写</li>
+        <li>了</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>-</li>
+        <li>></li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>(</li>
+        <li>U</li>
+        <li>+</li>
+        <li>2</li>
+        <li>1</li>
+        <li>D</li>
+        <li>2</li>
+        <li>)</li>
+        <li>，</li>
+        <li>G</li>
+        <li>B</li>
+        <li>K</li>
+        <li> </li>
+        <li>编</li>
+        <li>不</li>
+        <li>了</li>
+        <li> </li>
+        <li>-</li>
+        <li>></li>
+        <li> </li>
+        <li>判</li>
+        <li>据</li>
+        <li>红</li>
+        <li>。</li>
+        <li>规</li>
+        <li>矩</li>
+        <li>：</li>
+        <li>往</li>
+        <li> </li>
+        <li>.</li>
+        <li>p</li>
+        <li>y</li>
+        <li> </li>
+        <li>写</li>
+        <li>中</li>
+        <li>文</li>
+        <li>后</li>
+        <li>先</li>
+        <li>扫</li>
+        <li>一</li>
+        <li>遍</li>
+        <li> </li>
+        <li>G</li>
+        <li>B</li>
+        <li>K</li>
+        <li> </li>
+        <li>再</li>
+        <li>跑</li>
+        <li>测</li>
+        <li>试</li>
+        <li>。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.9.3</span><span class="cl-date">2026-11-04</span><span class="cl-tag">上一版</span><span class="cl-theme"><b>行区提示词改「无条件」</b> —— 原措辞把 AI 放走了：条件限定让它判定「不适用」</span></div>
       <p class="cl-sum">V8.9.2 之后用户真机复核（用户本地生成的用例 JSON，非本仓库文件）：<code>期次号</code> 那步只有 <code>element/index</code>，<b>没有 <code>row_index</code></b> —— 真机那次「第 1 轮 PASSED」其实是<b>运行期开票页只有 1 行</b>的侥幸，不是修复生效。<br><br><b>根因在提示词措辞，不在模型</b>：V8.9.2 写的是「<b>凡是你排在某一步「新增行」之后要操作的</b>，必须带 <code>row_index</code>」—— 开票页的行是<b>订单带入</b>的、用例里没有「新增行」动作，AI 据此判定<b>不适用</b>，一步都没写。把「结构上必然多行」写成了「你的步骤造出多行」。<br><br><b>改法</b>：行区控件<b>一律</b>带行定位；并明确「行数<b>不一定由你的步骤产生</b>（单据/订单明细带入）」，取值做法给全 —— 已带入的原有行写 <code>1</code>、自己刚新增的空行写 <code>-1</code>、<b>单行页面写 <code>1</code> 同样正确所以不要留空</b>（去掉 AI「省略更保险」的诱因）。<br><br><b>本机真 AI 闭环验证（glm-5.3-flash 实时调用 + 录制）</b>：生成的用例里 <code>期次号/发票行类型/数量@开票页/单位@开票页</code> <b>全部带 <code>row_index=1</code></b>（共 12 步带行定位，V8.9.2 时这几步一步都没有）；运行期日志 <code>row: 期次号 行内定位命中 1 个 -> 按 row_index=1 取行</code>；试跑 <b>2 passed in 400.27s</b>。</p>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
         <li>判</li>
@@ -4478,7 +4966,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.3</b>（2026-11-04）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.4</b>（2026-11-04）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
@@ -4518,7 +5006,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
       </ul>
     </li>
     <li class="toc-chap has-sub">
-      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 61 子特性）</a>
+      <a href="#chap-6"><span class="tn">6</span> 框架特性设计实现说明（11 特性 / 62 子特性）</a>
       <ul class="toc-l2">
         <li class="toc-feat">
           <a href="#feat-1">特性 1AI 链路与离线回放 mixed_chain</a>
@@ -4579,10 +5067,11 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
           </ul>
         </li>
         <li class="toc-feat">
-          <a href="#feat-6">特性 6自愈闭环 Healer healer [规划中（零判据）]</a>
+          <a href="#feat-6">特性 6自愈闭环 Healer healer</a>
           <button class="toc-caret" type="button" aria-expanded="true" data-target="tocsub-feat-6" title="收起/展开子特性">-</button>
           <ul class="toc-l3 open" id="tocsub-feat-6">
-            <li><a href="#sub-6.1">6.1失败自愈 [规划中]</a></li>
+            <li><a href="#sub-6.1">6.1失败自愈（A 级）</a></li>
+            <li><a href="#sub-6.2">6.2三态裁决与可审 diff</a></li>
           </ul>
         </li>
         <li class="toc-feat">

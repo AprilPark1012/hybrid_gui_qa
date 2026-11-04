@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import json
 import re
 import subprocess
@@ -245,13 +246,54 @@ def repo_release_notes() -> list[str]:
     return sorted(p.name for p in d.glob(RELEASE_NOTES_GLOB)) if d.is_dir() else []
 
 
+def row_zone_problems(read, case_keys) -> list[str]:
+    """体检：包内用例里**行区控件没带 `row_index`** 的步骤（A' 严格体检）。
+
+    为什么要这一道（2026-11-04 事故链）：
+      · 探针在「开票页只有 1 行」时看到 `期次号` 唯一，AI 不给行定位，运行期**碰巧也是 1 行**就绿了；
+      · 一旦订单带 2 行，同一步就会「2 个同名匹配」-> 定位失败，白跑几百秒；
+      · 而**回放模式**会把录像里的旧答案一遍遍重放 —— 带病产物会被反复分发到内网机器。
+    与 `ai_output` 闸门的区别：那道闸是**警告级**（不许把主推命令挡在 explore 里，2026-10-13 裁决），
+    这里只对**打包分发**这条链路做硬闸 —— 产物可以先跑，但**不能当交付物发出去**。
+
+    `read(key)` 由调用方提供（从 zip 里按相对路径读文本）；`case_keys` 是要看的用例相对路径，
+    都由调用方给 —— 便于用真包与假包分别测。
+    """
+    import json as _json
+    raw = read("scripts/generated/_probe_snapshot.json")
+    if not raw:
+        return []
+    try:
+        items = _json.loads(raw).get("items") or []
+    except Exception as e:                       # noqa: BLE001
+        return [f"读不了 _probe_snapshot.json（{e}）-> 无法体检行区控件"]
+    names = {str(it.get("semantic_name") or "") for it in items if it.get("row_zone")}
+    names.discard("")
+    if not names:
+        return []
+    bad: list[str] = []
+    # 用例与数据集都是「一个用例一个文件」，逐个看
+    for key in sorted(case_keys):
+        try:
+            steps = _json.loads(read(key) or "{}").get("steps") or []
+        except Exception:                        # noqa: BLE001
+            continue
+        for st in steps:
+            el = str(st.get("element") or "")
+            if el in names and st.get("row_index") is None and st.get("row_text") is None:
+                bad.append(f"{key} 第 {st.get('order')} 步（{st.get('op')} {el}）"
+                           f"引用了行区控件却没给 row_index/row_text")
+    return bad
+
+
 def check_zip(zip_path: Path, expect_cases: int | None = None,
               require_notes_for: str | None = None,
               expect_notes: int | None = None,
               legacy_notes: list[str] | None = None,
               expect_auth_json: bool = False,
               expect_element_map: int | None = None,
-              expect_cassettes: int | None = None) -> list[str]:
+              expect_cassettes: int | None = None,
+              strict_row_zone: bool = False) -> list[str]:
     """审计一个包：返回问题清单（空 = 通过）。**只用标准库，不依赖 unzip。**
 
     `legacy_notes`：可选的出参列表 —— 历史形态命中（结构变更前的包）会写进来，
@@ -290,6 +332,10 @@ def check_zip(zip_path: Path, expect_cases: int | None = None,
                 problems.append("生成模块没走就绪契约 _goto（F1）")
             if "page.goto(" in tc:
                 problems.append("生成模块里有裸 page.goto（绕过就绪契约）")
+        # A' 严格体检（默认关）：行区控件必须带行定位，否则**不许出包**
+        if strict_row_zone:
+            problems.extend(row_zone_problems(
+                read, [k for k in rel if k.startswith("cases/") and k.endswith(".json")]))
         cf = read("scripts/generated/_harness.py")
         if cf:
             miss = [f"def {n}" for n in REQUIRED_CONFTEST if f"def {n}" not in cf]
@@ -610,7 +656,9 @@ def main() -> int:
                          expect_element_map=1,
                          # 2026-10-14 口径：录像也随**同一个** zip 交付（旧的「两件套」已废弃）
                          expect_cassettes=(None if a.allow_missing_cassettes else len(cas_files)),
-                         expect_notes=len(repo_notes) or None, legacy_notes=legacy)
+                         expect_notes=len(repo_notes) or None, legacy_notes=legacy,
+                         # A'：HYBRID_ROW_ZONE_STRICT=1 -> 行区控件缺 row_index 的产物**拒绝打包**
+                         strict_row_zone=(os.environ.get("HYBRID_ROW_ZONE_STRICT", "") == "1"))
     for n in legacy:          # 新包不该出现（出现=打包收集漏了当前布局）-> 大声打出来
         print(f"[pack] [!] {n}")
     if a.allow_broken_artifacts:
