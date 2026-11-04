@@ -214,3 +214,24 @@ def test_row_zone_dedupe_uses_step_name_of():
     assert '_mm_noted.add(_nm_mm)' in seg, "[NG] 记录去重名的方式变了"
     assert 'str(step_get(_st, "element") or "")' not in seg, (
         "[NG] 又用 str(step_get(...)) 当键 —— ElementRef 会变成 repr，去重静默失效")
+
+
+def test_row_zone_prompt_is_unconditional():
+    """提示词必须**无条件**要求行区控件带 `row_index`。
+
+    实测事故（2026-11-03 真机）：原措辞是「**凡是你排在某一步「新增行」之后要操作的**，必须带 `row_index`」
+    —— 开票页的行是**订单带入**的、用例里没有「新增行」动作，AI 据此判定"不适用" -> 一步都没写
+    -> 运行期单行时侥幸通过，多行时必炸。条件限定会把「结构上必然多行」误读成「我的步骤没造多行」。
+
+    故钉死两条：
+    ① 必须有「一律」这种无条件措辞；
+    ② 不许再出现「排在某一步「新增行」之后」这类条件限定（它正是 AI 溜走的门）。
+    """
+    src = (ROOT / "framework" / "features" / "f02_semantic" / "explorer_explore.py").read_text(encoding="utf-8")
+    i = src.index("行区控件（探测时**当前唯一**")
+    seg = src[i:i + 1400]
+    assert "一律" in seg, "[NG] 行区提示词回到条件状语了（必须是「一律必带 row_index」）"
+    assert "排在某一步「新增行」之后" not in seg, (
+        "[NG] 又出现「排在新增行之后」的条件限定 —— 带入行的页面会让 AI 判定不适用而省略 row_index")
+    assert "外部**带入**" in seg or "外部带入" in seg, "[NG] 没解释「行数不一定由你的步骤产生」"
+    assert "`-1`" in seg and "`1`" in seg, "[NG] 没给出两种行的取值做法（已有行 1 / 刚新增 -1）"

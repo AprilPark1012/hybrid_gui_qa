@@ -1,10 +1,10 @@
 {
-  "ai_orders_invoice_full_lifecycle_145948": {
-    "case_fingerprint": "de925b72642830ed",
-    "probe_fingerprint": "8d0dcdf0544af9bb",
+  "ai_orders_invoice_full_lifecycle_093840": {
+    "case_fingerprint": "8d3894053deb9763",
+    "probe_fingerprint": "3569f40494456419",
     "scenario_fingerprint": "33a7a7ad8271309c",
     "scenario_id": "orders_invoice_full_lifecycle",
-    "script_path": "scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_145948.py",
+    "script_path": "scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_093840.py",
     "template_fingerprint": "fc773d35bd6898b1"
   }
 }

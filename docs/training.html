@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.2）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.3）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.2 · 2026-11-03　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.3 · 2026-11-04　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -1473,7 +1473,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-3.12" data-sub="3.12"><span class="sno">3.12</span>行区信号 row_zone</h5>
       <p class="codesrc"><b>目标：</b>「探测时唯一」不等于「运行时唯一」：只要该容器里有『新增行』这类行增删动作，这个区**必然会长多行**（与当前行数无关）。探针据此给区内**当前唯一的输入类**控件标 `row_zone`，① 提示词专门一段要求「排在新增行之后必须给 row_index」② 框架兜底在「前文确有新增行 + 无行锚」时补 `row_index=-1`。口径三条：只标输入类（按钮随行增长也不会变成第几行的保存＝误伤）、只标当前唯一的（multi_match&gt;1 已有更强信号）、不动 multi_match（写它会让质量闸在单行场景误拦）。跨页同名控件不给纯基名（会补错页）。来历：真 AI 链路开票页探测 1 行、用例自己点新增行 -&gt; 运行期 2 个同名匹配 -&gt; 第 1 轮 424.9s 白跑，靠带原因重试才通</p>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_row_zone_signal.py（17 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性3-分层定位与控件识别/test_row_zone_signal.py（18 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>
   <section class="feat">
@@ -2122,9 +2122,276 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.9.2</b>（2026-11-03）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.9.3</b>（2026-11-04）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.9.2</span><span class="cl-date">2026-11-03</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>行区信号：探测时唯一 &ne; 运行时唯一</b> —— 修「开票页只探到 1 行、</运行期变 2 行就必红」，白跑 400+ 秒的那种</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.9.3</span><span class="cl-date">2026-11-04</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>行区提示词改「无条件」</b> —— 原措辞把 AI 放走了：条件限定让它判定「不适用」</span></div>
+      <p class="cl-sum">V8.9.2 之后用户真机复核（用户本地生成的用例 JSON，非本仓库文件）：<code>期次号</code> 那步只有 <code>element/index</code>，<b>没有 <code>row_index</code></b> —— 真机那次「第 1 轮 PASSED」其实是<b>运行期开票页只有 1 行</b>的侥幸，不是修复生效。<br><br><b>根因在提示词措辞，不在模型</b>：V8.9.2 写的是「<b>凡是你排在某一步「新增行」之后要操作的</b>，必须带 <code>row_index</code>」—— 开票页的行是<b>订单带入</b>的、用例里没有「新增行」动作，AI 据此判定<b>不适用</b>，一步都没写。把「结构上必然多行」写成了「你的步骤造出多行」。<br><br><b>改法</b>：行区控件<b>一律</b>带行定位；并明确「行数<b>不一定由你的步骤产生</b>（单据/订单明细带入）」，取值做法给全 —— 已带入的原有行写 <code>1</code>、自己刚新增的空行写 <code>-1</code>、<b>单行页面写 <code>1</code> 同样正确所以不要留空</b>（去掉 AI「省略更保险」的诱因）。<br><br><b>本机真 AI 闭环验证（glm-5.3-flash 实时调用 + 录制）</b>：生成的用例里 <code>期次号/发票行类型/数量@开票页/单位@开票页</code> <b>全部带 <code>row_index=1</code></b>（共 12 步带行定位，V8.9.2 时这几步一步都没有）；运行期日志 <code>row: 期次号 行内定位命中 1 个 -> 按 row_index=1 取行</code>；试跑 <b>2 passed in 400.27s</b>。</p>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
+        <li>判</li>
+        <li>据</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>t</li>
+        <li>e</li>
+        <li>s</li>
+        <li>t</li>
+        <li>_</li>
+        <li>r</li>
+        <li>o</li>
+        <li>w</li>
+        <li>_</li>
+        <li>z</li>
+        <li>o</li>
+        <li>n</li>
+        <li>e</li>
+        <li>_</li>
+        <li>s</li>
+        <li>i</li>
+        <li>g</li>
+        <li>n</li>
+        <li>a</li>
+        <li>l</li>
+        <li>.</li>
+        <li>p</li>
+        <li>y</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>1</li>
+        <li>8</li>
+        <li> </li>
+        <li>条</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>（</li>
+        <li>新</li>
+        <li>增</li>
+        <li>「</li>
+        <li>提</li>
+        <li>示</li>
+        <li>词</li>
+        <li>必</li>
+        <li>须</li>
+        <li>无</li>
+        <li>条</li>
+        <li>件</li>
+        <li>」</li>
+        <li>：</li>
+        <li>必</li>
+        <li>须</li>
+        <li>有</li>
+        <li>「</li>
+        <li>一</li>
+        <li>律</li>
+        <li>」</li>
+        <li>、</li>
+        <li>不</li>
+        <li>许</li>
+        <li>再</li>
+        <li>出</li>
+        <li>现</li>
+        <li>「</li>
+        <li>排</li>
+        <li>在</li>
+        <li>某</li>
+        <li>一</li>
+        <li>步</li>
+        <li>「</li>
+        <li>新</li>
+        <li>增</li>
+        <li>行</li>
+        <li>」</li>
+        <li>之</li>
+        <li>后</li>
+        <li>」</li>
+        <li>、</li>
+        <li>必</li>
+        <li>须</li>
+        <li>解</li>
+        <li>释</li>
+        <li>行</li>
+        <li>数</li>
+        <li>来</li>
+        <li>源</li>
+        <li>、</li>
+        <li>必</li>
+        <li>须</li>
+        <li>给</li>
+        <li>出</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>1</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>/</li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>-</li>
+        <li>1</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li>取</li>
+        <li>值</li>
+        <li>）</li>
+        <li>。</li>
+        <li>一</li>
+        <li>类</li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>1</li>
+        <li>5</li>
+        <li>9</li>
+        <li>1</li>
+        <li> </li>
+        <li>p</li>
+        <li>a</li>
+        <li>s</li>
+        <li>s</li>
+        <li>e</li>
+        <li>d</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>教</li>
+        <li>训</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>：</li>
+        <li>条</li>
+        <li>件</li>
+        <li>限</li>
+        <li>定</li>
+        <li>的</li>
+        <li>提</li>
+        <li>示</li>
+        <li>词</li>
+        <li>在</li>
+        <li>弱</li>
+        <li>模</li>
+        <li>型</li>
+        <li>上</li>
+        <li>不</li>
+        <li>可</li>
+        <li>靠</li>
+        <li> </li>
+        <li>—</li>
+        <li>—</li>
+        <li> </li>
+        <li>它</li>
+        <li>会</li>
+        <li>按</li>
+        <li>「</li>
+        <li>最</li>
+        <li>省</li>
+        <li>事</li>
+        <li>的</li>
+        <li>分</li>
+        <li>支</li>
+        <li>」</li>
+        <li>理</li>
+        <li>解</li>
+        <li>。</li>
+        <li>凡</li>
+        <li>「</li>
+        <li>必</li>
+        <li>须</li>
+        <li>做</li>
+        <li>」</li>
+        <li>的</li>
+        <li>约</li>
+        <li>束</li>
+        <li>，</li>
+        <li>写</li>
+        <li>成</li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>无</li>
+        <li>条</li>
+        <li>件</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>+</li>
+        <li> </li>
+        <li>给</li>
+        <li>出</li>
+        <li>「</li>
+        <li>做</li>
+        <li>了</li>
+        <li>也</li>
+        <li>没</li>
+        <li>坏</li>
+        <li>处</li>
+        <li>」</li>
+        <li>的</li>
+        <li>取</li>
+        <li>值</li>
+        <li>，</li>
+        <li>别</li>
+        <li>给</li>
+        <li>模</li>
+        <li>型</li>
+        <li>留</li>
+        <li>判</li>
+        <li>断</li>
+        <li>空</li>
+        <li>间</li>
+        <li>。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.9.2</span><span class="cl-date">2026-11-03</span><span class="cl-tag">上一版</span><span class="cl-theme"><b>行区信号：探测时唯一 &ne; 运行时唯一</b> —— 修「开票页只探到 1 行、</运行期变 2 行就必红」，白跑 400+ 秒的那种</span></div>
       <p class="cl-sum">真 AI 链路实测（用户 Windows <code>all --ai</code>）：第 1 轮试跑 <b>FAILED 424.9s</b>（<code>定位失败：本页有 2 个同名匹配（期次号）</code>），靠带原因重试第 2 轮才 PASSED 399.1s。<br><br><b>根因不是模型不听话，是探针的观测时机</b>：开票页<b>探测时只有 1 行</b> -> 期次号/发票行类型/数量/单位 全部 <code>multi_match=1</code> -> AI 清单里看着唯一、生成期闸门也不拦；而开票页的行数是<b>订单带入</b>的，运行期 2 行 -> 就炸。<br><br>探针能看到的<b>确定性结构事实</b>是：「该容器里有一个『新增行』动作 => 这个区必然会长多行」，与当前行数无关。<code>row_zone</code> 就是把这条事实提前说出去：<br>&nbsp;&nbsp;① <b>探针</b> <code>mark_row_zone()</code>：区内<b>当前唯一的输入类</b>控件标 <code>row_zone</code>；<br>&nbsp;&nbsp;② <b>提示词</b>单列一段「行区控件（当前唯一但会随行增长）」，要求排在新增行之后必须给 <code>row_index</code>；<br>&nbsp;&nbsp;③ <b>运行时快照</b>白名单补 <code>row_zone</code>（不补就落不了盘 = 静默失效）；<br>&nbsp;&nbsp;④ <b>框架兜底</b> R1 放宽到「<code>multi_match&gt;1</code> <b>或</b> <code>row_zone</code>」补 <code>row_index=-1</code>（只覆盖「刚点过新增行」那类能判死的情形）。<br><br><b>口径三条（不误伤的关键）</b>：只标输入类（按钮随行增长不会变成「第几行的保存」）；只标当前唯一的（<code>multi_match&gt;1</code> 已有更强信号）；<b>绝不动 <code>multi_match</code></b>（写它会让质量闸在单行场景误拦）。跨页同名控件<b>不给纯基名</b>（会补错页）。<br><br><b>诚实的边界</b>：开票页的行是「带入」的、用例里没有对该页的新增行动作 => R1 兜底<b>不覆盖</b>，而且框架<b>不能猜第几行</b>（猜 <code>-1</code> 会填到末行、静默污染数据）。所以真正能省掉那 424.9 秒的是<b>提示词</b>，兜底只盖「刚新增行」那类。</p>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
         <li>判</li>
@@ -4211,7 +4478,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.2</b>（2026-11-03）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.3</b>（2026-11-04）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>
