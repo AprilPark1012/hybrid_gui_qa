@@ -278,10 +278,14 @@ def row_zone_problems(read, case_keys) -> list[str]:
             steps = _json.loads(read(key) or "{}").get("steps") or []
         except Exception:                        # noqa: BLE001
             continue
-        for st in steps:
+        # [!] 步骤号取 `order`，**没有就取列表下标**：真产物（cases/*.json）的 steps
+        #   压根不带 `order` 键（顺序就是数组顺序），只读 `order` 会打出一堆「第 None 步」，
+        #   用户拿到这种报告没法定位（2026-11-04 实测就这么打出来了）。
+        for idx, st in enumerate(steps, start=1):
             el = str(st.get("element") or "")
             if el in names and st.get("row_index") is None and st.get("row_text") is None:
-                bad.append(f"{key} 第 {st.get('order')} 步（{st.get('op')} {el}）"
+                order = st.get("order", idx)
+                bad.append(f"{key} 第 {order} 步（{st.get('op')} {el}）"
                            f"引用了行区控件却没给 row_index/row_text")
     return bad
 

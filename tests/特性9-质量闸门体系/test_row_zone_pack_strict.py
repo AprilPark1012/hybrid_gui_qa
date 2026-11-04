@@ -70,6 +70,22 @@ def test_missing_row_index_on_row_zone_control_is_reported():
     assert "期次号" in bad[0] and "第 52 步" in bad[0], bad[0]
 
 
+def test_step_number_falls_back_to_index():
+    """真产物里 `steps` **不带 `order` 键** -> 步骤号必须回落到列表下标（1 起）。
+
+    实测（2026-11-04）：第一版只读 `st.get("order")`，在一份真 case 上报出四条「第 None 步」——
+    用户拿到这种报告根本没法定位是哪一步。
+    """
+    read = _read_factory(
+        _snapshot(_rz("期次号")),
+        {"steps": [{"op": "goto", "desc": "打开页面"},
+                   {"op": "select", "element": "期次号", "desc": "选期次号"}]},
+    )
+    bad = pack_release.row_zone_problems(read, [CASE])
+    assert len(bad) == 1, bad
+    assert "第 2 步" in bad[0] and "None" not in bad[0], bad[0]
+
+
 # ---------------- (2) 给了行定位就不许误伤 ----------------
 
 def test_row_index_or_row_text_is_accepted():
