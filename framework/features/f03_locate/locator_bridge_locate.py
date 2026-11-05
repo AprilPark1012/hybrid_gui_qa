@@ -218,7 +218,10 @@ def _fingerprint_score(el: ElementRef, cand: dict) -> float:
         hint = el.page_hint.strip()
         blob = f"{cand.get('name','')} {cand.get('text','')} {cand.get('label','')} " \
                f"{cand.get('nearby_text','')} {cand.get('container_heading','')}"
-        if _sim(hint, blob) < 0.15 and hint not in blob:
+        # [!] 必须用常量 `INTENT_MIN_SIM`，不许再写字面量 0.15（2026-11-05 · L11②）：
+        #   同一口径写两份的后果是「改常量只生效一半」—— 一处用新值、这里还用旧值，
+        #   而且部分生效最难查（症状是"阈值调了却没完全生效"）。
+        if _sim(hint, blob) < INTENT_MIN_SIM and hint not in blob:
             s -= 0.20          # 与意图相悖的候选，明显降权
     return s
 

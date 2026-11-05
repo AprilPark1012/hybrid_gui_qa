@@ -285,6 +285,11 @@ FEATURES = [
                       "第 1 轮 424.9s 白跑，靠带原因重试才通",
                  class1=["test_row_zone_signal.py"],
                  class2=[]),
+            dict(no="3.13", name="意图复验阈值单一口径",
+                 goal="`INTENT_MIN_SIM` 只能有**一个来源**：判定处必须引用常量，不许再写字面量"
+                      "（否则「改常量只生效一半」，部分生效最难查）；"
+                      "**改常量必须真的改变行为**（行为判据，不是只 assert 字符串）",
+                 class1=["test_intent_threshold_single_source.py"], class2=[]),
         ],
     ),
 
@@ -492,7 +497,7 @@ FEATURES = [
             dict(no="10.1", name="退出码契约", goal="成功 0 / 有用例失败 1 / 没匹配到 5 / 环境问题其它 —— 绝不静默成功",
                  class1=["test_cli_exit_codes.py"], class2=[]),
             dict(no="10.2", name="参数契约", goal="未知/错位参数一律报错 + 非 0 退出，绝不静默忽略",
-                 class1=["test_cli_flags.py"], class2=[]),
+                 class1=["test_cli_flags.py", "test_debug_two_state.py"], class2=[]),
             dict(no="10.3", name="帮助自动覆盖", goal="新增子命令/参数必须自动出现在 --help 总览里",
                  class1=["test_cli_help_coverage.py"], class2=[]),
             dict(no="10.4", name="setup 与分发采纳", goal="`setup --check` 退出码能区分环境好坏",

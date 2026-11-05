@@ -132,6 +132,41 @@ def _has_display() -> bool:
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
+def debug_env_plan(debug: bool, has_display: bool, *,
+                   workers: int = 1, slowmo: int | None = None) -> dict:
+    """`--debug` **两态决策的唯一入口**（有屏开窗 / 无屏录制）—— 纯函数，不碰全局。
+
+    为什么抽出来（2026-11-05 · L11③）：这段逻辑原先是**内联在 `run()` 里的十来行**，
+    要测只能起真浏览器（二类），于是从来没有自动化判据 —— 而它守的恰恰是
+    「开关开了就要好用」这条纪律：**无图形显示时必须降级成录屏 + 逐步截图**。
+    改坏的症状非常隐蔽：Windows（有屏）上一切正常，**无屏机器静默退化成没截图没录像**，
+    等到要排查时才发现"什么都没留下"。
+
+    返回 `{"env": {...}, "lines": [...], "workers": int, "slowmo": int}`；
+    调用方负责 `os.environ.update(plan["env"])` 并把 `lines` 打出去。
+    """
+    if not debug:
+        return {"env": {}, "lines": [], "workers": workers, "slowmo": slowmo or 0}
+
+    env: dict[str, str] = {"HYBRID_DEBUG": "1"}
+    lines: list[str] = []
+    if workers != 1:
+        lines.append(f"调试模式 → 并发由 {workers} 强制降为 1（单浏览器顺序跑，才看得清）")
+    if has_display:
+        env["HYBRID_HEADED"] = "1"
+        lines.append("调试模式：有图形显示 → 弹出 Chromium 窗口，看它一步步执行到用例结束")
+    else:
+        env["HYBRID_VIDEO"] = "1"
+        env["HYBRID_SHOTS"] = "1"
+        lines.append("调试模式：本机没有图形显示（DISPLAY/WAYLAND_DISPLAY 未设置）")
+        lines.append("   → 不改需求，这次执行【录下来给你看】：视频 + 每一步截图 + trace")
+        lines.append("   → 换到带屏幕的机器（如 Windows 桌面）跑同一个开关，就直接弹出浏览器窗口")
+    if not slowmo:
+        slowmo = 200
+        lines.append("调试模式默认放慢 200ms/动作（--slowmo N 覆盖，0 = 不放慢）")
+    return {"env": env, "lines": lines, "workers": 1, "slowmo": slowmo}
+
+
 def _force_from(rest: list[str]) -> bool:
     """解析 --force-workers（绕过内存预检，强行使用请求的并发数）。"""
     return "--force-workers" in rest
@@ -1479,23 +1514,15 @@ def cmd_run(workers: int | None = None, debug: bool = False, force_workers: bool
                       f"或确知已隔离时加 --isolated-target")
 
     # ---- 调试开关（--debug / --headed）：开了就"看得见"（有屏幕开窗；没屏幕录制）----
+    # [!] 两态决策收敛到 `debug_env_plan`（唯一入口，纯函数可测）—— 见该函数的 docstring
+    _plan = debug_env_plan(debug, _has_display(), workers=n, slowmo=slowmo)
+    if _plan["lines"]:
+        for _l in _plan["lines"]:
+            print(f"[run] [bug] {_l}")
+    os.environ.update(_plan["env"])
     if debug:
-        if n != 1:
-            print(f"[run] [bug] 调试模式 → 并发由 {n} 强制降为 1（单浏览器顺序跑，才看得清）")
-        n = 1
-        os.environ["HYBRID_DEBUG"] = "1"
-        if _has_display():
-            os.environ["HYBRID_HEADED"] = "1"
-            print("[run] [bug] 调试模式：有图形显示 → 弹出 Chromium 窗口，看它一步步执行到用例结束")
-        else:
-            os.environ["HYBRID_VIDEO"] = "1"
-            os.environ["HYBRID_SHOTS"] = "1"
-            print("[run] [bug] 调试模式：本机没有图形显示（DISPLAY/WAYLAND_DISPLAY 未设置）")
-            print("[run]       → 不改需求，这次执行【录下来给你看】：视频 + 每一步截图 + trace")
-            print("[run]       → 换到带屏幕的机器（如 Windows 桌面）跑同一个开关，就直接弹出浏览器窗口")
-        if not slowmo:
-            slowmo = 200
-            print("[run] [bug] 调试模式默认放慢 200ms/动作（--slowmo N 覆盖，0 = 不放慢）")
+        n = _plan["workers"]
+        slowmo = _plan["slowmo"]
 
     # ---- run-id 隔离的产物目录 ----
     run_id = _now()
