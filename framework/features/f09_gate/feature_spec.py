@@ -162,6 +162,11 @@ FEATURES = [
                  class1=["test_login_stepwise_contract.py", "test_scenario_auth_spec.py", "test_page_pre_actions.py", "test_probe_pre_consistency.py",
                          "test_probe_url_and_occurrence.py", "test_login_priming_coverage.py"],
                  class2=["verify_login_priming.py", "test_page_pre_actions_force_fallback.py", "test_scenario_probe_pre.py", "verify_page_pre_actions.py"]),
+            dict(no="2.5", name="断言步骤可用性对齐",
+                 goal="**AI 能写的断言，框架都必须真的执行**：`ASSERT_OPS` 三个动作在登录链路与业务链路"
+                      "**走同一个执行入口**（`_exec_assert`），登录段不许再把断言丢掉；"
+                      "行断言失败时必须给出**该页实际列**（只说「没有这一列」等于让人重新猜）",
+                 class1=["test_assert_step_availability.py"], class2=[]),
         ],
     ),
 

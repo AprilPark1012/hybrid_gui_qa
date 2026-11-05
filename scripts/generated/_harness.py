@@ -681,11 +681,17 @@ def _assert_first_row(page, field, expected, desc="", timeout_ms=None, refresh="
         if _t.time() >= _deadline:
             _wait_summary(page, _attempts, _slow_n, _slowest, _slowest_at, refresh)
             if _seen_zero and _last == "":
+                _cols = _table_field_list(page)
                 raise AssertionError(
-                    f"表格没有第一行、或没有 {field!r} 列 —— 无法验证「第一条记录」（断言无法成立）")
+                    f"表格没有第一行、或没有 {field!r} 列 —— 无法验证「第一条记录」（断言无法成立）"
+                    + chr(10) + f"    该页表格的实际列：{_cols or '（一列都没读到：可能表格还没渲染）'}"
+                    + chr(10) + "    提示：cell_field 要写 data-field（表头文案不算）；跨页断言必须用该页真实列")
+            _cols = _table_field_list(page)
             raise AssertionError(
                 f"等待超时：{_tms}ms 内表格第一行的 {field!r} 始终不含 {expected!r}"
-                f"（轮询 {_attempts} 轮 · refresh={refresh} · 最后读到 {_last!r}）")
+                f"（轮询 {_attempts} 轮 · refresh={refresh} · 最后读到 {_last!r}）"
+                + chr(10) + f"    该页表格的实际列：{_cols or '（一列都没读到）'}"
+                + ("—— 该页没有这一列，请改断言或换到正确的页再断言" if _cols and field not in _cols else ""))
         if refresh == "reload":
             try:
                 page.reload(wait_until="domcontentloaded")
@@ -840,7 +846,7 @@ def _login_flow(page, steps, wait=None, login_url=""):
     """
     from framework.features.f03_locate.element_map import ElementRef
     from framework.features.f03_locate.locator_bridge_locate import resolve_locator
-    from framework.shared.step_ops import STEP_OPS, unknown_hint
+    from framework.shared.step_ops import ASSERT_OPS, STEP_OPS, unknown_hint
 
     seq = list(steps or [])
     has_goto = any((s or {}).get("op") == "goto" for s in seq)
@@ -850,6 +856,18 @@ def _login_flow(page, steps, wait=None, login_url=""):
     for i, st in enumerate(seq, 1):
         st = st or {}
         op = str(st.get("op") or "").strip()
+        # [!] 断言**照样执行**（2026-11-05 L38 对齐）：它不是"登录动作"，但删掉就等于
+        #   让 AI 写的「确认已进入首页」变成空话 —— 登录成功的判定少一道。
+        #   走 `_exec_assert`（与主链路同一入口）；失败必须当场抛，不许静默跳过。
+        if op in ASSERT_OPS:
+            try:
+                _exec_assert(page, op, st.get("value"), str(st.get("desc") or ""),
+                                 cell_field=st.get("cell_field"))
+            except Exception as _e:                              # noqa: BLE001
+                raise RuntimeError(
+                    f"登录第 {i} 步（{op} {str(st.get('value') or '')!r}）断言失败：{_e}") from _e
+            _log(page, "login_assert", f"{op} 通过")
+            continue
         if op not in STEP_OPS:
             raise RuntimeError(f"登录第 {i} 步：{unknown_hint(op)}")
         if op == "goto":
@@ -1874,6 +1892,59 @@ def _assert_disabled(page, primary, semantic=None, desc=""):
     loc = _resolve(page, primary, semantic)
     _expect(loc.first).to_be_disabled()
     _ok(page, desc or f"{semantic or '该元素'} 不可用", f"disabled_{semantic or 'selector'}", "disabled")
+
+
+def _exec_assert(page, op, value="", desc="", **kw):
+    """断言步骤的**唯一执行入口** —— 主链路与登录链路共用（2026-11-05 · L38）。
+
+    [!] 为什么要有它：登录段原先把断言一律**丢掉**，理由是「执行器没有对应分支」。
+    但断言只是**校验、没有副作用** —— 丢掉等于让 AI 写的「确认已进入首页」变成一句空话，
+    **登录成功的判定就少了一道**（实测真机日志：`登录步骤里有非操作动作，已跳过：[(4,'expect_url')]`）。
+
+    正确的对齐不是删掉断言，而是让断言在**两条链路上走同一个入口**。
+    `ASSERT_OPS` 里每个成员都必须在这里有映射 —— 判据 `test_assert_step_availability.py`
+    钉死这一点，将来加断言类型时**不许只接主链路**。
+    """
+    _op = str(op or "").strip()
+    _v = "" if value is None else str(value)
+    if _op == "expect_url":
+        return _assert_url(page, _v, desc)
+    if _op == "expect_text":
+        return _assert_text(page, _v, desc)
+    if _op == "expect_first_row":
+        _f = str(kw.get("cell_field") or "").strip()
+        if not _f:
+            raise RuntimeError(
+                "expect_first_row 缺 cell_field（要验第一行的哪一列）—— 生成期没把它带过来，"
+                "该断言无法成立")
+        return _assert_first_row(page, _f, _v, desc,
+                                 timeout_ms=kw.get("timeout_ms"),
+                                 refresh=kw.get("refresh") or "none")
+    raise RuntimeError(f"未知断言动作 {_op!r}（_exec_assert 没有映射）")
+
+
+def _table_field_list(page):
+    """取当前表格的**实际列名** —— 只用于失败信息。
+
+    [!] 绝不拿单元格**文本**当列名（2026-11-05 真页面实测踩到）：空表格里第一行是
+    空状态提示（如「没有匹配的合同」），文本兜底会把这句话报成「该页实际列」——
+    比不报更误导。所以只认两种来源：
+      ① 第一行有数据的单元格的 `data-field`（真列名）；
+      ② 表头 `thead th` 的文案（没人数据时的列名来源）。
+    两者都读不到 -> 返回空，由调用方如实说「一列都没读到」。
+    """
+    try:
+        _cols = page.eval_on_selector_all(
+            "tbody tr:first-child td[data-field]",
+            "els => els.map(e => e.getAttribute('data-field'))")
+        _cols = [c for c in (_cols or []) if c]
+        if not _cols:
+            _cols = page.eval_on_selector_all(
+                "thead th", "els => els.map(e => (e.innerText || '').trim())")
+            _cols = [c for c in (_cols or []) if c]
+        return _cols
+    except Exception:                                          # noqa: BLE001
+        return []
 
 
 def _assert_url(page, expected, desc=""):

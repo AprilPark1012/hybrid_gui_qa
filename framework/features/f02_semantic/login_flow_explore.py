@@ -46,23 +46,43 @@ LOGIN_MAP_DIR = config.OUTPUT_DIR / "login_maps"
 
 
 # ---------------------------------------------------------------- 声明 -> 绝对地址
-def _executable(m: ElementMap, *, quiet: bool = False) -> list[TestStep]:
-    """取**可执行**的登录步骤（只保留 `STEP_OPS` 里的操作类动作）。
+# 登录段能**执行**的断言：只是校验、无副作用，`_login_flow` 会走 `_run_assert_step`。
+# `expect_first_row` 不在内 —— 它要 `cell_field`（第一行哪一列），登录页通常没有表格行，
+# 硬带上只会在运行期炸；这里丢掉并**说清原因**（不是静默）。
+LOGIN_ASSERT_OPS = frozenset({"expect_url", "expect_text"})
 
-    断言类（`expect_*`）不是"登录动作"，执行器没有也**不该有**对应分支 ——
-    它们在规划产物里出现属于 AI 的正常发挥（它会顺手写"断言已进入首页"），
-    这里滤掉并留日志，不算错误。规划与读缓存**共用**这一处（否则缓存里会存进
-    不可执行步骤，运行时必炸：实测 `expect_url` 就是这么把登录整条打断的）。
+
+def _executable(m: ElementMap, *, quiet: bool = False) -> list[TestStep]:
+    """取**可执行**的登录步骤：操作类 + 登录段有意义的断言（`expect_url` / `expect_text`）。
+
+    [!] 口径变更（2026-11-05 · V8.9.6 · L38「断言步骤可用性对齐」）：
+    旧实现把**所有** `expect_*` 都丢掉，理由写的是「执行器没有对应分支」。
+    但断言只是**校验**、没有副作用 —— 全丢掉的后果是 AI 顺手写的
+    「断言已进入首页」变成一句空话，**登录成功的判定少了一道**
+    （真机日志：`登录步骤里有非操作动作，已跳过：[(4, 'expect_url')]`）。
+
+    正确的对齐方式不是删断言，而是让登录链路也能执行断言 ——
+    `_login_flow` 里 op ∈ `ASSERT_OPS` 走 `_run_assert_step`（与主链路**同一入口**）。
+    这里只保留登录段说得通的 `LOGIN_ASSERT_OPS`；`expect_first_row` 仍丢，但日志写明原因。
+
+    规划与读缓存**共用**这一处（否则缓存里会存进不可执行步骤，运行时必炸）。
     """
     out: list[TestStep] = []
     skipped: list[tuple[int, str]] = []
+    unsupported_assert: list[tuple[int, str]] = []
     for s in (m.steps if m is not None else []):
-        if (s.op or "").strip() in STEP_OPS:
+        op = (s.op or "").strip()
+        if op in STEP_OPS or op in LOGIN_ASSERT_OPS:
             out.append(s)
+        elif op in ASSERT_OPS:
+            unsupported_assert.append((s.order, op))
         else:
-            skipped.append((s.order, s.op))
+            skipped.append((s.order, op))
     if skipped and not quiet:
-        print(f"      [login] [!] 登录步骤里有非操作动作，已跳过：{skipped}")
+        print(f"      [login] [!] 登录步骤里有未知动作，已跳过：{skipped}")
+    if unsupported_assert and not quiet:
+        print(f"      [login] [i] 登录段不执行行断言（要 cell_field、登录页一般没有表格行），"
+              f"已跳过：{unsupported_assert} —— 需要的话请在业务步骤里断" )
     return out
 
 
@@ -174,9 +194,10 @@ def plan_login(spec: dict, base_url: str, *, llm_cassette=None, cassette_strict:
     if p.is_file() and not force:
         try:
             m = ElementMap.from_json(p)
-            exec_steps = _executable(m, quiet=True)
+            exec_steps = _executable(m, quiet=True)   # 口径在执行侧：换规则就对老缓存也生效
             if exec_steps:
-                print(f"      [login] [i] 复用登录步骤缓存 {p.name}（{len(exec_steps)} 步，零 AI）")
+                print(f"      [login] [i] 复用登录步骤缓存 {p.name}（可执行 {len(exec_steps)} 步"
+                      f" / 档案 {len(m.steps)} 步，零 AI）")
                 return dict(out, steps=[s.to_dict() for s in exec_steps], cached=True)
             print(f"      [login] [!] 缓存 {p.name} 里没有可执行步骤 -> 重新规划")
         except Exception as e:                                        # noqa: BLE001
@@ -202,10 +223,13 @@ def plan_login(spec: dict, base_url: str, *, llm_cassette=None, cassette_strict:
         raise RuntimeError(f"AI 没有产出可执行的登录步骤（ElementMap {len(m.steps)} 步，"
                            f"全部不是操作类动作）—— 登录意图写清楚一点再试")
     LOGIN_MAP_DIR.mkdir(parents=True, exist_ok=True)
-    # 缓存只存**可执行**步骤：读缓存的那条路不再需要二次过滤（一处口径）
-    m.steps = steps
+    # [!] 缓存存**AI 的原始决策**，可执行性由**读**时的 `_executable` 过滤（2026-11-05 · V8.9.6）。
+    #   旧口径是「只把可执行步落盘」，后果是**过滤规则一改，老缓存永远不生效** ——
+    #   L38 就把 AI 写的 `expect_url` 固化丢在了缓存里，得重规划才补回来。
+    #   过滤属于**执行侧**（框架怎么执行），不是 AI 的决策；决策档案就该原样留着可审计。
     m.to_json(p)
-    print(f"      [login] [OK] 登录步骤 {len(steps)} 步 -> {p.name}（决策档案，可审计）")
+    print(f"      [login] [OK] 登录步骤 {len(steps)} 步"
+          f"（AI 原始 {len(m.steps)} 步）-> {p.name}（决策档案，可审计）")
     return dict(out, steps=[s.to_dict() for s in steps], cached=False)
 
 

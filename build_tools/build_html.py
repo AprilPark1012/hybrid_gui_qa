@@ -61,11 +61,45 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.9.5"
-VERSION_DATE = "2026-11-04"
+VERSION = "8.9.6"
+VERSION_DATE = "2026-11-05"
 CHANGELOG = [
     dict(
-        version="8.9.5", date="2026-11-04", tag="当前版本",
+        version="8.9.6", date="2026-11-05", tag="当前版本",
+        theme="<b>断言步骤可用性对齐</b> —— AI 能写的断言，框架都必须<b>真的执行</b>（L38）",
+        summary="真机日志暴露的一类问题：<b>AI 写了断言，框架没跑</b>。<br><br>"
+                "<b>① L38 · 登录段的断言被丢掉</b>：真机原话 "
+                "<code>[login] [!] 登录步骤里有非操作动作，已跳过：[(4, 'expect_url')]</code> —— "
+                "AI 顺手写的「断言已进入首页」<b>没有执行</b>，登录成功的判定少了一道。"
+                "旧理由写的是「执行器没有对应分支」，但断言只是<b>校验、没有副作用</b>，"
+                "正确做法不是删断言，而是让它<b>能跑</b>：新增唯一执行入口 <code>_exec_assert()</code>，"
+                "主链路与登录链路共用；<code>ASSERT_OPS</code> 每个成员都必须在这里有映射（元判据钉死），"
+                "将来加断言类型<b>不许只接主链路</b>。登录段执行 <code>expect_url</code> / "
+                "<code>expect_text</code>，失败<b>当场抛</b>（错误含「断言失败」+ 第几步哪个断言）。<br><br>"
+                "<b>② 登录缓存的口径反过来</b>：旧实现在落盘前就把不可执行步过滤掉，"
+                "后果是<b>过滤规则一改，老缓存永远不生效</b> —— L38 的断言就是这么被永久埋在缓存里的。"
+                "改成<b>缓存存 AI 的原始决策</b>（本来就自称「决策档案，可审计」），"
+                "可执行性由<b>读</b>时过滤：换规则对老缓存也立刻生效。<br><br>"
+                "<b>③ expect_first_row 跨页取列：失败信息给真值</b>：旧报错只说"
+                "<code>表格没有第一行、或没有 'orderName' 列</code>，排查要重新猜该页有哪些列。"
+                "现在报错带上<b>该页表格的实际列清单</b>。注意 修的过程中又踩到一个坑："
+                "列名<b>绝不拿单元格文本兜底</b> —— 空表格第一行是空状态提示，"
+                "真页面实测把「没有匹配的合同」报成了「该页实际列」，<b>比不报更误导</b>；"
+                "现在只认 <code>td[data-field]</code> 与 <code>thead th</code>，读不到就说读不到。",
+        notes="判据 <code>test_assert_step_availability.py</code> <b>17 条</b> + 3 组负向自证"
+              "（抹掉 expect_url 映射 / 把过滤后的步写回缓存 / 列名用单元格文本兜底）。"
+              "子特性新增 <b>2.5</b> —— 共 <b>64</b> 个子特性。<br>"
+              "<b>真链路证据（不是 mock）</b>：① 真 AI <code>glm-5.3-flash</code> 重新规划登录 -> 5 步，"
+              "其中第 5 步是 <code>expect_text「验证登录成功已进入系统首页（页面出现超级管理员身份）」</code>"
+              "（旧口径这步会被丢掉）；② 真浏览器跑 <code>_login_flow</code> -> "
+              "<code>[CHECK] v 断言: 验证登录成功已进入系统首页</code> + "
+              "<code>[TEST] login_assert: expect_text 通过</code> + <code>login_ok</code>；"
+              "③ 真页面 <code>_assert_first_row('orderName_does_not_exist')</code> 报错列出"
+              "<b>8 个真实列</b> <code>pick/contractNo/contractName/managementUnit/folder/contractType/customer/businessUnit</code>。<br>"
+              "一类 <b>1624 passed / 3 skipped</b>。",
+    ),
+    dict(
+        version="8.9.5", date="2026-11-04", tag="上一版",
         theme="<b><code>HYBRID_BASE_URL</code> 覆盖对登录/身份前置也生效</b> —— 交付到内网改 base 才真的能跑",
         summary="L22（慢目标唯一红灯）取证时挖出的两个<b>交付级缺陷</b>，比 L22 本身严重：<br><br>"
                 "<b>① 登录流绕过地址改写</b>：<code>_goto</code> 一直支持 <code>HYBRID_BASE_URL</code> 覆盖，"
