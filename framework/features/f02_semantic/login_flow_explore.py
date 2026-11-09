@@ -191,6 +191,11 @@ def plan_login(spec: dict, base_url: str, *, llm_cassette=None, cassette_strict:
 
     p = cache_path(url, scenario)
     out = {"login_url": url, "scenario": scenario, "wait": dict((spec or {}).get("wait") or {})}
+    # 跨 origin（V8.10.0）：`login.session` 必须原样透传进规划结果 —— 曾经在这里丢掉，
+    # 导致用例落盘后**没有 session**，执行期不铺会话，跨 origin 的页面被踢回各自登录页
+    # （实测：goto 8001/orders.html 后断言「订单系统」5s 超时）。
+    if (spec or {}).get("session"):
+        out["session"] = dict((spec or {}).get("session") or {})
     if p.is_file() and not force:
         try:
             m = ElementMap.from_json(p)
@@ -391,8 +396,11 @@ def as_case_field(spec: dict, base_url: str, *, llm_cassette=None,
     """转成**用例产物**里的 `login` 字段（explore 落盘、generate 读、执行期零 AI）。"""
     planned = plan_login(spec, base_url, llm_cassette=llm_cassette,
                          cassette_strict=cassette_strict)
-    return {"login_url": planned["login_url"], "wait": planned.get("wait") or {},
-            "steps": planned["steps"]}
+    case_login = {"login_url": planned["login_url"], "wait": planned.get("wait") or {},
+                  "steps": planned["steps"]}
+    if planned.get("session"):
+        case_login["session"] = dict(planned["session"])   # 跨 origin：执行期靠它铺会话
+    return case_login
 
 
 def json_literal(obj) -> str:

@@ -192,6 +192,20 @@ pages:
     assert "invoice" in str(ei.value), "session.spread 里未声明的 origin 必须硬红"
 
 
+# ------------------------------------------------- 3.5 登录规划结果必须透传 session
+def test_login_plan_keeps_session():
+    """`login.session` 必须活着走到用例产物里。
+
+    事故（2026-11-09 真 AI 实跑）：`login_flow_explore` 组装登录结果时只挑
+    `login_url / scenario / wait / steps`，把 `session` 丢了 -> 用例落盘后没有 session
+    -> 执行期不铺会话 -> `goto 8001/orders.html` 被踢回 8001 登录页 -> 断言「订单系统」5s 超时。
+    静态钉两条透传点，避免再被「挑字段」挑掉。
+    """
+    src = _src(REPO / "framework" / "features" / "f02_semantic" / "login_flow_explore.py")
+    assert 'if (spec or {}).get("session"):' in src, "登录规划丢了 session（规划结果没带）"
+    assert 'if planned.get("session"):' in src, "用例产物 login 字段丢了 session（执行期不会铺会话）"
+
+
 # ---------------------------------------------------------------- 4. 唯一入口 / 不许各写一份
 def test_spread_session_is_the_single_implementation():
     """唯一实现在 `framework/shared/sso_session.py`；harness 与探针期**都只能调它**。
