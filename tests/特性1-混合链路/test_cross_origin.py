@@ -168,8 +168,25 @@ pages:
 
 # ---------------------------------------------------------------- 4. 唯一入口 / 不许各写一份
 def test_spread_session_is_the_single_implementation():
+    """唯一实现在 `framework/shared/sso_session.py`；harness 与探针期**都只能调它**。
+
+    教训：同一能力两处实现必有一处漏改（本项目已踩过：登录前置、逐页探测骨架、
+    地址改写都是「两处各写一份」造成的真事故）。跨 origin 铺会话天生要跨
+    「探针期」和「执行期」两条链路 —— 所以它必须是**一个函数**。
+    """
+    sso = REPO / "framework" / "shared" / "sso_session.py"
+    assert sso.exists(), "缺少唯一实现 framework/shared/sso_session.py"
     src = _src(GEN)
-    assert "def _spread_session(" in src, "跨 origin 会话铺开没有唯一实现 `_spread_session`"
+    assert "def _spread_session(" in src, "harness 里没有 `_spread_session` 入口"
+    body = src[src.index("def _spread_session("):]
+    body = body[:body.index("def _rewrite_base(url):")]
+    assert "from framework.shared.sso_session import spread_session" in body, \
+        "harness 的 `_spread_session` 必须委托给唯一实现（不许自己再写一份 localStorage 注入）"
+    assert "localStorage.setItem" not in body, "harness 里出现第二份 localStorage 注入实现"
+    # 探针期同样必须铺会话，否则跨 origin 的页面探到的全是各自登录页的控件
+    scan = _src(REPO / "framework" / "features" / "f03_locate" / "scan_pages_probe.py")
+    assert "framework.shared.sso_session import spread_session" in scan, \
+        "探针期没铺会话 -> 跨 origin 的页面会被踢回各自登录页，探到的控件清单是错的"
     gen_scripts = REPO / "scripts" / "generated"
     if gen_scripts.exists():
         for py in gen_scripts.rglob("*.py"):

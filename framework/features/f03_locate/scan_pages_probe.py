@@ -105,6 +105,13 @@ def scan_pages(pages, *, auth=None, probe_pre=None, login=True, label="探测",
                 if _lg.get("attempted"):
                     print(f"      [{label}] [key] 登录前置："
                           + ("ok" if _lg.get("ok") else f"[!] 失败 -> {_lg.get('reason')}"))
+                # 跨 origin（V8.10.0）：一套 SSO 登录后，把会话铺到场景声明过的其它业务系统。
+                # 不铺的话探针访问跨 origin 的页面会被踢回**各自**的登录页 -> 探到一堆登录控件。
+                _sess = (auth or {}).get("session") or {}
+                if _sess.get("spread"):
+                    from framework.shared.sso_session import spread_session
+                    spread_session(ctx, _sess, (auth or {}).get("origins") or {},
+                                   log=lambda m: print(f"      [{label}] {m}"))
             pg = ctx.new_page()
             # 场景级探测前置的待办（每步只跑一次；跑不到的留到最后统一告警）
             _pp_pending = list(probe_pre or [])

@@ -2843,48 +2843,13 @@ def _rw(url, origin_name=None):
 
 
 def _spread_session(context, spec, gen_origins=None):
-    """登录一次（SSO）后把会话铺到其它 origin（跨 origin 的**唯一**实现）。
+    """跨 origin 会话铺开 —— **薄封装**，真实现只有 `framework/shared/sso_session.py` 一份。
 
-    为什么需要：会话存在 `localStorage`（per-origin），SSO 登录只落在登录那个 origin
-    —— 实测访问另一个 origin 的业务页会被踢回**它自己**的登录页。
+    探针期（`explorer_explore` 登录后）与运行期（本 harness 登录后）走**同一个函数**；
+    在这里各写一份 = 两份实现两份 bug。`_ORIGIN_MAP`（HYBRID_ORIGIN_MAP）优先于生成期快照。
     """
-    spec = dict(spec or {})
-    gen_origins = dict(gen_origins or {})
-    token = ""
-    src = str(spec.get("token_from") or "url_param")
-    if src == "url_param":
-        import urllib.parse as _up
-        cur_url = ""
-        for _pg in getattr(context, "pages", []) or []:
-            cur_url = getattr(_pg, "url", "") or cur_url
-        q = _up.parse_qs(_up.urlsplit(cur_url).query)
-        token = (q.get(str(spec.get("param") or "token")) or [""])[0]
-    if not token:
-        print("[warn] 跨 origin 会话铺开：没能从登录后的地址取到 token -> 跳过"
-              "（后面跨 origin 的页面可能被判未登录，请查 login.session 的 param 与 SSO 回跳地址）")
-        return []
-    key = str(spec.get("key") or "demo_token")
-    done = []
-    for name in spec.get("spread") or []:
-        name = str(name)
-        base = (_ORIGIN_MAP.get(name) or gen_origins.get(name) or "").rstrip("/")
-        if not base:
-            print(f"[warn] 跨 origin 会话铺开：origin {name!r} 既没有 HYBRID_ORIGIN_MAP 映射、"
-                  f"生成期也没记地址 -> 跳过")
-            continue
-        pg = context.new_page()
-        try:
-            pg.add_init_script(f"try{{localStorage.setItem({key!r}, {token!r});}}catch(e){{}}")
-            pg.goto(base + "/", wait_until="domcontentloaded", timeout=15000)
-            pg.wait_for_timeout(120)
-            done.append(name)
-        except Exception as _e:                                    # noqa: BLE001
-            print(f"[warn] 跨 origin 会话铺开失败：{name} ({base}) -> {type(_e).__name__}: {_e}")
-        finally:
-            pg.close()
-    if done:
-        print(f"[TEST] 跨 origin 会话已铺到 {len(done)} 个 origin: {', '.join(done)}")
-    return done
+    from framework.shared.sso_session import spread_session
+    return spread_session(context, spec, gen_origins, origin_map=_ORIGIN_MAP)
 
 
 def _rewrite_base(url):

@@ -690,7 +690,10 @@ def cmd_explore(rest: list[str] = None):
         #   [!] 这里若只认 `steps`，迁移后的场景会被判成"没声明登录" -> 探针不登录
         #   -> 七个页面全被踢到登录页 -> 探到的只有登录控件（实测：每页只剩 7 个控件）。
         if spec.get("scenario") or spec.get("steps"):
-            return spec
+            # 跨 origin（V8.10.0）：把场景 origins 一起带过去 —— 探测期铺会话要用它兜底地址，
+            # 否则 `login.session.spread` 在**探针阶段**无法落地（探到的会是各系统自己的登录页）。
+            _org = getattr(sc, "origins", None) or {}
+            return {**spec, **({"origins": dict(_org)} if _org else {})}
         try:
             return sc.auth_spec() or {}
         except Exception:
