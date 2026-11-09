@@ -1,4 +1,4 @@
-# AI 混合 GUI 测试框架 · 新员工培训（V8.9.8）
+# AI 混合 GUI 测试框架 · 新员工培训（V8.10.0）
 
 > 与 `docs/training.html` 同源生成（`python build_tools/build_html.py`）· 2026-11-09
 
@@ -786,9 +786,33 @@ python -m framework.cli config
 | 不写运行时值 | 场景改了要重跑识别 |
 
 ## A 版本与更新记录（Changelog）
-*当前版本 V8.9.8（2026-11-09）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。*
+*当前版本 V8.10.0（2026-11-09）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。*
 
-### V8.9.8（2026-11-09）· 当前版本
+### V8.10.0（2026-11-09）· 当前版本
+**跨 origin 多业务系统（一套 SSO）：合同 / 订单 / 发票是不同系统也能在一个场景里跑通**
+
+- [go] 新增：
+  - 场景 origins: 给每个业务系统起名，页面地址写 ${order}/orders.html；引用了没声明的名字 -> 加载期硬红并点名（不猜、不静默留空）
+  - 运行期新唯一入口 _rw(url, origin_name)：有名字只按 HYBRID_ORIGIN_MAP 换那个 origin（没映射就原样，绝不压平）；无名字逐字回落旧 _rewrite_base
+  - 环境变量 HYBRID_ORIGIN_MAP（json）已登记进 cli config 可调项 —— 换环境只改这一处
+  - login.session + framework/shared/sso_session.py::spread_session()（唯一实现）：SSO 登录一次后把会话铺到各 origin，探针期与执行期都挂
+  - login.wait 新增 url_not_in（多值：离开登录域的所有地址）
+  - demo 支持 TARGET_PORTS=8000,8001,8002（单进程多 server 线程、共享同一份数据）+ TARGET_SSO_ORIGIN（业务页未登录跳登录系统并带 next，登录回跳带 token）
+  - 新增示例场景 scenarios/multi_origin/orders_invoice_cross_origin.yml
+- [bug] 修复：
+  - 铺会话必须挂两条链路：只写进 harness 模板 -> 探针期没铺 -> 跨 origin 页面探到的全是各自登录页的控件（实测 8 个 vs 真业务页 108 / 201），AI 按错清单排步骤、整轮白跑（而探针不会报错）
+  - login.session 在登录规划结果 / 用例字段里被「挑字段」丢掉 -> 执行期不铺会话 -> 跳转写对了却被踢回各自登录页（断言 5s 超时）
+  - 页面自身跳转打断 page.goto（interrupted by another navigation）-> 同一份用例4 跑 1 挂；新增容错导航唯一入口 _nav()，_goto 与登录流的裸 goto 都换掉
+  - 用例头部 import 名单漏了渲染出的 helper（NameError: _spread_session，生成期闸门全绿、试跑才红）
+  - 场景 pages 里重复列登录页 -> AI 从登录页开始排步骤、被「夹带登录步骤」闸门整条拦下；现在框架会告警点明后果（不硬红，宁漏不误伤）
+- [pin] 说明：
+  - 真 AI 验收（all --ai --llm-record）：跨 origin 场景 4 页探测 78 / 108 / 201 个控件、用例实测 PASSED、[run] pytest 退出码 0；AI 自己排出 goto 8001 → 断言 orders.html → 断言「订单系统」→ goto 8002
+  - 单系统反向自证三条：声明过 order(8001)+设 base=8000 -> 仍落 8001；HYBRID_ORIGIN_MAP 指到 8002 -> 落 8002；老用例（无 origins）-> 仍被 base 整体改写
+  - 单 origin 老场景回归（orders_invoice_full_lifecycle）：实测 PASSED 406.3s（改前 402.8s）—— 新口径没把老路走坏
+  - 一类自测 1644 passed / 3 skipped（新增 15 条跨 origin 判据，并入子特性 1.4「地址覆盖」家族）
+  - 仍不在本版范围：iframe 内部控件探测、多套互不相通的登录体系（需拆多个场景）
+
+### V8.9.8（2026-11-09）· 上一版
 **场景说明补「已带入 1 行，通常不需要新增行」—— 省掉一轮 717 秒的白跑**
 
 - [pin] 说明：

@@ -192,6 +192,25 @@ pages:
     assert "invoice" in str(ei.value), "session.spread 里未声明的 origin 必须硬红"
 
 
+# --------------------------------------- 3.6 页面自跳打断 goto 时必须容错（不许随机挂）
+def test_goto_tolerates_interrupted_navigation():
+    """登录页/SSO 自己又跳一次时，`page.goto` 会抛「interrupted by another navigation」。
+
+    实测（2026-11-09 跨 origin 真跑）：同一份用例 1 过 1 挂，失败信息就是这条 ——
+    它不是页面不可达，是页面自己先跳了。必须接住并等它落稳，不能让用例随机红。
+    """
+    src = _src(GEN)
+    body = src[src.index("def _nav(page, target, wait_until=None):"):]
+    body = body[:body.index("def _wait_real_options(")]
+    assert "interrupted by another navigation" in body, (
+        "`_nav` 没接住「页面自身跳转打断导航」-> 跨 origin / 登录页场景会随机挂")
+    assert "page.goto(target)" in body or "page.goto(target" in body, "`_nav` 里没有真正的导航"
+    # 两条导航链路都必须走同一个容错入口（登录流曾经是裸 page.goto -> 照样随机挂）
+    login_body = src[src.index("def _login_flow("):]
+    login_body = login_body[:login_body.index("def ", 100)]
+    assert "_nav(page" in login_body, "登录流没用 `_nav` -> 登录页自跳打断导航时仍会随机挂"
+
+
 # ------------------------------------------------- 3.5 登录规划结果必须透传 session
 def test_login_plan_keeps_session():
     """`login.session` 必须活着走到用例产物里。

@@ -1918,8 +1918,13 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             candidates.append(("element_map(--element-map)", Path(element_map_path), "element"))
         else:
             emaps = sorted(ELEMENT_MAP_DIR.glob("element_map_*.json"))
-            if emaps:
-                candidates.append((f"element_map({emaps[-1].name})", emaps[-1], "element"))
+            # [!] V8.10.0 实测：原来只把「最新一份」当候选 —— 仓库里一旦**多场景共存**
+            #   （跨 origin 场景 + 全链路场景），后跑那个场景的图就会把前一个场景的用例
+            #   全判成「未映射」，报出「AI 产出不完整」的假 NG（同一个文件单独 case_errors() 是通过的）。
+            #   口径：把最近 8 份**全**作为候选，交给 `_pick_loc_map_source` 按覆盖度挑；
+            #   候选按「新 -> 旧」排列，并列时仍取更新的那份（与该函数口径一致）。
+            for _f in list(reversed(emaps[-8:])):
+                candidates.append((f"element_map({_f.name})", _f, "element"))
             snaps = sorted(ELEMENT_MAP_DIR.glob("probe_*.json"))
             if snaps:
                 candidates.append((f"probe快照({snaps[-1].name})", snaps[-1], "probe"))
@@ -1940,6 +1945,26 @@ def generate_scripts(cases_dir: Path | None = None, scripts_dir: Path | None = N
             _MULTI_MATCH.clear()
             _MULTI_MATCH.update(_multi_match_from_source(f, kind))
             _src_file, _src_kind = f, kind
+            # [!] 多场景共存补并（V8.10.0 实测）：一份 element_map 只覆盖**它那个场景**探过的页，
+            #   仓库里同时有「跨 origin 场景」和「全链路场景」时，单份永远凑不齐 `needed`（本轮 34/35），
+            #   于是报「缺失项」拒绝产出 —— 而每个用例单独看都是完整可生成的。
+            #   口径：先按覆盖度选出**主来源**（锚/信号都取它），再**只补并**其它 element_map 里
+            #   主来源没有的名字（不覆盖已有值 = 主来源优先）；补并就出声，便于审计。
+            _merged_from: list[str] = []
+            for _lbl, _f2, _k2 in candidates:
+                if _f2 == f or not _f2.exists():
+                    continue
+                _got2 = (_load_loc_map_from_element_map(_f2) if _k2 == "element"
+                         else _load_loc_map_from_probe_snapshot(_f2))
+                _add = {k: v for k, v in _got2.items() if k in needed and k not in loc_map}
+                if _add:
+                    loc_map.update(_add)
+                    _SRC_IT.update({k: v for k, v in _items_from_source(_f2, _k2).items()
+                                    if k in _add and k not in _SRC_IT})
+                    _merged_from.append(f"{_f2.name}(+{len(_add)})")
+            if _merged_from:
+                print(f"[generate] [key] 跨场景补并：{', '.join(_merged_from)}"
+                      f"（主来源仍是 {f.name}；只补它没有的名字，已有值不被覆盖）")
             if len(_hit) < len(needed):
                 print(f"[generate] [key] 定位来源选定：{label}（命中 {len(_hit)}/{len(needed)}；"
                       f"缺 {len(needed) - len(_hit)} 项 -> 交现场探测补）")
@@ -2437,6 +2462,8 @@ _MODULE_HEADER = '''"""hybrid_gui_qa 用例模块：{cid}（场景 {sid}）—�
 """
 from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       _login_flow,
+                      # V8.10.0 跨 origin：登录后铺会话（模板里会渲染这个调用，漏 import = NameError）
+                      _spread_session,
                       # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
                       # [!] 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
                       _ds_params, _ds_ids,
@@ -2871,6 +2898,29 @@ def _rewrite_base(url):
     return _up.urlunsplit((o.scheme, o.netloc, u.path, u.query, u.fragment))
 
 
+def _nav(page, target, wait_until=None):
+    """**容错导航**（唯一入口）：接住「页面自己又跳一次」打断导航的情况。
+
+    为什么必须有：登录页会自己补 `?next=`、SSO 会 302 回登录源，
+    playwright 随即抛 `Navigation to "…" is interrupted by another navigation to "…"`。
+    这**不是**失败（页面就在那儿，只是它先跳了一下）—— 不接住就是随机挂：
+    实测 2026-11-09 跨 origin 用例 4 跑 1 挂。
+    """
+    try:
+        if wait_until:
+            page.goto(target, wait_until=wait_until)
+        else:
+            page.goto(target)
+    except Exception as _e:
+        if "interrupted by another navigation" not in str(_e):
+            raise
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=15000)
+        except Exception:
+            pass
+        print(f"[TEST] goto 被页面自身跳转打断，已落到 {page.url}（不是失败，继续）", flush=True)
+
+
 def _goto(page, url, origin_name=None):
     """统一导航入口：(1) 支持 HYBRID_BASE_URL 覆盖目标（同一套用例跑本机/慢代理/预发）
     (2) goto 之后等页面数据就绪（F1）。生成脚本里的每个 goto 都走这里。
@@ -2884,7 +2934,7 @@ def _goto(page, url, origin_name=None):
             f"_goto 收到**相对地址** {target!r}（没补 base）—— 生成器应按用例 base_url 补齐；"
             f"手写脚本请写全 `http://host/path`（相对地址在 playwright 里必然导航失败）")
     target = _rw(url, origin_name)       # [!] 与 `_login_flow` 同一改写家族，不许各写一份
-    page.goto(target)
+    _nav(page, target)                   # [!] 容错导航唯一入口（页面自跳打断不算失败）
     _wait_ready(page, target)
     _maybe_scene_pre(page)
 
@@ -3362,7 +3412,7 @@ def _login_flow(page, steps, wait=None, login_url=""):
     has_goto = any((s or {}).get("op") == "goto" for s in seq)
     if login_url and not has_goto:
         # [!] 必须走 `_rewrite_base`：登录与业务步骤**同一个目标地址**，否则换环境跑必挂
-        page.goto(_rewrite_base(login_url), wait_until="domcontentloaded")
+        _nav(page, _rewrite_base(login_url), wait_until="domcontentloaded")
     for i, st in enumerate(seq, 1):
         st = st or {}
         op = str(st.get("op") or "").strip()
@@ -3381,7 +3431,7 @@ def _login_flow(page, steps, wait=None, login_url=""):
         if op not in STEP_OPS:
             raise RuntimeError(f"登录第 {i} 步：{unknown_hint(op)}")
         if op == "goto":
-            page.goto(_rewrite_base(str(st.get("value") or login_url)), wait_until="domcontentloaded")
+            _nav(page, _rewrite_base(str(st.get("value") or login_url)), wait_until="domcontentloaded")
             continue
         el = st.get("element") or {}
         if not isinstance(el, dict) or not el:

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.8）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.10.0）</title>
 <style>
 :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -257,7 +257,7 @@
     <span class="pill">HOW 怎么写场景与用例</span>
   </p>
   <p style="opacity:.65;font-size:.92rem;margin-top:14px">
-    V8.9.8（2026-11-09）· 面向新同学 · 内容以代码为准，改完代码跑
+    V8.10.0（2026-11-09）· 面向新同学 · 内容以代码为准，改完代码跑
     <code style="background:rgba(255,255,255,.15);padding:2px 6px;border-radius:4px">python build_tools/build_html.py</code>
     重新生成本页
   </p>
@@ -383,16 +383,17 @@
 │   ├── _forensics_cross_origin/
 │   │   ├── rw_named_origin.json
 │   │   └── rw_origin_map.json
+│   ├── orders_invoice_cross_origin/
+│   │   └── ai_orders_invoice_cross_origin_184839.json
 │   └── orders_invoice_full_lifecycle/
 │       └── ai_orders_invoice_full_lifecycle_100728.json
 ├── demo/    自带被测应用（本地练习用，端口 8000）
 │   ├── .data/
-│   │   ├── state_default.backup_20261109_172144.json
-│   │   ├── state_default.backup_20261109_172146.json
-│   │   ├── state_default.backup_20261109_172147.json
-│   │   ├── state_default.backup_20261109_172148.json
-│   │   ├── state_default.backup_20261109_172155.json
-│   │   └── state_default.json
+│   │   ├── state_default.backup_20261109_185229.json
+│   │   ├── state_default.backup_20261109_190547.json
+│   │   ├── state_default.backup_20261109_190910.json
+│   │   ├── state_default.json
+│   │   └── state_gw0.json
 │   ├── vendor/
 │   │   ├── contract-form.css
 │   │   ├── jquery.min.js
@@ -445,6 +446,7 @@
 │   │   ├── login.py
 │   │   ├── paths.py
 │   │   ├── pre_actions_run.py
+│   │   ├── sso_session.py
 │   │   ├── step_ops.py
 │   │   ├── target_probe.py
 │   │   ├── text_io.py
@@ -491,6 +493,7 @@
 │   ├── RELEASE_NOTES_V7.8.md
 │   ├── RELEASE_NOTES_V8.0.md
 │   ├── RELEASE_NOTES_V8.1.md
+│   ├── RELEASE_NOTES_V8.10.0.md
 │   ├── RELEASE_NOTES_V8.2.1.md
 │   ├── RELEASE_NOTES_V8.2.2.md
 │   ├── RELEASE_NOTES_V8.2.3.md
@@ -611,11 +614,13 @@
 │   └── README.md
 ├── scripts/    generate 产物（脚本 + 抽离数据）
 │   ├── datasets/
+│   │   ├── ai_orders_invoice_cross_origin_184839.json
 │   │   ├── ai_orders_invoice_full_lifecycle_100728.json
 │   │   ├── rw_named_origin.json
 │   │   └── rw_origin_map.json
 │   └── generated/
 │       ├── manual/
+│       ├── orders_invoice_cross_origin/
 │       ├── orders_invoice_full_lifecycle/
 │       ├── _harness.py
 │       ├── _pre.json
@@ -911,7 +916,7 @@
     <div class="subfeat">
       <h5 class="subfeat-title" id="sub-1.4" data-sub="1.4"><span class="sno">1.4</span>目标地址覆盖对全链路生效</h5>
       <p class="codesrc"><b>目标：</b><code class="code-inline">HYBRID_BASE_URL</code> 必须同时作用于<b>业务步骤、登录流、场景身份前置</b>三条导航路径（改写走唯一入口 <code class="code-inline">_rewrite_base</code>）；否则同一个包在用户内网/慢代理上会「一半打新地址、一半打写死地址」—— 会话 cookie 互不通用，第一个业务步就等不到元素。<b>跨 origin（V8.10.0）</b>：合同/订单/发票是不同业务系统时，只有<b>声明过的</b> origin 才按 <code class="code-inline">HYBRID_ORIGIN_MAP</code> 换，其余原样（不许压平）；会话由 <code class="code-inline">_spread_session</code> 铺到各 origin</p>
-      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_base_url_override_login.py（8 条）</span> <span class="code-inline">tests/特性1-混合链路/test_cross_origin.py（11 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
+      <p class="codesrc"><b>证据 · 一类（框架自测）：</b><span class="code-inline">tests/特性1-混合链路/test_base_url_override_login.py（8 条）</span> <span class="code-inline">tests/特性1-混合链路/test_cross_origin.py（14 条）</span><br><b>证据 · 二类（特性自证）：</b>无</p>
     </div>
   </section>  <section class="feat">
     <h4 class="feat-title" id="feat-2" data-feat="2"><span class="fno">特性 2</span>语义识别与步骤编排 <span class="fkey">semantic</span></h4>
@@ -1752,9 +1757,36 @@
 </section>
 <section id="changelog">
   <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-  <p class="sec-sub">当前版本 <b>V8.9.8</b>（2026-11-09）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+  <p class="sec-sub">当前版本 <b>V8.10.0</b>（2026-11-09）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.9.8</span><span class="cl-date">2026-11-09</span><span class="cl-tag">当前版本</span><span class="cl-theme">场景说明补「<b>已带入 1 行，通常不需要新增行</b>」—— 省掉一轮 717 秒的白跑</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.10.0</span><span class="cl-date">2026-11-09</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>跨 origin 多业务系统</b>（一套 SSO）：合同 / 订单 / 发票是不同系统也能在一个场景里跑通</span></div>
+      <p class="cl-sum">真实业务里合同 / 订单 / 发票常是<b>不同业务系统（不同 origin）</b>，登录却是<b>同一套 SSO</b>。旧口径有两处硬伤，都先在本机复现才动手：<br><br>① <b>地址被压平成一套系统</b>：<code>_rewrite_base()</code> 把<b>任何</b>地址的 origin 换成单一 <code>HYBRID_BASE_URL</code> -> 设了 base=8000 后，goto <code>localhost:8001</code> 实际落到 8000（<code>Actual value: http://localhost:8000/api/health</code>）；<br>② <b>会话不跨 origin</b>：会话在 localStorage 里是 per-origin 的 —— 登录落在 8000、访问 <code>8001/orders.html</code> 会落到 <code>8001/login.html?next=%2Forders.html</code>。<br><br>[!] ① 比「不支持」更糟：<b>探针扫的是真跨系统、运行打的是被压平的单 origin</b> ——「探到的和跑的不是一回事」，而且默认就会发生。</p>
+      <div class="cl-kind"><span class="chip" style="color:#15803d;background:#dcfce7">[go] 新增</span><ul>
+        <li>场景 <code>origins:</code> 给每个业务系统起名，页面地址写 <code>${order}/orders.html</code>；引用了<b>没声明</b>的名字 -> 加载期硬红并点名（不猜、不静默留空）</li>
+        <li>运行期新唯一入口 <code>_rw(url, origin_name)</code>：有名字只按 <code>HYBRID_ORIGIN_MAP</code> 换那个 origin（没映射就<b>原样</b>，绝不压平）；无名字逐字回落旧 <code>_rewrite_base</code></li>
+        <li>环境变量 <code>HYBRID_ORIGIN_MAP</code>（json）已登记进 <code>cli config</code> 可调项 —— 换环境只改这一处</li>
+        <li><code>login.session</code> + <code>framework/shared/sso_session.py::spread_session()</code>（<b>唯一实现</b>）：SSO 登录一次后把会话铺到各 origin，<b>探针期与执行期都挂</b></li>
+        <li><code>login.wait</code> 新增 <code>url_not_in</code>（多值：离开登录域的所有地址）</li>
+        <li>demo 支持 <code>TARGET_PORTS=8000,8001,8002</code>（单进程多 server 线程、共享同一份数据）+ <code>TARGET_SSO_ORIGIN</code>（业务页未登录跳登录系统并带 next，登录回跳带 token）</li>
+        <li>新增示例场景 <code>scenarios/multi_origin/orders_invoice_cross_origin.yml</code></li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#b45309;background:#ffedd5">[bug] 修复</span><ul>
+        <li><b>铺会话必须挂两条链路</b>：只写进 harness 模板 -> 探针期没铺 -> 跨 origin 页面探到的全是各自登录页的控件（实测 8 个 vs 真业务页 108 / 201），AI 按错清单排步骤、整轮白跑（而探针<b>不会报错</b>）</li>
+        <li><code>login.session</code> 在登录规划结果 / 用例字段里被「挑字段」丢掉 -> 执行期不铺会话 -> 跳转写对了却被踢回各自登录页（断言 5s 超时）</li>
+        <li>页面自身跳转打断 <code>page.goto</code>（<code>interrupted by another navigation</code>）-> 同一份用例<b>4 跑 1 挂</b>；新增容错导航唯一入口 <code>_nav()</code>，<code>_goto</code> 与登录流的裸 goto 都换掉</li>
+        <li>用例头部 import 名单漏了渲染出的 helper（<code>NameError: _spread_session</code>，生成期闸门全绿、试跑才红）</li>
+        <li>场景 <code>pages</code> 里重复列登录页 -> AI 从登录页开始排步骤、被「夹带登录步骤」闸门整条拦下；现在框架会<b>告警</b>点明后果（不硬红，宁漏不误伤）</li>
+      </ul></div>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
+        <li>真 AI 验收（<code>all --ai --llm-record</code>）：跨 origin 场景 4 页探测 78 / 108 / 201 个控件、用例实测 <b>PASSED</b>、<code>[run] pytest 退出码 0</code>；AI 自己排出 goto 8001 → 断言 orders.html → 断言「订单系统」→ goto 8002</li>
+        <li>单系统反向自证三条：声明过 order(8001)+设 base=8000 -> <b>仍落 8001</b>；<code>HYBRID_ORIGIN_MAP</code> 指到 8002 -> 落 8002；老用例（无 origins）-> <b>仍被 base 整体改写</b></li>
+        <li>单 origin 老场景回归（<code>orders_invoice_full_lifecycle</code>）：实测 <b>PASSED 406.3s</b>（改前 402.8s）—— 新口径没把老路走坏</li>
+        <li>一类自测 <b>1644 passed / 3 skipped</b>（新增 15 条跨 origin 判据，并入子特性 1.4「地址覆盖」家族）</li>
+        <li><b>仍不在本版范围</b>：iframe 内部控件探测、多套互不相通的登录体系（需拆多个场景）</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.9.8</span><span class="cl-date">2026-11-09</span><span class="cl-tag">上一版</span><span class="cl-theme">场景说明补「<b>已带入 1 行，通常不需要新增行</b>」—— 省掉一轮 717 秒的白跑</span></div>
       <p class="cl-sum">真机跑 V8.9.7（2026-11-09）暴露的<b>场景说明缺口</b>，不是框架 bug：<br><br>开票页说明原文只写了「发票行（<b>可新增行</b>）」—— <b>只说了可选、没说必要性</b>。AI 于是选了「新增行」这条路：新增 -> 填期次号/发票行类型/数量/单位 -> 先点行保存、再点底部保存。<b>结果发票没真的建出来</b>（搜索后第一行不存在），第 61 步断言抓到并报 FAILED，<b>耗时 717.0s</b>；AI 带失败原因重生成后改成「直接用已带入的第 1 行、只点底部保存」-> <b>PASSED 397.0s</b>。<br><br>现在说明里写清：从「去开票」进入时<b>已自动带入 1 行</b>（订单编号/合同编号已填），<b>通常不需要点「新增行」</b>；新增会多出一行空行、还得分两次保存，容易漏。</p>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
         <li>改动仅限 <code>scenarios/orders/orders_invoice_full_lifecycle.yml</code> 的页面说明（<b>零代码</b>）。<br><b>同时确认两件事</b>：① V8.9.6 的「断言失败给真值」<b>真机生效</b> —— 报错带出该页 11 个实际列 <code>['选择','发票号','发票类型','发票日期','业务单元','合同编号','订单编号','客户','销售员','币 种','行数']</code>，AI 正是读了这个才自我修正（原话「用表头文案定位，避免 data-field 不一致」）；② 行区信号良好 <code>行定位缺失 0 处</code>（引用 36 个名字、撞重复 4 个、兜底 <b>0 处</b>）。<br>注意：本轮<b>没有</b>拿到 V8.9.6 登录断言的实证：AI 这次登录决策写的是 4 步纯操作、没写断言 （所以「不再出现已跳过」不能当证据）。<br><br><b>改完立刻本地重跑验收（真 AI + 真浏览器）</b>：删旧用例 -> <code>explore --ai</code> -> <b>一次过 PASSED 402.8s、零重试</b>（对比真机改前 717s 失败 + 397s 重试 = 1114s）；新用例 47 步（原 62）、<b>开票页不再出现「新增行」</b>；最后一条 <code>expect_first_row | HT-1001</code> AI 自己声明了 <code>refresh=research</code>（每轮重放搜索）—— 之前那 717 秒里很大一块就是「纯轮询 DOM 等一个不会自己刷新的列表」。</li>
@@ -2808,7 +2840,7 @@
       </ul></div>
     </div>
 </section>
-<footer>hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.8</b>（2026-11-09）· 由 build_tools/build_html.py 生成</footer>
+<footer>hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.10.0</b>（2026-11-09）· 由 build_tools/build_html.py 生成</footer>
 </div>
 <nav id="toc" aria-label="章节大纲">
   <div class="toc-head"><b>目录</b><button id="toc-all" class="toc-btn" type="button">全展开</button></div>

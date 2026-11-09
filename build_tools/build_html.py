@@ -61,11 +61,59 @@ def hl(line: str) -> str:
 # r9-legacy-block:begin —— 版本史区（历史版本记录的旧路径 + 破坏性变更对照示例）
 #   按 R9「搬家协议」口径：**冻结的历史记录原样保留、不回头改**（它们记录的是当时真实的路径）。
 # ================= 版本与更新记录（单一来源：改版本只动这里）=================
-VERSION = "8.9.8"
+VERSION = "8.10.0"
 VERSION_DATE = "2026-11-09"
 CHANGELOG = [
     dict(
-        version="8.9.8", date="2026-11-09", tag="当前版本",
+        version="8.10.0", date="2026-11-09", tag="当前版本",
+        theme="<b>跨 origin 多业务系统</b>（一套 SSO）：合同 / 订单 / 发票是不同系统也能在一个场景里跑通",
+        summary="真实业务里合同 / 订单 / 发票常是<b>不同业务系统（不同 origin）</b>，登录却是<b>同一套 SSO</b>。"
+                "旧口径有两处硬伤，都先在本机复现才动手：<br><br>"
+                "① <b>地址被压平成一套系统</b>：<code>_rewrite_base()</code> 把<b>任何</b>地址的 origin 换成单一 "
+                "<code>HYBRID_BASE_URL</code> -> 设了 base=8000 后，goto <code>localhost:8001</code> 实际落到 8000"
+                "（<code>Actual value: http://localhost:8000/api/health</code>）；<br>"
+                "② <b>会话不跨 origin</b>：会话在 localStorage 里是 per-origin 的 —— 登录落在 8000、"
+                "访问 <code>8001/orders.html</code> 会落到 <code>8001/login.html?next=%2Forders.html</code>。<br><br>"
+                "[!] ① 比「不支持」更糟：<b>探针扫的是真跨系统、运行打的是被压平的单 origin</b> ——"
+                "「探到的和跑的不是一回事」，而且默认就会发生。",
+        added=[
+            "场景 <code>origins:</code> 给每个业务系统起名，页面地址写 <code>${order}/orders.html</code>；"
+            "引用了<b>没声明</b>的名字 -> 加载期硬红并点名（不猜、不静默留空）",
+            "运行期新唯一入口 <code>_rw(url, origin_name)</code>：有名字只按 <code>HYBRID_ORIGIN_MAP</code> 换那个 origin"
+            "（没映射就<b>原样</b>，绝不压平）；无名字逐字回落旧 <code>_rewrite_base</code>",
+            "环境变量 <code>HYBRID_ORIGIN_MAP</code>（json）已登记进 <code>cli config</code> 可调项 —— 换环境只改这一处",
+            "<code>login.session</code> + <code>framework/shared/sso_session.py::spread_session()</code>（<b>唯一实现</b>）："
+            "SSO 登录一次后把会话铺到各 origin，<b>探针期与执行期都挂</b>",
+            "<code>login.wait</code> 新增 <code>url_not_in</code>（多值：离开登录域的所有地址）",
+            "demo 支持 <code>TARGET_PORTS=8000,8001,8002</code>（单进程多 server 线程、共享同一份数据）"
+            "+ <code>TARGET_SSO_ORIGIN</code>（业务页未登录跳登录系统并带 next，登录回跳带 token）",
+            "新增示例场景 <code>scenarios/multi_origin/orders_invoice_cross_origin.yml</code>",
+        ],
+        fixed=[
+            "<b>铺会话必须挂两条链路</b>：只写进 harness 模板 -> 探针期没铺 -> 跨 origin 页面探到的全是各自登录页的控件"
+            "（实测 8 个 vs 真业务页 108 / 201），AI 按错清单排步骤、整轮白跑（而探针<b>不会报错</b>）",
+            "<code>login.session</code> 在登录规划结果 / 用例字段里被「挑字段」丢掉 -> 执行期不铺会话 -> "
+            "跳转写对了却被踢回各自登录页（断言 5s 超时）",
+            "页面自身跳转打断 <code>page.goto</code>（<code>interrupted by another navigation</code>）-> "
+            "同一份用例<b>4 跑 1 挂</b>；新增容错导航唯一入口 <code>_nav()</code>，<code>_goto</code> 与登录流的裸 goto 都换掉",
+            "用例头部 import 名单漏了渲染出的 helper（<code>NameError: _spread_session</code>，生成期闸门全绿、试跑才红）",
+            "场景 <code>pages</code> 里重复列登录页 -> AI 从登录页开始排步骤、被「夹带登录步骤」闸门整条拦下；"
+            "现在框架会<b>告警</b>点明后果（不硬红，宁漏不误伤）",
+        ],
+        notes=[
+            "真 AI 验收（<code>all --ai --llm-record</code>）：跨 origin 场景 4 页探测 78 / 108 / 201 个控件、"
+            "用例实测 <b>PASSED</b>、<code>[run] pytest 退出码 0</code>；AI 自己排出 goto 8001 → 断言 orders.html → "
+            "断言「订单系统」→ goto 8002",
+            "单系统反向自证三条：声明过 order(8001)+设 base=8000 -> <b>仍落 8001</b>；"
+            "<code>HYBRID_ORIGIN_MAP</code> 指到 8002 -> 落 8002；老用例（无 origins）-> <b>仍被 base 整体改写</b>",
+            "单 origin 老场景回归（<code>orders_invoice_full_lifecycle</code>）：实测 <b>PASSED 406.3s</b>"
+            "（改前 402.8s）—— 新口径没把老路走坏",
+            "一类自测 <b>1644 passed / 3 skipped</b>（新增 15 条跨 origin 判据，并入子特性 1.4「地址覆盖」家族）",
+            "<b>仍不在本版范围</b>：iframe 内部控件探测、多套互不相通的登录体系（需拆多个场景）",
+        ],
+    ),
+    dict(
+        version="8.9.8", date="2026-11-09", tag="上一版",
         theme="场景说明补「<b>已带入 1 行，通常不需要新增行</b>」—— 省掉一轮 717 秒的白跑",
         summary="真机跑 V8.9.7（2026-11-09）暴露的<b>场景说明缺口</b>，不是框架 bug：<br><br>"
                 "开票页说明原文只写了「发票行（<b>可新增行</b>）」—— <b>只说了可选、没说必要性</b>。"

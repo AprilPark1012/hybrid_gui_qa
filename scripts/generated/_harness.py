@@ -382,48 +382,13 @@ def _rw(url, origin_name=None):
 
 
 def _spread_session(context, spec, gen_origins=None):
-    """登录一次（SSO）后把会话铺到其它 origin（跨 origin 的**唯一**实现）。
+    """跨 origin 会话铺开 —— **薄封装**，真实现只有 `framework/shared/sso_session.py` 一份。
 
-    为什么需要：会话存在 `localStorage`（per-origin），SSO 登录只落在登录那个 origin
-    —— 实测访问另一个 origin 的业务页会被踢回**它自己**的登录页。
+    探针期（`explorer_explore` 登录后）与运行期（本 harness 登录后）走**同一个函数**；
+    在这里各写一份 = 两份实现两份 bug。`_ORIGIN_MAP`（HYBRID_ORIGIN_MAP）优先于生成期快照。
     """
-    spec = dict(spec or {})
-    gen_origins = dict(gen_origins or {})
-    token = ""
-    src = str(spec.get("token_from") or "url_param")
-    if src == "url_param":
-        import urllib.parse as _up
-        cur_url = ""
-        for _pg in getattr(context, "pages", []) or []:
-            cur_url = getattr(_pg, "url", "") or cur_url
-        q = _up.parse_qs(_up.urlsplit(cur_url).query)
-        token = (q.get(str(spec.get("param") or "token")) or [""])[0]
-    if not token:
-        print("[warn] 跨 origin 会话铺开：没能从登录后的地址取到 token -> 跳过"
-              "（后面跨 origin 的页面可能被判未登录，请查 login.session 的 param 与 SSO 回跳地址）")
-        return []
-    key = str(spec.get("key") or "demo_token")
-    done = []
-    for name in spec.get("spread") or []:
-        name = str(name)
-        base = (_ORIGIN_MAP.get(name) or gen_origins.get(name) or "").rstrip("/")
-        if not base:
-            print(f"[warn] 跨 origin 会话铺开：origin {name!r} 既没有 HYBRID_ORIGIN_MAP 映射、"
-                  f"生成期也没记地址 -> 跳过")
-            continue
-        pg = context.new_page()
-        try:
-            pg.add_init_script(f"try{{localStorage.setItem({key!r}, {token!r});}}catch(e){{}}")
-            pg.goto(base + "/", wait_until="domcontentloaded", timeout=15000)
-            pg.wait_for_timeout(120)
-            done.append(name)
-        except Exception as _e:                                    # noqa: BLE001
-            print(f"[warn] 跨 origin 会话铺开失败：{name} ({base}) -> {type(_e).__name__}: {_e}")
-        finally:
-            pg.close()
-    if done:
-        print(f"[TEST] 跨 origin 会话已铺到 {len(done)} 个 origin: {', '.join(done)}")
-    return done
+    from framework.shared.sso_session import spread_session
+    return spread_session(context, spec, gen_origins, origin_map=_ORIGIN_MAP)
 
 
 def _rewrite_base(url):
@@ -445,6 +410,29 @@ def _rewrite_base(url):
     return _up.urlunsplit((o.scheme, o.netloc, u.path, u.query, u.fragment))
 
 
+def _nav(page, target, wait_until=None):
+    """**容错导航**（唯一入口）：接住「页面自己又跳一次」打断导航的情况。
+
+    为什么必须有：登录页会自己补 `?next=`、SSO 会 302 回登录源，
+    playwright 随即抛 `Navigation to "…" is interrupted by another navigation to "…"`。
+    这**不是**失败（页面就在那儿，只是它先跳了一下）—— 不接住就是随机挂：
+    实测 2026-11-09 跨 origin 用例 4 跑 1 挂。
+    """
+    try:
+        if wait_until:
+            page.goto(target, wait_until=wait_until)
+        else:
+            page.goto(target)
+    except Exception as _e:
+        if "interrupted by another navigation" not in str(_e):
+            raise
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=15000)
+        except Exception:
+            pass
+        print(f"[TEST] goto 被页面自身跳转打断，已落到 {page.url}（不是失败，继续）", flush=True)
+
+
 def _goto(page, url, origin_name=None):
     """统一导航入口：(1) 支持 HYBRID_BASE_URL 覆盖目标（同一套用例跑本机/慢代理/预发）
     (2) goto 之后等页面数据就绪（F1）。生成脚本里的每个 goto 都走这里。
@@ -458,7 +446,7 @@ def _goto(page, url, origin_name=None):
             f"_goto 收到**相对地址** {target!r}（没补 base）—— 生成器应按用例 base_url 补齐；"
             f"手写脚本请写全 `http://host/path`（相对地址在 playwright 里必然导航失败）")
     target = _rw(url, origin_name)       # [!] 与 `_login_flow` 同一改写家族，不许各写一份
-    page.goto(target)
+    _nav(page, target)                   # [!] 容错导航唯一入口（页面自跳打断不算失败）
     _wait_ready(page, target)
     _maybe_scene_pre(page)
 
@@ -936,7 +924,7 @@ def _login_flow(page, steps, wait=None, login_url=""):
     has_goto = any((s or {}).get("op") == "goto" for s in seq)
     if login_url and not has_goto:
         # [!] 必须走 `_rewrite_base`：登录与业务步骤**同一个目标地址**，否则换环境跑必挂
-        page.goto(_rewrite_base(login_url), wait_until="domcontentloaded")
+        _nav(page, _rewrite_base(login_url), wait_until="domcontentloaded")
     for i, st in enumerate(seq, 1):
         st = st or {}
         op = str(st.get("op") or "").strip()
@@ -955,7 +943,7 @@ def _login_flow(page, steps, wait=None, login_url=""):
         if op not in STEP_OPS:
             raise RuntimeError(f"登录第 {i} 步：{unknown_hint(op)}")
         if op == "goto":
-            page.goto(_rewrite_base(str(st.get("value") or login_url)), wait_until="domcontentloaded")
+            _nav(page, _rewrite_base(str(st.get("value") or login_url)), wait_until="domcontentloaded")
             continue
         el = st.get("element") or {}
         if not isinstance(el, dict) or not el:

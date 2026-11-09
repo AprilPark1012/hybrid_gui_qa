@@ -1,0 +1,229 @@
+{
+  "case_id": "ai_orders_invoice_cross_origin_184839",
+  "name": "【跨 origin 演练 · 三个业务系统 + 一套 SSO】\n先登录（SSO，只在 8000 上登录一次），然后在订单系统(8001)里按订单名称搜索到一条订单，\n再切到发票系统(8002)确认发票列表能打开。",
+  "base_url": "http://localhost:8000/",
+  "steps": [
+    {
+      "op": "goto",
+      "desc": "打开 【合同列表页】http://localhost:8000/",
+      "url": "http://localhost:8000/"
+    },
+    {
+      "op": "goto",
+      "desc": "从合同系统(8000)切到订单系统(8001)，复用同一套 SSO 登录态、免再次登录",
+      "url": "http://localhost:8001/orders.html"
+    },
+    {
+      "op": "fill",
+      "desc": "在订单系统顶部筛选区按订单名称填入搜索关键词",
+      "element": "订单名称@订单列表页",
+      "value": "北京华信2月设备升级订单"
+    },
+    {
+      "op": "click",
+      "desc": "点击搜索按钮，按订单名称过滤订单列表",
+      "element": "搜索@订单列表页"
+    },
+    {
+      "op": "goto",
+      "desc": "从订单系统(8001)切到发票系统(8002)，继续复用 SSO 登录态",
+      "url": "http://localhost:8002/invoice_list.html"
+    }
+  ],
+  "asserts": [
+    {
+      "desc": "确认 SSO 登录后落在合同系统首页（登录由框架前置完成，这里只验登录态与落点）",
+      "expect": "合同管理系统",
+      "after_step": 1
+    },
+    {
+      "kind": "url",
+      "desc": "到达证据：订单列表页 URL 独有片段 orders.html（仅该页含）",
+      "expect": "orders.html",
+      "after_step": 2
+    },
+    {
+      "desc": "到达证据：订单系统页面特征文案出现，证明 SSO 免登录直达成功",
+      "expect": "订单系统",
+      "after_step": 2
+    },
+    {
+      "kind": "first_row",
+      "row_field": "orderName",
+      "desc": "验证按订单名称搜到了该订单：订单列表页首行的订单名称列即该订单",
+      "expect": "北京华信2月设备升级订单",
+      "after_step": 4
+    },
+    {
+      "kind": "url",
+      "desc": "到达证据：发票列表页 URL 独有片段 invoice_list.html（仅该页含）",
+      "expect": "invoice_list.html",
+      "after_step": 5
+    },
+    {
+      "desc": "确认发票列表能打开：应收发票列表页面特征标题文案出现",
+      "expect": "应收发票列表",
+      "after_step": 5
+    }
+  ],
+  "scenario_id": "orders_invoice_cross_origin",
+  "source_scenario": "scenarios/multi_origin/orders_invoice_cross_origin.yml",
+  "scenario_fingerprint": "2ce4ca2564ba4edd",
+  "origins": {
+    "order": "http://localhost:8001",
+    "invoice": "http://localhost:8002"
+  },
+  "pages": [
+    {
+      "name": "合同列表页",
+      "url": "http://localhost:8000/",
+      "page": "合同系统首页：顶部搜索（关键字/客户/管理单元…）+ 合同表格（每行一个合同）。\n「+ 新建合同」「…」选客户都会弹 iframe 弹层。\n",
+      "pre": [],
+      "probe_url": ""
+    },
+    {
+      "name": "订单列表页",
+      "url": "http://localhost:8001/orders.html",
+      "page": "订单系统（另一个业务系统）：订单表格，每行有订单编号/客户/状态（已新建/履行中/已关闭）。\n搜索框在顶部，点「搜索」后按订单名称过滤。\n",
+      "pre": [],
+      "probe_url": ""
+    },
+    {
+      "name": "发票列表页",
+      "url": "http://localhost:8002/invoice_list.html",
+      "page": "发票系统（又一个业务系统）：应收发票列表，列含发票号/合同编号/订单编号/客户等。\n搜索框在顶部，点「搜索」后按订单名称过滤。\n",
+      "pre": [],
+      "probe_url": ""
+    }
+  ],
+  "login": {
+    "login_url": "http://localhost:8000/login.html",
+    "wait": {
+      "url_not": "login.html"
+    },
+    "steps": [
+      {
+        "order": 0,
+        "op": "goto",
+        "element": null,
+        "value": "http://localhost:8000/login.html",
+        "assertion": null,
+        "desc": "打开 http://localhost:8000/login.html",
+        "row_text": null,
+        "cell_field": null,
+        "cell_by": null,
+        "cell_index": null,
+        "row_index": null,
+        "row_id": null,
+        "index": null
+      },
+      {
+        "order": 1,
+        "op": "fill",
+        "element": {
+          "semantic_name": "账号",
+          "role": "textbox",
+          "name": "账号",
+          "label": null,
+          "placeholder": "请输入账号",
+          "test_id": "",
+          "element_id": null,
+          "text": "账号",
+          "page_hint": null,
+          "container_heading": "演示系统登录",
+          "nearby_text": "演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or",
+          "help_text": "账号",
+          "notes": "",
+          "anchor": null,
+          "path": null,
+          "isValid": true
+        },
+        "value": "super",
+        "assertion": null,
+        "desc": "在登录页账号输入框填入 super",
+        "row_text": null,
+        "cell_field": null,
+        "cell_by": null,
+        "cell_index": null,
+        "row_index": null,
+        "row_id": null,
+        "index": null
+      },
+      {
+        "order": 2,
+        "op": "fill",
+        "element": {
+          "semantic_name": "密码",
+          "role": "textbox",
+          "name": "密码",
+          "label": null,
+          "placeholder": "请输入密码",
+          "test_id": "",
+          "element_id": null,
+          "text": "密码",
+          "page_hint": null,
+          "container_heading": "演示系统登录",
+          "nearby_text": "演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or",
+          "help_text": "密码",
+          "notes": "",
+          "anchor": null,
+          "path": null,
+          "isValid": true
+        },
+        "value": "super@123",
+        "assertion": null,
+        "desc": "在登录页密码输入框填入 super@123",
+        "row_text": null,
+        "cell_field": null,
+        "cell_by": null,
+        "cell_index": null,
+        "row_index": null,
+        "row_id": null,
+        "index": null
+      },
+      {
+        "order": 3,
+        "op": "click",
+        "element": {
+          "semantic_name": "登_录",
+          "role": "button",
+          "name": "登 录",
+          "label": null,
+          "placeholder": "",
+          "test_id": "",
+          "element_id": null,
+          "text": "登 录",
+          "page_hint": null,
+          "container_heading": "演示系统登录",
+          "nearby_text": "演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or",
+          "help_text": "",
+          "notes": "",
+          "anchor": null,
+          "path": null,
+          "isValid": true
+        },
+        "value": null,
+        "assertion": null,
+        "desc": "点击「登录」按钮提交登录",
+        "row_text": null,
+        "cell_field": null,
+        "cell_by": null,
+        "cell_index": null,
+        "row_index": null,
+        "row_id": null,
+        "index": null
+      }
+    ],
+    "session": {
+      "token_from": "url_param",
+      "param": "token",
+      "store": "localStorage",
+      "key": "demo_token",
+      "spread": [
+        "order",
+        "invoice"
+      ]
+    }
+  },
+  "llm_source": "live+record:efa16a187691b2a2"
+}

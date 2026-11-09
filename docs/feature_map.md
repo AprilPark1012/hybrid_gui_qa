@@ -6,7 +6,7 @@
 ## 总览
 
 - 大特性 **11** 个 · 子特性 **65** 条
-- 一类用例文件 **169** 个 / 用例函数 **1466** 条
+- 一类用例文件 **169** 个 / 用例函数 **1469** 条
 - 二类验证文件 **25** 个
 
 | 特性 | 名称 | 子特性数 | 一类文件 | 二类文件 |
@@ -34,7 +34,7 @@
 | 1.1 | AI 链路与离线回放 | 真 AI 链路（all --ai）与离线回放（录像）各自可独立跑通（不含已删除的手搓链路） | `test_acceptance_entry.py`(10)、`test_offline_chain_python.py`(9) | `verify_e2e_scenario1_online.py` |
 | 1.2 | 统一验收入口 | 四条验收原则能用一条命令跑完（run_acceptance）。[!] 跳过策略（如 --skip-ai 必须显式留痕、SKIP != 通过）的判据物理住在 tests/特性9-质量闸门体系/，按「登记目录 == 物理目录」登记在 9.2 | `test_acceptance_entry.py`(10) | - |
 | 1.3 | 单包即离线可跑 | 无外网机器解压交付包即可离线跑通 AI 链路（录像随代码包一起发，只有一个 zip） | `test_render_entrypoint.py`(2) | `verify_offline_delivery.py` |
-| 1.4 | 目标地址覆盖对全链路生效 | `HYBRID_BASE_URL` 必须同时作用于**业务步骤、登录流、场景身份前置**三条导航路径（改写走唯一入口 `_rewrite_base`）；否则同一个包在用户内网/慢代理上会「一半打新地址、一半打写死地址」—— 会话 cookie 互不通用，第一个业务步就等不到元素。**跨 origin（V8.10.0）**：合同/订单/发票是不同业务系统时，只有**声明过的** origin 才按 `HYBRID_ORIGIN_MAP` 换，其余原样（不许压平）；会话由 `_spread_session` 铺到各 origin | `test_base_url_override_login.py`(8)、`test_cross_origin.py`(11) | - |
+| 1.4 | 目标地址覆盖对全链路生效 | `HYBRID_BASE_URL` 必须同时作用于**业务步骤、登录流、场景身份前置**三条导航路径（改写走唯一入口 `_rewrite_base`）；否则同一个包在用户内网/慢代理上会「一半打新地址、一半打写死地址」—— 会话 cookie 互不通用，第一个业务步就等不到元素。**跨 origin（V8.10.0）**：合同/订单/发票是不同业务系统时，只有**声明过的** origin 才按 `HYBRID_ORIGIN_MAP` 换，其余原样（不许压平）；会话由 `_spread_session` 铺到各 origin | `test_base_url_override_login.py`(8)、`test_cross_origin.py`(14) | - |
 
 ## 特性 2 · 语义识别与步骤编排
 

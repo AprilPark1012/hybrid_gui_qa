@@ -138,7 +138,11 @@ def test_generate_side_uses_login_url_not_element() -> None:
     #   形态从 `page.goto(str(st.get("value") or login_url))` 变成
     #   `page.goto(_rewrite_base(str(st.get("value") or login_url)), ...)`。
     #   **判据口径不变**（兜底仍必须是 login_url），只是允许外面这层改写。
-    assert 'page.goto(_rewrite_base(str(st.get("value") or login_url))' in _SRC_GEN, (
+    # V8.10.0：登录流的两处裸 `page.goto` 已统一走容错导航 `_nav(page, ...)`（页面自跳会打断
+    # goto -> 否则同一份用例 4 跑 1 挂）；**兜底值仍是 login_url、仍经 `_rewrite_base` 改写**，
+    # 这两条才是本判据要守的契约，不许退化成 element。
+    assert ('_nav(page, _rewrite_base(str(st.get("value") or login_url))' in _SRC_GEN
+            or 'page.goto(_rewrite_base(str(st.get("value") or login_url))' in _SRC_GEN), (
         "generate 侧登录 goto 的兜底不是 login_url（或没走 _rewrite_base 改写）—— 别退化成 element"
     )
     assert 'st.get("value") or el' not in _SRC_GEN, "generate 侧有把 element 当 URL 的写法"

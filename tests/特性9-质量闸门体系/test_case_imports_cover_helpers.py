@@ -25,10 +25,17 @@ def _imported_from_harness() -> set[str]:
     return {n.strip() for n in re.split(r"[,\n]+", body) if n.strip()}
 
 
+# 断言之外**也会被渲染进用例脚本**的 helper（新增一个就要在这里登记 + 同时补 import）。
+# 教训（2026-11-09 真跑）：跨 origin 的 `_spread_session(...)` 渲染进了用例，
+# 但 import 列表没加 -> `NameError: name '_spread_session' is not defined`。
+# 生成期闸门全绿、试跑才红 —— 所以把它并进这条判据。
+_RENDERED_HELPERS = ("_assert_[a-z_]+", "_spread_session", "_act_row", "_click_row_cell", "_Tabs")
+
+
 def _rendered_assert_helpers() -> set[str]:
-    """模板里以**调用**形式出现的 `_assert_*`（排除 def 定义行）。"""
+    """模板里以**调用**形式出现的 helper（排除 def 定义行）。"""
     names: set[str] = set()
-    for m in re.finditer(r"(_assert_[a-z_]+)\(", SRC):
+    for m in re.finditer(r"(" + "|".join(_RENDERED_HELPERS) + r")\(", SRC):
         head = SRC[max(0, m.start() - 4):m.start()]
         if head.endswith("def "):
             continue
@@ -38,7 +45,7 @@ def _rendered_assert_helpers() -> set[str]:
 
 def test_every_rendered_assert_helper_is_imported():
     rendered = _rendered_assert_helpers()
-    assert rendered, "没扫到任何 _assert_* 调用 —— 正则或模板结构变了，判据要修（别让它静默变空）"
+    assert rendered, "没扫到任何 helper 调用 —— 正则或模板结构变了，判据要修（别让它静默变空）"
     missing = sorted(rendered - _imported_from_harness())
     assert not missing, (
         f"这些 helper 会被渲染进用例、却没在 `from _harness import (...)` 里：{missing}"

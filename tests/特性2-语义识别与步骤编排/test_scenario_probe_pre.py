@@ -117,7 +117,12 @@ def test_execution_harness_runs_declared_identity_pre():
     gen = (REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(encoding="utf-8")
     assert '"_pre.json"' in gen, "harness 没读身份前置表（声明了也白声明）"
     assert "def _maybe_scene_pre(page):" in gen, "harness 没有执行期身份前置的实现"
-    assert "    page.goto(target)\n    _wait_ready(page, target)\n    _maybe_scene_pre(page)" in gen, \
+    # V8.10.0：首次导航改为走容错入口 `_nav(page, target)`（登录页/SSO 自跳会打断 goto，
+    # 不接住就随机挂）；「导航 → 等就绪 → 身份前置」这三步的**顺序**不变。
+    import re as _re
+    assert _re.search(r"_nav\(page, target\)[^\n]*\n\s*_wait_ready\(page, target\)\n"
+                      r"\s*_maybe_scene_pre\(page\)", gen) or \
+        "    page.goto(target)\n    _wait_ready(page, target)\n    _maybe_scene_pre(page)" in gen, \
         "身份前置没接在「首次导航 + 等就绪」之后"
     assert 'run_pre_actions(page, steps, "场景身份前置"' in gen, \
         "执行期没调**同一引擎**（自己另写一套 = 又分岔）"
