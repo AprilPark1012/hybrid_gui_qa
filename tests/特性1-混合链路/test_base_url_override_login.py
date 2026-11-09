@@ -124,7 +124,11 @@ def test_login_flow_source_has_no_bare_goto():
     assert not bad, f"登录流里有未经改写的裸 page.goto：{bad}"
 
     # 同时钉「只有一个改写入口」：_goto 也必须用它
-    assert "target = _rewrite_base(url)" in src, "_goto 没用唯一入口 _rewrite_base"
+    # V8.10.0：跨 origin 后 `_goto` 改为走 `_rw(url, origin_name)`；
+    # `_rw` 在「无 origin 名」时**逐字回落** `_rewrite_base(url)`（单系统行为不变），
+    # 所以这里认两种形态，但**必须**是二选一（不许出现第三种写法）。
+    assert ("target = _rw(url, origin_name)" in src) or ("target = _rewrite_base(url)" in src), \
+        "_goto 既没走 _rw 也没走 _rewrite_base —— 改写入口被绕过了"
 
 
 # ---------------- (5) 全仓导航契约：除了 `_goto` 内部那一处，所有导航都必须改写 ----------------
@@ -149,8 +153,14 @@ def test_every_navigation_in_harness_goes_through_rewrite():
             continue
         arg = _ast.get_source_segment(src, node.args[0]) if node.args else ""
         arg = (arg or "").strip()
-        # 只允许两种形态：直接调 _rewrite_base(...) —— 或 `_goto` 里已算好的 `target`
-        if arg.startswith("_rewrite_base(") or arg == "target":
+        # 允许的形态：
+        #   · 直接调 `_rewrite_base(...)`；
+        #   · `_goto` 里已算好的 `target`；
+        #   · `_rw(...)`（V8.10.0：跨 origin 安全版，内部按 origin 名决定改不改）；
+        #   · `_spread_session` 里的 `base` / `base + "/"` —— 那里的 base 已经是
+        #     **解析后的最终 origin**（HYBRID_ORIGIN_MAP 或生成期快照），再改写一次反而会被压平回 base。
+        if (arg.startswith("_rewrite_base(") or arg.startswith("_rw(")
+                or arg == "target" or arg == "base" or arg == 'base + "/"'):
             continue
         offenders.append(f"第 {node.lineno} 行 .goto({arg[:60]})")
     assert not offenders, f"这些导航点没走 _rewrite_base：{offenders}"

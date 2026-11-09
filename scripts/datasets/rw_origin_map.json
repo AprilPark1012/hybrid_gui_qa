@@ -1,0 +1,4 @@
+{
+  "goto_0": "http://localhost:8001/api/health",
+  "expect_0": "localhost:8002"
+}

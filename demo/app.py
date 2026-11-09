@@ -1562,8 +1562,36 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return None
 
     # ---- 路由 ----
+    def _serve_html_with_sso(self, path: str) -> None:
+        """静态 HTML + 注入 SSO 源（没配 TARGET_SSO_ORIGIN 就原样走静态服务）。"""
+        sso = (os.environ.get("TARGET_SSO_ORIGIN") or "").strip().rstrip("/")
+        if not sso:
+            return http.server.SimpleHTTPRequestHandler.do_GET(self)
+        rel = path.lstrip("/") or DEFAULT_PAGE
+        fp = os.path.join(DIR, rel)
+        if not os.path.isfile(fp):
+            return http.server.SimpleHTTPRequestHandler.do_GET(self)
+        try:
+            html = open(fp, encoding="utf-8").read()
+        except Exception:                                          # noqa: BLE001
+            return http.server.SimpleHTTPRequestHandler.do_GET(self)
+        tag = f'<script>window.DEMO_SSO_ORIGIN = {sso!r};</script>'
+        html = html.replace("<head>", "<head>\n  " + tag, 1) if "<head>" in html else tag + html
+        body = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         path = self._path_only()
+        # 跨 origin 演练（V8.10.0）：给 HTML 注入 `window.DEMO_SSO_ORIGIN`，
+        # 让业务页「未登录 -> 跳登录系统」时知道登录系统在哪（真实 SSO 靠 cookie/302，不需要这层）。
+        # 未设置 TARGET_SSO_ORIGIN 时一个字节都不加 -> 单 origin 场景完全不变。
+        if path.endswith(".html") or path in ("/", ""):
+            return self._serve_html_with_sso(path)
         part = self._part()
         _ensure_loaded(part)          # 需求(16)：该分区第一次被访问 -> 从盘上加载（没有盘文件才播种）
         if path == "/api/health":
@@ -1923,6 +1951,50 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         pass
 
 
+def _multi_ports() -> list[int]:
+    """解析 `TARGET_PORTS`（逗号分隔）—— 用于「跨 origin」演练。
+
+    为什么需要：真实业务里合同 / 订单 / 发票常是**不同业务系统**（不同 origin），
+    而登录是同一套 SSO。要在本机复现这件事，必须让 demo **同一份数据、多个入口**
+    （分三个进程各存一份数据的话，订单系统看不到合同系统建的合同）。
+    -> 同一进程起多个 server 线程，共享模块级数据。
+
+    不设 `TARGET_PORTS` 时行为与原来完全一致（单端口 = `TARGET_PORT`）。
+    """
+    raw = [x.strip() for x in os.environ.get("TARGET_PORTS", "").split(",") if x.strip()]
+    ports: list[int] = []
+    for x in raw:
+        try:
+            p = int(x)
+        except ValueError:
+            continue
+        if 0 < p < 65536 and p not in ports:
+            ports.append(p)
+    return ports or [PORT]
+
+
+#: 「哪个端口属于哪个模块」—— 跨 origin 演练用。默认空 = 每个端口都提供全部页面。
+#: 形如 `8000:contract,sso;8001:order;8002:invoice`（见 TARGET_PORT_MODULES）。
+_MODULE_OWNER: dict[str, set[str]] = {}
+
+
+def _module_of(path: str) -> str:
+    """页面/接口 -> 业务模块名（跨 origin 演练时用来 302「跳到所属系统」）。"""
+    p = (path or "/").split("?")[0]
+    if p.startswith(("/api/login", "/api/logout", "/api/me", "/api/switch_role",
+                     "/api/roles", "/api/health", "/api/reset")):
+        return "sso"
+    if "invoice" in p:
+        return "invoice"
+    if "order" in p:
+        return "order"
+    if p in ("/", "/index.html") or "contract" in p or "pick_customer" in p:
+        return "contract"
+    if p.startswith("/login"):
+        return "sso"
+    return ""
+
+
 def main():
     # 允许重启时复用端口（避免上次退出的 TIME_WAIT 卡住新进程）
     socketserver.TCPServer.allow_reuse_address = True
@@ -1930,6 +2002,28 @@ def main():
     class _Server(socketserver.ThreadingTCPServer):
         daemon_threads = True
     n = len(_store("default"))     # 需求(16)：启动**加载盘上数据**（只有没有盘文件时才播种预置）
+
+    ports = _multi_ports()
+    if len(ports) > 1:
+        import threading
+        import time as _time
+
+        def _serve(port: int) -> None:
+            with _Server(("", port), Handler) as httpd:
+                print(f"[demo app] serving on http://localhost:{port}（多 origin 模式，共享同一份数据）")
+                httpd.serve_forever()
+
+        for p in ports:
+            threading.Thread(target=_serve, args=(p,), daemon=True).start()
+        print(f"[demo app] 多 origin 已启动: {ports} · 数据共享（{n} 条合同）"
+              f"· 登录页建议放 {ports[0]}")
+        try:
+            while True:
+                _time.sleep(3600)
+        except KeyboardInterrupt:
+            print("[demo app] 退出")
+        return
+
     with _Server(("", PORT), Handler) as httpd:
         print(f"[demo app] serving {DIR} on http://localhost:{PORT} (page={DEFAULT_PAGE})")
         print(f"[demo app] build = {DEMO_BUILD}   ← 版本标记（/api/health 里也有 build 字段，可核对）")

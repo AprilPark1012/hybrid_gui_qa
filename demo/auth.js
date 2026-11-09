@@ -83,6 +83,14 @@
     can(action) { return !!(this.me && this.me.can && this.me.can[action]); },
     isLoggedIn() { return !!this.me; },
     loginUrl() {
+      // 跨 origin 演练（V8.10.0）：配了 DEMO_SSO_ORIGIN 且当前不在 SSO 源上 ->
+      // 跳到**登录系统**并带上完整回跳地址（真实 SSO 就是这么干的）。
+      // 没配 -> 老行为（跳本源的 login.html），单源场景逐字不变。
+      var sso = (typeof window !== 'undefined' && window.DEMO_SSO_ORIGIN) ? String(window.DEMO_SSO_ORIGIN).replace(/\/+$/, '') : '';
+      var here = location.origin;
+      if (sso && sso !== here) {
+        return sso + '/login.html?next=' + encodeURIComponent(location.href);
+      }
       return '/login.html?next=' + encodeURIComponent(location.pathname + location.search);
     },
     /* 页面间跳转带上身份（订单详情/合同详情/开票页之间的跳转用） */

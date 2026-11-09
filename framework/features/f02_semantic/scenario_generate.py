@@ -95,6 +95,10 @@ class Scenario:
     # 2026-10-10（A 方案 S1）：**场景级探测前置** —— 探测期一开始就要处的状态（登录、切身份）。
     #   与页面级 pages[].pre 是**两个层级**、**同一个执行引擎**（_run_pre_actions），
     #   不是第二套机制（铁律 13：同一能力收敛成唯一入口）。
+    # 跨 origin（V8.10.0 · 2026-11-09）：`origins: {名字: http://host:port}`。
+    # 业务系统跨 origin（合同/订单/发票各不相同）时，用它给每个 origin 起个名字，
+    # 页面地址里用 `${名字}` 引用 -> 换环境只改这一段，不动页面清单。
+    origins: dict = field(default_factory=dict)
     probe_pre: list = field(default_factory=list)
     # P25 片 6（D10 · AprilPark1012 2026-10-11 拍定）：**前置在哪一页执行** —— 引用 `pages[].name`。
     #   [!] 这是为了取代框架原来用 `"login" in url` / 页名含「登录」**猜** host 的做法：
@@ -174,6 +178,9 @@ class Scenario:
             import sys as _sys
             print(f"  [!] [scenario] 场景指纹计算失败（{type(_e).__name__}: {_e}）"
                   f"-> D3 同步判据将失效，必须修", file=_sys.stderr)
+        if self.origins:                    # 跨 origin：把「名字 -> 生成期地址」的快照带进用例，
+                                            #   运行期据此判断「这个 URL 属于哪个 origin」（见 harness `_rw`）
+            extra["origins"] = dict(self.origins)
         if self.pages:                      # P3 跨页：把页面清单带进用例（质量闸与溯源都用）
             extra["pages"] = [p.to_dict() for p in self.pages]
         # [!] P25 片 6（修 10-A · 两条链路不同源）：**场景级探测前置也要落进用例**。
@@ -221,9 +228,41 @@ def load_scenario_file(path) -> Scenario:
     if sid != p.stem:
         warns.append(f"id({sid}) 与文件名({p.stem}) 不一致 → 以 id 为准（建议改成一致，避免溯源断裂）")
 
+    # ---- 跨 origin（V8.10.0）：origins 段 + `${名字}` 展开 ----
+    origins: dict = {}
+    _raw_origins = raw.get("origins")
+    if _raw_origins is not None:
+        if not isinstance(_raw_origins, dict):
+            raise ScenarioError(
+                f"{p}: origins 应为映射（名字: http(s)://host:port），实际是 {type(_raw_origins).__name__}")
+        for _name, _url in _raw_origins.items():
+            _k = str(_name or "").strip()
+            _v = str(_url or "").strip().rstrip("/")
+            if not _k or not _ID_RE.match(_k):
+                raise ScenarioError(f"{p}: origins 的名字 {_k!r} 不合法（要求小写蛇形，正则 ^[a-z][a-z0-9_]*$）")
+            if not _v.startswith(("http://", "https://")):
+                raise ScenarioError(f"{p}: origins[{_k}] 必须是完整 http(s) 地址，实际 {_v!r}")
+            origins[_k] = _v
+
+    _ORIGIN_REF = re.compile(r"\$\{([A-Za-z0-9_]+)\}")
+
+    def _expand_origin(u: str, where: str) -> str:
+        """把 `${名字}` 换成 origins 里声明的地址。**未声明一律硬红**（不猜、不静默留空）。"""
+        s = str(u or "")
+        if "${" not in s:
+            return s
+        for m in _ORIGIN_REF.finditer(s):
+            if m.group(1) not in origins:
+                raise ScenarioError(
+                    f"{p}: {where} 引用了未声明的 origin ${{{m.group(1)}}}"
+                    f"（origins 里只有 {sorted(origins) or '空'}）—— 先在 origins 段声明它")
+        return _ORIGIN_REF.sub(lambda m: origins[m.group(1)], s)
+
     target = raw.get("target") or {}
     if not isinstance(target, dict):
         raise ScenarioError(f"{p}: target 应为映射（url / page / preconditions）")
+    if isinstance(raw.get("target"), dict) and raw["target"].get("url"):
+        raw["target"]["url"] = _expand_origin(raw["target"]["url"], "target.url")
     # ---- 跨页流程（P3）：pages 列表 ----
     raw_pages = raw.get("pages")
     pages: list[ScenarioPage] = []
@@ -237,7 +276,7 @@ def load_scenario_file(path) -> Scenario:
             if not isinstance(pg, dict):
                 raise ScenarioError(f"{p}: pages[{i}] 应为映射（name / url / page）")
             pname = str(pg.get("name") or "").strip()
-            purl = str(pg.get("url") or "").strip()
+            purl = _expand_origin(str(pg.get("url") or "").strip(), f"pages[{i}].url")
             if not pname:
                 raise ScenarioError(f"{p}: pages[{i}] 缺少 name（页名，AI 与日志都靠它区分页面）")
             if not purl.startswith("http"):
@@ -254,7 +293,7 @@ def load_scenario_file(path) -> Scenario:
                         f"{p}: pages[{i}].pre 应为**操控名列表**（每项是一个控件的可访问名，"
                         f"如 [编辑, 新增行]），实际是 {type(raw_pre).__name__}")
                 pre_list = [str(x).strip() for x in raw_pre]
-            _probe_url = str(pg.get("probe_url") or "").strip()
+            _probe_url = _expand_origin(str(pg.get("probe_url") or "").strip(), f"pages[{i}].probe_url")
             if _probe_url and not _probe_url.startswith("http"):
                 raise ScenarioError(
                     f"{p}: pages[{i}].probe_url 必须是完整 http(s) 地址（探测要能直连），"
@@ -282,7 +321,7 @@ def load_scenario_file(path) -> Scenario:
                 "  login:\n    url: /login.html\n"
                 "    scenario: 在登录页填写账号与密码，然后点「登录」按钮\n"
                 "    wait: {url_not: login.html}")
-        _unknown = sorted(set(raw_login) - {"url", "login_url", "scenario", "wait"})
+        _unknown = sorted(set(raw_login) - {"url", "login_url", "scenario", "wait", "session"})
         if _unknown:
             raise ScenarioError(
                 f"{p}: login 段有未知键 {_unknown}（只认 url / scenario / wait）—— "
@@ -294,13 +333,36 @@ def load_scenario_file(path) -> Scenario:
                 "空声明等于没登录，必须显式写清楚，不许静默跳过")
         _w = raw_login.get("wait") or {}
         if not isinstance(_w, dict):
-            raise ScenarioError(f"{p}: login.wait 应为映射（url / url_not / selector / text）")
-        if not any(k in _w for k in ("url", "url_not", "selector", "text")):
+            raise ScenarioError(
+                f"{p}: login.wait 应为映射（url / url_not / url_not_in / selector / text）")
+        if not any(k in _w for k in ("url", "url_not", "url_not_in", "selector", "text")):
             raise ScenarioError(
                 f"{p}: login.wait 必须给出**可观测**成功条件"
                 "（url / url_not / selector / text 之一）—— 框架铁律：不许固定 sleep 判断登录成功")
-        login = {"login_url": str(raw_login.get("url") or "").strip(),
+        # ---- 跨 origin 的会话铺开（V8.10.0）：登录一次(SSO)，把会话铺到别的 origin ----
+        _sess = raw_login.get("session")
+        session: dict = {}
+        if _sess is not None:
+            if not isinstance(_sess, dict):
+                raise ScenarioError(f"{p}: login.session 应为映射（token_from / param / store / key / spread）")
+            _unk = sorted(set(_sess) - {"token_from", "param", "store", "key", "spread"})
+            if _unk:
+                raise ScenarioError(f"{p}: login.session 有未知键 {_unk}（只认 token_from / param / store / key / spread）")
+            _spread = [str(x).strip() for x in (_sess.get("spread") or [])]
+            _miss = [x for x in _spread if x not in origins]
+            if _miss:
+                raise ScenarioError(
+                    f"{p}: login.session.spread 里的 {_miss} 没在 origins 段声明"
+                    f"（origins 里只有 {sorted(origins) or '空'}）—— 不猜你的意图")
+            session = {"token_from": str(_sess.get("token_from") or "url_param").strip(),
+                       "param": str(_sess.get("param") or "token").strip(),
+                       "store": str(_sess.get("store") or "localStorage").strip(),
+                       "key": str(_sess.get("key") or "demo_token").strip(),
+                       "spread": _spread}
+        login = {"login_url": _expand_origin(str(raw_login.get("url") or "").strip(), "login.url"),
                  "scenario": _lsc, "wait": dict(_w)}
+        if session:
+            login["session"] = session
     # ---- 以下是既有 auth 段（V8.5.1 收尾时整体删除）----
     raw_auth = raw.get("auth")
     auth: dict = {}
@@ -393,7 +455,7 @@ def load_scenario_file(path) -> Scenario:
 
 
     return Scenario(
-        path=p, id=sid, scenario=text,
+        path=p, id=sid, scenario=text, origins=origins,
         title=str(raw.get("title") or ""),
         description=str(raw.get("description") or ""),
         tags=[str(t) for t in _as_list(raw.get("tags"), "tags", p)],

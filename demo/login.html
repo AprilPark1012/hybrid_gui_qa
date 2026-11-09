@@ -110,7 +110,11 @@ async function doLogin() {
   }
   $('login-status').style.color = '#1668dc';
   $('login-status').textContent = `登录成功：${d.user} · ${d.role_label}，正在进入…`;
-  location.href = NEXT;
+  // 跨 origin（V8.10.0）：回跳地址上带 token —— 目标 origin 的 localStorage 里没有会话，
+  // auth.js 已经支持从 `?token=` 落地（demo 用 URL 携带会话；真实系统用 SSO cookie 即可不要这段）。
+  var _tok = (d && (d.token || d.demo_token)) || localStorage.getItem('demo_token') || '';
+  var _sep = NEXT.indexOf('?') >= 0 ? '&' : '?';
+  location.href = _tok ? (NEXT + _sep + 'token=' + encodeURIComponent(_tok)) : NEXT;
 }
 $('btn-login').addEventListener('click', doLogin);
 ['login-user', 'login-pwd'].forEach((id) => $(id).addEventListener('keydown', (e) => {

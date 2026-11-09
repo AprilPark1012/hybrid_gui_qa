@@ -1,0 +1,48 @@
+id: orders_invoice_cross_origin
+scenario: |
+  【跨 origin 演练 · 三个业务系统 + 一套 SSO】
+  先登录（SSO，只在 8000 上登录一次），然后在订单系统(8001)里按订单名称搜索到一条订单，
+  再切到发票系统(8002)确认发票列表能打开。
+
+# 三个业务系统各自的 origin —— 换环境只改这一段（或运行期用 HYBRID_ORIGIN_MAP 覆盖）
+origins:
+  order: http://localhost:8001
+  invoice: http://localhost:8002
+
+title: 跨 origin 多系统（合同/订单/发票 + 同一套 SSO）
+tags: [multi_origin, sso]
+priority: P1
+owner: 测试架构组
+
+probe_pre: []
+login:
+  url: http://localhost:8000/login.html
+  scenario: 在登录页填写账号 super、密码 super@123，然后点「登录」
+  wait: { url_not: login.html }
+  # 会话在 localStorage 里是 per-origin 的：登录一次(SSO)后，把它铺到别的业务系统
+  session:
+    token_from: url_param
+    param: token
+    store: localStorage
+    key: demo_token
+    spread: [order, invoice]
+
+pages:
+  - name: 登录页
+    url: http://localhost:8000/login.html
+    page: 登录页：两个输入框（账号/密码）+「登录」按钮。登录成功后回到合同列表页。
+  - name: 合同列表页
+    url: http://localhost:8000/
+    page: |
+      合同系统首页：顶部搜索（关键字/客户/管理单元…）+ 合同表格（每行一个合同）。
+      「+ 新建合同」「…」选客户都会弹 iframe 弹层。
+  - name: 订单列表页
+    url: ${order}/orders.html
+    page: |
+      订单系统（另一个业务系统）：订单表格，每行有订单编号/客户/状态（已新建/履行中/已关闭）。
+      搜索框在顶部，点「搜索」后按订单名称过滤。
+  - name: 发票列表页
+    url: ${invoice}/invoice_list.html
+    page: |
+      发票系统（又一个业务系统）：应收发票列表，列含发票号/合同编号/订单编号/客户等。
+      搜索框在顶部，点「搜索」后按订单名称过滤。

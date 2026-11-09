@@ -1,0 +1,25 @@
+{
+  "case_id": "rw_origin_map",
+  "name": "跨 origin：HYBRID_ORIGIN_MAP 把 order 指到 8002（换环境只改一处）",
+  "base_url": "http://localhost:8000",
+  "origins": {
+    "order": "http://localhost:8001",
+    "invoice": "http://localhost:8002"
+  },
+  "steps": [
+    {
+      "order": 1,
+      "op": "goto",
+      "value": "http://localhost:8001/api/health",
+      "desc": "打开订单系统（生成期是 8001）"
+    }
+  ],
+  "asserts": [
+    {
+      "kind": "url",
+      "expect": "localhost:8002",
+      "after_step": 1,
+      "desc": "按映射落到 8002（模拟「订单系统换到另一台机器」）"
+    }
+  ]
+}

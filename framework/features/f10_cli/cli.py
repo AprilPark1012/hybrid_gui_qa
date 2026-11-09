@@ -1808,6 +1808,9 @@ TUNABLE_CATALOG: list[tuple[str, str, str]] = [
     ("HYBRID_PROMPT_LIST_CHARS", "90000",
      "喂给 AI 的**每条清单**（控件/行内列/DOM）的字符预算；超了按「场景提到+必填 全给，其余页间轮转」裁剪并明示条数"),
     ("HYBRID_BASE_URL", "http://localhost:8000", "被测应用地址（命令行 --base-url；旧名 TARGET_URL 也认，它优先）"),
+    ("HYBRID_ORIGIN_MAP", "(空)",
+     "**跨 origin 映射**（json：`{\"order\": \"http://order.example.com:8001\"}`）：场景用 `origins:` 给每个业务系统起名后，"
+     "换环境只改这里；**没写进映射的 origin 保持生成期地址，不会被 HYBRID_BASE_URL 压平**"),
     ("HYBRID_EFFECT_CHECK", "1",
      "动作后置校验总开关：业务动词点击后判「动作是否真的生效（有导航/有写请求/无拒绝提示）」，默认只留痕"),
     ("HYBRID_STRICT_EFFECT", "0",

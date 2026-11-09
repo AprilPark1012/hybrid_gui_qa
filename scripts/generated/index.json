@@ -5,6 +5,22 @@
     "scenario_fingerprint": "58cd874619e3f003",
     "scenario_id": "orders_invoice_full_lifecycle",
     "script_path": "scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_100728.py",
-    "template_fingerprint": "a2d70c22331c50b9"
+    "template_fingerprint": "3504f1d5d8e6a3dd"
+  },
+  "rw_named_origin": {
+    "case_fingerprint": "32321b207f1eb18b",
+    "probe_fingerprint": "f8746b8629bae8ee",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/rw_named_origin.py",
+    "template_fingerprint": "3504f1d5d8e6a3dd"
+  },
+  "rw_origin_map": {
+    "case_fingerprint": "18e77b32b2750b50",
+    "probe_fingerprint": "f8746b8629bae8ee",
+    "scenario_fingerprint": "",
+    "scenario_id": "manual",
+    "script_path": "scripts/generated/manual/rw_origin_map.py",
+    "template_fingerprint": "3504f1d5d8e6a3dd"
   }
 }

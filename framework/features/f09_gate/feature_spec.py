@@ -26,8 +26,9 @@ FEATURES = [
             dict(no="1.4", name="目标地址覆盖对全链路生效",
                  goal="`HYBRID_BASE_URL` 必须同时作用于**业务步骤、登录流、场景身份前置**三条导航路径"
                       "（改写走唯一入口 `_rewrite_base`）；否则同一个包在用户内网/慢代理上会"
-                      "「一半打新地址、一半打写死地址」—— 会话 cookie 互不通用，第一个业务步就等不到元素",
-                 class1=["test_base_url_override_login.py"],
+                      "「一半打新地址、一半打写死地址」—— 会话 cookie 互不通用，第一个业务步就等不到元素。"
+                      "**跨 origin（V8.10.0）**：合同/订单/发票是不同业务系统时，只有**声明过的** origin 才按 `HYBRID_ORIGIN_MAP` 换，其余原样（不许压平）；会话由 `_spread_session` 铺到各 origin",
+                 class1=["test_base_url_override_login.py", "test_cross_origin.py"],
                  # 二类证据就是 7.4 的 verify_slow_target.py（物理住在 特性7-并发与资源安全，
                  # 「登记目录 == 物理目录」闸门要求不许在这里重复登记）
                  class2=[]),

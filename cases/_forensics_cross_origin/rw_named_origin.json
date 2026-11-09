@@ -1,0 +1,25 @@
+{
+  "case_id": "rw_named_origin",
+  "name": "跨 origin：goto 声明过的 order(8001)，设了 HYBRID_BASE_URL=8000 也不许被压平",
+  "base_url": "http://localhost:8000",
+  "origins": {
+    "order": "http://localhost:8001",
+    "invoice": "http://localhost:8002"
+  },
+  "steps": [
+    {
+      "order": 1,
+      "op": "goto",
+      "value": "http://localhost:8001/api/health",
+      "desc": "打开订单系统(8001)"
+    }
+  ],
+  "asserts": [
+    {
+      "kind": "url",
+      "expect": "localhost:8001",
+      "after_step": 1,
+      "desc": "必须停在 8001（没被 HYBRID_BASE_URL 压平）"
+    }
+  ]
+}

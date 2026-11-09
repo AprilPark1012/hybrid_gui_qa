@@ -42,6 +42,24 @@ def _gate_false_green(cases: list[dict]) -> None:
         raise CaseQualityError(bad)
 
 
+def _origin_name_of(url: str, case: dict) -> str:
+    """用例里的绝对地址属于哪个**场景声明的 origin**（没有就返回空 = 走旧口径）。
+
+    只在场景显式声明了 `origins:` 时才有名字 -> 单系统场景渲染结果与旧版**逐字一致**。
+    """
+    import urllib.parse as _up
+    org = case.get("origins") or {}
+    if not org or not url:
+        return ""
+    u = _up.urlsplit(str(url))
+    cur = f"{u.scheme}://{u.netloc}"
+    for name, base in org.items():
+        b = _up.urlsplit(str(base or ""))
+        if b.scheme and f"{b.scheme}://{b.netloc}" == cur:
+            return str(name)
+    return ""
+
+
 def _abs_url(url, base: str) -> str:
     """把步骤里的**相对地址**按用例 base 补齐成绝对地址（2026-10-10 实测）。
 
@@ -788,10 +806,19 @@ def _render_login_lines(spec: dict, base_url: str) -> list[str]:
 
 
 def _login_lines_for(case: dict, base_url: str) -> list[str]:
-    """给渲染器用的**唯一入口**：拿该用例的登录前导行（无声明 -> 空列表）。"""
+    """给渲染器用的**唯一入口**：拿该用例的登录前导行（无声明 -> 空列表）。
+
+    跨 origin（V8.10.0）：登录声明里若给了 `session.spread`，登录完**接着**把会话铺到
+    其它 origin —— 会话在 localStorage 里是 per-origin 的，不铺就会被踢回各自的登录页。
+    """
     lines: list[str] = []
     for spec in _login_steps_of_case(case):
         lines.extend(_render_login_lines(spec, base_url))
+    _login = case.get("login") or {}
+    _sess = (_login.get("session") if isinstance(_login, dict) else None) or {}
+    if _sess.get("spread"):
+        _gen = {str(k): str(v) for k, v in (case.get("origins") or {}).items()}
+        lines.append(f"    _spread_session(page.context, {_sess!r}, {_gen!r})")
     return lines
 
 
@@ -930,7 +957,14 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
                 # url 里带 {占位符} -> 必须取参数化后的值（2026-09-24：原来原样渲染 -> 浏览器收到
                 # 字面 "{详情地址}"，多套数据场景直接跑错；同时 _extract_data 没抽它 -> 数据组校验
                 # 判"组值没被用到" -> generate exit 2。三处一起补才是完整的 v）
-                lines.append(f"    _goto(page, _data({_gref!r}, ctx))")
+                # goto 的地址可能写在 `url`（AI 产物）或 `value`（手写用例）里，两处都要认
+                _raw_d = st.get("url") or st.get("value") or ""
+                _oname_d = _origin_name_of(
+                    _abs_url(_raw_d, case.get("base_url") or ""), case)
+                if _oname_d:
+                    lines.append(f"    _goto(page, _data({_gref!r}, ctx), {_oname_d!r})")
+                else:
+                    lines.append(f"    _goto(page, _data({_gref!r}, ctx))")
             else:
                 # 2026-10-10 实测：AI 会写**相对地址**（`order_new.html?contract_no=HT-1001`）——
                 #   playwright 直接 `Cannot navigate to invalid URL`，整条用例红，而报错完全
@@ -940,7 +974,11 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
                 if st.get("url") and _u != st.get("url"):
                     print(f"[generate] [key] 步骤 {i + 1} goto 是相对地址 -> 按 base 补齐："
                           f"{st.get('url')!r} -> {_u!r}")
-                lines.append(f"    _goto(page, {_u!r})")
+                _oname = _origin_name_of(_u, case)
+                if _oname:
+                    lines.append(f"    _goto(page, {_u!r}, {_oname!r})")
+                else:
+                    lines.append(f"    _goto(page, {_u!r})")
         elif _is_row_index_step(st):
             # ---- 行内**按下标**定位（2026-10-10 方案 2）----
             # 为什么单独一条：`_click_row_cell` 靠**行内容**锚行，而「刚刚新增的那一行」是空的、
@@ -2765,6 +2803,90 @@ def _maybe_scene_pre(page):
           f"-> 留到后面的导航再试（尚未到业务页是正常的）")
 
 
+# ---- 跨 origin（V8.10.0）：生成期记下「这个 URL 属于哪个声明的 origin」，运行期只换该 origin ----
+# 为什么必须这么做：真实业务里合同/订单/发票常是**不同业务系统**（不同 origin），登录却是同一套 SSO。
+# 旧口径 `_rewrite_base` 会把**任何**地址的 origin 换成单一 `HYBRID_BASE_URL` —— 一设 base，
+# 跨系统场景就被压平成一套系统（实测：goto 8001 实际落到 8000）。
+_ORIGIN_MAP = {}      # {声明名: 当前地址}，来自环境变量 HYBRID_ORIGIN_MAP（json）
+try:
+    _raw_om = (os.environ.get("HYBRID_ORIGIN_MAP") or "").strip()
+    if _raw_om:
+        import json as _json_om
+        _ORIGIN_MAP = {str(k): str(v).rstrip("/") for k, v in (_json_om.loads(_raw_om) or {}).items() if v}
+except Exception as _e_om:
+    print(f"[warn] HYBRID_ORIGIN_MAP 不是合法 JSON -> 跨 origin 映射不生效（{type(_e_om).__name__}）")
+    _ORIGIN_MAP = {}
+
+
+def _replace_origin(url, base):
+    """把 url 的 origin 换成 base（保留 path / query / fragment）。"""
+    _t = str(url or "").strip()
+    if not _t or not base:
+        return url
+    import urllib.parse as _up
+    u, o = _up.urlsplit(_t), _up.urlsplit(str(base))
+    return _up.urlunsplit((o.scheme, o.netloc, u.path, u.query, u.fragment))
+
+
+def _rw(url, origin_name=None):
+    """**跨 origin 安全**的地址改写（与 `_rewrite_base` 同一个改写家族的唯一入口）。
+
+    · `origin_name` 为空 -> 旧行为：整体换成 `HYBRID_BASE_URL`（单系统场景**逐字不变**）；
+    · `origin_name` 非空（生成期判定该 URL 属于哪个声明的 origin）：
+        - `HYBRID_ORIGIN_MAP` 里有这个名字 -> 换成映射地址；
+        - 没有 -> **原样返回**（绝不压平到 HYBRID_BASE_URL）。
+    """
+    if origin_name:
+        cur = _ORIGIN_MAP.get(str(origin_name))
+        return _replace_origin(url, cur) if cur else url
+    return _rewrite_base(url)
+
+
+def _spread_session(context, spec, gen_origins=None):
+    """登录一次（SSO）后把会话铺到其它 origin（跨 origin 的**唯一**实现）。
+
+    为什么需要：会话存在 `localStorage`（per-origin），SSO 登录只落在登录那个 origin
+    —— 实测访问另一个 origin 的业务页会被踢回**它自己**的登录页。
+    """
+    spec = dict(spec or {})
+    gen_origins = dict(gen_origins or {})
+    token = ""
+    src = str(spec.get("token_from") or "url_param")
+    if src == "url_param":
+        import urllib.parse as _up
+        cur_url = ""
+        for _pg in getattr(context, "pages", []) or []:
+            cur_url = getattr(_pg, "url", "") or cur_url
+        q = _up.parse_qs(_up.urlsplit(cur_url).query)
+        token = (q.get(str(spec.get("param") or "token")) or [""])[0]
+    if not token:
+        print("[warn] 跨 origin 会话铺开：没能从登录后的地址取到 token -> 跳过"
+              "（后面跨 origin 的页面可能被判未登录，请查 login.session 的 param 与 SSO 回跳地址）")
+        return []
+    key = str(spec.get("key") or "demo_token")
+    done = []
+    for name in spec.get("spread") or []:
+        name = str(name)
+        base = (_ORIGIN_MAP.get(name) or gen_origins.get(name) or "").rstrip("/")
+        if not base:
+            print(f"[warn] 跨 origin 会话铺开：origin {name!r} 既没有 HYBRID_ORIGIN_MAP 映射、"
+                  f"生成期也没记地址 -> 跳过")
+            continue
+        pg = context.new_page()
+        try:
+            pg.add_init_script(f"try{{localStorage.setItem({key!r}, {token!r});}}catch(e){{}}")
+            pg.goto(base + "/", wait_until="domcontentloaded", timeout=15000)
+            pg.wait_for_timeout(120)
+            done.append(name)
+        except Exception as _e:                                    # noqa: BLE001
+            print(f"[warn] 跨 origin 会话铺开失败：{name} ({base}) -> {type(_e).__name__}: {_e}")
+        finally:
+            pg.close()
+    if done:
+        print(f"[TEST] 跨 origin 会话已铺到 {len(done)} 个 origin: {', '.join(done)}")
+    return done
+
+
 def _rewrite_base(url):
     """把生成期写死的绝对地址改写成 `HYBRID_BASE_URL` 指向的 origin（**唯一入口**）。
 
@@ -2784,7 +2906,7 @@ def _rewrite_base(url):
     return _up.urlunsplit((o.scheme, o.netloc, u.path, u.query, u.fragment))
 
 
-def _goto(page, url):
+def _goto(page, url, origin_name=None):
     """统一导航入口：(1) 支持 HYBRID_BASE_URL 覆盖目标（同一套用例跑本机/慢代理/预发）
     (2) goto 之后等页面数据就绪（F1）。生成脚本里的每个 goto 都走这里。
     (3) 2026-10-10 A 方案：首次导航后补跑**场景身份前置**（与探测期同一引擎）。
@@ -2796,7 +2918,7 @@ def _goto(page, url):
         raise RuntimeError(
             f"_goto 收到**相对地址** {target!r}（没补 base）—— 生成器应按用例 base_url 补齐；"
             f"手写脚本请写全 `http://host/path`（相对地址在 playwright 里必然导航失败）")
-    target = _rewrite_base(url)          # [!] 与 `_login_flow` 同一个改写入口，不许各写一份
+    target = _rw(url, origin_name)       # [!] 与 `_login_flow` 同一改写家族，不许各写一份
     page.goto(target)
     _wait_ready(page, target)
     _maybe_scene_pre(page)
