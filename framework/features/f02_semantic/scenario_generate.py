@@ -359,7 +359,20 @@ def load_scenario_file(path) -> Scenario:
                        "store": str(_sess.get("store") or "localStorage").strip(),
                        "key": str(_sess.get("key") or "demo_token").strip(),
                        "spread": _spread}
-        login = {"login_url": _expand_origin(str(raw_login.get("url") or "").strip(), "login.url"),
+        _lg_url = _expand_origin(str(raw_login.get("url") or "").strip(), "login.url")
+        # [!] 登录段已声明「框架会自动登录」，pages 里若**再列一遍登录页**，
+        #     AI 会照着页面清单从登录页开始排步骤 -> 产出夹带登录步骤被闸门整条拦下
+        #     （实测 2026-11-09 跨 origin 场景：两轮产出都是「第 1 步 goto 登录页」）。
+        #     只告警不硬红（宁漏不误伤：有的场景确实想把登录页当普通页面探测）。
+        _lg_path = _lg_url.split("?", 1)[0].rstrip("/")
+        for _pg in (raw.get("pages") or []):
+            _pu = str((_pg or {}).get("url") or "").split("?", 1)[0].rstrip("/")
+            if _lg_path and _pu and _pu.endswith(_lg_path.rsplit("/", 1)[-1]):
+                print(f"[scenario] [!] pages 里列了登录页（{( _pg or {}).get('name') or ''} {_pu}）—— "
+                      f"login 段已声明登录前置，AI 会跟着从登录页开始排步骤、产出必被闸门拦下；"
+                      f"通常应把登录页从 pages 里去掉")
+                break
+        login = {"login_url": _lg_url,
                  "scenario": _lsc, "wait": dict(_w)}
         if session:
             login["session"] = session

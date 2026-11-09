@@ -144,6 +144,32 @@ pages:
     assert "invoice" in str(ei.value), "未声明的 ${origin} 必须硬红并点名是哪个名字"
 
 
+def test_warn_when_login_page_listed_in_pages(tmp_path, capsys):
+    """pages 里列了登录页 + login 段已声明 -> **告警**（不硬红）。
+
+    实测教训（2026-11-09）：跨 origin 场景把登录页也写进 pages，AI 照着清单从登录页开始排，
+    两轮产出都是「第 1 步 goto 登录页」-> 被「夹带登录步骤」闸门整条拦下，白跑两轮。
+    """
+    from framework.features.f02_semantic.scenario_generate import load_scenario_file
+    f = tmp_path / "w_origin.yml"
+    f.write_text("""id: w_origin
+origins: {order: http://localhost:8001}
+scenario: 登录后去订单页
+login:
+  url: http://localhost:8000/login.html
+  scenario: 填账号密码点登录
+  wait: {url_not: login.html}
+pages:
+  - name: 登录页
+    url: http://localhost:8000/login.html
+  - name: 订单列表页
+    url: ${order}/orders.html
+""", encoding="utf-8")
+    load_scenario_file(f)
+    out = capsys.readouterr().out
+    assert "pages 里列了登录页" in out, "登录页被列进 pages 时必须出声告警（否则 AI 白排两轮）"
+
+
 def test_scenario_session_spread_must_be_declared(tmp_path):
     from framework.features.f02_semantic.scenario_generate import ScenarioError, load_scenario_file
     f = tmp_path / "z_origin.yml"

@@ -28,9 +28,6 @@ login:
     spread: [order, invoice]
 
 pages:
-  - name: 登录页
-    url: http://localhost:8000/login.html
-    page: 登录页：两个输入框（账号/密码）+「登录」按钮。登录成功后回到合同列表页。
   - name: 合同列表页
     url: http://localhost:8000/
     page: |
