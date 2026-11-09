@@ -31,6 +31,10 @@ GUIDE_DOCS = [
     "requirements-ai.txt",
 ]
 GENERATOR = "build_tools/build_html.py"
+# V8.9.9：培训页内容从 build_html.py 的大 f-string 搬进 build_tools/training_content_*.py
+# （一份内容 -> html + md 两种产物）。**口径不放松**：扫描范围 = 两个内容模块之并，
+# 章节判据仍按「章节标题 -> 之后 20000 字」定位。
+GENERATOR_DOCS = ("build_tools/training_content_a.py", "build_tools/training_content_b.py")
 
 # 不存在的路径必须同行带这类标注（changelog 语境）
 LEGACY_MARKS = ("此文件现已不在仓库", "已作废", "已废弃", "已移除", "已删除", "历史条目")
@@ -172,7 +176,7 @@ def _config_registry_count():
 
 def test_j3_env_table_claim_matches_config_count():
     """环境变量表要么别声称「列全」，要么条数真的等于 `cli config`。"""
-    src = _read(GENERATOR)
+    src = "\n".join(_read(rel) for rel in GENERATOR_DOCS)
     i = src.find("环境变量与运行开关")
     assert i > 0, "生成器里找不到「环境变量与运行开关」章节（判据需同步更新）"
     seg = src[i:i + 20000]

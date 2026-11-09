@@ -41,7 +41,9 @@ EXEMPT_DIRS = ("releases/",)
 # ---- 豁免 (2)：生成物 ---------------------------------------------------------
 # 理由：training.html 由 build_tools/build_html.py 生成；**源头已在同一判据下检查**，
 #       生成物必然继承其版本史区（历史条目里的旧路径）。只豁免生成物本身，不豁免源头。
-EXEMPT_FILES = ("docs/training.html",)
+# V8.9.9：培训页改成「一份内容两种产物」（html + md），md 与 html **同源**，
+# 同样只豁免生成物本身；源头（build_tools/training_content_*.py 与 build_html.py）仍全量检查。
+EXEMPT_FILES = ("docs/training.html", "docs/training.md")
 
 # ---- 豁免 (3)：行内/块标记（写在注释里，渲染不可见）---------------------------
 MARKER_OK = "r9-legacy-ok"

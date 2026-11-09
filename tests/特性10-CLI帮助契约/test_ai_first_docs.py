@@ -71,17 +71,29 @@ def test_readme_ai_is_recommended():
 
 # ---------------------------------------------------------------- 培训页（生成器模板）
 
+# V8.9.9：培训页内容从 build_html.py 的大 f-string 搬进 build_tools/training_content_*.py
+# （一份内容 -> html + md）。判据**跟着内容搬**，口径不变：章节仍须以「写场景 -> AI 出用例」为主题。
+HTML_CONTENT = (REPO / "build_tools" / "training_content_a.py",
+                REPO / "build_tools" / "training_content_b.py")
+
+
+def _content_src() -> str:
+    return "\n".join(p.read_text(encoding="utf-8") for p in HTML_CONTENT)
+
+
 def test_training_chapter4_is_ai_centered():
-    """培训页第 4 章不许再以「手搓」为主题；须以「写场景 / AI 出用例」为主语。"""
-    src = HTML_GEN.read_text(encoding="utf-8")
+    """培训页的「怎么写」章节不许再以「手搓」为主题；须以「写场景 / AI 出用例」为主语。"""
+    src = _content_src()
     assert "先让 AI 出题，再按需手搓" not in src, (
         "培训页第 4 章标题仍是《先让 AI 出题，再按需手搓》—— 手搓链路已删，标题须改"
     )
     assert "写场景" in src and "AI 出用例" in src, (
         "培训页第 4 章没有改成「写场景 -> AI 出用例」的表述"
     )
-    assert '<h3 style="margin:26px 0 6px">4.1 一条链路' in src, (
-        "培训页 4.1 没有改成「一条链路」（原来是与手搓的两条链路对比表）"
+    # 章节改名/改编号后，这条改钉「两节都在」——比钉某个 <h3> 字面更耐重构，
+    # 但仍保证「写场景」与「用例怎么写」两节没有被删掉。
+    assert "scenario 怎么写" in src and "cases 怎么写" in src, (
+        "培训页缺「scenario 怎么写」/「cases 怎么写」两节 —— 真 AI 链路的核心用法没写出来"
     )
 
 
