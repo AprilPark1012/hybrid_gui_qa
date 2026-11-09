@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.7）</title>
+<title>AI 混合 GUI 测试框架 · 新员工培训（V8.9.8）</title>
 <style>
   :root {
     --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
@@ -224,7 +224,7 @@
 
 <div class="hero">
   <h1>AI 混合 GUI 测试框架<sup></sup></h1>
-  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.7 · 2026-11-05　▼</a>
+  <a class="ver" href="#changelog" title="跳到版本与更新记录">V8.9.8 · 2026-11-09　▼</a>
   <p>给新同学的一页通：<b>AI（LLM）负责思考，Playwright 负责采集证据与执行</b>，
      两者靠一份约定衔接，各干各的强项。</p>
   <div>
@@ -2142,9 +2142,751 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
 
   <section id="changelog">
     <h2 class="sec-title" id="chap-A"><span class="n">A</span>版本与更新记录（Changelog）</h2>
-    <p class="sec-sub">当前版本 <b>V8.9.7</b>（2026-11-05）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
+    <p class="sec-sub">当前版本 <b>V8.9.8</b>（2026-11-09）——每次改动都写清「新增 / 改进 / 修复」，方便对着代码回溯。</p>
     <div class="card cl cl-cur">
-      <div class="cl-head"><span class="cl-ver">V8.9.7</span><span class="cl-date">2026-11-05</span><span class="cl-tag">当前版本</span><span class="cl-theme"><b>L11 收尾</b> —— 阈值口径去重 + <code>--debug</code> 两态终有判据（L11 整条关闭）</span></div>
+      <div class="cl-head"><span class="cl-ver">V8.9.8</span><span class="cl-date">2026-11-09</span><span class="cl-tag">当前版本</span><span class="cl-theme">场景说明补「<b>已带入 1 行，通常不需要新增行</b>」—— 省掉一轮 717 秒的白跑</span></div>
+      <p class="cl-sum">真机跑 V8.9.7（2026-11-09）暴露的<b>场景说明缺口</b>，不是框架 bug：<br><br>开票页说明原文只写了「发票行（<b>可新增行</b>）」—— <b>只说了可选、没说必要性</b>。AI 于是选了「新增行」这条路：新增 -> 填期次号/发票行类型/数量/单位 -> 先点行保存、再点底部保存。<b>结果发票没真的建出来</b>（搜索后第一行不存在），第 61 步断言抓到并报 FAILED，<b>耗时 717.0s</b>；AI 带失败原因重生成后改成「直接用已带入的第 1 行、只点底部保存」-> <b>PASSED 397.0s</b>。<br><br>现在说明里写清：从「去开票」进入时<b>已自动带入 1 行</b>（订单编号/合同编号已填），<b>通常不需要点「新增行」</b>；新增会多出一行空行、还得分两次保存，容易漏。</p>
+      <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
+        <li>改</li>
+        <li>动</li>
+        <li>仅</li>
+        <li>限</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>s</li>
+        <li>c</li>
+        <li>e</li>
+        <li>n</li>
+        <li>a</li>
+        <li>r</li>
+        <li>i</li>
+        <li>o</li>
+        <li>s</li>
+        <li>/</li>
+        <li>o</li>
+        <li>r</li>
+        <li>d</li>
+        <li>e</li>
+        <li>r</li>
+        <li>s</li>
+        <li>/</li>
+        <li>o</li>
+        <li>r</li>
+        <li>d</li>
+        <li>e</li>
+        <li>r</li>
+        <li>s</li>
+        <li>_</li>
+        <li>i</li>
+        <li>n</li>
+        <li>v</li>
+        <li>o</li>
+        <li>i</li>
+        <li>c</li>
+        <li>e</li>
+        <li>_</li>
+        <li>f</li>
+        <li>u</li>
+        <li>l</li>
+        <li>l</li>
+        <li>_</li>
+        <li>l</li>
+        <li>i</li>
+        <li>f</li>
+        <li>e</li>
+        <li>c</li>
+        <li>y</li>
+        <li>c</li>
+        <li>l</li>
+        <li>e</li>
+        <li>.</li>
+        <li>y</li>
+        <li>m</li>
+        <li>l</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li>的</li>
+        <li>页</li>
+        <li>面</li>
+        <li>说</li>
+        <li>明</li>
+        <li>（</li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>零</li>
+        <li>代</li>
+        <li>码</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>）</li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>同</li>
+        <li>时</li>
+        <li>确</li>
+        <li>认</li>
+        <li>两</li>
+        <li>件</li>
+        <li>事</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>：</li>
+        <li>①</li>
+        <li> </li>
+        <li>V</li>
+        <li>8</li>
+        <li>.</li>
+        <li>9</li>
+        <li>.</li>
+        <li>6</li>
+        <li> </li>
+        <li>的</li>
+        <li>「</li>
+        <li>断</li>
+        <li>言</li>
+        <li>失</li>
+        <li>败</li>
+        <li>给</li>
+        <li>真</li>
+        <li>值</li>
+        <li>」</li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>真</li>
+        <li>机</li>
+        <li>生</li>
+        <li>效</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li> </li>
+        <li>—</li>
+        <li>—</li>
+        <li> </li>
+        <li>报</li>
+        <li>错</li>
+        <li>带</li>
+        <li>出</li>
+        <li>该</li>
+        <li>页</li>
+        <li> </li>
+        <li>1</li>
+        <li>1</li>
+        <li> </li>
+        <li>个</li>
+        <li>实</li>
+        <li>际</li>
+        <li>列</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>[</li>
+        <li>'</li>
+        <li>选</li>
+        <li>择</li>
+        <li>'</li>
+        <li>,</li>
+        <li>'</li>
+        <li>发</li>
+        <li>票</li>
+        <li>号</li>
+        <li>'</li>
+        <li>,</li>
+        <li>'</li>
+        <li>发</li>
+        <li>票</li>
+        <li>类</li>
+        <li>型</li>
+        <li>'</li>
+        <li>,</li>
+        <li>'</li>
+        <li>发</li>
+        <li>票</li>
+        <li>日</li>
+        <li>期</li>
+        <li>'</li>
+        <li>,</li>
+        <li>'</li>
+        <li>业</li>
+        <li>务</li>
+        <li>单</li>
+        <li>元</li>
+        <li>'</li>
+        <li>,</li>
+        <li>'</li>
+        <li>合</li>
+        <li>同</li>
+        <li>编</li>
+        <li>号</li>
+        <li>'</li>
+        <li>,</li>
+        <li>'</li>
+        <li>订</li>
+        <li>单</li>
+        <li>编</li>
+        <li>号</li>
+        <li>'</li>
+        <li>,</li>
+        <li>'</li>
+        <li>客</li>
+        <li>户</li>
+        <li>'</li>
+        <li>,</li>
+        <li>'</li>
+        <li>销</li>
+        <li>售</li>
+        <li>员</li>
+        <li>'</li>
+        <li>,</li>
+        <li>'</li>
+        <li>币</li>
+        <li> </li>
+        <li>种</li>
+        <li>'</li>
+        <li>,</li>
+        <li>'</li>
+        <li>行</li>
+        <li>数</li>
+        <li>'</li>
+        <li>]</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>，</li>
+        <li>A</li>
+        <li>I</li>
+        <li> </li>
+        <li>正</li>
+        <li>是</li>
+        <li>读</li>
+        <li>了</li>
+        <li>这</li>
+        <li>个</li>
+        <li>才</li>
+        <li>自</li>
+        <li>我</li>
+        <li>修</li>
+        <li>正</li>
+        <li>（</li>
+        <li>原</li>
+        <li>话</li>
+        <li>「</li>
+        <li>用</li>
+        <li>表</li>
+        <li>头</li>
+        <li>文</li>
+        <li>案</li>
+        <li>定</li>
+        <li>位</li>
+        <li>，</li>
+        <li>避</li>
+        <li>免</li>
+        <li> </li>
+        <li>d</li>
+        <li>a</li>
+        <li>t</li>
+        <li>a</li>
+        <li>-</li>
+        <li>f</li>
+        <li>i</li>
+        <li>e</li>
+        <li>l</li>
+        <li>d</li>
+        <li> </li>
+        <li>不</li>
+        <li>一</li>
+        <li>致</li>
+        <li>」</li>
+        <li>）</li>
+        <li>；</li>
+        <li>②</li>
+        <li> </li>
+        <li>行</li>
+        <li>区</li>
+        <li>信</li>
+        <li>号</li>
+        <li>良</li>
+        <li>好</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>行</li>
+        <li>定</li>
+        <li>位</li>
+        <li>缺</li>
+        <li>失</li>
+        <li> </li>
+        <li>0</li>
+        <li> </li>
+        <li>处</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>（</li>
+        <li>引</li>
+        <li>用</li>
+        <li> </li>
+        <li>3</li>
+        <li>6</li>
+        <li> </li>
+        <li>个</li>
+        <li>名</li>
+        <li>字</li>
+        <li>、</li>
+        <li>撞</li>
+        <li>重</li>
+        <li>复</li>
+        <li> </li>
+        <li>4</li>
+        <li> </li>
+        <li>个</li>
+        <li>、</li>
+        <li>兜</li>
+        <li>底</li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>0</li>
+        <li> </li>
+        <li>处</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>）</li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li>注</li>
+        <li>意</li>
+        <li>：</li>
+        <li>本</li>
+        <li>轮</li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>没</li>
+        <li>有</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>拿</li>
+        <li>到</li>
+        <li> </li>
+        <li>V</li>
+        <li>8</li>
+        <li>.</li>
+        <li>9</li>
+        <li>.</li>
+        <li>6</li>
+        <li> </li>
+        <li>登</li>
+        <li>录</li>
+        <li>断</li>
+        <li>言</li>
+        <li>的</li>
+        <li>实</li>
+        <li>证</li>
+        <li>：</li>
+        <li>A</li>
+        <li>I</li>
+        <li> </li>
+        <li>这</li>
+        <li>次</li>
+        <li>登</li>
+        <li>录</li>
+        <li>决</li>
+        <li>策</li>
+        <li>写</li>
+        <li>的</li>
+        <li>是</li>
+        <li> </li>
+        <li>4</li>
+        <li> </li>
+        <li>步</li>
+        <li>纯</li>
+        <li>操</li>
+        <li>作</li>
+        <li>、</li>
+        <li>没</li>
+        <li>写</li>
+        <li>断</li>
+        <li>言</li>
+        <li> </li>
+        <li>（</li>
+        <li>所</li>
+        <li>以</li>
+        <li>「</li>
+        <li>不</li>
+        <li>再</li>
+        <li>出</li>
+        <li>现</li>
+        <li>已</li>
+        <li>跳</li>
+        <li>过</li>
+        <li>」</li>
+        <li>不</li>
+        <li>能</li>
+        <li>当</li>
+        <li>证</li>
+        <li>据</li>
+        <li>）</li>
+        <li>。</li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li><</li>
+        <li>b</li>
+        <li>r</li>
+        <li>></li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>改</li>
+        <li>完</li>
+        <li>立</li>
+        <li>刻</li>
+        <li>本</li>
+        <li>地</li>
+        <li>重</li>
+        <li>跑</li>
+        <li>验</li>
+        <li>收</li>
+        <li>（</li>
+        <li>真</li>
+        <li> </li>
+        <li>A</li>
+        <li>I</li>
+        <li> </li>
+        <li>+</li>
+        <li> </li>
+        <li>真</li>
+        <li>浏</li>
+        <li>览</li>
+        <li>器</li>
+        <li>）</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>：</li>
+        <li>删</li>
+        <li>旧</li>
+        <li>用</li>
+        <li>例</li>
+        <li> </li>
+        <li>-</li>
+        <li>></li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>e</li>
+        <li>x</li>
+        <li>p</li>
+        <li>l</li>
+        <li>o</li>
+        <li>r</li>
+        <li>e</li>
+        <li> </li>
+        <li>-</li>
+        <li>-</li>
+        <li>a</li>
+        <li>i</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li>-</li>
+        <li>></li>
+        <li> </li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>一</li>
+        <li>次</li>
+        <li>过</li>
+        <li> </li>
+        <li>P</li>
+        <li>A</li>
+        <li>S</li>
+        <li>S</li>
+        <li>E</li>
+        <li>D</li>
+        <li> </li>
+        <li>4</li>
+        <li>0</li>
+        <li>2</li>
+        <li>.</li>
+        <li>8</li>
+        <li>s</li>
+        <li>、</li>
+        <li>零</li>
+        <li>重</li>
+        <li>试</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>（</li>
+        <li>对</li>
+        <li>比</li>
+        <li>真</li>
+        <li>机</li>
+        <li>改</li>
+        <li>前</li>
+        <li> </li>
+        <li>7</li>
+        <li>1</li>
+        <li>7</li>
+        <li>s</li>
+        <li> </li>
+        <li>失</li>
+        <li>败</li>
+        <li> </li>
+        <li>+</li>
+        <li> </li>
+        <li>3</li>
+        <li>9</li>
+        <li>7</li>
+        <li>s</li>
+        <li> </li>
+        <li>重</li>
+        <li>试</li>
+        <li> </li>
+        <li>=</li>
+        <li> </li>
+        <li>1</li>
+        <li>1</li>
+        <li>1</li>
+        <li>4</li>
+        <li>s</li>
+        <li>）</li>
+        <li>；</li>
+        <li>新</li>
+        <li>用</li>
+        <li>例</li>
+        <li> </li>
+        <li>4</li>
+        <li>7</li>
+        <li> </li>
+        <li>步</li>
+        <li>（</li>
+        <li>原</li>
+        <li> </li>
+        <li>6</li>
+        <li>2</li>
+        <li>）</li>
+        <li>、</li>
+        <li><</li>
+        <li>b</li>
+        <li>></li>
+        <li>开</li>
+        <li>票</li>
+        <li>页</li>
+        <li>不</li>
+        <li>再</li>
+        <li>出</li>
+        <li>现</li>
+        <li>「</li>
+        <li>新</li>
+        <li>增</li>
+        <li>行</li>
+        <li>」</li>
+        <li><</li>
+        <li>/</li>
+        <li>b</li>
+        <li>></li>
+        <li>；</li>
+        <li>最</li>
+        <li>后</li>
+        <li>一</li>
+        <li>条</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>e</li>
+        <li>x</li>
+        <li>p</li>
+        <li>e</li>
+        <li>c</li>
+        <li>t</li>
+        <li>_</li>
+        <li>f</li>
+        <li>i</li>
+        <li>r</li>
+        <li>s</li>
+        <li>t</li>
+        <li>_</li>
+        <li>r</li>
+        <li>o</li>
+        <li>w</li>
+        <li> </li>
+        <li>|</li>
+        <li> </li>
+        <li>H</li>
+        <li>T</li>
+        <li>-</li>
+        <li>1</li>
+        <li>0</li>
+        <li>0</li>
+        <li>1</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li> </li>
+        <li>A</li>
+        <li>I</li>
+        <li> </li>
+        <li>自</li>
+        <li>己</li>
+        <li>声</li>
+        <li>明</li>
+        <li>了</li>
+        <li> </li>
+        <li><</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>r</li>
+        <li>e</li>
+        <li>f</li>
+        <li>r</li>
+        <li>e</li>
+        <li>s</li>
+        <li>h</li>
+        <li>=</li>
+        <li>r</li>
+        <li>e</li>
+        <li>s</li>
+        <li>e</li>
+        <li>a</li>
+        <li>r</li>
+        <li>c</li>
+        <li>h</li>
+        <li><</li>
+        <li>/</li>
+        <li>c</li>
+        <li>o</li>
+        <li>d</li>
+        <li>e</li>
+        <li>></li>
+        <li>（</li>
+        <li>每</li>
+        <li>轮</li>
+        <li>重</li>
+        <li>放</li>
+        <li>搜</li>
+        <li>索</li>
+        <li>）</li>
+        <li>—</li>
+        <li>—</li>
+        <li> </li>
+        <li>之</li>
+        <li>前</li>
+        <li>那</li>
+        <li> </li>
+        <li>7</li>
+        <li>1</li>
+        <li>7</li>
+        <li> </li>
+        <li>秒</li>
+        <li>里</li>
+        <li>很</li>
+        <li>大</li>
+        <li>一</li>
+        <li>块</li>
+        <li>就</li>
+        <li>是</li>
+        <li>「</li>
+        <li>纯</li>
+        <li>轮</li>
+        <li>询</li>
+        <li> </li>
+        <li>D</li>
+        <li>O</li>
+        <li>M</li>
+        <li> </li>
+        <li>等</li>
+        <li>一</li>
+        <li>个</li>
+        <li>不</li>
+        <li>会</li>
+        <li>自</li>
+        <li>己</li>
+        <li>刷</li>
+        <li>新</li>
+        <li>的</li>
+        <li>列</li>
+        <li>表</li>
+        <li>」</li>
+        <li>。</li>
+      </ul></div>
+    </div>
+    <div class="card cl">
+      <div class="cl-head"><span class="cl-ver">V8.9.7</span><span class="cl-date">2026-11-05</span><span class="cl-tag">上一版</span><span class="cl-theme"><b>L11 收尾</b> —— 阈值口径去重 + <code>--debug</code> 两态终有判据（L11 整条关闭）</span></div>
       <p class="cl-sum">两处<b>内部护栏缺口</b>（不改变任何功能，改的是「以后谁改错了、多久能被抓住」）。<br><br><b>① 意图复验阈值口径写了两份（真隐患）</b>：<code>INTENT_MIN_SIM = 0.15</code> 在<code>locator_bridge_locate.py:50</code> 定义，但判定处写的是<b>字面量 0.15</b> —— 后果是「<b>改常量只生效一半</b>」：一处用新值、判定处还用旧值，而部分生效最难查。已改为引用常量，并用**行为判据**钉住（把常量改大 -> 原本不降权的候选必须被降权；不是只 assert 字符串）。<br><br><b>② <code>--debug</code> 两态从「无判据」到「有判据」</b>：这套逻辑本来就实现了（有图形显示 -> <code>HYBRID_HEADED=1</code> 弹窗；没有 -> <code>HYBRID_VIDEO=1</code> + <code>HYBRID_SHOTS=1</code> 录屏+逐步截图），但它<b>内联在 run() 里十来行</b>，要测只能起真浏览器，于是<b>从来没有自动化判据</b>。改坏的症状极隐蔽：<b>Windows（有屏）上一切正常，无屏机器静默退化成没截图没录像</b> —— 等到要排查时才发现「什么都没留下」。已把两态决策收敛成<b>纯函数</b> <code>debug_env_plan()</code>（唯一入口），<code>run()</code> 只负责应用结果；判据用 AST 钉住「这两个环境变量的赋值只许出现在唯一入口里」。</p>
       <div class="cl-kind"><span class="chip" style="color:#475569;background:#f1f5f9">[pin] 说明</span><ul>
         <li>判</li>
@@ -6497,7 +7239,7 @@ ls log/&lt;run_id&gt;/          # 用例日志 / report.html / trace
   </section>
 
 <footer>
-  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.7</b>（2026-11-05）· 由 build_tools/build_html.py 生成
+  hybrid_gui_qa · AI 混合 GUI 测试框架培训页 · <b>V8.9.8</b>（2026-11-09）· 由 build_tools/build_html.py 生成
 </footer>
 
 </div>

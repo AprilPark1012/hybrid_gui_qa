@@ -1,14 +1,14 @@
-"""hybrid_gui_qa 用例模块：ai_orders_invoice_full_lifecycle_093840（场景 orders_invoice_full_lifecycle）—— 由 cases/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_093840.json 自动生成。
+"""hybrid_gui_qa 用例模块：ai_orders_invoice_full_lifecycle_100728（场景 orders_invoice_full_lifecycle）—— 由 cases/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_100728.json 自动生成。
 
 **不要手改本文件**：改用例后重跑 generate 会覆盖它。要改行为 → 改用例 json / 场景 yml。
-数据抽离在 scripts/datasets/ai_orders_invoice_full_lifecycle_093840.json（脚本与数据分离）。
+数据抽离在 scripts/datasets/ai_orders_invoice_full_lifecycle_100728.json（脚本与数据分离）。
 一个用例一个文件（P20）：便于按 id 管理、按变化增量重生成。
 
 运行（推荐走 cli：自带资源预检 + run-id 隔离的日志/报告）:
   python -m framework.cli run --workers 2                 # 全量
-  python -m framework.cli run --debug --case ai_orders_invoice_full_lifecycle_093840        # 只调试这一条
+  python -m framework.cli run --debug --case ai_orders_invoice_full_lifecycle_100728        # 只调试这一条
 裸跑 pytest（未设 HYBRID_RUN_ID 时日志落 log/latest/）:
-  pytest scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_093840.py -v
+  pytest scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_100728.py -v
 """
 from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       _login_flow,
@@ -40,7 +40,7 @@ from framework.features.f03_locate.scope_locate import drill as _drill
 import pytest
 from playwright.sync_api import expect as _pw_expect
 
-def test_ai_orders_invoice_full_lifecycle_093840(page, ctx):
+def test_ai_orders_invoice_full_lifecycle_100728(page, ctx):
     """【起手状态 · 最重要 · 不要写成步骤】本用例**开局时的页面就是「合同列表页」**，
    且已以**超级管理员**登录、已切换到**订单管理员**角色。
    这两件事由场景级前置 `probe_pre` 自动完成，**用例的第 1 步直接就是\"在合同列表页勾选合同\"**。
@@ -81,13 +81,13 @@ def test_ai_orders_invoice_full_lifecycle_093840(page, ctx):
 8. 切换到**发票管理员**角色；在订单列表里**选中该订单**，点「去开票」。
 9. 在开票页确认订单编号/合同编号已带入（发票号是系统生成的），填写发票行后点「保存」，完成发票创建。
 10. 进入发票列表页，在**订单名称**搜索框输入该订单名称，点「搜索」-> 能搜到刚创建的那张发票。"""
-    _CURRENT_LOG["case_id"] = "ai_orders_invoice_full_lifecycle_093840"
+    _CURRENT_LOG["case_id"] = "ai_orders_invoice_full_lifecycle_100728"
     _t = _Tabs(page)          # 多 tab：点了会开新 tab 的控件后 page 会被重新绑定到新 tab
     _goto(page, 'http://localhost:8000/login.html')
     # ---- 登录（L35：场景自然语言 -> 同一规划器 -> 同一套定位栈；步骤已固化在用例里）----
     _login_flow(page, [{'order': 0, 'op': 'goto', 'element': None, 'value': 'http://localhost:8000/login.html', 'assertion': None, 'desc': '打开 http://localhost:8000/login.html', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}, {'order': 1, 'op': 'fill', 'element': {'semantic_name': '账号', 'role': 'textbox', 'name': '账号', 'label': None, 'placeholder': '请输入账号', 'test_id': '', 'element_id': None, 'text': '账号', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '账号', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': 'super', 'assertion': None, 'desc': '在登录页账号输入框填入账号 super', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}, {'order': 2, 'op': 'fill', 'element': {'semantic_name': '密码', 'role': 'textbox', 'name': '密码', 'label': None, 'placeholder': '请输入密码', 'test_id': '', 'element_id': None, 'text': '密码', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '密码', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': 'super@123', 'assertion': None, 'desc': '在登录页密码输入框填入密码 super@123', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}, {'order': 3, 'op': 'click', 'element': {'semantic_name': '登_录', 'role': 'button', 'name': '登 录', 'label': None, 'placeholder': '', 'test_id': '', 'element_id': None, 'text': '登 录', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': None, 'assertion': None, 'desc': '点击「登录」按钮提交登录', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}], {'url_not': 'login.html'}, 'http://localhost:8000/login.html')
     # ---- 登录步骤结束 ----
-    _log(page, "场景开始", f"case=ai_orders_invoice_full_lifecycle_093840")
+    _log(page, "场景开始", f"case=ai_orders_invoice_full_lifecycle_100728")
 
     # step 1: 打开 【登录页】http://localhost:8000/login.html
     _goto(page, 'http://localhost:8000/')
