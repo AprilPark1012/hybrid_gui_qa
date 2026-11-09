@@ -316,7 +316,7 @@
 <p class="lead">这条铁律落到代码上就是「同一件事<b>只有一个入口</b>」。新手最该知道的是这四个——因为它们决定了「我改了这个行为，会不会只改一半」：</p>
 <table class="tbl" style="width:100%;border-collapse:collapse">
 <thead><tr><th>能力</th><th>唯一入口</th><th>为什么必须收敛</th></tr></thead><tbody>
-<tr><td>目标地址改写</td><td><code>_rewrite_base(url)</code></td><td>业务步骤、登录流、场景身份前置<b>三条导航</b>都必须走它；漏一条就是「一半打新地址、一半打旧地址」，cookie 不通用，第一个业务步就等不到元素</td></tr>
+<tr><td><b>目标地址改写</b></td><td><code>_rw(url, origin_name)</code>（内部回落 <code>_rewrite_base(url)</code>）</td><td>业务步骤、登录流、场景身份前置<b>三条导航</b>都必须走它；漏一条就是「一半打新地址、一半打旧地址」，cookie 不通用，第一个业务步就等不到元素</td></tr>
 <tr><td>断言执行</td><td><code>_exec_assert()</code></td><td>主链路与登录链路共用同一个入口；否则「AI 写了断言，登录段却静默不跑」= 少一道判定还看不出来</td></tr>
 <tr><td>动作词表</td><td><code>framework/shared/step_ops.py</code></td><td>同一个 <code>op</code> 在登录段与用例段必须同一套语义（历史上登录段连 <code>select</code> 都不认）</td></tr>
 <tr><td>行定位字段</td><td><code>ROW_LOCATOR_FIELDS</code> / <code>has_row_locator()</code></td><td>「第几行」只有一种表达（<code>row_index</code>），不然同一个概念三种写法、三种 bug</td></tr>
@@ -329,7 +329,7 @@
 <table class="tbl" style="width:100%;border-collapse:collapse">
 <thead><tr><th>做不到</th><th>现状与替代</th></tr></thead><tbody>
 <tr><td><b>iframe 内部</b>控件</td><td><code>feature_spec</code> 里标 <b>未实现</b>；这是如实标注的缺口，不是遗漏</td></tr>
-<tr><td><b>一个场景跨多个不同系统</b></td><td>当前地址口径是「一个入口地址」；跨 origin 的页面需拆成多个场景</td></tr>
+<tr><td><b>一个场景跨多个业务系统（不同 origin）</b></td><td>**已支持**（V8.10.0）：场景用 <code>origins:</code> 给每个系统起名、页面地址写 <code>&amp;lt;${名字}&amp;gt;/x.html</code>；登录一次(SSO)后由 <code>login.session.spread</code> 把会话铺到各 origin。仍做不到的是：**多套互不相通的登录体系**要拆多个场景</td></tr>
 <tr><td>AI 一次就把步骤排对</td><td>不能。它有概率排错（多走一步、找个不存在的列），所以框架配了产出闸门 + 带原因重试 + 真跑校验</td></tr>
 <tr><td>视觉兜底当主路径</td><td>视觉 grounding 只在确定性定位全失败时兜底用，且点击后必须校验生效；它救不了「页面压根没这个控件」</td></tr>
 <tr><td>没有断言也能判过</td><td>不会。没有断言的用例就是「跑完没报错」，框架对此会提示，但它不会替你想断言</td></tr>
@@ -1530,7 +1530,9 @@
 <tr><td><code>target.preconditions</code></td><td>否</td><td>AI</td><td>前置条件（人话），进提示词</td></tr>
 <tr><td><code>pages[]</code></td><td><b>二选一</b></td><td>框架+AI</td><td>多页场景：每项 <code>name</code> / <code>url</code> / <code>page</code> / <code>pre</code> / <code>probe_url</code>；页名<b>必须唯一</b>（元素唯一化靠它）</td></tr>
 <tr><td><code>pages[].pre</code></td><td>否</td><td>框架</td><td>探测该页前要点的控件名（例：编辑 → 新增行），让「只在编辑态才存在」的控件能被采到</td></tr>
-<tr><td><code>login</code></td><td>否</td><td>框架+AI</td><td><code>url</code> / <code>scenario</code> / <code>wait</code> 三个键；<code>wait</code> 必须给 <code>url|url_not|selector|text</code> 之一</td></tr>
+<tr><td><code>origins</code></td><td>跨 origin 时必填</td><td>框架</td><td>给每个业务系统起名：<br><code>{order: http://host:8001, invoice: http://host:8002}</code><br>之后页面地址写 <code>${order}/orders.html</code>；换了环境的地址<b>只改这一段</b>（或运行期用 <code>HYBRID_ORIGIN_MAP</code> 覆盖）。引用了<b>没声明</b>的名字 = 加载期红（不猜）；不声明 = 单系统老行为，零改动</td></tr>
+<tr><td><code>login</code></td><td>否</td><td>框架+AI</td><td><code>url</code> / <code>scenario</code> / <code>wait</code> / <code>session</code>；<code>wait</code> 必须给 <code>url|url_not|url_not_in|selector|text</code> 之一</td></tr>
+<tr><td><code>login.session</code></td><td>跨 origin 时必填</td><td>框架</td><td>登录一次(SSO)后把会话铺到别的业务系统：<br><code>{token_from: url_param, param: token, store: localStorage, key: demo_token, spread: [order, invoice]}</code><br><b>为什么必需</b>：会话在 localStorage 里是 per-origin 的，不铺就会被踢回那个系统<b>自己</b>的登录页（实测 8001 业务页 → 8001/login.html?next=…）</td></tr>
 <tr><td><code>probe_pre</code></td><td>否</td><td>框架</td><td>探测期一开始就要做的动作（切身份/选角色），写控件语义名</td></tr>
 <tr><td><code>probe_pre_host</code></td><td>用到 probe_pre 时必填</td><td>框架</td><td>这批前置在哪一页执行；漏写在加载期红</td></tr>
 <tr><td><code>business_context</code></td><td>否</td><td>AI</td><td>领域上下文（业务规则、术语解释），对排步骤帮助很大</td></tr>

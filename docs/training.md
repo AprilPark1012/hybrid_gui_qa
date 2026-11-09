@@ -84,7 +84,7 @@ scenarios/*.yml  ──explore(AI)──>  cases/ai_*.json  ──generate(纯�
 
 | 能力 | 唯一入口 | 为什么必须收敛 |
 |---|---|---|
-| 目标地址改写 | `_rewrite_base(url)` | 业务步骤、登录流、场景身份前置**三条导航**都必须走它 |
+| 目标地址改写 | `_rw(url, origin_name)`（回落 `_rewrite_base`） | 业务步骤、登录流、场景身份前置**三条导航**都必须走它 |
 | 断言执行 | `_exec_assert()` | 主链路与登录链路共用；否则「AI 写了断言、登录段静默不跑」 |
 | 动作词表 | `framework/shared/step_ops.py` | 同一个 `op` 在登录段与用例段必须同一套语义 |
 | 行定位字段 | `ROW_LOCATOR_FIELDS` / `has_row_locator()` | 「第几行」只有一种表达（`row_index`） |
@@ -106,7 +106,7 @@ scenarios/*.yml  ──explore(AI)──>  cases/ai_*.json  ──generate(纯�
 | 做不到 | 现状与替代 |
 |---|---|
 | **iframe 内部**控件 | `feature_spec` 里标 **未实现**；这是如实标注的缺口 |
-| **一个场景跨多个不同系统** | 当前地址口径是「一个入口地址」；跨 origin 需拆多个场景 |
+| **一个场景跨多个业务系统（不同 origin）** | **已支持**（V8.10.0）：`origins:` 起名 + 地址写 `${名字}/x.html`；`login.session.spread` 把会话铺到各 origin。仍做不到：**多套互不相通的登录体系**要拆多个场景 |
 | AI 一次就把步骤排对 | 不能。它有概率排错，所以配了产出闸门 + 带原因重试 + 真跑校验 |
 | 视觉兜底当主路径 | 只在确定性定位全失败时兜底，且点击后必须校验生效 |
 | 没有断言也能判过 | 不会。没有断言的用例会被提示，但框架不会替你想断言 |
@@ -494,7 +494,9 @@ probe_pre_host: 登录页
 | `target.page` | 否 | AI | 单页页面说明（领域知识） |
 | `pages[]` | **二选一** | 框架+AI | 多页：`name` / `url` / `page` / `pre` / `probe_url` |
 | `pages[].pre` | 否 | 框架 | 探测该页前要点的控件名 |
-| `login` | 否 | 框架+AI | `url` / `scenario` / `wait`；wait 必须可观测 |
+| `origins` | 跨 origin 时必填 | 框架 | `{order: http://host:8001, invoice: http://host:8002}`，页面地址写 `${order}/orders.html`；引用了未声明的名字 = 加载期红；不声明 = 单系统老行为 |
+| `login` | 否 | 框架+AI | `url` / `scenario` / `wait`（`url|url_not|url_not_in|selector|text`）/ `session` |
+| `login.session` | 跨 origin 时必填 | 框架 | `{token_from, param, store, key, spread: [order, invoice]}` —— 登录一次后把会话铺到各 origin；会话是 per-origin 的，不铺会被踢回**那个系统自己**的登录页 |
 | `probe_pre` | 否 | 框架 | 探测期前置动作（写控件语义名） |
 | `probe_pre_host` | 用到时必填 | 框架 | 前置在哪一页执行 |
 | `business_context` | 否 | AI | 领域上下文 |

@@ -201,8 +201,19 @@ probe_pre_host: 登录页""", lang="yaml")
           + C("page") + " / " + C("pre") + " / " + C("probe_url") + "；页名<b>必须唯一</b>（元素唯一化靠它）"],
          [C("pages[].pre"), "否", "框架", "探测该页前要点的控件名（例：编辑 → 新增行），"
           "让「只在编辑态才存在」的控件能被采到"],
+         [C("origins"), "跨 origin 时必填", "框架",
+          "给每个业务系统起名：<br>" + C("{order: http://host:8001, invoice: http://host:8002}") +
+          "<br>之后页面地址写 " + C("${order}/orders.html") + "；换了环境的地址<b>只改这一段</b>"
+          "（或运行期用 " + C("HYBRID_ORIGIN_MAP") + " 覆盖）。"
+          "引用了<b>没声明</b>的名字 = 加载期红（不猜）；不声明 = 单系统老行为，零改动"],
          [C("login"), "否", "框架+AI", C("url") + " / " + C("scenario") + " / " + C("wait") +
-          " 三个键；" + C("wait") + " 必须给 " + C("url|url_not|selector|text") + " 之一"],
+          " / " + C("session") + "；" + C("wait") + " 必须给 "
+          + C("url|url_not|url_not_in|selector|text") + " 之一"],
+         [C("login.session"), "跨 origin 时必填", "框架",
+          "登录一次(SSO)后把会话铺到别的业务系统：<br>"
+          + C("{token_from: url_param, param: token, store: localStorage, key: demo_token, spread: [order, invoice]}") +
+          "<br><b>为什么必需</b>：会话在 localStorage 里是 per-origin 的，不铺就会被踢回"
+          "那个系统<b>自己</b>的登录页（实测 8001 业务页 → 8001/login.html?next=…）"],
          [C("probe_pre"), "否", "框架", "探测期一开始就要做的动作（切身份/选角色），写控件语义名"],
          [C("probe_pre_host"), "用到 probe_pre 时必填", "框架", "这批前置在哪一页执行；漏写在加载期红"],
          [C("business_context"), "否", "AI", "领域上下文（业务规则、术语解释），对排步骤帮助很大"],
@@ -221,7 +232,13 @@ probe_pre_host: 登录页""", lang="yaml")
             ["`target.page`", "否", "AI", "单页页面说明（领域知识）"],
             ["`pages[]`", "**二选一**", "框架+AI", "多页：`name` / `url` / `page` / `pre` / `probe_url`"],
             ["`pages[].pre`", "否", "框架", "探测该页前要点的控件名"],
-            ["`login`", "否", "框架+AI", "`url` / `scenario` / `wait`；wait 必须可观测"],
+            ["`origins`", "跨 origin 时必填", "框架",
+             "`{order: http://host:8001, invoice: http://host:8002}`，页面地址写 `${order}/orders.html`；"
+             "引用了未声明的名字 = 加载期红；不声明 = 单系统老行为"],
+            ["`login`", "否", "框架+AI", "`url` / `scenario` / `wait`（`url|url_not|url_not_in|selector|text`）/ `session`"],
+            ["`login.session`", "跨 origin 时必填", "框架",
+             "`{token_from, param, store, key, spread: [order, invoice]}` —— 登录一次后把会话铺到各 origin；"
+             "会话是 per-origin 的，不铺会被踢回**那个系统自己**的登录页"],
             ["`probe_pre`", "否", "框架", "探测期前置动作（写控件语义名）"],
             ["`probe_pre_host`", "用到时必填", "框架", "前置在哪一页执行"],
             ["`business_context`", "否", "AI", "领域上下文"],
