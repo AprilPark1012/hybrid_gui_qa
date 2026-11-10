@@ -1,9 +1,9 @@
 {
-  "ai_orders_invoice_full_lifecycle_100728": {
+  "ai_orders_invoice_full_lifecycle_164035": {
     "steps": [
       "超",
       "切换为订单管理员"
     ],
-    "url": "http://localhost:8000/"
+    "url": "http://localhost:8000/orders.html"
   }
 }

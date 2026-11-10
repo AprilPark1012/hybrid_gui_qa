@@ -388,7 +388,8 @@ def _base_of(url: str) -> str:
 
 
 def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None = None,
-                          auth: dict | None = None, probe_pre: list | None = None):
+                          auth: dict | None = None, probe_pre: list | None = None,
+                          pre_host: str = ""):
     """【同步】探测页面上下文：基础控件 + 弹窗内控件 + 富 DOM 上下文。返回 (items, dom_ctx, err)。
 
     跨页流程（P3）：pages 给 ≥2 页时走 `_collect_pages_context`（一个浏览器顺序探每页 + 同名唯一化）；
@@ -403,7 +404,8 @@ def _collect_page_context(items: list[dict], url: str, pages: list[dict] | None 
     现在拆成两个阶段：同步探测 → 异步 LLM 规划。
     """
     if pages and len(pages) > 1:
-        return _collect_pages_context(pages, items, auth=auth, probe_pre=probe_pre)
+        return _collect_pages_context(pages, items, auth=auth, probe_pre=probe_pre,
+                                     pre_host=str(pre_host or ""))
 
     from playwright.sync_api import sync_playwright
     from framework.features.f03_locate.probe import probe_page, probe_row_fields
@@ -601,7 +603,7 @@ def _run_pre_actions(pg, pre: list | None, page_name: str = "", *, per_step_ms: 
 
 
 def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | None = None,
-                           probe_pre: list | None = None):
+                           probe_pre: list | None = None, pre_host: str = ""):
     """【同步】跨页探测（P3）：**薄封装** —— 逐页探测的骨架在唯一入口 `probe.scan_pages`。
 
     [!] P25 片 3c（B1 三合一，2026-10-12）：这里原来与 `generator._probe_declared_pages`
@@ -620,6 +622,7 @@ def _collect_pages_context(pages: list[dict], items: list[dict], auth: dict | No
     res = scan_pages(
         pages, auth=auth or {}, probe_pre=probe_pre, login=True, label="explore",
         with_dom_ctx=True, with_row_fields=True, collapse=True,
+        pre_host=str(pre_host or ""),      # 声明的 probe_pre_host：探针期就在这一页整组跑（V8.10.1）
         on_page=_explore_on_page,
     )
     # V8.4.3 兜底用：跨页必须**累积**。
@@ -675,7 +678,7 @@ def ai_explore(
     scenario: str, items: list[dict], url: str,
     page_bg: str = "", guard: str = "", pages: list[dict] | None = None,
     llm_cassette=None, cassette_strict: bool = False, auth: dict | None = None,
-    retry_feedback: str = "", probe_pre: list | None = None,
+    retry_feedback: str = "", probe_pre: list | None = None, pre_host: str = "",
 ) -> ElementMap:
     """【LLM 语义识别】理解意图、规划步骤、挑元素（ChatDeepSeek 直连编排，非 Agent）。
 
@@ -708,7 +711,8 @@ def ai_explore(
     globals()["_CURRENT_SCENARIO"] = scenario or ""
     # 2026-10-10 A 方案：把本次声明的**身份前置**记进全局（提示词 + 产出兜底两处读）
     globals()["_CURRENT_PROBE_PRE"] = [str(x).strip() for x in (probe_pre or []) if str(x).strip()]
-    ctx = _collect_page_context(items, url, pages=pages, auth=auth or {}, probe_pre=probe_pre)
+    ctx = _collect_page_context(items, url, pages=pages, auth=auth or {}, probe_pre=probe_pre,
+                               pre_host=str(pre_host or ""))
     page_items, dom_ctx, err = ctx[0], ctx[1], ctx[2]
     collisions = ctx[3] if len(ctx) > 3 else []
     # 表格行内列清单（2026-09-17）：喂给 AI 做行内定位 —— 没有它，AI 只能猜 CSS（本项目铁律：绝不让 LLM 产 selector）

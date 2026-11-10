@@ -71,7 +71,7 @@ def _field(spec, key: str, default=""):
 
 def scan_pages(pages, *, auth=None, probe_pre=None, login=True, label="探测",
                with_dom_ctx=False, with_row_fields=False, collapse=True,
-               on_page=None) -> PageScanResult:
+               pre_host="", on_page=None) -> PageScanResult:
     """按声明顺序**逐页探测**（唯一入口）-> `PageScanResult`。
 
     · `pages`：`[{"name","url","page"?,"pre"?,"probe_url"?}]`（dict 或 `ScenarioPage` 均可）；
@@ -139,6 +139,30 @@ def scan_pages(pages, *, auth=None, probe_pre=None, login=True, label="探测",
                 #   `_pp_pending` 一开始就是空，旧写法（只在 if 里赋值、下一行无条件读）
                 #   会对任何没声明 probe_pre 的场景抛 UnboundLocalError（被兜住 = 探测静默退化）。
                 _pp_done: list = []
+                # [!] V8.10.1（2026-11-10 实测）：**先在声明的 `probe_pre_host` 页整组跑一次**。
+                #   原来是"逐页尝试、能跑就跑、跑全就算完" —— 于是 `probe_pre_host` 指错页
+                #   也**照样绿**：探针在别的页凑齐了序列，执行期却严格在 host 页跑 -> 当场红。
+                #   实测：场景写 `probe_pre_host: 合同列表页`，而身份入口「超」只存在于订单列表页
+                #   （在合同列表页上等 10s 仍是 0 个），探针绿、执行红，白烧两轮 AI。
+                #   口径：host 页跑不全 -> **大声告警**点名"多半指错页"（不硬红，保持兼容），
+                #   然后再回落到逐页尝试（行为不变）。
+                if _pp_pending and pre_host and _name == pre_host:
+                    _host_done = _run_pre(pg, _pp_pending, "场景探测前置(声明host页)",
+                                          quiet_missing=True, require_all_resolvable=True,
+                                          seen=_pp_seen)
+                    if len(_host_done) == len(_pp_pending):
+                        print(f"      [{label}] [key] 场景探测前置已在声明的 host 页"
+                              f"「{_name}」上整组跑完：{_host_done}")
+                        _pp_done = list(_host_done)
+                        _pp_pending = [s for s in _pp_pending if s not in _pp_done]
+                    else:
+                        _miss = [s for s in _pp_pending if s not in _host_done]
+                        print(f"      [{label}] [!] 场景探测前置在**声明的 `probe_pre_host`**"
+                              f"「{_name}」上跑不全（完成 {_host_done} / 声明 {_pp_pending}，"
+                              f"缺 {_miss}）—— 多半是 `probe_pre_host` **指错了页**"
+                              f"（这一页上没有这些控件）；探针随后会在别的页凑齐它，"
+                              f"但**执行期只按声明的 host 页跑**，那条用例必红。"
+                              f"请把 `probe_pre_host` 改到**真正带这些控件**的那一页")
                 if _pp_pending:
                     _pp_done = _run_pre(pg, _pp_pending, "场景探测前置",
                                         quiet_missing=True, require_all_resolvable=True,

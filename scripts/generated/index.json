@@ -1,34 +1,34 @@
 {
   "ai_orders_invoice_cross_origin_184839": {
     "case_fingerprint": "7be7cc74a61d501c",
-    "probe_fingerprint": "929056dd1e98ca4e",
+    "probe_fingerprint": "66f780ee2931f72d",
     "scenario_fingerprint": "2ce4ca2564ba4edd",
     "scenario_id": "orders_invoice_cross_origin",
     "script_path": "scripts/generated/orders_invoice_cross_origin/ai_orders_invoice_cross_origin_184839.py",
-    "template_fingerprint": "686a2e325aaa61b4"
+    "template_fingerprint": "a7c0185a279c83ed"
   },
-  "ai_orders_invoice_full_lifecycle_100728": {
-    "case_fingerprint": "d56e424851be6a2f",
-    "probe_fingerprint": "929056dd1e98ca4e",
-    "scenario_fingerprint": "58cd874619e3f003",
+  "ai_orders_invoice_full_lifecycle_164035": {
+    "case_fingerprint": "2e80b9f5b745fa6a",
+    "probe_fingerprint": "66f780ee2931f72d",
+    "scenario_fingerprint": "13409dca44902324",
     "scenario_id": "orders_invoice_full_lifecycle",
-    "script_path": "scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_100728.py",
-    "template_fingerprint": "686a2e325aaa61b4"
+    "script_path": "scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_164035.py",
+    "template_fingerprint": "a7c0185a279c83ed"
   },
   "rw_named_origin": {
     "case_fingerprint": "32321b207f1eb18b",
-    "probe_fingerprint": "929056dd1e98ca4e",
+    "probe_fingerprint": "66f780ee2931f72d",
     "scenario_fingerprint": "",
     "scenario_id": "manual",
     "script_path": "scripts/generated/manual/rw_named_origin.py",
-    "template_fingerprint": "686a2e325aaa61b4"
+    "template_fingerprint": "a7c0185a279c83ed"
   },
   "rw_origin_map": {
     "case_fingerprint": "18e77b32b2750b50",
-    "probe_fingerprint": "929056dd1e98ca4e",
+    "probe_fingerprint": "66f780ee2931f72d",
     "scenario_fingerprint": "",
     "scenario_id": "manual",
     "script_path": "scripts/generated/manual/rw_origin_map.py",
-    "template_fingerprint": "686a2e325aaa61b4"
+    "template_fingerprint": "a7c0185a279c83ed"
   }
 }

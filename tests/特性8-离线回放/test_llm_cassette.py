@@ -347,7 +347,7 @@ def test_ai_explore_accepts_cassette(tmp_path, monkeypatch):
     # 实现签名一变，这里必须同步，否则 ai_explore 一传新 kwargs 就 TypeError）
     # `(items, url, pages=None, auth=None, probe_pre=None)` -> `(items, dom_ctx, err, ?, row_fields)`
     monkeypatch.setattr(explorer, "_collect_page_context",
-                        lambda items, url, pages=None, auth=None, probe_pre=None:
+                        lambda items, url, pages=None, auth=None, probe_pre=None, **kw:
                         (ITEMS, "", "", [], []))
     fake = _FakeLLM()
     monkeypatch.setattr("framework.shared.config.llm_from_env", lambda: fake)

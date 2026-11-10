@@ -942,6 +942,10 @@ def _render_pytest_case(case: dict, loc_map: dict, page_map: dict | None = None,
     #   拿它拼 `/login.html` 会得到 `.../login.html/login.html`（实测踩过：登录直接超时挂）。
     #   工作页根址只有 `config.target_url()` 一个权威来源。
     lines.extend(_login_lines_for(case, target_url()))
+    # V8.10.1：身份前置的唯一主路径 —— **登录之后、用例体第一步之前**显式执行。
+    # 为什么放这里（Windows 真机实测）：放在 `page` fixture 里跑在登录之前，必然落空；
+    # 只剩兜底就变成"押 AI 路线"。没有声明时该函数立即 return（零副作用）。
+    lines.append("    _ensure_scene_pre(page)   # 身份前置（无声明 -> 立即返回）")
     lines += [
         f'    _log(page, "场景开始", f"case={cid}")',
         '',
@@ -2464,6 +2468,7 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       _login_flow,
                       # V8.10.0 跨 origin：登录后铺会话（模板里会渲染这个调用，漏 import = NameError）
                       _spread_session,
+                      _ensure_scene_pre,
                       # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
                       # [!] 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
                       _ds_params, _ds_ids,
@@ -2799,6 +2804,48 @@ def _pre_steps_of(cid):
     if isinstance(_e, list):
         return list(_e), ""
     return list(_e.get("steps") or []), str(_e.get("url") or "")
+
+
+def _ensure_scene_pre(page):
+    """**登录之后、用例体第一步之前**主动把场景声明的身份前置建立好 —— V8.10.1 主路径。
+
+    为什么必须显式、且必须自己去 host 页（2026-11-10 Windows 真机实测，V8.10.0）：
+      ① 原来的主路径在 `page` fixture 里 —— 那是**登录之前**，没有会话，
+         身份菜单 `超` 解析不到 => 那块**从来没生效过**；
+      ② 于是只剩「每次导航后兜底」，能否建立身份就取决于 AI 的路线是否恰好先经过
+         **带身份菜单的页**：AI 走「等价直达 order_new.html」（该页头像节点是 NONE）
+         => 一次都没经过 => 保存按钮 `aria-disabled/perm-off` => 30s 超时整条红；
+         同一场景把首步改成 `goto orders.html` 就过。**同一条用例通过与否押在 AI 路线上**，
+         这不是可接受的不稳定。
+      => 口径：登录落地后立刻 `goto(场景声明的 host 页)`，用**同一引擎**把前置做掉；
+         没做成**当场红**并打印哪一步没解析到（不静默降级、不留到收尾闸猜）。
+    """
+    cid = _CURRENT_CASE.get("cid") or ""
+    steps, host = _pre_steps_of(cid)
+    if not steps:
+        return
+    if cid in _SCENE_PRE_DONE:
+        return
+    if not host:
+        raise RuntimeError(
+            f"用例 {cid} 声明了身份前置 {steps}，但生成期没记到 host 页（_pre.json 的 url 为空）"
+            f" —— 不知道该在哪一页建立身份，拒绝在错误身份下继续（不静默降级）")
+    # [!] 与 `_goto` / `_login_flow` 同一个改写入口（L22）：host 是**生成期**记录的地址，
+    #   设了 `HYBRID_BASE_URL` 后裸 `pg.goto(_host)` 会打到别的实例。
+    base = _rewrite_base(host)
+    _nav(page, base)
+    _wait_ready(page, base)
+    from framework.shared.pre_actions_run import run_pre_actions
+    done = run_pre_actions(page, steps, "场景身份前置", require_all_resolvable=True,
+                           resolvable_wait_ms=15000, log_tag="setup")
+    if len(done) == len(steps):
+        _SCENE_PRE_DONE.add(cid)
+        print(f"      [setup] [key] 身份前置已建立：{done} @ {base}")
+        return
+    raise RuntimeError(
+        f"场景声明的身份前置在 host 页 {base} 上没能建立（完成 {done} / 声明 {steps}，用例 {cid}）"
+        f" —— 后面的步骤会在错误身份下跑（保存按钮置灰/菜单项不可见），故当场判红（不静默降级）"
+        f"；若该页确实没有身份菜单，请把场景的 `probe_pre_host` 改成**带业务导航**的那一页")
 
 
 def _maybe_scene_pre(page):
@@ -3547,31 +3594,19 @@ def page(request, _pool):
         context.add_init_script("window.__HYBRID_W = " + repr(_PARTITION) + ";")
     context.tracing.start(screenshots=True, snapshots=True)
     pg = context.new_page()
-    # ---- 2026-10-10 A 方案主路径：**用例体之前**先把声明的身份建立好 ----
-    # 先导航到声明的那一页（带业务导航的页），再按**唯一引擎**跑前置；不依赖用例自己的路线
-    # （AI 会「等价直达 order_new.html」，实测那页连头像节点都没有 -> 前置永远没机会跑）。
-    # 身份是**会话级**的（服务端按 token 记角色）=> 建好之后用例怎么走都还在。
+    # ---- 2026-11-10 V8.10.1：**不在这里**跑场景身份前置 ----
+    # 实测（Windows 真机，V8.10.0）：这个 fixture 在**登录之前**执行（登录是用例体的前导步骤），
+    # 那时还没有会话 -> 身份菜单（`超`）根本解析不到 -> 这块**从来没真正生效过**，
+    # 真正起作用的是「每次导航后兜底 `_maybe_scene_pre`」= 能否建立身份取决于 AI 的路线
+    # 是否恰好先经过带身份菜单的页（实测：AI 用「等价直达 order_new.html」那条路就没经过，
+    # 保存按钮 `perm-off` -> 30s 超时整条红；把首步改成 goto orders.html 就过）。
+    # => 口径：主路径挪到 `_ensure_scene_pre()`，由生成的用例在**登录之后、用例体第一步之前**
+    #    显式调用（先 goto 场景声明的 host 页，再用同一引擎把前置做掉，不成当场红）。
+    #    这里只留收尾闸（兜底路径 `_maybe_scene_pre` 仍会在每次导航后重试）。
     _steps, _host = _pre_steps_of(_cid)
-    if _steps and _host:
-        try:
-            # [!] 与 `_goto` / `_login_flow` 同一个改写入口（2026-11-04 L22）：
-            #   身份前置原来也是裸 `pg.goto(_host)`，`_host` 是**生成期**记录的地址 —— 设了
-            #   `HYBRID_BASE_URL` 后它会打到别的实例（本机表现为 ERR_CONNECTION_REFUSED，
-            #   有实例在时更糟：静默在错的身份下跑完整条用例）。
-            pg.goto(_rewrite_base(_host))
-            _wait_ready(pg, _rewrite_base(_host))
-            from framework.shared.pre_actions_run import run_pre_actions
-            _done = run_pre_actions(pg, _steps, "场景身份前置", require_all_resolvable=True,
-                                    resolvable_wait_ms=15000, log_tag="setup")
-            if len(_done) == len(_steps):
-                _SCENE_PRE_DONE.add(_cid)
-                print(f"      [setup] [key] 身份前置已建立：{_done} @ {_host}")
-            else:
-                print(f"      [setup] [!] 身份前置在声明的 host 上没跑全"
-                      f"（完成 {_done} / 声明 {_steps}）-> 交给收尾闸判红（不静默）")
-        except Exception as _e_pre:            # noqa: BLE001
-            print(f"      [setup] [!] 身份前置执行异常：{type(_e_pre).__name__}: {_e_pre}"
-                  f" -> 交给收尾闸判红（不静默）")
+    if _steps and not _host:
+        print(f"      [setup] [!] 身份前置声明了 {len(_steps)} 步但没记到 host 页"
+              f" -> 只能靠每次导航后的兜底路径（稳定性差）")
     try:
         yield pg
         # 2026-10-10 A 方案收尾闸：整条用例都没能把声明的**身份前置**跑全 -> 当场红（不静默）。

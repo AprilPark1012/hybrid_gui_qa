@@ -161,3 +161,87 @@ def test_generator_uses_declared_host_not_business_words():
     assert '"login" in _u.lower()' not in src and '"\u767b\u5f55" in _n' not in src, (
         "generator 仍在用 login/登录 猜前置 host（业务词进框架层）；" 
         "应改为读场景的 probe_pre_host")
+
+# ---- V8.10.1：身份前置的执行时机（Windows 真机 V8.10.0 实测暴露的确定性缺陷）----
+
+def _gen_src() -> str:
+    return (REPO / "framework" / "features" / "f02_semantic" / "generator_generate.py").read_text(
+        encoding="utf-8", errors="replace")
+
+
+def _cli_src() -> str:
+    return (REPO / "framework" / "features" / "f10_cli" / "cli.py").read_text(
+        encoding="utf-8", errors="replace")
+
+
+def test_identity_pre_not_run_before_login_in_fixture():
+    """身份前置**不许**在 `page` fixture 里跑 —— 那时还没登录，身份菜单必然解析不到。
+
+    实测（V8.10.0 Windows）：AI 走「等价直达 order_new.html」那条路，fixture 里那次
+    前置永远落空 -> 只剩"每次导航后兜底" -> 能否建立身份取决于 AI 路线是否经过带菜单的页。
+    """
+    src = _gen_src()
+    assert "A 方案主路径" not in src, "page fixture 里又出现了「用例体之前」跑身份前置的旧实现"
+    assert "pg.goto(_rewrite_base(_host))" not in src, (
+        "fixture 里仍有裸 pg.goto(_host) 的前置主路径（登录之前跑 -> 必然落空）")
+
+
+def test_identity_pre_has_single_explicit_entry_after_login():
+    """身份前置的唯一主路径是 `_ensure_scene_pre(page)`，且必须在**登录前导之后**调用。"""
+    src = _gen_src()
+    assert "def _ensure_scene_pre(page):" in src, "缺少 `_ensure_scene_pre`（身份前置唯一主路径）"
+    i_login = src.index("lines.extend(_login_lines_for(case, target_url()))")
+    i_call = src.index('lines.append("    _ensure_scene_pre(page)')
+    assert i_call > i_login, "`_ensure_scene_pre(page)` 必须渲染在登录前导之后（否则等于登录前跑）"
+    # 必须自己导航到 host 页（不能指望用例路线）
+    body = src[src.index("def _ensure_scene_pre(page):"):src.index("def _maybe_scene_pre(page):")]
+    assert "_nav(page, base)" in body, "`_ensure_scene_pre` 必须自己去 host 页（_nav）"
+
+
+def test_identity_pre_fails_loudly_when_host_unreachable():
+    """身份前置建不起来必须**当场红**（不许 print 后静默降级 —— 那正是"绿但身份错"的来源）。"""
+    src = _gen_src()
+    body = src[src.index("def _ensure_scene_pre(page):"):src.index("def _maybe_scene_pre(page):")]
+    assert "raise RuntimeError(" in body, "`_ensure_scene_pre` 没做成时必须当场 raise"
+    assert "probe_pre_host" in body, "报错文案要给出修法（把 probe_pre_host 指到带业务导航的页）"
+
+
+def test_probe_runs_declared_pre_host_and_warns_when_wrong():
+    """探针期必须**在声明的 `probe_pre_host` 页**整组跑前置；跑不全要大声告警。
+
+    实测（V8.10.1 起点）：探针"逐页尝试、能跑就跑"，于是 `probe_pre_host` 指错页也照样绿 ——
+    探针在别的页凑齐序列，执行期严格按 host 页跑 -> 必红（实测白烧两轮 AI）。
+    """
+    src = (REPO / "framework" / "features" / "f03_locate" / "scan_pages_probe.py").read_text(
+        encoding="utf-8", errors="replace")
+    assert "pre_host=" in src, "scan_pages 没接 `pre_host`（探针期无法按声明的 host 页跑前置）"
+    assert "_name == pre_host" in src, "探针期没有「到 host 页整组跑一次」的分支"
+    assert "指错了页" in src, "host 页跑不全时没有告警点名「多半指错了页」"
+    cli = _cli_src()
+    assert '"probe_pre_host"' in cli, "cli 的 job 没把 probe_pre_host 带下去（探针期拿不到 host）"
+
+
+def test_retry_rounds_get_fresh_case_id():
+    """重试轮必须换新 case_id —— 否则上一轮的坏用例被覆盖，事后无从复盘。"""
+    src = _cli_src()
+    assert "if retry_seq > 0:" in src, "重试轮没有重置 case_id 的逻辑"
+    seg = src[src.index("if retry_seq > 0:"):]
+    seg = seg[:seg.index("done = []")]
+    assert "make_case_id_from_scenario_id" in seg, "重试轮没重算 case_id（坏用例会被下一轮覆盖）"
+
+
+def test_generate_ng_echoes_quality_warning_reason():
+    """generate 拒绝产出时，必须把「质量警告 / 缺失项」这类**真原因**回显给用户和 AI。
+
+    实测（V8.10.0 Windows）：原来只打第一条以 `[generate]` 开头的行 —— 真原因
+    「[!] 质量警告: 有 2 个操作步骤没有绑定元素…」不以 `[generate]` 开头，被跳过，
+    用户看到的是一句无关的 `[generate] [key] 场景声明了身份前置…`，误判成「AI 乱来」。
+    """
+    src = _cli_src()
+    assert "_why_marks" in src
+    seg = src[src.index("_why_marks"):src.index("reasons.extend(")]
+    for k in ("质量警告", "缺失项", "没绑定元素"):
+        assert k in seg, f"NG 原因回显的匹配关键字少了「{k}」"
+    # L0 产出物档校验不合格时也必须**当场**打原因（原来只打标题，原因要等重试用尽才吐）
+    assert "本轮不合格原因" in src, "L0 校验不合格没有当场回显原因（中途看着像莫名其妙就红）"
+

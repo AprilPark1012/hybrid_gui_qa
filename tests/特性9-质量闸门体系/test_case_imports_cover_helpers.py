@@ -29,7 +29,8 @@ def _imported_from_harness() -> set[str]:
 # 教训（2026-11-09 真跑）：跨 origin 的 `_spread_session(...)` 渲染进了用例，
 # 但 import 列表没加 -> `NameError: name '_spread_session' is not defined`。
 # 生成期闸门全绿、试跑才红 —— 所以把它并进这条判据。
-_RENDERED_HELPERS = ("_assert_[a-z_]+", "_spread_session", "_act_row", "_click_row_cell", "_Tabs")
+_RENDERED_HELPERS = ("_assert_[a-z_]+", "_spread_session", "_ensure_scene_pre",
+                    "_act_row", "_click_row_cell", "_Tabs")
 
 
 def _rendered_assert_helpers() -> set[str]:

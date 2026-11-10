@@ -513,7 +513,7 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
                  to_cases: bool = True,
                  pages: list[dict] | None = None, cassette=None, cassette_strict: bool = False,
                  auth: dict | None = None, retry_feedback: str = "",
-                 probe_pre: list | None = None):
+                 probe_pre: list | None = None, pre_host: str = ""):
     """跑一次 AI 语义识别（+ 可选落 cases/）。返回 (emap, case_path | None, warns, qerr)。
 
     qerr（V8.4）：假绿红线拦下时的失败原因**文本**，通过= None。
@@ -540,7 +540,7 @@ def _explore_one(scenario_text: str, url: str, *, label: str = "", page_bg: str 
     emap = ai_explore(scenario_text, [], url,
                       page_bg=page_bg, guard=guard_text, pages=pages, llm_cassette=cassette,
                       cassette_strict=cassette_strict, auth=auth, retry_feedback=retry_feedback,
-                      probe_pre=probe_pre)
+                      probe_pre=probe_pre, pre_host=str(pre_host or ""))
     print(f"{prefix}[explore] 生成 ElementMap: {len(emap.steps)} 步")
     for st in emap.steps:
         el = st.element
@@ -730,7 +730,10 @@ def cmd_explore(rest: list[str] = None):
             # P22 批 5：把场景的**登录前置声明**带进 job —— 不带的话跨页探测每页都只拿到登录页控件
         #（实测 2026-09-30：7 页全是 7 个控件 -> AI 的 31 个步骤 element 全为空）
         jobs.append({**_job_from_scenario(sc, sc.scenario), "auth": (_decl_login_of(sc)),
-                 "probe_pre": list(sc.probe_pre or [])})
+                 "probe_pre": list(sc.probe_pre or []),
+                 # V8.10.1：声明的 host 页也要带下去 —— 探针期就在这一页整组跑前置，
+                 # 指错页会当场告警（否则探针在别的页凑齐、执行期严格按 host 页跑 -> 必红）
+                 "probe_pre_host": str(getattr(sc, "probe_pre_host", "") or "")})
     elif sfile:
         from pathlib import Path
         from framework.features.f02_semantic.scenario_generate import ScenarioError, load_scenario_file
@@ -747,7 +750,10 @@ def cmd_explore(rest: list[str] = None):
         # P22 批 5：把场景的**登录前置声明**带进 job —— 不带的话跨页探测每页都只拿到登录页控件
         #（实测 2026-09-30：7 页全是 7 个控件 -> AI 的 31 个步骤 element 全为空）
         jobs.append({**_job_from_scenario(sc, sc.scenario), "auth": (_decl_login_of(sc)),
-                 "probe_pre": list(sc.probe_pre or [])})
+                 "probe_pre": list(sc.probe_pre or []),
+                 # V8.10.1：声明的 host 页也要带下去 —— 探针期就在这一页整组跑前置，
+                 # 指错页会当场告警（否则探针在别的页凑齐、执行期严格按 host 页跑 -> 必红）
+                 "probe_pre_host": str(getattr(sc, "probe_pre_host", "") or "")})
     else:
         jobs.append(dict(
             label="", text=inline or "在合同列表页面的搜索框输入'合同1'，然后点击搜索按钮查看结果。",
@@ -786,6 +792,17 @@ def cmd_explore(rest: list[str] = None):
     retry_seq = 0
     prev_sources: dict[str, str] | None = None   # 上一轮各用例出自哪条录像（回放模式短路用）
     while True:
+        # [!] V8.10.1（2026-11-10 Windows 真机实测）：**重试轮必须换新 case_id**。
+        #   原来 case_id 在收集作业时（`_job_from_scenario`）只算**一次**，重试沿用同一个 id
+        #   => 三轮全部落到 `ai_<sid>_125401.json` **同一个文件**：第 2 轮的坏用例被第 3 轮覆盖，
+        #   事后想复盘「第 1 轮到底哪步空 element」只剩控制台那几行。
+        #   下面回放短路的注释本来就写着「文件名带秒级时间戳，换轮会变」—— 与实现不符，本次改齐。
+        #   口径：第 2 轮起每轮重算（仍是 `ai_<sid>_<HHMMSS>` 合法形态，清理判据 `_strict_ai` 不受影响）。
+        if retry_seq > 0:
+            for _j in jobs:
+                _j["case_id"] = make_case_id_from_scenario_id(str(_j["label"]))
+                print(f"[explore] [i] 第 {retry_seq + 1} 轮换新用例 id：{_j['case_id']}"
+                      f"（上一轮的产物保留在 cases/ 里可复盘，不再被覆盖）")
         done = []           # 每轮重新收集（重跑时旧产物不该混进来）
         for idx, job in enumerate(jobs, 1):
             if len(jobs) > 1:
@@ -807,7 +824,8 @@ def cmd_explore(rest: list[str] = None):
                         case_id=job["case_id"], extra=job["extra"],
                         to_cases=to_cases, pages=job.get("pages"),
                         cassette=cassette, cassette_strict=cassette_strict, auth=job.get("auth"),
-                        retry_feedback=feedback, probe_pre=job.get("probe_pre"))
+                        retry_feedback=feedback, probe_pre=job.get("probe_pre"),
+                        pre_host=job.get("probe_pre_host") or "")
                 except (AiExploreError, CassetteError) as e:
                     # V8.7.2（2026-10-25）：把 CassetteError 也接住 —— 回放允许重试之后，
                     #   **第二轮**的 lookup 可能缺录像。它原本只在 cassette 构造阶段被捕获
@@ -824,6 +842,16 @@ def cmd_explore(rest: list[str] = None):
                 if qerr is None:
                     break                       # 合格 -> 收工
                 print(f"[explore] [!] [L0 产出物档] 第 {attempt + 1}/{retry_limit + 1} 次产出**校验不合格**")
+                # [!] V8.10.1（2026-11-10 真机实测）：这里原来只打标题、**不打原因** ——
+                #   真正的拒绝理由（哪几步没绑元素 / 哪几个名字不在清单里）要等到"重试用尽"
+                #   才一次性吐出来，中途看着就像"莫名其妙就不合格"。口径：当场打印本轮原因（有界）。
+                if qerr:
+                    _ql = [ln.rstrip() for ln in str(qerr).splitlines() if ln.strip()]
+                    print("[explore]    本轮不合格原因：")
+                    for _ln in _ql[:8]:
+                        print(f"      {_ln[:240]}")
+                    if len(_ql) > 8:
+                        print(f"      …（另有 {len(_ql) - 8} 行，重试用尽时会完整打印）")
                 # [!] 回放模式下的**真死路**（2026-11-02 实测）：重试的 prompt 虽然带了本轮失败原因，
                 #   但录像目录里若没有那一轮，lookup 会**回落到相似度**并选中**同一份**录像 ->
                 #   拿到的还是同一个已被判不合格的答案，转两圈白跑，最后只报"重试用尽"，
@@ -1207,15 +1235,29 @@ def _verify_cases_detailed(entries: list[tuple[str, str]]) -> tuple[bool | None,
             print("  [NG] 校验不合格：AI 产出不完整 -> generate 拒绝产出脚本"
                   "（映射质量闸拦下，不是环境问题；带原因让 AI 重新生成）")
             reasons.append("AI 产出的用例没能生成脚本（generate 被映射质量闸拦下）：")
+            # [!] V8.10.1（2026-11-10 真机实测）：原来只用 `t.startswith("[generate]")` 挑**第一行**
+            #   打出来 —— 真原因（`[!] 质量警告: 有 2 个操作步骤没有绑定元素…`）不以 `[generate]`
+            #   开头，于是被跳过；用户看到的是紧跟其后的一句无关的 `[generate] [key] 场景声明了身份前置…`
+            #   => 误判成「AI 乱来」。口径：按内容关键字**全量**收集（有几条打几条，有上限），
+            #   打印与喂回 AI 的 reasons 用同一份清单（不许一处有一处无）。
+            _why_marks = ("缺失项", "质量警告", "没绑定元素", "没有 element",
+                          "element 为空", "映射不上", "allow-unmapped", "未映射")
+            _whys: list[str] = []
             for line in tail.splitlines():
                 t = line.strip()
-                if t.startswith("[generate]") or "没有 element" in t or "映射不上" in t:
-                    print(f"     {t[:160]}")
-                    break
-            for line in tail.splitlines():
-                t = line.strip()
-                if "缺失项" in t or "没有 element" in t:
-                    reasons.append("  " + t[:400])
+                if t and any(k in t for k in _why_marks):
+                    _whys.append(t[:300])
+            if not _whys:                      # 兜底：关键字全不中时至少给一条 generate 行
+                for line in tail.splitlines():
+                    t = line.strip()
+                    if t.startswith("[generate]"):
+                        _whys.append(t[:300])
+                        break
+            for _i, _w in enumerate(_whys[:8], 1):
+                print(f"     原因{_i}. {_w}")
+            if len(_whys) > 8:
+                print(f"     …（另有 {len(_whys) - 8} 条，见完整日志）")
+            reasons.extend("  " + _w[:400] for _w in _whys[:8])
             reasons.append("  要求：**每个 click/fill/select/check 步骤都必须给出 element**"
                            "（必须是探测清单里真实存在的语义名，不许自造，也不许留空）。")
             return False, "\n".join(reasons)

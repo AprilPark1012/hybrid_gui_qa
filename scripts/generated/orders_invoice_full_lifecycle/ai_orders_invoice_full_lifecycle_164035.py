@@ -1,19 +1,20 @@
-"""hybrid_gui_qa 用例模块：ai_orders_invoice_full_lifecycle_100728（场景 orders_invoice_full_lifecycle）—— 由 cases/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_100728.json 自动生成。
+"""hybrid_gui_qa 用例模块：ai_orders_invoice_full_lifecycle_164035（场景 orders_invoice_full_lifecycle）—— 由 cases/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_164035.json 自动生成。
 
 **不要手改本文件**：改用例后重跑 generate 会覆盖它。要改行为 → 改用例 json / 场景 yml。
-数据抽离在 scripts/datasets/ai_orders_invoice_full_lifecycle_100728.json（脚本与数据分离）。
+数据抽离在 scripts/datasets/ai_orders_invoice_full_lifecycle_164035.json（脚本与数据分离）。
 一个用例一个文件（P20）：便于按 id 管理、按变化增量重生成。
 
 运行（推荐走 cli：自带资源预检 + run-id 隔离的日志/报告）:
   python -m framework.cli run --workers 2                 # 全量
-  python -m framework.cli run --debug --case ai_orders_invoice_full_lifecycle_100728        # 只调试这一条
+  python -m framework.cli run --debug --case ai_orders_invoice_full_lifecycle_164035        # 只调试这一条
 裸跑 pytest（未设 HYBRID_RUN_ID 时日志落 log/latest/）:
-  pytest scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_100728.py -v
+  pytest scripts/generated/orders_invoice_full_lifecycle/ai_orders_invoice_full_lifecycle_164035.py -v
 """
 from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       _login_flow,
                       # V8.10.0 跨 origin：登录后铺会话（模板里会渲染这个调用，漏 import = NameError）
                       _spread_session,
+                      _ensure_scene_pre,
                       # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
                       # [!] 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
                       _ds_params, _ds_ids,
@@ -42,7 +43,7 @@ from framework.features.f03_locate.scope_locate import drill as _drill
 import pytest
 from playwright.sync_api import expect as _pw_expect
 
-def test_ai_orders_invoice_full_lifecycle_100728(page, ctx):
+def test_ai_orders_invoice_full_lifecycle_164035(page, ctx):
     """【起手状态 · 最重要 · 不要写成步骤】本用例**开局时的页面就是「合同列表页」**，
    且已以**超级管理员**登录、已切换到**订单管理员**角色。
    这两件事由场景级前置 `probe_pre` 自动完成，**用例的第 1 步直接就是\"在合同列表页勾选合同\"**。
@@ -83,210 +84,197 @@ def test_ai_orders_invoice_full_lifecycle_100728(page, ctx):
 8. 切换到**发票管理员**角色；在订单列表里**选中该订单**，点「去开票」。
 9. 在开票页确认订单编号/合同编号已带入（发票号是系统生成的），填写发票行后点「保存」，完成发票创建。
 10. 进入发票列表页，在**订单名称**搜索框输入该订单名称，点「搜索」-> 能搜到刚创建的那张发票。"""
-    _CURRENT_LOG["case_id"] = "ai_orders_invoice_full_lifecycle_100728"
-    _t = _Tabs(page)          # 多 tab：点了会开新 tab 的控件后 page 会被重新绑定到新 tab
-    _goto(page, 'http://localhost:8000/login.html')
-    # ---- 登录（L35：场景自然语言 -> 同一规划器 -> 同一套定位栈；步骤已固化在用例里）----
-    _login_flow(page, [{'order': 0, 'op': 'goto', 'element': None, 'value': 'http://localhost:8000/login.html', 'assertion': None, 'desc': '打开 http://localhost:8000/login.html', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}, {'order': 1, 'op': 'fill', 'element': {'semantic_name': '账号', 'role': 'textbox', 'name': '账号', 'label': None, 'placeholder': '请输入账号', 'test_id': '', 'element_id': None, 'text': '账号', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '账号', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': 'super', 'assertion': None, 'desc': '在登录页账号输入框填入账号 super', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}, {'order': 2, 'op': 'fill', 'element': {'semantic_name': '密码', 'role': 'textbox', 'name': '密码', 'label': None, 'placeholder': '请输入密码', 'test_id': '', 'element_id': None, 'text': '密码', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '密码', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': 'super@123', 'assertion': None, 'desc': '在登录页密码输入框填入密码 super@123', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}, {'order': 3, 'op': 'click', 'element': {'semantic_name': '登_录', 'role': 'button', 'name': '登 录', 'label': None, 'placeholder': '', 'test_id': '', 'element_id': None, 'text': '登 录', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': None, 'assertion': None, 'desc': '点击「登录」按钮提交登录', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}], {'url_not': 'login.html'}, 'http://localhost:8000/login.html')
-    # ---- 登录步骤结束 ----
-    _log(page, "场景开始", f"case=ai_orders_invoice_full_lifecycle_100728")
-
-    # step 1: 打开 【登录页】http://localhost:8000/login.html
+    _CURRENT_LOG["case_id"] = "ai_orders_invoice_full_lifecycle_164035"
     _goto(page, 'http://localhost:8000/')
-    _log(page, "goto", f"打开 【登录页】http://localhost:8000/login.html")
+    # ---- 登录（L35：场景自然语言 -> 同一规划器 -> 同一套定位栈；步骤已固化在用例里）----
+    _login_flow(page, [{'order': 0, 'op': 'goto', 'element': None, 'value': 'http://localhost:8000/login.html', 'assertion': None, 'desc': '打开 http://localhost:8000/login.html', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}, {'order': 1, 'op': 'fill', 'element': {'semantic_name': '账号', 'role': 'textbox', 'name': '账号', 'label': None, 'placeholder': '请输入账号', 'test_id': '', 'element_id': None, 'text': '账号', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '账号', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': 'super', 'assertion': None, 'desc': '在登录页账号输入框填写账号 super', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}, {'order': 2, 'op': 'fill', 'element': {'semantic_name': '密码', 'role': 'textbox', 'name': '密码', 'label': None, 'placeholder': '请输入密码', 'test_id': '', 'element_id': None, 'text': '密码', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '密码', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': 'super@123', 'assertion': None, 'desc': '在登录页密码输入框填写密码 super@123', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}, {'order': 3, 'op': 'click', 'element': {'semantic_name': '登_录', 'role': 'button', 'name': '登 录', 'label': None, 'placeholder': '', 'test_id': '', 'element_id': None, 'text': '登 录', 'page_hint': None, 'container_heading': '演示系统登录', 'nearby_text': '演示系统登录 合同 / 订单 / 发票 三个模块 + 超级管理员 *账号 *密码 角色账号密码 合同管理员contractcontract@123订单管理员or', 'help_text': '', 'notes': '', 'anchor': None, 'path': None, 'isValid': True}, 'value': None, 'assertion': None, 'desc': '点击登录按钮提交，进入系统首页', 'row_text': None, 'cell_field': None, 'cell_by': None, 'cell_index': None, 'row_index': None, 'row_id': None, 'index': None}], {'url_not': 'login.html'}, 'http://localhost:8000/login.html')
+    # ---- 登录步骤结束 ----
+    _ensure_scene_pre(page)   # 身份前置（无声明 -> 立即返回）
+    _log(page, "场景开始", f"case=ai_orders_invoice_full_lifecycle_164035")
 
-    # step 2: 起手即在合同列表页勾选第一行合同 HT-1001（页面已在合同列表页，禁止导航/登录）
-    _act(page, "check", semantic='选择合同_HT_1001', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1001").locator("xpath=.//*[@*[starts-with(name(), 'data-')][.='pick']]").get_by_role("radio"))
-    _log(page, "check", f"起手即在合同列表页勾选第一行合同 HT-1001（页面已在合同列表页，禁止导航/登录）")
-
-    # step 3: 等价直达新建订单页并带入合同 HT-1001（点「新建订单」开的是 iframe 弹层，探测链路不覆盖，故走直达）
+    # step 1: 等价直达：合同列表页点「新建订单」为 iframe 弹层（探测链路不覆盖），按场景声明直接打开新建订单页并带入合同 HT-1001
     _goto(page, 'http://localhost:8000/order_new.html?contract_no=HT-1001')
-    _log(page, "goto", f"等价直达新建订单页并带入合同 HT-1001（点「新建订单」开的是 iframe 弹层，探测链路不覆盖，故走直达）")
-    _assert_url(page, _data('expect_0', ctx), '到达证据：确认已进入新建订单页')
+    _log(page, "goto", f"等价直达：合同列表页点「新建订单」为 iframe 弹层（探测链路不覆盖），按场景声明直接打开新建订单页并带入合同 HT-1001")
+    _assert_url(page, _data('expect_0', ctx), '到达证据：已进入新建订单页')
 
-    # step 4: 填写订单名称（全系统唯一，用 {datetime} 占位保证可重复跑）
+    # step 2: 填写订单名称（必填、全系统唯一，{datetime} 占位符逐字保留）
     _act(page, "fill", semantic='订单名称@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*订单名称").locator("td").nth(1).get_by_role("textbox"), value=_data('fill_0', ctx))
-    _log(page, "fill", f"填写订单名称（全系统唯一，用 {{datetime}} 占位保证可重复跑）")
+    _log(page, "fill", f"填写订单名称（必填、全系统唯一，{{datetime}} 占位符逐字保留）")
 
-    # step 5: 业务单元选第一项（必填）
+    # step 3: 业务单元选第一行（必填）
     _act(page, "select", semantic='业务单元@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*业务单元").locator("td").nth(1).get_by_role("combobox"), index=0)
-    _log(page, "select", f"业务单元选第一项（必填）")
+    _log(page, "select", f"业务单元选第一行（必填）")
 
-    # step 6: 管理单元选第一项（必填）
+    # step 4: 管理单元选第一行（必填）
     _act(page, "select", semantic='管理单元@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*管理单元").locator("td").nth(1).get_by_role("combobox"), index=0)
-    _log(page, "select", f"管理单元选第一项（必填）")
+    _log(page, "select", f"管理单元选第一行（必填）")
 
-    # step 7: 帐套选第一项（必填）
+    # step 5: 帐套选第一行（必填）
     _act(page, "select", semantic='帐套@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*帐套").locator("td").nth(1).get_by_role("combobox"), index=0)
-    _log(page, "select", f"帐套选第一项（必填）")
+    _log(page, "select", f"帐套选第一行（必填）")
 
-    # step 8: 订单类型选第一项（必填）
+    # step 6: 订单类型选第一项（必填）
     _act(page, "select", semantic='订单类型@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*订单类型").locator("td").nth(1).get_by_role("combobox"), index=0)
     _log(page, "select", f"订单类型选第一项（必填）")
 
-    # step 9: 客户选第一个（必填）
+    # step 7: 客户选第一个（必填）
     _act(page, "select", semantic='客户@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*客户").locator("td").nth(1).get_by_role("combobox"), index=0)
     _log(page, "select", f"客户选第一个（必填）")
 
-    # step 10: 销售员选第一个（必填）
+    # step 8: 销售员选第一个（必填）
     _act(page, "select", semantic='销售员@新建订单页', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="*销售员").locator("td").nth(1).get_by_role("combobox"), index=0)
     _log(page, "select", f"销售员选第一个（必填）")
 
-    # step 11: 填写订单备注（选填）
+    # step 9: 订单备注填「端到端全链路场景」
     _act(page, "fill", semantic='订单备注', primary=lambda p: p.get_by_test_id("form-order-new").locator("tbody tr").filter(has_text="订单备注").locator("td").nth(1).get_by_role("textbox"), value=_data('fill_1', ctx))
-    _log(page, "fill", f"填写订单备注（选填）")
+    _log(page, "fill", f"订单备注填「端到端全链路场景」")
 
-    # step 12: 保存新建订单（需订单管理员角色，身份前置已就绪；新订单插在订单列表最前面）
+    # step 10: 点「保存」创建订单（当前为订单管理员角色，保存可用）
     _act(page, "click", semantic='保存@新建订单页', primary=lambda p: p.locator("#btn-o-submit"))
-    _log(page, "click", f"保存新建订单（需订单管理员角色，身份前置已就绪；新订单插在订单列表最前面）")
+    _log(page, "click", f"点「保存」创建订单（当前为订单管理员角色，保存可用）")
 
-    # step 13: 回到合同列表页（页面重载会清掉之前的勾选）
-    _goto(page, 'http://localhost:8000/')
-    _log(page, "goto", f"回到合同列表页（页面重载会清掉之前的勾选）")
-    _assert_text(page, _data('expect_1', ctx), '到达证据：确认回到合同列表页（页面固定标题）')
+    # step 11: 回订单列表页（合同列表页重勾选后点「查看订单」开新 tab 的链路在探测清单中无该按钮，走等价直达订单列表页）
+    _goto(page, 'http://localhost:8000/orders.html')
+    _log(page, "goto", f"回订单列表页（合同列表页重勾选后点「查看订单」开新 tab 的链路在探测清单中无该按钮，走等价直达订单列表页）")
+    _assert_url(page, _data('expect_1', ctx), '到达证据：已进入订单列表页')
 
-    # step 14: 顺序①：先重新勾选第一行合同 HT-1001（必须先勾选，查看订单按钮才会出现）
-    _act(page, "check", semantic='选择合同_HT_1001', primary=lambda p: p.get_by_test_id("tbl-contracts").locator("tbody tr").filter(has_text="HT-1001").locator("xpath=.//*[@*[starts-with(name(), 'data-')][.='pick']]").get_by_role("radio"))
-    _log(page, "check", f"顺序①：先重新勾选第一行合同 HT-1001（必须先勾选，查看订单按钮才会出现）")
-    _assert_text(page, _data('expect_2', ctx), '顺序②：勾选之后再确认「查看订单」按钮出现（不在勾选之前断言）')
-
-    # step 15: 顺序③：点「查看订单」——window.open 新开订单系统标签页，当前标签页仍停在合同列表页
-    page = _t.open_new(lambda: _act(page, "click", semantic='查看订单', primary=lambda p: p.locator("#btn-view-orders")))
-    _log(page, "click_new_tab", f"顺序③：点「查看订单」——window.open 新开订单系统标签页，当前标签页仍停在合同列表页")
-    _assert_url(page, _data('expect_3', ctx), '到达证据：新标签页已进入订单列表页（不要在旧标签页断言订单系统 URL）')
-
-    # step 16: 顺序④：在新标签页的订单名称搜索框输入刚填的订单名称
+    # step 12: 在订单系统筛选区的订单名称搜索框输入刚建的订单名称
     _act(page, "fill", semantic='订单名称@订单列表页[订单系统]', primary=lambda p: p.locator("#tb-o-name"), value=_data('fill_2', ctx))
-    _log(page, "fill", f"顺序④：在新标签页的订单名称搜索框输入刚填的订单名称")
+    _log(page, "fill", f"在订单系统筛选区的订单名称搜索框输入刚建的订单名称")
 
-    # step 17: 点「搜索」查刚建的订单
+    # step 13: 点「搜索」
     _act(page, "click", semantic='搜索@订单列表页', primary=lambda p: p.locator("#btn-search-o"))
-    _log(page, "click", f"点「搜索」查刚建的订单")
-    _assert_first_row(page, 'orderName', _data('expect_4', ctx), '验证订单已创建并被搜到：订单列表第一行的订单名称列即刚建的这条', timeout_ms=160000, refresh='research')
+    _log(page, "click", f"点「搜索」")
+    _assert_first_row(page, 'orderName', _data('expect_2', ctx), '验证列表第一行就是刚创建的订单（结构性证据）', timeout_ms=160000, refresh='research')
 
-    # step 18: 点这条订单的订单名称进入订单详情页（当前页跳转）
+    # step 14: 点这一行的订单名称链接进入订单详情页
     _click_row_cell(page, row_text=_data('row_text_3', ctx), cell_field='orderName', tabs=None, op='click')
-    _log(page, "click", f"点这条订单的订单名称进入订单详情页（当前页跳转）")
-    _assert_url(page, _data('expect_5', ctx), '到达证据：确认已进入订单详情页')
+    _log(page, "click", f"点这一行的订单名称链接进入订单详情页")
+    _assert_url(page, _data('expect_3', ctx), '到达证据：已进入订单详情页')
 
-    # step 19: 点「编辑」进入编辑态（之后行工具栏的新增行/保存才可用）
+    # step 15: 点「编辑」进入编辑态（行工具栏的新增行/保存才可用）
     _act(page, "click", semantic='编辑', primary=lambda p: p.get_by_role("button", name="编辑"))
-    _log(page, "click", f"点「编辑」进入编辑态（之后行工具栏的新增行/保存才可用）")
+    _log(page, "click", f"点「编辑」进入编辑态（行工具栏的新增行/保存才可用）")
 
-    # step 20: 新增第 1 个订单行
+    # step 16: 新增第 1 个订单行
     _act(page, "click", semantic='新增行@订单详情页', primary=lambda p: p.locator('section[aria-label="详细信息"]').get_by_text("新增行", exact=True))
     _log(page, "click", f"新增第 1 个订单行")
 
-    # step 21: 在第 1 个新行（最后一行）填物料编码（该行必填 1/4）
+    # step 17: 填第 1 个新增行（最后一行）的物料编码（必填项）
     _act_row(page, '物料编码@订单详情页', -1, op='fill', value=_data('fill_4', ctx))
-    _log(page, "fill", f"在第 1 个新行（最后一行）填物料编码（该行必填 1/4）")
+    _log(page, "fill", f"填第 1 个新增行（最后一行）的物料编码（必填项）")
 
-    # step 22: 同行填产品编码（该行必填 2/4）
+    # step 18: 填该行的产品编码（必填项）
     _act_row(page, '产品编码@订单详情页', -1, op='fill', value=_data('fill_5', ctx))
-    _log(page, "fill", f"同行填产品编码（该行必填 2/4）")
+    _log(page, "fill", f"填该行的产品编码（必填项）")
 
-    # step 23: 同行填数量（该行必填 3/4）
+    # step 19: 填该行的数量（必填项）
     _act_row(page, '数量@订单详情页', -1, op='fill', value=_data('fill_6', ctx))
-    _log(page, "fill", f"同行填数量（该行必填 3/4）")
+    _log(page, "fill", f"填该行的数量（必填项）")
 
-    # step 24: 同行选行类型第一项（该行必填 4/4）
+    # step 20: 选该行的行类型（必填项，选第一项）
     _act_row(page, '行类型@订单详情页', -1, op='select')
-    _log(page, "select", f"同行选行类型第一项（该行必填 4/4）")
+    _log(page, "select", f"选该行的行类型（必填项，选第一项）")
 
-    # step 25: 新增第 2 个订单行
+    # step 21: 点行工具栏「保存」先把第 1 个新增订单行保存下来（每新增一行都要保存这一行）
+    _act(page, "click", semantic='保存@订单详情页[详细信息]', primary=lambda p: p.locator('section[aria-label="详细信息"]').get_by_text("保存", exact=True))
+    _log(page, "click", f"点行工具栏「保存」先把第 1 个新增订单行保存下来（每新增一行都要保存这一行）")
+
+    # step 22: 新增第 2 个订单行
     _act(page, "click", semantic='新增行@订单详情页', primary=lambda p: p.locator('section[aria-label="详细信息"]').get_by_text("新增行", exact=True))
     _log(page, "click", f"新增第 2 个订单行")
 
-    # step 26: 在第 2 个新行（最后一行）填物料编码（该行必填 1/4）
+    # step 23: 填第 2 个新增行（此时为最后一行）的物料编码
     _act_row(page, '物料编码@订单详情页', -1, op='fill', value=_data('fill_7', ctx))
-    _log(page, "fill", f"在第 2 个新行（最后一行）填物料编码（该行必填 1/4）")
+    _log(page, "fill", f"填第 2 个新增行（此时为最后一行）的物料编码")
 
-    # step 27: 同行填产品编码（该行必填 2/4）
+    # step 24: 填该行的产品编码
     _act_row(page, '产品编码@订单详情页', -1, op='fill', value=_data('fill_8', ctx))
-    _log(page, "fill", f"同行填产品编码（该行必填 2/4）")
+    _log(page, "fill", f"填该行的产品编码")
 
-    # step 28: 同行填数量（该行必填 3/4）
+    # step 25: 填该行的数量
     _act_row(page, '数量@订单详情页', -1, op='fill', value=_data('fill_9', ctx))
-    _log(page, "fill", f"同行填数量（该行必填 3/4）")
+    _log(page, "fill", f"填该行的数量")
 
-    # step 29: 同行选行类型第一项（该行必填 4/4）
+    # step 26: 选该行的行类型（选第一项）
     _act_row(page, '行类型@订单详情页', -1, op='select')
-    _log(page, "select", f"同行选行类型第一项（该行必填 4/4）")
+    _log(page, "select", f"选该行的行类型（选第一项）")
 
-    # step 30: 两行都填好后，保存第①步：先点行工具栏里的「保存」把订单行本身保存下来（缺这步整单存不下来）
+    # step 27: 行工具栏「保存」把第 2 个新增订单行保存下来
     _act(page, "click", semantic='保存@订单详情页[详细信息]', primary=lambda p: p.locator('section[aria-label="详细信息"]').get_by_text("保存", exact=True))
-    _log(page, "click", f"两行都填好后，保存第①步：先点行工具栏里的「保存」把订单行本身保存下来（缺这步整单存不下来）")
+    _log(page, "click", f"行工具栏「保存」把第 2 个新增订单行保存下来")
 
-    # step 31: 保存第②步：再点底部按钮行最右侧的「保存」完成整个订单的保存
+    # step 28: 点页面底部（按钮行最右）「保存」完成整个订单的保存（缺这步点提交不会生效）
     _act(page, "click", semantic='保存@订单详情页[订单详情]', primary=lambda p: p.locator("#btn-detail-edit"))
-    _log(page, "click", f"保存第②步：再点底部按钮行最右侧的「保存」完成整个订单的保存")
+    _log(page, "click", f"点页面底部（按钮行最右）「保存」完成整个订单的保存（缺这步点提交不会生效）")
 
-    # step 32: 最后点底部「提交」提交整个订单（先保存后提交，提交后进入履行状态按时间自动流转）
+    # step 29: 点「提交」提交整个订单（提交后进入履行状态，开始按时间自动流转）
     _act(page, "click", semantic='提交', primary=lambda p: p.locator("#btn-detail-submit"))
-    _log(page, "click", f"最后点底部「提交」提交整个订单（先保存后提交，提交后进入履行状态按时间自动流转）")
+    _log(page, "click", f"点「提交」提交整个订单（提交后进入履行状态，开始按时间自动流转）")
 
-    # step 33: 点底部「返回」回到订单列表（同一标签页内导航，不关 tab）
+    # step 30: 点底部最左「返回」回到订单列表
     _act(page, "click", semantic='返回', primary=lambda p: p.locator("#btn-back"))
-    _log(page, "click", f"点底部「返回」回到订单列表（同一标签页内导航，不关 tab）")
-    _assert_url(page, _data('expect_6', ctx), '到达证据：确认已回到订单列表页')
+    _log(page, "click", f"点底部最左「返回」回到订单列表")
+    _assert_url(page, _data('expect_4', ctx), '到达证据：已回到订单列表页')
 
-    # step 34: 用订单名称搜索找到该订单
+    # step 31: 再次在订单名称搜索框输入该订单名称
     _act(page, "fill", semantic='订单名称@订单列表页[订单系统]', primary=lambda p: p.locator("#tb-o-name"), value=_data('fill_10', ctx))
-    _log(page, "fill", f"用订单名称搜索找到该订单")
+    _log(page, "fill", f"再次在订单名称搜索框输入该订单名称")
 
-    # step 35: 执行搜索
+    # step 32: 点「搜索」定位这条订单
     _act(page, "click", semantic='搜索@订单列表页', primary=lambda p: p.locator("#btn-search-o"))
-    _log(page, "click", f"执行搜索")
-    _assert_first_row(page, 'orderStatus', _data('expect_7', ctx), '有界等待：订单提交后状态按时间自动流转，最长约 160 秒变为已关闭；等待时长由框架按场景声明自动设置并轮询首行状态列直到变化，不固定 sleep', timeout_ms=160000, refresh='research')
+    _log(page, "click", f"点「搜索」定位这条订单")
+    _assert_first_row(page, 'orderStatus', _data('expect_5', ctx), '有界等待：订单状态按时间自动流转，提交后最长约 160 秒才变「已关闭」，轮询首行状态列直至显示已关闭（等待时长由框架按场景声明自动设置，不写固定 sleep）', timeout_ms=160000, refresh='research')
 
-    # step 36: 先点右上角头像/菜单入口，展开角色菜单（切换按钮藏在菜单里，入口只开一次）
+    # step 33: 点开右上角角色菜单（切换角色按钮藏在该菜单内，须先点开入口）
     _act(page, "click", semantic='订@订单列表页', primary=lambda p: p.locator("#nu-avatar"))
-    _log(page, "click", f"先点右上角头像/菜单入口，展开角色菜单（切换按钮藏在菜单里，入口只开一次）")
+    _log(page, "click", f"点开右上角角色菜单（切换角色按钮藏在该菜单内，须先点开入口）")
 
-    # step 37: 切换到发票管理员角色（去开票与保存发票需要该角色）
+    # step 34: 切换到发票管理员角色（开票所需权限）
     _act(page, "click", semantic='切换为发票管理员@订单列表页', primary=lambda p: p.get_by_role("button", name="切换为发票管理员"))
-    _log(page, "click", f"切换到发票管理员角色（去开票与保存发票需要该角色）")
+    _log(page, "click", f"切换到发票管理员角色（开票所需权限）")
 
-    # step 38: 在订单列表里勾选该订单行（新订单在列表最前面；按行锚文本定位勾选列）
+    # step 35: 勾选刚建的这一行订单（第 1 列勾选框）
     _click_row_cell(page, row_text=_data('row_text_11', ctx), cell_field='', tabs=None, op='check', cell_by='index', cell_index=1)
-    _log(page, "check", f"在订单列表里勾选该订单行（新订单在列表最前面；按行锚文本定位勾选列）")
+    _log(page, "check", f"勾选刚建的这一行订单（第 1 列勾选框）")
 
-    # step 39: 点「去开票」，选中 1 条后跳到开票页并带入该订单（只能给已关闭订单开票，一单一票）
+    # step 36: 选中 1 条已关闭订单后点「去开票」跳转开票页
     _act(page, "click", semantic='去开票', primary=lambda p: p.locator("#btn-to-invoice"))
-    _log(page, "click", f"点「去开票」，选中 1 条后跳到开票页并带入该订单（只能给已关闭订单开票，一单一票）")
-    _assert_url(page, _data('expect_8', ctx), '到达证据：确认已进入开票页')
+    _log(page, "click", f"选中 1 条已关闭订单后点「去开票」跳转开票页")
+    _assert_url(page, _data('expect_6', ctx), '到达证据：已进入开票页')
+    _assert_text(page, _data('expect_7', ctx), '确认该订单的合同编号已自动带入（只读回显 HT-1001，订单编号为运行时分配不作断言）')
 
-    # step 40: 发票行第 1 行：期次号选第一项
+    # step 37: 填已自动带入的第 1 行发票行的期次号（选第一项）
     _act_row(page, '期次号', 1, op='select')
-    _log(page, "select", f"发票行第 1 行：期次号选第一项")
+    _log(page, "select", f"填已自动带入的第 1 行发票行的期次号（选第一项）")
 
-    # step 41: 发票行第 1 行：发票行类型选第一项
+    # step 38: 选该行的发票行类型（选第一项）
     _act_row(page, '发票行类型', 1, op='select')
-    _log(page, "select", f"发票行第 1 行：发票行类型选第一项")
+    _log(page, "select", f"选该行的发票行类型（选第一项）")
 
-    # step 42: 发票行第 1 行：填数量
+    # step 39: 填该行的数量
     _act_row(page, '数量@开票页', 1, op='fill', value=_data('fill_12', ctx))
-    _log(page, "fill", f"发票行第 1 行：填数量")
+    _log(page, "fill", f"填该行的数量")
 
-    # step 43: 发票行第 1 行：单位选第一项
+    # step 40: 选该行的单位（选第一项）
     _act_row(page, '单位@开票页', 1, op='select')
-    _log(page, "select", f"发票行第 1 行：单位选第一项")
+    _log(page, "select", f"选该行的单位（选第一项）")
 
-    # step 44: 点底部「保存」完成发票创建（发票号系统自动生成只读，不写死、不断言其值）
+    # step 41: 点底部「保存」完成发票创建（行已自动带入，无需点新增行/行保存）
     _act(page, "click", semantic='保存@开票页[应收发票创建]', primary=lambda p: p.locator("#btn-inv-submit"))
-    _log(page, "click", f"点底部「保存」完成发票创建（发票号系统自动生成只读，不写死、不断言其值）")
+    _log(page, "click", f"点底部「保存」完成发票创建（行已自动带入，无需点新增行/行保存）")
 
-    # step 45: 进入发票列表页
+    # step 42: 进入应收发票列表页
     _goto(page, 'http://localhost:8000/invoice_list.html')
-    _log(page, "goto", f"进入发票列表页")
-    _assert_url(page, _data('expect_9', ctx), '到达证据：确认已进入发票列表页')
+    _log(page, "goto", f"进入应收发票列表页")
+    _assert_url(page, _data('expect_8', ctx), '到达证据：已进入发票列表页')
 
-    # step 46: 在订单名称搜索框输入该订单名称
+    # step 43: 在订单名称搜索框输入该订单名称
     _act(page, "fill", semantic='订单名称@发票列表页', primary=lambda p: p.locator("#tb-i-oname"), value=_data('fill_13', ctx))
     _log(page, "fill", f"在订单名称搜索框输入该订单名称")
 
-    # step 47: 点「搜索」
+    # step 44: 点「搜索」
     _act(page, "click", semantic='搜索@发票列表页', primary=lambda p: p.locator("#btn-search-inv"))
     _log(page, "click", f"点「搜索」")
-    _assert_first_row(page, 'contractNo', _data('expect_10', ctx), '验证发票已创建：按订单名称搜到的第一行发票，其合同编号列为 HT-1001（一单一票；发票号运行时生成，用稳定合同编号反查）', timeout_ms=160000, refresh='research')
+    _assert_first_row(page, 'contractNo', _data('expect_9', ctx), '验证能搜到刚创建的那张发票：按唯一订单名称过滤后首行合同编号列即带入的 HT-1001（发票号为系统生成不写死）', timeout_ms=160000, refresh='research')
 

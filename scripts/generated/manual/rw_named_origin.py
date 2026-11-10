@@ -14,6 +14,7 @@ from _harness import (_CURRENT_LOG, _log, _data, _act, _goto,
                       _login_flow,
                       # V8.10.0 跨 origin：登录后铺会话（模板里会渲染这个调用，漏 import = NameError）
                       _spread_session,
+                      _ensure_scene_pre,
                       # L1 数据参数化（2026-09-21）：用例上的 parametrize 要用这两个
                       # [!] 同 `_Tabs` 那条教训：模板里渲染出的调用必须在这里同时 import，漏一个就是 NameError
                       _ds_params, _ds_ids,
@@ -46,6 +47,7 @@ def test_rw_named_origin(page, ctx):
     """跨 origin：goto 声明过的 order(8001)，设了 HYBRID_BASE_URL=8000 也不许被压平"""
     _CURRENT_LOG["case_id"] = "rw_named_origin"
     _goto(page, 'http://localhost:8000')
+    _ensure_scene_pre(page)   # 身份前置（无声明 -> 立即返回）
     _log(page, "场景开始", f"case=rw_named_origin")
 
     # step 1: 打开订单系统(8001)

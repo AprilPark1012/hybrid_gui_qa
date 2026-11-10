@@ -183,17 +183,25 @@ def test_prompt_tells_ai_the_declared_identity_pre():
         ex._CURRENT_PROBE_PRE = []
 
 
-def test_declared_pre_host_is_the_first_business_page():
-    """行为判据：前置的 host = 场景 `pages` 里第一个**业务页**（不是登录页）。
+def test_declared_pre_host_follows_declaration_not_first_business_page():
+    """行为判据：前置 host = 场景**声明**的 `probe_pre_host`（不是"第一个业务页"）。
 
-    为什么必须判（2026-10-10 实测）：第一版按 dict 取 `p.get("url")` —— 而 `pages` 是
-    `ScenarioPage` **dataclass**，静默拿到空串 => `url` 全空 => 前置主路径整体不生效
-    （用例照红，但红得莫名其妙）。这条判据直接对**真场景**取真值，能当场抓住这类静默空值。
+    [!] V8.10.1（2026-11-10 实测）改口径：原来这里的判据是「host == 第一个业务页」，
+        于是谁按"第一个业务页"写死都不会被发现 —— 而实测**第一个业务页可能根本没有身份菜单**：
+        `超`（身份入口）只在订单列表页 orders.html 上存在（count=2），合同列表页上等 10s 仍是 0。
+        旧判据把"指错页"固化成了契约（探针在别的页凑齐序列 => 绿；执行期严格按 host 页跑 => 红）。
+    => 现在判三条：① 取到的是**声明的那一页**的 url；② 不许落在登录页；③ 文件不存在给空串不抛。
     """
     from framework.features.f02_semantic.generator_generate import _scenario_pre_host_of
+    from framework.features.f02_semantic.scenario_generate import load_scenario_file
+    from framework.shared.config import SCENARIOS_DIR
 
-    host = _scenario_pre_host_of("scenarios/orders/orders_invoice_full_lifecycle.yml")
-    assert host == "http://localhost:8000/", f"前置 host 取错了：{host!r}（登录页？还是空？）"
+    rel = "scenarios/orders/orders_invoice_full_lifecycle.yml"
+    sc = load_scenario_file(SCENARIOS_DIR.resolve().parent / rel)
+    assert getattr(sc, "probe_pre_host", ""), "场景必须声明 probe_pre_host（D10）"
+    want = {p.name: p.url for p in sc.all_pages()}[sc.probe_pre_host]
+    host = _scenario_pre_host_of(rel)
+    assert host == want, f"前置 host 没按声明取：{host!r} != 声明的「{sc.probe_pre_host}」({want!r})"
     assert "login" not in host.lower(), "host 落在登录页上（那页没有业务导航，前置解析不到）"
     assert _scenario_pre_host_of("scenarios/does_not_exist.yml") == "", "文件不存在应返回空串（不许抛）"
 
